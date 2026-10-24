@@ -1,19 +1,19 @@
 # 그날어때 개발 착수 문서
 
-2026-10-24 · v2.1 · 놀날(가칭) v1을 전면 개정하고, 입력 추천·그룹 캘린더·만남 신청 사양을 반영
+2026-10-24 · v2.2 · 놀날(가칭) v1을 전면 개정하고, 입력 추천·그룹 캘린더·날짜 잡기 사양을 반영
 
 ## 0. 한 장 요약
 
-**그날어때**는 내 일정을 가장 편하게 넣고 보는 캘린더 앱입니다. 그룹 캘린더에는 멤버들이 함께 비는 날이 색으로 보이고, 그날을 탭해 만남을 신청하면 하루 안에 수락으로 매칭되어 시간과 할 일까지 정해집니다. 운영자를 포함해 멤버가 아닌 누구도 그 내용을 볼 수 없습니다.
+**그날어때**는 내 일정을 가장 편하게 넣고 보는 캘린더 앱입니다. 그룹 캘린더는 멤버들의 일정을 합쳐서 보여 주는 캘린더입니다. 일정이 있는 시간은 비워 두고 비어 있는 시간을 색으로 채우며, 앱이 "이 정도면 빈 것"이라고 판정하지 않습니다. 그룹 캘린더에서 할 수 있는 조정은 날짜 잡기 하나뿐이고, 날짜를 잡으면 수락한 사람들의 캘린더에 약속이 들어가고 그것이 다시 그룹 캘린더에 비칩니다. 운영자를 포함해 멤버가 아닌 누구도 그 내용을 볼 수 없습니다.
 
 v1과 다른 결정은 네 가지입니다. 각 결정의 대안과 대가를 함께 적었으니, 뒤집으려면 이 표에서 뒤집으면 됩니다.
 
-| 결정 | v2.1 | v1 | 대안을 택하면 |
+| 결정 | v2.2 | v1 | 대안을 택하면 |
 | --- | --- | --- | --- |
 | 보안 수준 | 운영자도 못 읽음(E2EE). 서버는 암호문 저장소 | 서버가 평문 바쁨/비어 있음을 받아 계산 | 서버 계산이 가능해지지만, 텔레그램 그룹 대화 수준(서버가 읽을 수 있음)이라 "텔레그램급"을 내세울 수 없음 |
 | 일정의 원본 | 이 앱(기기 SQLite) + 암호화 백업 | OS 캘린더를 읽기만 | 캘린더 앱이 아니라 약속 도구가 되고, 설치를 요구할 단독 가치가 사라짐 |
-| 약속 흐름 | 만남 신청 → 24시간 안에 수락 → 시간 → 활동 | 후보 5~7개 투표 + 결선 | 투표는 며칠이 걸려 단톡방보다 느림 |
-| MVP 공유 범위 | 친구 그룹의 날짜·시간·활동 확정. 장소는 지도 검색 링크로 연결 | 장소 랭킹 + 장소 투표 | 장소 랭킹은 영업시간·평점·이동 시간의 데이터 출처가 없어 MVP에서 구현할 수 없음 |
+| 약속 흐름 | 날짜 잡기 → 수락/다음에 → 수락한 사람 캘린더에 즉시 추가. 날이 지나면 끝 | 후보 5~7개 투표 + 결선 | 투표는 며칠이 걸려 단톡방보다 느림 |
+| MVP 공유 범위 | 날짜·시간·활동까지. 장소는 지도 검색 링크로 연결 | 장소 랭킹 + 장소 투표 | 장소 랭킹은 영업시간·평점·이동 시간의 데이터 출처가 없어 MVP에서 구현할 수 없음 |
 
 전제: 멤버는 모두 앱을 설치합니다(커뮤니티 앱). E2EE에서는 키를 들고 있을 기기가 모든 멤버에게 있어야 하므로 이 전제와 설계가 맞물립니다. 한 사람이 여러 그룹에 속할 수 있고, 캘린더는 하나입니다.
 
@@ -22,17 +22,17 @@ v1과 다른 결정은 네 가지입니다. 각 결정의 대안과 대가를 �
 ### 사용자와 장면
 
 - **친구 그룹(3~10명):** "다음 달에 언제 볼까?"가 단톡방에서 며칠 끌리다 흐지부지되는 문제.
-- **아르바이트생·학생:** 주마다 바뀌는 근무표·시간표를 캘린더에 넣기 귀찮아 캘린더가 비어 있는 문제. 캘린더가 비면 "빈 날 찾기"도 틀립니다. 그래서 캘린더 입력 UX가 공유 기능의 정확도를 결정합니다.
-- **여러 그룹:** 친구, 가족, 동아리, 알바 동료. 캘린더는 하나고 그룹마다 무엇을 얼마나 공유할지 따로 정합니다. 한 그룹에서 확정된 모임은 내 캘린더에 들어가므로 다른 그룹에는 자동으로 바쁨이 됩니다.
+- **아르바이트생·학생:** 주마다 바뀌는 근무표·시간표를 캘린더에 넣기 귀찮아 캘린더가 비어 있는 문제. 캘린더가 비면 그룹 캘린더도 비어 보입니다. 그래서 캘린더 입력 UX가 공유 기능의 정확도를 결정합니다.
+- **여러 그룹:** 친구, 가족, 동아리, 알바 동료. 캘린더는 하나고 그룹마다 무엇을 공유할지 따로 정합니다. 한 그룹에서 잡힌 약속은 내 캘린더에 들어가므로 다른 그룹에는 자동으로 일정이 있는 시간이 됩니다.
 
 ### 단독 가치와 네트워크 가치
 
-- 혼자 써도 되는 가치: 입력 추천, 교대 템플릿, 캘린더 여러 개, 생일 알림, 기기 캘린더 미러. 이것이 설치의 명분입니다.
-- 같이 쓸 때의 가치: 함께 비는 날이 보이는 그룹 캘린더, 하루 안에 끝나는 만남 신청, 시간·활동 추천, 확정 일정의 자동 반영.
+- 혼자 써도 되는 가치: 입력 추천, 교대 템플릿, 캘린더 여러 개, 생일 알림, 연휴·연차 제안, 기기 캘린더 미러. 이것이 설치의 명분입니다.
+- 같이 쓸 때의 가치: 멤버 일정을 합친 그룹 캘린더, 날 하나 탭해서 잡는 약속, 활동 추천, 수락 즉시 캘린더 반영.
 
 ### 검증할 가설
 
-친구 그룹은 단톡방의 "언제 돼?" 대신 그날어때 그룹 캘린더에서 날을 고르고 신청한다. 단, 각자의 캘린더가 이 앱에 들어 있을 때.
+친구 그룹은 단톡방의 "언제 돼?" 대신 그날어때 그룹 캘린더에서 비어 있는 시간을 보고 날짜를 잡는다. 단, 각자의 캘린더가 이 앱에 들어 있을 때.
 
 ### 성공 지표와 중단 기준
 
@@ -43,10 +43,10 @@ v1과 다른 결정은 네 가지입니다. 각 결정의 대안과 대가를 �
 | 캘린더 활성 | 첫 7일 중 4일 이상 앱을 연 사용자 비율 | 50% 이상 |
 | 추천 입력 비율 | 추천 칩을 탭해 만든 일정 ÷ 전체 일정 | 30% 이상 |
 | 초대 전환 | 초대 코드 사용 → 활성 멤버 → 첫 가용 시간 공유 | 50% 이상 |
-| 응답률 | 만남 신청에 24시간 안에 응답한 멤버 비율 | 70% 이상 |
-| 매칭률 | 만남 신청 중 매칭까지 간 비율 | 50% 이상 |
-| 확정 속도 | 신청 → 확정의 중위 시간 | 36시간 이내 |
-| 재사용 | 확정 후 60일 안에 두 번째 신청이 있는 그룹 | 30% 이상 |
+| 수락률 | 날짜 잡기 중 날이 지나기 전에 1명 이상 수락한 비율 | 60% 이상 |
+| 첫 수락 속도 | 신청 → 첫 수락의 중위 시간 | 24시간 이내 |
+| 성사율 | 날이 지난 약속 중 참가자 2명 이상이었던 비율 | 50% 이상 |
+| 재사용 | 약속 뒤 60일 안에 두 번째 날짜 잡기가 있는 그룹 | 30% 이상 |
 
 중단 기준: 그룹 알파에서 초대 전환이 25% 미만이고 온보딩을 두 번 고친 뒤에도 같으면, 그룹 기능을 보류하고 캘린더 단독 제품으로 재평가합니다.
 
@@ -58,13 +58,13 @@ v1과 다른 결정은 네 가지입니다. 각 결정의 대안과 대가를 �
 
 | 구분 | 항목 |
 | --- | --- |
-| MVP 포함 | 캘린더: 월·주·목록 뷰, 빠른 입력, 캘린더 여러 개(색), 반복 일정, 알림, 교대 템플릿, 기기 캘린더 읽기 미러 |
+| MVP 포함 | 캘린더: 월·주·목록 뷰, 빠른 입력, 캘린더 여러 개(색), 반복 일정, 알림, 교대 템플릿, 수면·활동 시간 루틴, 기기 캘린더 읽기 미러, 공휴일·연휴 표시와 연차 제안 |
 | MVP 포함 | 입력 추천: 요일·시간·내 기록·생일·연휴를 보고 순위를 매긴 추천 칩(온디바이스 규칙), 사람·생일 등록(연락처 가져오기는 선택) |
 | MVP 포함 | 계정: 카카오 로그인, Sign in with Apple, 게스트, 앱 내 계정 삭제, 복구 코드, 암호화 백업 |
 | MVP 포함 | 그룹: 여러 그룹, 생성, 카카오톡 초대 링크, 멤버 승인, 그룹별 공유 설정과 일시중지 |
-| MVP 포함 | 그룹 캘린더: 2명 이상 함께 비는 날을 인원수에 따라 색으로, 탭하면 누가 비는지(낮/저녁), 추천 날 배지, 생일 아이콘(공개한 멤버만) |
-| MVP 포함 | 만남 신청: 날 선택 → 수락/다음에 → 24시간 만료 → 시간 투표 → 활동 추천·투표 → 확정 → 참가자 캘린더 반영, 늦참 |
-| MVP 포함 | 활동 추천: 시간대·길이·그룹 취향·신선도로 카테고리 상위 5개, 선택하면 카카오맵 검색 링크 |
+| MVP 포함 | 그룹 캘린더: 멤버 일정을 합친 0–24시 가용 시간 테이블, 날짜 칸의 24시간 띠(비어 있는 인원수를 색으로), 공휴일, 잡힌 약속, 생일 아이콘(공개한 멤버만) |
+| MVP 포함 | 날짜 잡기: 날 선택 → 시간·활동(선택) → 수락/다음에 → 수락한 사람 캘린더에 즉시 추가 → 그룹 캘린더에 반영. 날이 지나면 수락 없는 신청은 사라짐 |
+| MVP 포함 | 활동 추천: 시간·길이·그룹 취향·신선도·인원으로 카테고리 상위 5개, 선택하면 카카오맵 검색 링크 |
 | MVP 제외 | 장소 랭킹과 장소 DB (카테고리 추천 + 지도 검색 링크로 대체) |
 | MVP 제외 | 위치 수집 전부, 날씨 반영 |
 | MVP 제외 | 앱 내 채팅 (카카오톡에 맡김) |
@@ -75,12 +75,13 @@ v1과 다른 결정은 네 가지입니다. 각 결정의 대안과 대가를 �
 
 ## 3. 설계 원칙
 
-1. **서버는 암호문만 봅니다.** 일정 내용, 바쁨/비어 있음, 신청과 응답은 그룹 멤버의 기기에서만 복호화됩니다.
-2. **계산은 기기에서 합니다.** 추천, 히트맵, 매칭 집계는 순수 함수이고, 멤버 10명·12주 교집합이 수 ms입니다.
+1. **서버는 암호문만 봅니다.** 일정 내용, 비어 있는 시간, 신청과 응답은 그룹 멤버의 기기에서만 복호화됩니다.
+2. **계산은 기기에서 합니다.** 추천, 합치기, 약속 상태는 순수 함수이고, 멤버 10명·12주를 합치는 데 수십 ms입니다.
 3. **그룹 상태는 로그의 함수입니다.** 서버가 보관한 암호문 로그를 같은 함수에 넣으면 모든 기기가 같은 결과를 냅니다.
-4. **추천은 제안입니다.** 탭하지 않으면 저장되지 않고, 저장되지 않은 것은 바쁨으로 치지 않습니다.
-5. **수집하지 않은 것은 유출되지 않습니다.** 서버가 보는 메타데이터는 8장의 표에 전부 적습니다.
-6. **캘린더가 먼저입니다.** 공유 기능의 정확도는 캘린더에 들어 있는 데이터의 양이 정합니다.
+4. **그룹 캘린더는 판정하지 않습니다.** 일정이 없는 시간이 비어 있는 시간이고, 색은 비어 있는 인원수입니다. "몇 시간 이상 비어야 빈 것"이라는 기준은 없습니다. 수면 시간처럼 비어 보이면 안 되는 시간은 사용자가 루틴으로 넣습니다.
+5. **추천은 제안입니다.** 탭하지 않으면 저장되지 않고, 저장되지 않은 것은 일정으로 치지 않습니다.
+6. **수집하지 않은 것은 유출되지 않습니다.** 서버가 보는 메타데이터는 8장의 표에 전부 적습니다.
+7. **캘린더가 먼저입니다.** 공유 기능의 정확도는 캘린더에 들어 있는 데이터의 양이 정합니다.
 
 ## 4. 아키텍처
 
@@ -89,13 +90,13 @@ flowchart LR
   subgraph phone["멤버 기기 (Expo 앱)"]
     sugg["입력 추천<br/>온디바이스 규칙"]
     cal["캘린더 코어<br/>SQLite, 유일한 평문"]
-    core["순수 함수<br/>scheduling · matching"]
+    core["순수 함수<br/>availability · appointments"]
     crypto["crypto<br/>기기 키 · 그룹 키 · AMK"]
     sugg --> cal --> core --> crypto
   end
   subgraph server["API 서버 (Fastify + PostgreSQL)"]
     blobs[("암호문 로그 · 키 grant · 백업")]
-    meta[("계정 · 기기 공개키 · 멤버십 · 마감 · 퍼널")]
+    meta[("계정 · 기기 공개키 · 멤버십 · 퍼널")]
     push["푸시: 암호문 그대로 전달"]
   end
   crypto <-->|"TLS, 암호문"| blobs
@@ -106,18 +107,17 @@ flowchart LR
 
 | 영역 | 선택 | 이유 |
 | --- | --- | --- |
-| 모바일 | React Native + Expo (TypeScript), 개발 빌드 | 캘린더·연락처·보안 저장소·SQLite 모듈, 서버와 언어 통일. libsodium과 알림 확장 때문에 Expo Go는 쓰지 않음 |
+| 모바일 | React Native + Expo (TypeScript), 개발 빌드 | 캘린더·연락처·보안 저장소·SQLite 모듈, 서버와 언어 통일. libsodium 네이티브 모듈 때문에 Expo Go는 쓰지 않음 |
 | 로컬 DB | expo-sqlite | 일정 원본. OS 파일 암호화에 더해 키는 Keychain/Keystore |
 | 암호 | libsodium (`react-native-libsodium`, Node에서는 `libsodium-wrappers-sumo`) | X25519 봉인, XChaCha20-Poly1305, Argon2id를 한 라이브러리에서. 직접 조합할 것이 없음 |
 | 반복 일정 | rrule | RFC 5545 확장 |
-| 알림 | Expo Notifications (APNs·FCM) + iOS Notification Service Extension | 암호문을 받아 기기에서 복호화해 표시. iOS 확장은 네이티브 작업(8장) |
+| 알림 | Expo Notifications (APNs·FCM) | 암호문을 받아 기기에서 복호화해 표시. iOS 확장은 2단계(8장) |
 | 서버 | Node.js + Fastify (TypeScript), zod | 가볍고 스키마를 앱과 공유 |
-| DB | PostgreSQL 16 | 확장 없음. PostGIS·Redis 제거 |
+| DB | PostgreSQL 16 | 확장 없음. PostGIS·Redis 제거. 시간 기반 작업도 공휴일 동기화뿐 |
 | ORM | Drizzle | `bytea`는 내장 타입이 없어 `customType`으로 정의 |
-| 지연 작업 | PostgreSQL 폴링 워커(1분) | 신청 만료·투표 마감 푸시. Redis 불필요 |
 | 외부 | 특일 정보 API, 카카오 로그인·카카오톡 공유, Sign in with Apple, 카카오맵 검색 링크 | 공휴일, 계정, 초대, 장소 검색으로 연결 |
 
-흐름: 설치 → 계정·기기 키 생성 → 캘린더 사용(추천 칩으로 입력) → 그룹 생성 또는 참여(승인 시 그룹 키 전달) → 그룹별 공유 설정 → 캘린더가 바뀔 때마다 비트맵 암호화 업로드 → 그룹 캘린더에 함께 비는 날 표시 → 날 탭 → 만남 신청 → 24시간 안에 수락 → 매칭 → 시간 투표 → 활동 추천·투표 → 확정 → 참가자 캘린더에 그룹 일정.
+흐름: 설치 → 계정·기기 키 생성 → 캘린더 사용(추천 칩으로 입력) → 그룹 생성 또는 참여(승인 시 그룹 키 전달) → 그룹별 공유 설정 → 캘린더가 바뀔 때마다 비트맵 암호화 업로드 → 그룹 캘린더에 멤버 일정을 합쳐 표시 → 날 탭 → 0–24시 테이블에서 시간 선택(선택) → 활동 선택(선택) → 신청 → 수락한 사람 캘린더에 약속 추가 → 그 캘린더가 다시 그룹 캘린더에 비침 → 날이 지나면 끝.
 
 ## 5. 캘린더 코어 (기기)
 
@@ -126,10 +126,12 @@ flowchart LR
 - **뷰:** 월, 주, 목록. 캘린더별 색과 표시/숨김.
 - **빠른 입력:** 날짜 탭 → 추천 칩 또는 시간 범위 드래그 → 제목. 반복은 "매주 화·목" 같은 프리셋.
 - **교대 템플릿:** "오픈 07–13", "마감 17–23" 같은 템플릿을 만들고 달력 날짜를 탭해서 찍습니다. 템플릿은 입력 UX이고 결과는 일반 일정입니다. 아르바이트생의 불규칙 근무표가 캘린더에 들어오게 하는 장치입니다.
+- **수면·활동 시간 루틴:** 온보딩에서 "보통 몇 시에 자고 일어나요?"를 선택으로 묻고, 답하면 수면 시간을 반복 일정으로 넣습니다. 그룹 캘린더가 판정을 하지 않으므로, 밤이 비어 보이면 안 되는 사람은 이렇게 자기 일정으로 넣습니다. 앱이 가정하지 않습니다.
 - **사람·생일:** 친구·가족을 이름과 생일로 등록합니다. 연락처에서 가져오기는 선택이고 권한을 따로 묻습니다. 음력 생일은 매년 양력으로 변환해 씁니다. 그룹 멤버가 생일을 공개하면(8장) 자동으로 들어옵니다.
-- **기기 캘린더 미러:** expo-calendar로 읽기만 합니다. 미러 캘린더는 바쁨 계산에만 쓰고, 제목은 기기 밖으로 나가지 않습니다.
-- **소프트 캘린더:** `blocks_free = 0`이면 내 화면에는 보이지만 그룹 빈 시간 계산에서는 비어 있음으로 칩니다. 예: 헬스장, 혼자 하는 공부.
-- **알림:** expo-notifications의 로컬 예약. 서버가 필요 없습니다.
+- **공휴일·연휴·연차 제안:** 공휴일과 대체공휴일을 표시하고, 공휴일 사이에 낀 평일 하루를 쉬면 4일 이상 연휴가 되는 경우 "연차 1일로 4일 연휴"를 제안합니다. 누가 연차를 쓸 수 있는지는 앱이 가정하지 않습니다.
+- **기기 캘린더 미러:** expo-calendar로 읽기만 합니다. 미러 캘린더는 일정으로만 쓰고, 제목은 기기 밖으로 나가지 않습니다.
+- **소프트 캘린더:** `blocks_free = 0`이면 내 화면에는 보이지만 그룹에는 비어 있는 시간으로 보입니다. 예: 헬스장, 혼자 하는 공부.
+- **알림:** expo-notifications의 로컬 예약. 서버가 필요 없습니다. 그룹 약속도 내 캘린더의 일정이므로 같은 알림을 씁니다.
 
 ### 입력 추천 (온디바이스)
 
@@ -139,7 +141,7 @@ flowchart LR
 
 | 출처 | 예 | 근거 |
 | --- | --- | --- |
-| 기본 사전 | 회사 업무, 회식, 수업, 알바(템플릿), 운동, 약속, 데이트, 가족 모임, 병원, 생일 | 항목마다 기본 시간대와 요일 적합도 |
+| 기본 사전 | 회사 업무, 회식, 수업, 알바(템플릿), 운동, 약속, 데이트, 가족 모임, 병원, 생일, 수면 | 항목마다 기본 시간대와 요일 적합도 |
 | 내 기록 | 같은 요일·시간대에 자주 쓴 제목 | `suggestion_stats` |
 | 사람·생일 | 7일 안의 생일 → "OO 생일 약속" | `people` |
 | 공휴일·연휴 | "연휴 여행", "대체공휴일 나들이" | `holidays` |
@@ -159,7 +161,7 @@ $$
 
 - 같은 날 이미 있는 일정과 시간이 겹치는 칩은 뺍니다.
 - 같은 제목을 같은 요일에 세 번 넣으면 "매주 반복으로 바꿀까요?"를 한 번 묻습니다. 이것이 루틴을 채우는 길이고, 빈 캘린더 문제를 푸는 가장 싼 방법입니다.
-- 추천은 제안입니다. 탭하지 않으면 저장되지 않고, 화면에만 있는 추천(고스트)은 그룹 바쁨 계산에 들어가지 않습니다.
+- 추천은 제안입니다. 탭하지 않으면 저장되지 않고, 화면에만 있는 추천(고스트)은 그룹에 일정으로 보이지 않습니다.
 - 머신러닝은 없습니다. 가중치는 추천 입력 비율을 보고 손으로 조정합니다.
 
 ### 데이터 모델 (SQLite)
@@ -171,7 +173,7 @@ CREATE TABLE calendars (
   name         TEXT NOT NULL,
   color        TEXT NOT NULL,
   kind         TEXT NOT NULL CHECK (kind IN ('personal', 'routine', 'device_mirror', 'group')),
-  blocks_free  INTEGER NOT NULL DEFAULT 1,   -- 0 = soft: I see it, but it never counts as busy for a group
+  blocks_free  INTEGER NOT NULL DEFAULT 1,   -- 0 = soft: I see it, but groups see the time as free
   group_id     TEXT                          -- set when kind = 'group'
 );
 
@@ -187,6 +189,8 @@ CREATE TABLE events (
   exdates          TEXT,                     -- JSON array of ISO timestamps
   note             TEXT,
   device_event_id  TEXT,                     -- set for device_mirror rows
+  group_ref        TEXT,                     -- set for group appointments: the request ref in the group log
+  tentative        INTEGER NOT NULL DEFAULT 0, -- 1 while my own request has no accept yet
   updated_at       TEXT NOT NULL,
   CHECK (ends_at > starts_at)
 );
@@ -238,7 +242,7 @@ CREATE TABLE suggestion_stats (
   PRIMARY KEY (title, weekday)
 );
 
--- What I share with each group: a rolling window and which calendars count as busy. Never titles.
+-- What I share with each group: a rolling window and which calendars count. Never titles.
 CREATE TABLE group_shares (
   group_id          TEXT PRIMARY KEY,
   window_days       INTEGER NOT NULL DEFAULT 56 CHECK (window_days BETWEEN 14 AND 91),  -- rolling from today
@@ -251,7 +255,7 @@ CREATE TABLE group_shares (
 
 ### 반복 일정
 
-rrule로 기간 안의 발생을 확장하고, `exdates`와 `event_overrides`로 예외를 처리합니다. 종일 일정은 해당 날짜 전체를 바쁨으로 칩니다. 시간대는 MVP에서 `Asia/Seoul` 하나이고, 해외 멤버는 2단계입니다.
+rrule로 기간 안의 발생을 확장하고, `exdates`와 `event_overrides`로 예외를 처리합니다. 종일 일정은 해당 날짜 전체를 일정이 있는 시간으로 칩니다. 시간대는 MVP에서 `Asia/Seoul` 하나이고, 해외 멤버는 2단계입니다.
 
 ### 백업과 복구
 
@@ -264,28 +268,30 @@ rrule로 기간 안의 발생을 확장하고, `exdates`와 `event_overrides`로
 - `expands a weekly RRULE with an EXDATE across a month boundary in Asia/Seoul`
 - `applies a shift template to three days as three ordinary events`
 - `treats an end time before the start time as a shift past midnight`
-- `rounds an 18:10-19:20 event to the 18:00-19:30 busy slots`
-- `excludes calendars flagged blocks_free = 0 from the group bitmap`
-- `maps device-mirrored events to busy slots without exporting titles`
+- `rounds an 18:10-19:20 event to the 18:00-19:30 slots`
+- `leaves calendars flagged blocks_free = 0 out of the group bitmap`
+- `maps device-mirrored events to slots without exporting titles`
 - `restores a backup snapshot on a fresh device with the recovery code`
 - `ranks weekday work above a weekend outing on a Tuesday`
 - `suggests a birthday meetup within seven days of a registered birthday`
 - `converts a lunar birthday to this year's solar date before suggesting`
 - `drops a suggestion that overlaps an existing event`
-- `never counts an untapped suggestion as busy`
+- `never counts an untapped suggestion as an event`
 - `offers to make a title recurring after three same-weekday uses`
+- `marks substitute holidays and accepts two holidays on one date`
+- `suggests one leave day that bridges a holiday into a 4-day weekend`
 
 ## 6. 그룹 캘린더
 
-### 그룹은 공유 캘린더 방입니다
+### 그룹 캘린더는 멤버 일정을 합친 캘린더입니다
 
-채팅은 없습니다. 멤버 목록은 멤버 모두에게 보이고, 방장이 참여를 승인하고 강퇴할 수 있습니다. 그룹 이름은 `group_meta` 엔트리로 암호화해 서버는 알지 못합니다. 한 사람이 여러 그룹에 속할 수 있고, 그룹 목록에는 미응답 신청 수가 배지로 붙습니다.
+채팅은 없고 조정 기능도 날짜 잡기 하나뿐입니다. 멤버 목록은 멤버 모두에게 보이고, 방장이 참여를 승인하고 강퇴할 수 있습니다. 그룹 이름은 `group_meta` 엔트리로 암호화해 서버는 알지 못합니다. 한 사람이 여러 그룹에 속할 수 있고, 그룹 목록에는 아직 응답하지 않은 신청 수가 배지로 붙습니다.
 
 ### 그룹별 공유 설정과 상시 공유
 
 - 기간: 오늘부터 8주(기본, 2~13주). 캘린더가 바뀌면 그룹마다 비트맵을 다시 올립니다(디바운스 수 분). 그래서 그룹 캘린더는 늘 최신입니다.
-- 포함 캘린더: 어떤 캘린더를 이 그룹의 바쁨 계산에 넣을지 고릅니다. 그룹별 일시중지도 됩니다.
-- 내용: 바쁨/비어 있음만. 제목·장소·메모는 어떤 경로로도 나가지 않습니다. v1은 사용자 단위 전역이라 그룹 하나에 들어가면 모든 그룹과 서버에 전체 패턴이 보였습니다.
+- 포함 캘린더: 어떤 캘린더를 이 그룹에 보일지 고릅니다. 그룹별 일시중지도 됩니다.
+- 내용: 일정이 있는지 없는지만. 제목·장소·메모는 어떤 경로로도 나가지 않습니다. v1은 사용자 단위 전역이라 그룹 하나에 들어가면 모든 그룹과 서버에 전체 패턴이 보였습니다.
 
 ### 엔트리
 
@@ -293,158 +299,94 @@ rrule로 기간 안의 발생을 확장하고, `exdates`와 `event_overrides`로
 
 ```ts
 // packages/shared/src/entries.ts — every group log entry decrypts to one of these.
-type Segment = "day" | "evening";
-
 type Entry =
   | { kind: "group_meta"; name: string }
   | { kind: "member_profile"; birthday?: string; lunar?: boolean; tags?: string[] }       // opt-in, per group
-  | { kind: "availability"; windowStart: string; days: number; bits: string }            // 30-min slots, 1 = free, MSB first, base64
-  | { kind: "request"; ref: string; day: string; segment?: Segment; note?: string }      // 만남 신청, expires 24h after received_at
-  | { kind: "response"; ref: string; value: "accept" | "later" }                          // 수락 / 다음에
-  | { kind: "poll"; ref: string; stage: "time" | "activity"; options: string[]; closesAt: string }
-  | { kind: "poll_vote"; ref: string; stage: "time" | "activity"; option: string }       // option may be "any"
-  | { kind: "join"; ref: string }                                                         // 늦참, until the start time
-  | { kind: "confirmed"; ref: string; start: string; end: string; activity: string; participants: string[] };
+  | { kind: "availability"; windowStart: string; days: number; bits: string }            // 30-min slots, 1 = no event, MSB first, base64
+  | { kind: "request"; ref: string; day: string; start?: string; end?: string; activity?: string; note?: string }  // 날짜 잡기
+  | { kind: "request_update"; ref: string; start?: string; end?: string; activity?: string; note?: string }        // requester only
+  | { kind: "response"; ref: string; value: "accept" | "later" }                          // latest per member wins
+  | { kind: "cancel"; ref: string };                                                      // requester only
 ```
 
-4주는 1344비트, 168바이트입니다. 10명이 12주를 공유해도 내려받기는 5.3KB, 복호화와 교집합은 1.4ms입니다(Node 22에서 측정).
+4주는 1344비트, 168바이트입니다. 10명이 12주를 공유해도 내려받기는 5.3KB, 복호화와 합치기는 수십 ms입니다(Node 22에서 측정).
 
-### 함께 비는 날: 세그먼트와 히트맵
+### 0–24시 테이블과 24시간 띠
 
-하루를 낮(10–17시)과 저녁(17–23시) 두 세그먼트로 봅니다. 한 세그먼트 안에 연속 3시간 이상 비어 있으면 그 세그먼트가 "빈다"고 칩니다. 두 시간짜리 틈 두 개는 비는 것이 아닙니다.
-
-- 날짜 칸의 색: 같은 세그먼트가 비는 멤버가 2명 이상일 때부터 칠하고, 인원이 많을수록 진하게. 전원이면 가장 진합니다.
-- 탭하면: 누가 비는지, 낮인지 저녁인지 종일인지. 멤버 각자의 일정 내용은 어디에도 없습니다.
-- 추천 날 배지: 전원이 비고 주말·공휴일·연휴면 배지를 붙입니다. 48시간 이내는 뺍니다.
-- 생일 아이콘: 생일을 공개한 멤버가 있으면 그 날에 아이콘이 붙고, 그 주를 탭하면 "OO 생일 주에 만남 신청할까요?"가 먼저 나옵니다.
+- **날짜 칸:** 월 그리드의 날짜 칸마다 0시부터 24시까지 24시간 띠가 들어갑니다. 30분 슬롯마다 일정이 없는 멤버 수를 색의 진하기로 칠하고, 2명 미만이면 칠하지 않습니다. 전원이 비면 가장 진합니다. 공휴일과 잡힌 약속, 생일 아이콘(공개한 멤버만)도 날짜 칸에 보입니다.
+- **날 탭:** 그날의 0–24시 테이블이 열립니다. 맨 위는 합친 줄(멤버 수를 색으로), 아래는 멤버마다 한 줄입니다. 일정이 있는 부분은 비어 있고 일정이 없는 부분이 색으로 채워집니다. 누구의 어느 시간이 비어 있는지 그대로 보이고, 일정 내용은 어디에도 없습니다.
+- **판정 없음:** "3시간 이상 비어야 빈 시간" 같은 기준을 두지 않습니다. 새벽 3시가 비어 보이는 멤버는 수면 루틴을 넣지 않은 멤버이고, 그것도 그대로 보입니다. 그래서 5장의 수면·활동 시간 루틴이 있습니다.
+- **합치는 함수는 세는 것뿐입니다.**
 
 ```ts
-// packages/scheduling/src/day.ts — day-level view for the group calendar; pure, runs on the phone.
-export type Segment = "day" | "evening";                       // 낮 10:00-17:00, 저녁 17:00-23:00 (Asia/Seoul)
-const SEGMENTS: Record<Segment, [number, number]> = { day: [20, 34], evening: [34, 46] }; // 30-min slot offsets in a day
-const MIN_FREE_SLOTS = 6;                                      // 3 contiguous free hours make a segment "free"
-
+// packages/availability/src/merge.ts — the group calendar is members' schedules merged. Nothing here decides what "free" means.
 const isFree = (bitmap: Uint8Array, slot: number) => (bitmap[slot >> 3] >> (7 - (slot & 7))) & 1;
 
-// A member is free in a segment when it holds at least 3 contiguous free hours; two short gaps do not count.
-export function freeSegments(bitmap: Uint8Array, dayIndex: number): Segment[] {
-  const base = dayIndex * 48;
-  return (Object.keys(SEGMENTS) as Segment[]).filter((seg) => {
-    const [from, to] = SEGMENTS[seg];
-    let run = 0;
-    for (let s = from; s < to; s++) {
-      run = isFree(bitmap, base + s) ? run + 1 : 0;
-      if (run >= MIN_FREE_SLOTS) return true;
-    }
-    return false;
+// How many members are free in each 30-minute slot. The UI maps the count to colour; 0 stays blank.
+export function freeCounts(bitmaps: Uint8Array[], slots: number): Uint8Array {
+  const counts = new Uint8Array(slots);
+  for (const bm of bitmaps) for (let s = 0; s < slots; s++) counts[s] += isFree(bm, s);
+  return counts;
+}
+
+// Members free for every slot of a dragged range [from, to): what the requester sees while picking a time.
+export function freeThroughout(bitmaps: Uint8Array[], from: number, to: number): number[] {
+  const out: number[] = [];
+  bitmaps.forEach((bm, i) => {
+    for (let s = from; s < to; s++) if (!isFree(bm, s)) return;
+    out.push(i);
   });
-}
-
-export interface DayHeat { count: number; segment: Segment | null; members: number[] }
-
-// Colour for a day cell: the most members sharing one free segment. Below two the cell stays uncoloured.
-export function dayHeat(bitmaps: Uint8Array[], dayIndex: number): DayHeat {
-  let best: DayHeat = { count: 0, segment: null, members: [] };
-  for (const seg of Object.keys(SEGMENTS) as Segment[]) {
-    const members = bitmaps.map((b, i) => (freeSegments(b, dayIndex).includes(seg) ? i : -1)).filter((i) => i >= 0);
-    if (members.length > best.count) best = { count: members.length, segment: seg, members };
-  }
-  return best.count >= 2 ? best : { count: 0, segment: null, members: [] };
+  return out;
 }
 ```
 
-### 시간 블록 (시간 투표 후보와 1박 판정)
-
-매칭 뒤 시작 시각 후보를 만들 때와, 블록이 다음 날까지 이어지는지 볼 때는 30분 슬롯 단위의 블록을 씁니다. 슬롯별 인원수를 세는 방식은 겹침을 과대평가합니다. A가 13–15시, B가 14–16시, C가 13–16시이고 정족수가 2명이면 인원수로는 13–16시 3시간이 나오지만, 같은 두 사람이 함께 있을 수 있는 시간은 최대 2시간입니다. 그래서 블록을 늘리는 동안 **같은 멤버 집합**이 유지되는지 봅니다.
-
-```ts
-// packages/scheduling/src/blocks.ts — pure; runs on the phone over decrypted member bitmaps.
-export interface Block { start: number; end: number; members: number[] } // half-open slot range
-
-const isFree = (bitmap: Uint8Array, slot: number) => (bitmap[slot >> 3] >> (7 - (slot & 7))) & 1;
-
-// Counting free heads per slot overstates overlap: a block only holds while the SAME members stay free.
-// Each time the shared set shrinks we emit the block so far, so "all three 14-15" survives next to "B+C 14-16".
-export function quorumBlocks(free: Uint8Array[], slots: number, quorum: number): Block[] {
-  const out: Block[] = [];
-  for (let start = 0; start < slots; start++) {
-    let set = free.map((_, m) => m).filter((m) => isFree(free[m], start));
-    if (set.length < quorum) continue;
-    let end = start + 1;
-    while (end < slots) {
-      const next = set.filter((m) => isFree(free[m], end));
-      if (next.length < quorum) break;
-      if (next.length < set.length) out.push({ start, end, members: set });
-      set = next; end++;
-    }
-    out.push({ start, end, members: set });
-  }
-  return dominated(out);
-}
-
-// Drop a block when another block covers its range with a superset of members.
-function dominated(blocks: Block[]): Block[] {
-  return blocks.filter((b, i) => !blocks.some((o, j) => j !== i && o.start <= b.start && o.end >= b.end &&
-    b.members.every((m) => o.members.includes(m)) && (o.start < b.start || o.end > b.end || o.members.length > b.members.length)));
-}
-```
-
-위 예시에 넣으면 `13-15 {A,C}`, `14-15 {A,B,C}`, `14-16 {B,C}`가 나오고 `13-16`은 나오지 않습니다. 멤버 10명·12주·정족수 7명이 100ms입니다. 당일 12:00 이전에 시작해 다음 날 12:00 이후까지 이어지는 블록만 1박 가능으로 표시합니다. v1의 "밤을 넘기면 여행"은 화요일 19시~수요일 9시도 여행 후보로 만들었습니다.
-
-### 공휴일과 연차 제안
-
-- 공휴일은 공공데이터포털의 특일 정보 API로 매일 동기화해 서버의 `holidays`에 넣고, 앱이 받아 갑니다. 임시공휴일은 정부 발표 뒤에 추가되므로 주기 동기화가 필요합니다.
-- 같은 날에 공휴일이 둘일 수 있습니다(2025-05-05 어린이날·부처님오신날). v1의 `day` 단독 PK는 이 데이터에서 깨졌습니다.
-- 공휴일 사이에 낀 평일 하루를 쉬면 연휴가 4일 이상이 되는 경우 "연차 1일로 4일 연휴" 제안을 따로 보여 줍니다. 누가 연차를 쓸 수 있는지는 앱이 가정하지 않습니다.
+A가 13–15시, B가 14–16시, C가 13–16시에 비어 있으면 합친 줄은 14–15시에 3명, 13–14시와 15–16시에 2명으로 칠해지고, 13–16시를 드래그하면 "C만 내내 비어 있음"이 나옵니다. 슬롯별 인원수를 그대로 보여 주므로 v1처럼 "13–16시 3시간 모두 가능"으로 잘못 합쳐지는 일이 없습니다.
 
 ### 첫 테스트 목록
 
-- `marks a segment free only with three contiguous free hours`
-- `colours a day from two shared free members and leaves one uncoloured`
-- `lists who is free on tap with their segments`
+- `counts free members per 30-minute slot without any threshold`
+- `lists members free throughout a dragged range`
+- `shows a member's night as free when no routine says otherwise`
+- `leaves a slot blank when fewer than two members are free`
+- `shows a held appointment as an event to every member and as busy for its participants`
 - `shows a birthday icon only for members who opted in`
-- `propagates a confirmed meetup in one group as busy to every other group`
-- `returns one block covering the window when all members are free`
-- `keeps the member set fixed while extending a quorum block`
+- `propagates an appointment held in one group as busy to every other group`
 - `treats a member without shared availability as absent, never as free`
-- `classifies a block as trip-capable only when it covers noon to noon of the next day`
-- `marks substitute holidays as day off and accepts two holidays on one date`
-- `suggests one leave day that bridges a holiday into a 4-day weekend`
-- `handles blocks crossing midnight in Asia/Seoul`
 
-## 7. 만남 신청과 매칭
+## 7. 날짜 잡기
 
-흐름은 단톡방의 속도를 따릅니다. 하루 안에 수락이 모이면 매칭되고, 시간과 활동은 각각 반나절 안에 정합니다. 최악의 경우에도 48시간이면 끝나고, 전원이 바로 응답하면 몇 분이면 끝납니다.
+그룹 캘린더에서 할 수 있는 조정은 이것 하나입니다. 날을 고르고, 원하면 시간과 활동을 붙여 신청합니다. 수락한 사람의 캘린더에 약속이 바로 들어가고, 그 캘린더가 다시 그룹 캘린더에 비칩니다. 투표도, 매칭 정족수도, 응답 제한 시간도 없습니다. 신청은 그 날이 지나면 끝납니다.
 
 ```mermaid
 stateDiagram-v2
-  [*] --> requested: request 엔트리, 24시간
-  requested --> matched: 수락 2명 이상, 만료 또는 전원 응답 또는 신청자 진행
-  requested --> expired: 만료 시 수락이 신청자뿐
-  matched --> timeSet: 시간 투표 종료, 최대 12시간
-  timeSet --> confirmed: 활동 투표 종료, 최대 12시간
-  confirmed --> [*]: 참가자 캘린더에 그룹 일정
-  expired --> [*]: 신청자에게만 7일 보임
+  [*] --> proposed: request 엔트리, 신청자 캘린더에 가안
+  proposed --> held: 첫 수락, 수락한 사람 캘린더에 추가
+  held --> held: 수락·다음에·늦참, 시간·활동 변경
+  proposed --> gone: 날이 지남, 수락 없음
+  proposed --> gone: 신청자 취소
+  held --> gone: 신청자 취소
+  held --> past: 날이 지남, 참가자 캘린더에 남음
+  gone --> [*]
+  past --> [*]
 ```
 
-### 규칙 (숫자는 초기값)
+### 규칙
 
-1. **신청:** 그룹 캘린더에서 날을 탭하면 "이날 비어 있는 사람: 민수(저녁), 지영(종일)"을 먼저 보여 주고, 세그먼트와 한 줄 메모를 붙여 신청합니다. 신청은 멤버 전원에게 갑니다. 비어 있지 않은 사람도 일정을 바꿀 수 있기 때문입니다.
-2. **만료:** 서버가 신청 엔트리에 찍은 `received_at`에서 24시간입니다. 기기 시계가 아니라 서버 시각이 기준입니다.
-3. **응답:** 수락 / 다음에. 응답은 이름과 함께 멤버 모두에게 보입니다. 단톡방과 같은 투명성이고, 공개 범위는 미결정 항목입니다.
-4. **매칭:** 만료 시점에 신청자를 포함해 수락이 2명 이상이면 매칭됩니다. 그 전에 활성 멤버 전원이 응답했거나 신청자가 "이대로 진행"을 누르면 즉시 매칭됩니다. 수락이 신청자뿐이면 만료되어 다른 멤버 화면에서 사라지고, 신청자의 "지난 신청"에만 7일 남습니다. 말없이 사라지면 신청자는 무시당했다고 느끼므로 "다음에 3명, 무응답 1명"을 보여 줍니다.
-5. **알림:** 신청 직후 서버 푸시 1회(암호문, 기기에서 복호화). 12시간이 지나도 응답하지 않았으면 기기가 로컬 알림을 1회 더 울립니다. 서버는 누가 응답했는지 모르므로 미응답 알림은 기기가 스스로 예약합니다.
-6. **시간:** 매칭되면 참가자들의 그날 공통 빈 블록(`quorumBlocks`)에서 시작 시각 후보를 최대 3개 만들어 투표합니다. 참가자 전원이 고르거나 12시간이 지나면 닫히고, 최다 득표, 동점이면 빠른 시각입니다. 신청자가 바꿀 수 있습니다.
-7. **활동:** 아래 추천 상위 5개 카테고리 칩을 투표합니다. 닫히는 규칙은 시간과 같고, 동점이면 추천 점수가 높은 쪽입니다. 신청자가 바꿀 수 있습니다.
-8. **확정:** 참가자 전원의 캘린더에 `kind = 'group'` 캘린더로 "그룹명 · 활동" 일정이 들어갑니다. 기본 길이는 카테고리별(식사 2시간, 보드게임 3시간, 당일 여행 8시간). 거절한 멤버의 캘린더에는 들어가지 않지만 그룹 캘린더에는 보이고, 시작 전까지 "나도 갈래"로 늦참할 수 있습니다.
-9. **결정성:** 상태는 `(로그 엔트리, 서버 시각, 활성 멤버) → 상태`인 순수 함수입니다. 만료·마감 시각에 서버가 푸시를 보내면 가장 먼저 연 기기가 `confirmed`를 올리고, 둘이 동시에 올려도 같은 내용이며 서버 `id`가 작은 것이 정본입니다.
+1. **신청:** 날을 탭하면 그날의 0–24시 테이블이 열립니다. 시간 범위를 드래그하면 그 시간 내내 비어 있는 사람이 바로 표시됩니다. 시간은 선택이라 "시간 미정"으로도 신청할 수 있습니다. 활동도 선택이고, 아래 추천 칩에서 고릅니다. 신청은 멤버 전원에게 갑니다. 그 시간이 비어 있지 않은 사람도 일정을 바꿀 수 있기 때문입니다.
+2. **신청자의 캘린더:** 신청하는 순간 신청자의 캘린더에 가안(`tentative = 1`)으로 들어갑니다. 첫 수락이 오면 확정 일정이 됩니다.
+3. **응답:** 수락 / 다음에. 응답은 이름과 함께 멤버 모두에게 보입니다. 단톡방과 같은 투명성이고, 공개 범위는 미결정 항목입니다. 멤버마다 마지막 응답이 유효합니다. 수락 뒤 다음에는 빠지는 것이고, 다음에 뒤 수락은 늦참입니다. 날이 지나기 전까지 언제든 됩니다.
+4. **수락의 효과:** 수락한 사람의 캘린더에 `kind = 'group'` 캘린더로 "그룹명 · 활동" 일정이 들어갑니다. 시간이 미정이면 종일로 들어가고, 시간이 정해지면 그 시간으로 바뀝니다. 참가자의 비트맵이 다시 올라가면서 그룹 캘린더에는 그 시간이 일정이 있는 시간으로 보이고, 약속 자체도 참가자 이름과 함께 보입니다.
+5. **시간·활동 변경:** 신청자만 바꿀 수 있습니다(`request_update`). 바뀌면 참가자 전원의 일정이 함께 바뀌고 알림이 갑니다. 테이블에 참가자들의 비어 있는 시간이 보이므로 신청자는 겹치지 않는 시간을 고를 수 있고, 겹치는 시간을 고르면 "지영은 이 시간에 일정이 있어요"가 뜹니다. 그래도 바꿀 수 있고, 참가자는 다음에로 빠질 수 있습니다.
+6. **끝:** 신청한 날이 `Asia/Seoul` 기준으로 지나면 끝입니다. 수락이 없었던 신청은 신청자의 가안을 포함해 모든 기기에서 사라집니다. 수락이 있었던 약속은 참가자 캘린더에 지난 일정으로 남고 그룹 캘린더에도 지난 약속으로 남습니다. 신청자는 그 전에 취소할 수 있고, 취소하면 참가자 캘린더에서도 빠집니다.
+7. **결정성:** 상태는 `(로그 엔트리, 오늘 날짜, 활성 멤버) → 상태`인 순수 함수입니다. 만료에 서버가 관여하지 않습니다. 날짜가 지났는지는 각 기기가 스스로 알 수 있기 때문입니다.
+8. **알림:** 신청이 오면, 내 신청에 수락이 오면, 참가한 약속의 시간·활동이 바뀌면 푸시가 옵니다(8장). 약속 전 알림은 내 캘린더의 일정 알림이 합니다.
 
 ### 활동 추천
 
 "무엇을 할지"는 장소가 아니라 카테고리로 추천합니다. 장소 랭킹에 필요한 영업시간·평점·이동 시간은 공개 API에 없고(카카오 로컬 API 응답에는 이름·주소·좌표·전화·URL만 있습니다), 위치를 수집하면 위치정보법 신고 대상이 되기 때문입니다. 카테고리를 고르면 참가자가 동네 이름을 넣어 카카오맵 검색(`https://map.kakao.com/link/search/<동네 카테고리>`)으로 넘어갑니다. GPS는 쓰지 않습니다.
 
 - **사전:** MVP는 20개 안팎. 식사, 술, 카페, 보드게임 카페, 영화, 노래방, 볼링, 전시·공연, 산책·공원, 등산, 쇼핑, 방탈출, 스포츠 관람, 집 모임, 드라이브, 당일 여행 등. 항목마다 적합 시간대(낮·저녁·밤), 최소·최대 길이, 실내·야외, 인원 범위, 비용 등급.
-- **입력:** 확정된 시작 시각과 길이, 요일·공휴일, 참가자의 취향 태그(`member_profile`, 선택), 그룹의 지난 활동(`confirmed` 엔트리), 인원.
+- **입력:** 신청의 시간 범위(없으면 요일만), 요일·공휴일, 참가자의 취향 태그(`member_profile`, 선택), 그룹의 지난 활동(지난 `request` 엔트리), 현재 참가자 수.
 
 $$
 \text{activityScore} = w_f \cdot \text{timeFit} + w_t \cdot \text{taste}_{group} + w_n \cdot \text{novelty} + w_s \cdot \text{sizeFit},
@@ -454,27 +396,25 @@ $$
 
 | 항 | 의미 | 초기 가중치 |
 | --- | --- | --- |
-| timeFit | 시작 시각·길이가 카테고리 적합 범위에 들면 1 | 0.35 |
+| timeFit | 시작 시각·길이가 카테고리 적합 범위에 들면 1. 시간 미정이면 요일 적합도만 | 0.35 |
 | taste_group | 참가자 태그 일치의 평균과 최솟값 가중합. `min` 항이 한 명이 정말 싫어하는 것을 1위에서 밀어냄 | 0.35 (α = 0.6) |
 | novelty | 그룹이 최근 90일 안에 한 활동이면 0, 처음이면 1 | 0.20 |
 | sizeFit | 인원이 카테고리 범위 안이면 1 | 0.10 |
 
-태그가 없는 참가자는 평균에서 뺍니다. 날씨는 MVP에 넣지 않습니다. 기상청 단기예보는 3일 안쪽만 다루고, 특정 날짜·지역을 서버에 물으면 모임 날짜와 지역이 서버에 드러나기 때문입니다. 2단계에서 전국 주요 지역 예보를 서버가 하루 한 번 묶어 내려 주고 기기가 고르는 방식으로 넣습니다.
+태그가 없는 참가자는 평균에서 뺍니다. 날씨는 MVP에 넣지 않습니다. 기상청 단기예보는 3일 안쪽만 다루고, 특정 날짜·지역을 서버에 물으면 약속 날짜와 지역이 서버에 드러나기 때문입니다. 2단계에서 전국 주요 지역 예보를 서버가 하루 한 번 묶어 내려 주고 기기가 고르는 방식으로 넣습니다.
 
 ### 첫 테스트 목록
 
-- `matches when two accepts exist at expiry`
-- `matches immediately once every active member has responded`
-- `expires with a single accept and hides the request from other members`
-- `ignores responses whose server timestamp is after expiry`
-- `builds at most three start-time options from the participants' common free blocks`
-- `resolves a time tie by the earliest start`
+- `adds the appointment to the requester's calendar as tentative on request`
+- `adds the appointment to a member's calendar on accept and removes it on later`
+- `treats the latest response per member as the current one`
+- `removes an unaccepted request from every device once the day has passed in Asia/Seoul`
+- `keeps a held appointment in participants' calendars after the day has passed`
+- `applies a requester's time change to every participant's event`
+- `ignores request updates not written by the requester`
+- `removes the appointment from every participant's calendar on cancel`
 - `ranks a disliked activity below a neutral one through the least-misery term`
-- `resolves an activity tie by recommendation score`
-- `writes the confirmed meetup into every participant's calendar and nobody else's`
-- `lets a member join until the start time`
 - `derives the same state from the same log regardless of entry order`
-- `treats the lowest-id confirmed entry as canonical when two devices finalize`
 
 ## 8. 보안·개인정보 설계
 
@@ -487,7 +427,7 @@ $$
 | 기기 키쌍 (X25519) | 첫 실행 | 개인키는 Keychain/Keystore(`expo-secure-store`), 공개키는 서버 | 그룹 키를 이 기기로 봉인 |
 | 계정 마스터 키 AMK (32B) | 첫 실행 | 기기 보안 저장소. 서버에는 복구 키로 래핑한 사본만 | 백업 암호화 |
 | 복구 키 (32B) | 복구 코드(BIP39 12단어, 128비트) + salt → Argon2id | 서버에는 salt만 | AMK 래핑 |
-| 그룹 키 (32B, 버전 있음) | 그룹 생성·회전 시 멤버 기기가 생성 | 멤버 기기 공개키마다 봉인한 grant를 서버에. iOS에서는 앱과 알림 확장이 공유하는 Keychain 접근 그룹에 | 그룹 로그 엔트리 AEAD |
+| 그룹 키 (32B, 버전 있음) | 그룹 생성·회전 시 멤버 기기가 생성 | 멤버 기기 공개키마다 봉인한 grant를 서버에 | 그룹 로그 엔트리 AEAD |
 
 ### 흐름
 
@@ -514,10 +454,10 @@ sequenceDiagram
 
 ### 알림에 내용을 담는 방법
 
-24시간에 만료되는 신청에 "새 소식이 있어요" 같은 일반 문구는 치명적입니다. 그래서 신청·응답·투표 엔트리는 `notify: true`로 올리고, 서버는 그 **암호문을 그대로** 멤버 기기에 푸시합니다(3KB 이하).
+신청·응답·변경 엔트리는 `notify: true`로 올리고, 서버는 그 **암호문을 그대로** 멤버 기기에 푸시합니다(3KB 이하). 서버는 내용을 모른 채 전달만 합니다.
 
-- **Android:** FCM 데이터 메시지 → 앱의 백그라운드 핸들러가 그룹 키로 복호화 → "민수: 11/8(토) 저녁 만남 신청" 로컬 알림.
-- **iOS:** Notification Service Extension이 복호화해 문구를 바꿉니다. 그룹 키는 앱과 확장이 공유하는 Keychain 접근 그룹에 둡니다. Expo 개발 빌드에 네이티브 확장을 붙이는 작업(config plugin)이 필요하고, 완료 전까지는 "새 만남 신청이 있어요" 일반 문구로 갑니다.
+- **Android:** FCM 데이터 메시지 → 앱의 백그라운드 핸들러가 그룹 키로 복호화 → "민수: 11/8(토) 19:00 저녁" 로컬 알림.
+- **iOS:** 앱이 실행 중이 아니면 복호화할 곳이 없어 MVP에서는 "새 약속 제안이 있어요" 같은 일반 문구로 갑니다. 암호문을 복호화해 문구를 바꾸는 Notification Service Extension은 네이티브 작업이라 2단계에 둡니다. 응답 제한 시간이 없어진 뒤로는 일반 문구의 비용이 크지 않습니다.
 - Expo 푸시 서비스를 거치면 암호문이 Expo 서버를 경유합니다. 처리 위탁으로 명시하고, 2단계에서 APNs·FCM 직접 발송을 검토합니다.
 
 ### 서버가 보는 것
@@ -530,13 +470,12 @@ sequenceDiagram
 | 기기 공개키, 플랫폼, 푸시 토큰 | 키 봉인, 푸시 |
 | 그룹 멤버십 그래프, 역할, 상태, 가입 시각 | 승인·강퇴·키 회전 |
 | 초대 코드 생성·사용 기록 | 남용 방지, 전환율 측정 |
-| 로그 엔트리의 작성자, 수신 시각, 크기, 키 버전, `notify` 플래그 | 마감 판정, 용량 제한, 푸시. `notify`가 켜진 엔트리는 신청·응답·투표류임을 추정할 수 있음 |
-| 신청 만료·투표 마감 시각 | 마감 푸시 |
-| 퍼널 마커(신청·매칭·만료·시간·확정)와 시각 | 1장 지표 측정. 날짜·활동·참가자는 없음 |
+| 로그 엔트리의 작성자, 수신 시각, 크기, 키 버전, `notify` 플래그 | 용량 제한, 푸시. `notify`가 켜진 엔트리는 신청·응답류임을 추정할 수 있음 |
+| 퍼널 마커(신청·첫 수락·성사·불발·취소)와 시각 | 1장 지표 측정. 날짜·시간·활동·참가자는 없음 |
 | 백업 크기와 시각 | 용량 제한 |
 | 접속 IP와 요청 로그 | 보안. 보존 기간을 정책에 명시 |
 
-기기에만 있는 것: 일정 내용, 사람·생일(연락처에서 가져온 것 포함), 추천 통계, 그룹 멤버의 바쁨/비어 있음과 신청 내용(복호화 후). 생일과 취향 태그를 그룹에 공개하는 것은 그룹마다 명시적으로 켭니다.
+기기에만 있는 것: 일정 내용, 사람·생일(연락처에서 가져온 것 포함), 추천 통계, 그룹 멤버의 비어 있는 시간과 약속 내용(복호화 후). 생일과 취향 태그를 그룹에 공개하는 것은 그룹마다 명시적으로 켭니다.
 
 ### 코드
 
@@ -598,7 +537,7 @@ AAD 문자열은 `group:<id>|author:<userId>|v:<keyVersion>`로 고정합니다.
 - 메타데이터 노출(위 표).
 - 복구 코드와 모든 기기를 함께 잃으면 데이터도 잃습니다.
 - 나간 멤버가 이미 받은 과거 데이터는 회수되지 않습니다.
-- iOS 알림 확장이 끝나기 전에는 알림 문구가 일반 문구입니다.
+- iOS 알림은 일반 문구입니다.
 
 ### 하지 않을 것
 
@@ -610,7 +549,7 @@ AAD 문자열은 `group:<id>|author:<userId>|v:<keyVersion>`로 고정합니다.
 
 ## 9. 서버
 
-서버는 신원·멤버십·암호문을 보관하고 마감 푸시를 보내는 작은 장치입니다.
+서버는 신원·멤버십·암호문을 보관하고 푸시를 전달하는 작은 장치입니다. 시간 기반 작업은 공휴일 동기화 하나뿐입니다. 신청의 만료는 날짜가 지나는 것이고, 그것은 기기가 스스로 압니다.
 
 ```sql
 -- The server never holds calendar content. Everything a member writes into a group is an opaque ciphertext entry.
@@ -705,26 +644,14 @@ CREATE TABLE group_log (
   key_version  int NOT NULL,
   ciphertext   bytea NOT NULL CHECK (octet_length(ciphertext) <= 16 * 1024),
   notify       boolean NOT NULL DEFAULT false,                         -- pushed to member devices as ciphertext
-  received_at  timestamptz NOT NULL DEFAULT now(),                     -- authoritative clock for deadlines
+  received_at  timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (group_id, key_version) REFERENCES group_keys(group_id, version),
   CHECK (NOT notify OR octet_length(ciphertext) <= 3072)              -- fits the APNs payload limit
 );
 CREATE INDEX ON group_log (group_id, id);
 
--- Plaintext facts the server needs to wake clients: when a request or a poll closes. Never what they contain.
-CREATE TYPE deadline_kind AS ENUM ('request', 'time_poll', 'activity_poll');
-CREATE TABLE deadlines (
-  group_id     uuid REFERENCES groups(id) ON DELETE CASCADE,
-  ref          text NOT NULL,              -- client-generated opaque id of the request
-  kind         deadline_kind NOT NULL,
-  due_at       timestamptz NOT NULL,
-  notified_at  timestamptz,
-  PRIMARY KEY (group_id, ref, kind)
-);
-CREATE INDEX ON deadlines (due_at) WHERE notified_at IS NULL;
-
--- Funnel markers posted by clients so request -> match -> confirmed can be measured without reading content.
-CREATE TYPE funnel_kind AS ENUM ('request_sent', 'matched', 'expired', 'time_set', 'confirmed');
+-- Funnel markers posted by clients so proposals -> held appointments can be measured without reading content.
+CREATE TYPE funnel_kind AS ENUM ('request_sent', 'first_accept', 'held_day_passed', 'unaccepted_day_passed', 'cancelled');
 CREATE TABLE funnel_events (
   group_id  uuid REFERENCES groups(id) ON DELETE CASCADE,
   ref       text NOT NULL,
@@ -763,12 +690,11 @@ v1 스키마와 달리 확장이 필요 없고(v1은 `btree_gist` 없이 첫 인
 | DELETE | `/groups/:id/members/:userId` | 탈퇴·강퇴 |
 | POST | `/groups/:id/log` | 엔트리 추가. `notify: true`면 암호문을 멤버 기기에 푸시(3KB 이하) |
 | GET | `/groups/:id/log` | 전체 로그. 소그룹이라 전체 조회로 충분 |
-| PUT | `/groups/:id/deadlines` | 신청 만료·투표 마감 등록 |
 | POST | `/groups/:id/funnel` | 퍼널 마커 |
 | GET | `/holidays?from&to` | 공휴일 |
 
-- **푸시:** `notify` 엔트리는 즉시, 만료·마감은 1분 폴링 워커가 `due_at <= now() AND notified_at IS NULL`을 읽어 보냅니다. 마감 푸시는 내용이 없고, 앱이 열리면 모든 그룹을 동기화합니다.
-- **공휴일 동기화:** 매일 특일 정보 API를 읽어 `holidays`를 갱신합니다.
+- **푸시:** `notify` 엔트리는 즉시 보냅니다. 마감 푸시는 없습니다.
+- **공휴일 동기화:** 매일 특일 정보 API를 읽어 `holidays`를 갱신합니다. 임시공휴일은 정부 발표 뒤에 추가되므로 주기 동기화가 필요합니다.
 - **레이트 리밋:** 초대 코드 시도, 로그 추가, `notify` 푸시, 백업 업로드에 사용자·IP 단위 제한을 둡니다. 앱 무결성 검증(App Attest·Play Integrity)은 서버가 암호문만 보관하는 구조에서 막을 것이 스팸뿐이라 MVP에서 뺍니다.
 - **Drizzle:** `bytea`는 `customType`으로 정의합니다. v1의 `tstzrange`·`geography`는 서버에서 사라졌습니다.
 
@@ -807,13 +733,13 @@ v1 스키마와 달리 확장이 필요 없고(v1은 `btree_gist` 없이 첫 인
 ```
 geunal-eottae/
   apps/
-    mobile/            # Expo (React Native, TypeScript); calendar core + group UI + local SQLite + iOS notification extension
-    api/               # Fastify + TypeScript; identity, membership, ciphertext log, deadline worker
+    mobile/            # Expo (React Native, TypeScript); calendar core + group UI + local SQLite
+    api/               # Fastify + TypeScript; identity, membership, ciphertext log, push relay
   packages/
     shared/            # zod schemas: log entry kinds, API DTOs
-    calendar-core/     # pure: recurrence expansion, busy bitmap, suggestion ranking, lunar birthday conversion
-    scheduling/        # pure: day segments and heat, quorum blocks, holiday scoring, leave-day suggestions
-    matching/          # pure: request/response/poll state machine, activity recommendation, deterministic finalization
+    calendar-core/     # pure: recurrence expansion, slot bitmap, suggestion ranking, lunar birthday conversion
+    availability/      # pure: merge counts, free-throughout, holidays, leave-day suggestions
+    appointments/      # pure: request/response state by date, activity recommendation
     crypto/            # isomorphic libsodium: device keys, group keys, sealed grants, entry AEAD, recovery KDF
   infra/
     docker-compose.yml # postgres only
@@ -827,17 +753,17 @@ geunal-eottae/
 
 1. 저장소 초기화: pnpm workspaces, TypeScript `strict`, ESLint/Prettier, Vitest. GitHub Actions에서 lint + test.
 2. `packages/calendar-core`: 5장의 테스트 목록부터 작성하고 통과시킵니다. 추천 순위도 여기 들어갑니다.
-3. `packages/scheduling`: 6장의 테스트 목록. `freeSegments`·`dayHeat`·`quorumBlocks`부터.
+3. `packages/availability`: 6장의 테스트 목록. `freeCounts`·`freeThroughout`과 공휴일부터.
 4. `packages/crypto`: 8장의 코드와 테스트. Node와 RN 양쪽에서 같은 테스트 벡터를 통과해야 합니다.
-5. `apps/mobile` 캘린더: 월·주 뷰, 빠른 입력과 추천 칩, 교대 템플릿, 사람·생일, 기기 캘린더 미러, 알림, 복구 코드, 백업. 그룹 기능 없이 내부 알파로 배포합니다(13장 M1).
+5. `apps/mobile` 캘린더: 월·주 뷰, 빠른 입력과 추천 칩, 교대 템플릿, 수면 루틴, 사람·생일, 기기 캘린더 미러, 알림, 복구 코드, 백업. 그룹 기능 없이 내부 알파로 배포합니다(13장 M1).
 6. `infra/docker-compose.yml`로 PostgreSQL을 띄우고 9장 스키마를 첫 마이그레이션으로 넣습니다(Drizzle + drizzle-kit).
-7. `apps/api`: 인증(카카오·애플·게스트), 기기, 복구, 백업, 그룹·초대·grant·로그·`notify` 푸시, 마감 워커, 퍼널, 공휴일 동기화.
-8. `packages/matching`과 `apps/mobile` 그룹 플로우: 생성 → 초대 → 승인 → 공유 설정 → 그룹 캘린더 → 신청 → 응답 → 매칭 → 시간 → 활동 → 확정 → 캘린더 반영 → 늦참.
-9. 알림 복호화: Android 데이터 메시지 핸들러, iOS Notification Service Extension.
+7. `apps/api`: 인증(카카오·애플·게스트), 기기, 복구, 백업, 그룹·초대·grant·로그·`notify` 푸시, 퍼널, 공휴일 동기화.
+8. `packages/appointments`와 `apps/mobile` 그룹 플로우: 생성 → 초대 → 승인 → 공유 설정 → 그룹 캘린더(띠와 0–24시 테이블) → 날짜 잡기 → 수락 → 캘린더 반영 → 변경·취소 → 날이 지나면 정리.
+9. 알림: Android 데이터 메시지 핸들러에서 복호화. iOS는 일반 문구.
 10. 초대 경로: Universal Link·App Link, Play Install Referrer, iOS 코드 붙여넣기.
 11. 외부 연동은 어댑터로 감싸서 테스트에서는 가짜 구현을 씁니다.
 
-커밋은 Conventional Commits 형식입니다. 예: `feat(scheduling): colour day cells by shared free segment`.
+커밋은 Conventional Commits 형식입니다. 예: `feat(availability): count free members per slot`.
 
 ## 13. 마일스톤과 게이트
 
@@ -845,35 +771,37 @@ geunal-eottae/
 
 | 단계 | 내용 | 게이트 |
 | --- | --- | --- |
-| M0 코어 | `calendar-core`, `scheduling`, `matching`, `crypto`의 첫 테스트 목록 | CI 녹색. 암호 테스트가 Node와 RN에서 같은 결과 |
+| M0 코어 | `calendar-core`, `availability`, `appointments`, `crypto`의 첫 테스트 목록 | CI 녹색. 암호 테스트가 Node와 RN에서 같은 결과 |
 | M1 캘린더 알파 | 그룹 기능 없는 캘린더를 내부 테스터 10명에게 2주 | 캘린더 활성 50% 이상, 추천 입력 비율 30% 이상, 크래시 없는 세션 99.5% 이상, 기기 캘린더 가져오기 성공 90% 이상, 복구 코드로 새 기기 복원 시나리오 100% 통과 |
-| M2 그룹 알파 | 실제 친구 그룹 5개에 그룹 캘린더·만남 신청 개방 | 초대 전환 50% 이상, 응답률 70% 이상, 매칭률 50% 이상, 신청 → 확정 중위 36시간 이내, 키 관리 코드 리뷰 완료, 알림 복호화가 양 플랫폼에서 동작(또는 일반 문구로 가기로 결정하고 기록) |
+| M2 그룹 알파 | 실제 친구 그룹 5개에 그룹 캘린더·날짜 잡기 개방 | 초대 전환 50% 이상, 수락률 60% 이상, 성사율 50% 이상, 첫 수락 중위 24시간 이내, 키 관리 코드 리뷰 완료, Android 알림 복호화 동작 |
 | M3 공개 베타 | 스토어 공개 | 11장 체크리스트 완료, 삭제·복구·키 회전 플로우 E2E 테스트, 스토어 심사 통과 |
 
 M1에서 캘린더 활성이 25% 미만이면 캘린더 UX를 다시 설계하기 전에는 M2에 들어가지 않습니다. M2의 중단 기준은 1장과 같습니다.
 
 **2단계 후보** (베타 이후, 우선순위 미정)
 
+- iOS Notification Service Extension으로 알림 문구에 내용 담기
 - 다기기 실시간 동기화: 개인 로그를 그룹 로그와 같은 구조로
 - iCloud Keychain·Google Block Store로 복구 코드 없는 복원
 - 안전 번호 비교(키 검증), APNs·FCM 직접 발송
-- 그룹 공유 일정(TimeTree형, E2EE)
+- 그룹 공유 일정(TimeTree형, E2EE): 약속이 아닌 일반 일정도 그룹에 공유
 - 날씨: 전국 주요 지역 예보 묶음을 서버가 하루 한 번 내려 주고 기기가 고름
 - 장소 랭킹: 영업시간·평점·이동 시간의 데이터 출처가 생긴 뒤에
-- 근무표 모드(사장·알바): 교집합이 아니라 커버리지 문제라 별도 설계
+- 근무표 모드(사장·알바): 합치기가 아니라 채우기 문제라 별도 설계
 - 인스타그램 공유 시트로 "가고 싶은 곳" 저장
 - 해외 멤버의 시간대
 
 ## 14. 미결정 사항
 
+- [ ] 시간·활동을 신청자가 정하고 참가자는 수락/다음에만 하는 방식 vs 참가자 투표(권고: 신청자가 정함. 테이블에 참가자들의 비어 있는 시간이 보이므로 투표가 불필요)
+- [ ] 수면·활동 시간: 온보딩에서 선택으로 묻고 루틴으로 저장(권고) vs 묻지 않음
+- [ ] 1명만 비어 있는 슬롯: 칠하지 않음(권고) vs 가장 연하게
+- [ ] 띠의 해상도: 30분 48칸 vs 1시간 24칸(권고: 30분)
+- [ ] 지난 약속을 그룹 캘린더에 얼마나 오래 보일지
 - [ ] 응답 공개 범위: 수락·다음에를 이름과 함께 vs 수락만 이름 공개(권고: 모두 공개, 단톡방과 같음)
-- [ ] 만료된 신청: 신청자에게 7일 보임 vs 완전 삭제(권고: 7일 보임)
-- [ ] 세그먼트 경계(낮 10–17, 저녁 17–23)와 "빈다"의 기준 3시간
-- [ ] 신청 대상: 전원 vs 그날 비어 있는 멤버만(권고: 전원)
-- [ ] 최소 매칭 인원 기본 2명, 신청자가 "3명 이상"으로 올릴 수 있는지
+- [ ] 신청 대상: 전원 vs 그 시간에 비어 있는 멤버만(권고: 전원)
 - [ ] 음력 생일 지원 범위와 변환 라이브러리
 - [ ] 활동 카테고리 사전 초안(20개)과 태그 수집 방식(온보딩에서 고르기 vs 그룹에서 고르기)
-- [ ] iOS 알림 복호화 확장을 M2 전에 넣을지, 일반 문구로 갈지
 - [ ] 복구 코드 시점: 가입 즉시 강제 vs 첫 그룹 참여 전까지 유예(권고: 유예 + 배너)
 - [ ] 게스트 계정 허용 여부(권고: 허용. 복구 코드 없으면 기기 분실 시 복구 불가를 고지)
 - [ ] 멤버 승인 권한: 방장만 vs 활성 멤버 누구나(권고: 누구나. 승인 지연이 전환율을 깎음)
@@ -893,8 +821,6 @@ M1에서 캘린더 활성이 25% 미만이면 캘린더 UX를 다시 설계하�
 | 제품 중심 | 약속 도구, 캘린더는 입력 | 캘린더 앱, 공유는 기능 | 설치를 요구할 단독 가치 |
 | 보안 모델 | 서버 봉투 암호화 + 서버 계산 | E2EE, 서버는 암호문 저장소, 계산은 기기 | "운영자도 못 읽음" |
 | 가용 시간 | 사용자 전역, 미입력 = 늘 가능 | 그룹별·기간별, 미공유 = 불참 | 빈 캘린더가 결과를 오염시키지 않게 |
-| 정족수 블록 | 슬롯별 인원수 | 같은 멤버 집합 유지 | 인원수 방식은 겹침을 과대평가 |
-| 1박 기준 | 밤을 넘기면 | 정오 → 다음 날 정오 | 평일 밤샘 구간 오분류 방지 |
 | 장소 랭킹 | MVP 핵심 | 2단계 | 영업시간·평점·이동 시간 출처 없음 |
 | 위치 | 법정동 코드 암호화 저장 | 수집하지 않음 | 위치정보법 범위 밖으로 |
 | 스택 | PostGIS, Redis, KMS, App Attest | PostgreSQL 하나, libsodium | 서버에 평문이 없으면 필요 없음 |
@@ -902,22 +828,32 @@ M1에서 캘린더 활성이 25% 미만이면 캘린더 UX를 다시 설계하�
 | 암호 코드 | AES-GCM, 태그 길이 미고정 | libsodium AEAD, 길이 검사, AAD 규약 | 짧은 태그 수용 방지 |
 | 계정 | 카카오 + 게스트 | + Sign in with Apple, 앱 내 삭제 | App Store 4.8, 5.1.1(v) |
 | 초대 경로 | 명시 없음 | Install Referrer, iOS 코드 입력 | Firebase Dynamic Links 종료 |
-| 지표 | 없음 | 퍼널·활성·확정·재사용 + 중단 기준 | 게이트를 숫자로 |
+| 지표 | 없음 | 퍼널·활성·재사용 + 중단 기준 | 게이트를 숫자로 |
 
 ### v2 → v2.1
 
 | 항목 | v2 | v2.1 | 이유 |
 | --- | --- | --- | --- |
-| 약속 흐름 | 수집 → 후보 투표 → 결선 | 만남 신청 → 24시간 수락 → 시간 → 활동 | 투표는 며칠, 신청은 하루 |
-| 가용 시간 공유 | 약속마다 수집, 마감 72시간 | 그룹별 상시 공유(롤링 8주) | 그룹 캘린더가 늘 최신 |
-| 그룹 화면 | 후보 목록 | 낮/저녁 세그먼트 히트맵, 탭하면 누가 비는지, 생일 아이콘 | 사양 |
+| 약속 흐름 | 수집 → 후보 투표 → 결선 | 만남 신청 → 수락 | 투표는 며칠, 신청은 바로 |
+| 가용 시간 공유 | 약속마다 수집 | 그룹별 상시 공유(롤링 8주) | 그룹 캘린더가 늘 최신 |
 | 입력 | 빠른 입력 + 교대 템플릿 | + 온디바이스 추천 칩, 사람·생일 | 사양 |
-| 투표 탈락 규칙 | 참석 인원 < 정족수 | 규칙 자체가 사라짐. 수락 2명이면 매칭 | 흐름 변경 |
-| 활동 | 없음(2단계 장소) | 카테고리 추천(최소 불만 포함) + 카카오맵 검색 링크 | 장소 DB 없이 "무엇을 할지" |
-| 알림 | 내용 없는 동기화 신호 | 암호문 탑재, 기기에서 복호화(Android 핸들러, iOS 확장) | 24시간 만료에 일반 문구는 치명적 |
-| 서버 표 | `deadlines(phase)` | `deadlines(kind)`, `funnel_events`, `group_log.notify` | 흐름 변경, 측정 |
-| 여러 그룹 | 가능하지만 명시 없음 | 명시: 캘린더 하나, 그룹별 설정, 확정은 다른 그룹에 바쁨 | 사양 |
-| 패키지 | `voting` | `matching` | 이름이 흐름을 따라감 |
+| 활동 | 없음 | 카테고리 추천(최소 불만 포함) + 카카오맵 검색 링크 | 장소 DB 없이 "무엇을 할지" |
+| 알림 | 내용 없는 동기화 신호 | 암호문 탑재, 기기에서 복호화 | 신청 알림에 내용이 필요 |
+| 여러 그룹 | 명시 없음 | 캘린더 하나, 그룹별 설정, 약속은 다른 그룹에 일정으로 | 사양 |
+
+### v2.1 → v2.2
+
+| 항목 | v2.1 | v2.2 | 이유 |
+| --- | --- | --- | --- |
+| 비어 있는 시간 | 낮/저녁 세그먼트, 연속 3시간 기준 | 기준 없음. 일정이 없는 슬롯이 비어 있는 시간, 색은 인원수 | 그룹 캘린더는 판정하지 않음 |
+| 그룹 캘린더 | 세그먼트 히트맵 + 추천 날 배지 + dateScore | 날짜 칸의 24시간 띠 + 0–24시 멤버별 테이블. 점수·배지 없음 | 멤버 일정을 합쳐 보여 주는 캘린더 |
+| 조정 기능 | 신청, 시간 투표, 활동 투표 | 날짜 잡기 하나. 시간·활동은 신청자가 테이블을 보고 정함 | 임의 조정은 날짜 잡기만 |
+| 만료 | 신청 후 24시간 | 신청한 날이 지나면 | 사양 |
+| 매칭 기준 | 수락 2명 | 없음. 수락한 사람의 캘린더에 즉시 추가 | 날짜를 잡으면 당사자 캘린더에 추가 |
+| 서버 | `deadlines` 테이블, 마감 워커 | 제거. 시간 기반 작업은 공휴일 동기화만 | 만료는 기기가 날짜로 판단 |
+| iOS 알림 | 확장을 M2 게이트에 | MVP 일반 문구, 확장은 2단계 | 응답 제한 시간이 없어 긴급성 감소 |
+| 패키지 | `scheduling`, `matching` | `availability`, `appointments` | 이름이 역할을 따라감 |
+| 코드 | `freeSegments`·`dayHeat`·`quorumBlocks` | `freeCounts`·`freeThroughout` | 판정 함수 제거 |
 
 ## 부록 B. 이 문서의 코드 검증
 
@@ -925,12 +861,11 @@ M1에서 캘린더 활성이 25% 미만이면 캘린더 UX를 다시 설계하�
 
 - 9장 PostgreSQL 스키마: PostgreSQL 16.15에 확장 없이 적용. 활성 방장 둘 삽입 거부, 방장 계정 삭제 뒤 그룹 유지, `notify` 엔트리 3KB 초과 거부 확인.
 - 5장 SQLite 스키마: Node 22 `node:sqlite`에 적용. 종료 시각이 시작보다 빠른 일정 거부 확인.
-- 6장 `freeSegments`·`dayHeat`: 2시간 틈 둘은 비는 것으로 치지 않음, 3명 공통 저녁은 `count 3`, 1명만 비면 색 없음 확인.
-- 6장 `quorumBlocks`: A/B/C 예시에서 `13-15 {A,C}`, `14-15 {A,B,C}`, `14-16 {B,C}`. 10명·12주·정족수 7명에 100ms.
+- 6장 `freeCounts`·`freeThroughout`: A 13–15, B 14–16, C 13–16에서 14–15시 3명, 13–14시와 15–16시 2명, 13–16시 드래그는 C만. 수면 루틴이 없는 멤버의 새벽 3시는 비어 있는 것으로 셈. 10명·12주 합치기 14ms.
 - 8장 `crypto`: libsodium-wrappers-sumo 0.7.16. 봉인 키는 해당 기기만 열림, AAD 변경·절단 blob 거부, Argon2id 복구 키 결정성 확인(WASM에서 1회 약 0.6초).
 - 반복 일정: rrule 2.8.1로 화·목 18시 규칙에 2/26 제외를 넣고 2월–3월 경계에서 2/24, 3/3, 3/5 확장 확인.
 - 다이어그램: Mermaid 11 파서 통과.
-- 실행하지 않은 것: 추천 순위·매칭 상태 함수(테스트 목록만), RN 기기에서의 libsodium과 알림 확장, 음력 변환.
+- 실행하지 않은 것: 추천 순위·약속 상태 함수(테스트 목록만), RN 기기에서의 libsodium, 음력 변환.
 
 ## 출처
 
