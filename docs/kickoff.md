@@ -410,7 +410,7 @@ stateDiagram-v2
 
 ### 시간 추천 3개
 
-참가자들의 그날 비트맵에서 정시에 시작하는 범위를 놓고, 그 범위 내내 일정이 없는 참가자 수가 많은 순, 같으면 이른 순으로 서로 겹치지 않게 3개를 고릅니다. 길이는 활동이 정해졌으면 그 활동의 기본 길이, 아니면 2시간입니다. 추천이 훑는 시간대(초기값 09:00–21:00)는 추천의 설정값이고 그룹 설정에서 바꿀 수 있습니다. 비어 있는 시간을 판정하는 기준이 아닙니다.
+참가자들의 그날 비트맵에서 정시에 시작하는 범위를 놓고, 그 범위 내내 일정이 없는 참가자 수가 많은 순, 같으면 이른 순으로 서로 겹치지 않게 3개를 고릅니다. 길이는 활동이 정해졌으면 그 활동의 기본 길이, 아니면 2시간입니다. 추천이 훑는 시간대는 09:00–21:00으로, 09:00 이후에 시작해 21:00까지 끝나는 범위만 추천합니다. 이 시간대는 추천의 설정값이고 그룹 설정에서 바꿀 수 있습니다. 비어 있는 시간을 판정하는 기준이 아니며, 그 밖의 시간은 멤버가 선택지로 추가하면 됩니다.
 
 ```ts
 // packages/appointments/src/timeOptions.ts — the three time options a vote opens with. A recommendation, not a judgement about anyone's day.
@@ -419,11 +419,11 @@ import { freeThroughout } from "@geunal/availability";
 export interface TimeOption { start: number; end: number; free: number } // slot offsets within the day
 
 // Rank hour-aligned ranges by how many participants are free throughout, then by the earliest start; keep three that do not overlap.
-// The search window (default 09:00-21:00) is a recommender setting, not a rule about when people are free.
+// Ranges start at or after 09:00 and end by 21:00. The window is a recommender setting, not a rule about when people are free.
 export function timeOptions(bitmaps: Uint8Array[], dayIndex: number, lengthSlots: number, windowFrom = 18, windowTo = 42): TimeOption[] {
   const base = dayIndex * 48;
   const ranked: TimeOption[] = [];
-  for (let s = windowFrom; s + lengthSlots <= windowTo + lengthSlots && s < windowTo; s += 2) {
+  for (let s = windowFrom; s + lengthSlots <= windowTo; s += 2) {
     ranked.push({ start: s, end: s + lengthSlots, free: freeThroughout(bitmaps, base + s, base + s + lengthSlots).length });
   }
   ranked.sort((a, b) => b.free - a.free || a.start - b.start);
@@ -859,8 +859,7 @@ M1에서 캘린더 활성이 25% 미만이면 캘린더 UX를 다시 설계하�
 
 ## 14. 미결정 사항
 
-- [ ] 시간 추천이 훑는 시간대 초기값 09:00–21:00과 기본 길이 2시간
-- [ ] 투표를 다시 열 때 표를 초기화할지(권고: 초기화)
+- [ ] 시간 추천의 기본 길이 2시간이 적절한지
 - [ ] 지난 약속을 그룹 캘린더에 얼마나 오래 보일지
 - [ ] 응답 공개 범위: 수락·다음에를 이름과 함께 vs 수락만 이름 공개(권고: 모두 공개, 단톡방과 같음)
 - [ ] 신청 대상: 전원 vs 그 시간에 비어 있는 멤버만(권고: 전원)
