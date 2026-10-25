@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- docs/design/icon/android-monochrome.svg: the themed-icon layer. The system only keeps alpha, so the five tints
+     survive as five opacities. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <group
+        android:scaleX="0.8"
+        android:scaleY="0.8"
+        android:pivotX="512"
+        android:pivotY="512">
+        <path
+            android:fillColor="#000000"
+            android:fillAlpha="0.55"
+            android:pathData="M332,272 H692 A120,120 0 0 1 812,392 V412 H212 V392 A120,120 0 0 1 332,272 Z" />
+        <path
+            android:fillColor="#000000"
+            android:fillType="evenOdd"
+            android:pathData="M212,412 H812 V672 A120,120 0 0 1 692,792 H332 A120,120 0 0 1 212,672 Z M326,494 H698 A44,44 0 0 1 742,538 V650 A44,44 0 0 1 698,694 H326 A44,44 0 0 1 282,650 V538 A44,44 0 0 1 326,494 Z" />
+        <path
+            android:fillColor="#000000"
+            android:pathData="M388,216 A20,20 0 0 1 408,236 V308 A20,20 0 0 1 388,328 A20,20 0 0 1 368,308 V236 A20,20 0 0 1 388,216 Z" />
+        <path
+            android:fillColor="#000000"
+            android:pathData="M636,216 A20,20 0 0 1 656,236 V308 A20,20 0 0 1 636,328 A20,20 0 0 1 616,308 V236 A20,20 0 0 1 636,216 Z" />
+        <path
+            android:fillColor="#000000"
+            android:fillAlpha="0.2"
+            android:pathData="M326,494 H374 V694 H326 A44,44 0 0 1 282,650 V538 A44,44 0 0 1 326,494 Z" />
+        <path android:fillColor="#000000" android:fillAlpha="0.4" android:pathData="M374,494 H466 V694 H374 Z" />
+        <path android:fillColor="#000000" android:fillAlpha="0.6" android:pathData="M466,494 H558 V694 H466 Z" />
+        <path android:fillColor="#000000" android:fillAlpha="0.8" android:pathData="M558,494 H650 V694 H558 Z" />
+        <path
+            android:fillColor="#000000"
+            android:pathData="M650,494 H698 A44,44 0 0 1 742,538 V650 A44,44 0 0 1 698,694 H650 Z" />
+    </group>
+</vector>
