@@ -9,7 +9,6 @@ publish.workspace = true
 [dependencies]
 chrono.workspace = true
 ciborium.workspace = true
-rrule.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 
