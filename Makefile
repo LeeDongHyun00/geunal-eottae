@@ -7,7 +7,12 @@ SHELL := /bin/bash
 .PHONY: help setup lint test lint-repo lint-core test-core build-android build-ios lint-api test-api image-api scan-api \
 	lint-gateway test-gateway image-gateway scan-gateway lint-android test-android connected-android up down e2e \
 	audit audit-core \
-	lint-ios project-ios app-ios test-ios uitest-ios
+	lint-ios project-ios app-ios test-ios uitest-ios \
+	lint-terraform lock-terraform
+
+# Providers download once into .tools (gitignored, cached in CI) instead of once per root.
+export TF_PLUGIN_CACHE_DIR ?= $(CURDIR)/.tools/terraform-plugins
+tf_roots := $(wildcard infra/terraform/envs/*)
 
 help: ## List the targets
 	@grep -hE '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{ printf "  %-14s %s\n", $$1, $$2 }'
@@ -15,7 +20,7 @@ help: ## List the targets
 setup: ## Install the toolchain (safe to rerun)
 	./scripts/dev-setup.sh
 
-lint: lint-repo lint-core lint-api lint-gateway lint-android ## Run every linter
+lint: lint-repo lint-core lint-api lint-gateway lint-android lint-terraform ## Run every linter
 
 test: test-core test-api test-gateway test-android ## Run every part's tests
 
@@ -112,6 +117,26 @@ test-android: build-android ## Android: assemble (debug, R8 release, instrumente
 
 connected-android: build-android ## Android: instrumented tests on the emulator or device adb sees
 	cd apps/android && ANDROID_HOME="$$(../../scripts/tool.sh android-sdk)" ./gradlew connectedDebugAndroidTest
+
+# -lockfile=readonly makes a root without a committed lock file, or one missing this platform, fail here rather than
+# silently pick a provider build CI never saw.
+lint-terraform: ## Terraform: fmt, then init (no backend) and validate of every root in infra/terraform/envs
+	mkdir -p "$$TF_PLUGIN_CACHE_DIR"
+	terraform="$$(scripts/tool.sh terraform)"; \
+	"$$terraform" fmt -check -diff -recursive infra/terraform; \
+	for root in $(tf_roots); do \
+	  "$$terraform" -chdir="$$root" init -backend=false -input=false -lockfile=readonly >/dev/null; \
+	  "$$terraform" -chdir="$$root" validate; \
+	done
+
+lock-terraform: ## Terraform: rewrite each root's lock file with checksums for Linux and macOS (after a provider bump)
+	mkdir -p "$$TF_PLUGIN_CACHE_DIR"
+	terraform="$$(scripts/tool.sh terraform)"; \
+	for root in $(tf_roots); do \
+	  "$$terraform" -chdir="$$root" get >/dev/null; \
+	  "$$terraform" -chdir="$$root" providers lock \
+	    -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_amd64 -platform=darwin_arm64; \
+	done
 
 up: image-api image-gateway ## Local stack in Docker: PostgreSQL, Redis, S3, API, gateway (infra/docker-compose.yml)
 	docker compose -f infra/docker-compose.yml up --detach --wait --wait-timeout 180

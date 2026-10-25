@@ -26,6 +26,7 @@ jobs:
       api: ${{ steps.parts.outputs.api }}
       gateway: ${{ steps.parts.outputs.gateway }}
       e2e: ${{ steps.parts.outputs.e2e }}
+      terraform: ${{ steps.parts.outputs.terraform }}
       ios: ${{ steps.parts.outputs.ios }}
       android: ${{ steps.parts.outputs.android }}
     steps:
@@ -76,10 +77,15 @@ jobs:
     if: needs.changes.outputs.android == 'true'
     uses: ./.github/workflows/android.yml
 
+  terraform:
+    needs: changes
+    if: needs.changes.outputs.terraform == 'true'
+    uses: ./.github/workflows/terraform.yml
+
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [changes, lint, core, api, gateway, e2e, android, ios]
+    needs: [changes, lint, core, api, gateway, e2e, android, ios, terraform]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

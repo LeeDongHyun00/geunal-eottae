@@ -6,7 +6,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-tool="${1:?usage: scripts/tool.sh actionlint|shellcheck|cargo-deny|trivy|cargo-ndk|android-ndk|android-sdk|xcodegen}"
+tool="${1:?usage: scripts/tool.sh actionlint|shellcheck|cargo-deny|trivy|terraform|cargo-ndk|android-ndk|android-sdk|xcodegen}"
 
 case "$(uname -sm)" in
   "Linux x86_64") platform=linux-x86_64 ;;
@@ -46,11 +46,15 @@ settle() {
   mv "$2.partial" "$2"
 }
 
-# Install the archive member $3 of release archive $1 (SHA-256 $2) as executable $4.
+# Install the archive member $3 of release archive $1 (SHA-256 $2) as executable $4. The archive is a tarball, or a
+# zip when the URL says so (HashiCorp ships zips).
 install_binary() {
   if [ ! -x "$4" ]; then
     fetch "$1" "$2" "$tmp/archive"
-    tar -xf "$tmp/archive" -C "$tmp"
+    case "$1" in
+      *.zip) unzip -q "$tmp/archive" -d "$tmp" ;;
+      *) tar -xf "$tmp/archive" -C "$tmp" ;;
+    esac
     settle "$tmp/$3" "$4"
   fi
   echo "$4"
@@ -102,6 +106,18 @@ case "$tool" in
     esac
     install_binary "https://github.com/aquasecurity/trivy/releases/download/v$version/trivy_${version}_$asset.tar.gz" \
       "$sha256" trivy "$repo_root/.tools/trivy-$version/trivy"
+    ;;
+  terraform)
+    # Also the version infra/terraform/envs/*/versions.tf requires, so a bump changes both.
+    version=1.17.0
+    case "$platform" in
+      linux-x86_64) asset=linux_amd64 sha256=c168cab7c637a8769fdb90089ddd19de701bc6ff8aca64dc2e2185fe46f59f67 ;;
+      linux-aarch64) asset=linux_arm64 sha256=f32478134ffc6d710eec474bbd316652cdddc0f4e336973a3745e8d3a3309cdf ;;
+      darwin-x86_64) asset=darwin_amd64 sha256=3773397524196e4ebbf7167e2b9fb478dff1962d555d649f616ba97ca446a143 ;;
+      darwin-aarch64) asset=darwin_arm64 sha256=7472a54cca911d46c0e399a5ebbce44444912d0d4dad7495f37f1fa51e7ca6b7 ;;
+    esac
+    install_binary "https://releases.hashicorp.com/terraform/$version/terraform_${version}_$asset.zip" \
+      "$sha256" terraform "$repo_root/.tools/terraform-$version/terraform"
     ;;
   cargo-ndk)
     # cargo-ndk publishes no release binaries; cargo builds it from crates.io and checks each crate's checksum.

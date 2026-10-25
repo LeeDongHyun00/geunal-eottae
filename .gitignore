@@ -13,6 +13,13 @@
 # Pinned tools downloaded by scripts/tool.sh
 .tools/
 
+# Terraform: providers and state never belong in git; the lock file does
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
 # Written wherever an Erlang VM crashes, e.g. when a mix command's output pipe closes early
 erl_crash.dump
 
