@@ -79,12 +79,12 @@
 | 돌아왔어요 | 복구 코드가 없을 때 | 계정 삭제 | 삭제 확인 |
 | --- | --- | --- | --- |
 | <img src="screens/m1/21-restore--done@2x.png" width="200" alt="복원 완료"> | <img src="screens/m1/21-restore--no-code@2x.png" width="200" alt="복구 코드 없음"> | <img src="screens/m1/22-delete-account@2x.png" width="200" alt="계정 삭제"> | <img src="screens/m1/22-delete-account--confirm@2x.png" width="200" alt="계정 삭제 확인"> |
-| 가져온 수와 이전 기기 로그아웃, 그룹 재참여 안내. | 되찾을 수 없음을 설명하고 새로 시작을 빨간 글자로. | 서버에서 지워지는 것과 이 기기에 남는 것을 먼저 보여 줍니다. | 되돌릴 수 없는 유일한 동작이라 '삭제'를 적게 합니다. |
+| 가져온 수와 이전 기기 로그아웃, 그룹 재참여 안내. | 되찾을 수 없음을 설명하고 새로 시작을 빨간 글자로. | 서버에서 지워지는 것과 이 기기에 남는 것을 먼저 보여 줍니다. | 되돌릴 수 없는 유일한 동작이라 '삭제'를 적고, 카카오·Apple 계정은 그 로그인을 한 번 더 거칩니다. |
 
-| 기기 로그아웃됨 | 복구 코드로 들어왔을 때 | 다른 계정의 일정이 남았을 때 | 계정 삭제 · Apple 계정 |
+| 기기 로그아웃됨 | 복구 코드로 들어왔을 때 | 다른 계정의 일정이 남았을 때 | 계정 삭제 · 재인증 실패 |
 | --- | --- | --- | --- |
-| <img src="screens/m1/23-revoked@2x.png" width="200" alt="기기 로그아웃됨"> | <img src="screens/m1/23-revoked--recovery@2x.png" width="200" alt="복구 코드로 들어옴"> | <img src="screens/m1/24-keep-local@2x.png" width="200" alt="다른 계정의 일정"> | <img src="screens/m1/22-delete-account--apple@2x.png" width="200" alt="Apple 계정 삭제 확인"> |
-| 다른 기기에서 로그인한 뒤 이전 기기가 받는 시트. 남는 것과 지워지는 것을 나란히 보여 주고, 캘린더는 계속 쓰게 둡니다. | `replaced_via`가 복구 코드면 종이가 노출됐을 수 있다고 말하고 카카오·Apple 연결을 권합니다. | 로그인·복원 뒤 저장소가 다른 계정의 것이면 가져오기와 지우기 중 하나를 고릅니다. | Apple 계정은 '삭제'를 적은 뒤 Apple 로그인을 한 번 더 거칩니다. |
+| <img src="screens/m1/23-revoked@2x.png" width="200" alt="기기 로그아웃됨"> | <img src="screens/m1/23-revoked--recovery@2x.png" width="200" alt="복구 코드로 들어옴"> | <img src="screens/m1/24-keep-local@2x.png" width="200" alt="다른 계정의 일정"> | <img src="screens/m1/22-delete-account--reauth-failed@2x.png" width="200" alt="삭제 재인증 실패"> |
+| 다른 기기에서 로그인한 뒤 이전 기기가 받는 시트. 남는 것과 지워지는 것을 나란히 보여 주고, 캘린더는 계속 쓰게 둡니다. | `replaced_via`가 복구 코드면 종이가 노출됐을 수 있다고 말하고 카카오·Apple 연결을 권합니다. | 로그인·복원 뒤 저장소가 다른 계정의 것이면 가져오기와 지우기 중 하나를 고릅니다. | 다른 카카오·Apple 계정으로 로그인하면 403 `reauth_required`. 시트에서 바로 다시 확인합니다. 게스트는 [추가 단계 없이](screens/m1/22-delete-account--guest@2x.png) 지웁니다. |
 
 ## M2 그룹·날짜 잡기
 
