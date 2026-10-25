@@ -10,3 +10,19 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: ci
+
+  # The core stays on the versions kickoff appendix B verified together. For 0.x crates a minor release is a breaking
+  # one, so only patch releases come in here; anything bigger is its own PR (CLAUDE.md, version pinning).
+  - package-ecosystem: cargo
+    directory: /core
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    groups:
+      cargo:
+        patterns: ["*"]
+    commit-message:
+      prefix: build
+      include: scope

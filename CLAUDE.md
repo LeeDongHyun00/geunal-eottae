@@ -41,7 +41,12 @@
 | --- | --- |
 | `make setup` | 도구 설치(다시 실행해도 안전) |
 | `make lint` | 모든 린트 |
-| `make lint-repo` | 워크플로(actionlint)와 셸 스크립트(shellcheck) 검사 |
+| `make test` | 모든 파트의 테스트 |
+| `make lint-repo` | 워크플로(actionlint)와 저장소의 모든 셸 스크립트(shellcheck) 검사 |
+| `make lint-core` | Rust 코어: rustfmt, clippy, cargo-deny |
+| `make test-core` | Rust 코어: 단위·스모크 테스트 |
+| `make build-android` | 안드로이드 3개 ABI 라이브러리와 Kotlin 바인딩(`core/out/android`), ABI별 크기 기록 |
+| `make build-ios` | XCFramework와 Swift 바인딩(`core/out/ios`). macOS에서만 되고, 이 환경에서는 CI가 확인합니다 |
 
 ## 규칙
 

@@ -47,10 +47,15 @@ jobs:
           persist-credentials: false
       - run: make lint-repo
 
+  core:
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    uses: ./.github/workflows/core.yml
+
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [changes, lint]
+    needs: [changes, lint, core]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

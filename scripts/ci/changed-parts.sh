@@ -14,7 +14,7 @@ rule() {
   case "$1" in
     core) echo '^core/|^\.github/workflows/core\.yml$' ;;
     api) echo '^server/api/|^core/vectors/|^\.github/workflows/api\.yml$' ;;
-    gateway) echo '^server/gateway/|^\.tool-versions$|^\.github/workflows/gateway\.yml$' ;;
+    gateway) echo '^server/gateway/|^core/vectors/|^\.tool-versions$|^\.github/workflows/gateway\.yml$' ;;
     e2e) echo '^core/|^server/|^infra/|^\.tool-versions$|^\.github/workflows/e2e\.yml$' ;;
     ios) echo '^apps/ios/|^core/|^\.github/workflows/ios\.yml$' ;;
     android) echo '^apps/android/|^core/|^\.github/workflows/android\.yml$' ;;

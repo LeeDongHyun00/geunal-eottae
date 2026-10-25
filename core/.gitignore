@@ -1,0 +1,3 @@
+target/
+# Libraries and generated bindings from scripts/build-android.sh and scripts/build-ios.sh
+out/

@@ -1,0 +1,55 @@
+[workspace]
+resolver = "3"
+members = [
+  "geunal-crypto",
+  "geunal-domain",
+  "geunal-store",
+  "geunal-mls",
+  "geunal-sync",
+  "geunal-ffi",
+  "uniffi-bindgen",
+]
+# Plain `cargo test` covers the product crates; tool crates build only when a script needs them.
+default-members = ["geunal-crypto", "geunal-domain", "geunal-store", "geunal-mls", "geunal-sync", "geunal-ffi"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+publish = false
+
+# Versions are the ones kickoff appendix B verified together; bump them in their own PR, never inside a feature PR.
+# mls-rs-provider-sqlite 0.23 needs rusqlite 0.37, and there may be only one libsqlite3-sys in the build, so rusqlite
+# stays on 0.37. mls-rs-crypto-rustcrypto builds on chacha20poly1305 0.10 and rand_core 0.6; newer RustCrypto releases
+# would put a second copy of the AEAD stack into every app (docs/parts/rust-core.md §2, §7 size budget).
+[workspace.dependencies]
+geunal-crypto = { path = "geunal-crypto" }
+geunal-domain = { path = "geunal-domain" }
+geunal-store = { path = "geunal-store" }
+geunal-mls = { path = "geunal-mls" }
+geunal-sync = { path = "geunal-sync" }
+
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+ciborium = "0.2"
+mls-rs = "0.56"
+mls-rs-crypto-rustcrypto = "0.22"
+mls-rs-provider-sqlite = "0.23"
+pollster = "0.4"
+proptest = "1"
+rand_core = { version = "0.6", features = ["getrandom"] }
+rrule = "0.14"
+rusqlite = "0.37"
+serde = { version = "1", features = ["derive"] }
+tempfile = "3"
+thiserror = "2"
+uniffi = "0.31"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+# Panics must unwind: UniFFI turns a panic at the FFI boundary into an error instead of killing the app.
+# Symbols stay in the library because uniffi-bindgen reads its metadata from them; app packaging strips them.
+[profile.release]
+lto = true
+codegen-units = 1
