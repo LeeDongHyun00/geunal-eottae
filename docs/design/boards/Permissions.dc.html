@@ -37,7 +37,7 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 <div style="padding: 14px 16px; border-radius: 20px; background: #f4f4f6; display: flex; flex-direction: column; gap: 8px">
 <div style="display: flex; gap: 14px">
 <span style="flex: none; width: 44px; height: 44px; border-radius: 12px; background: #ffffff; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: #1b1b1f; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"></path><path d="M10 20.5a2 2 0 0 0 4 0"></path></svg></span>
-<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 17px; font-weight: 600">알림 받기</span><span style="font-size: 14px; line-height: 1.5; color: #5c5c66">일정 알림, 친구의 날짜 잡기와 투표를 알려 드려요. 그룹마다 채팅·약속 알림을 따로 끌 수 있어요.</span></span>
+<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 17px; font-weight: 600">알림 받기</span><span style="font-size: 14px; line-height: 1.5; color: #5c5c66">일정 알림과 친구의 날짜 잡기·투표를 알려 드려요. 그룹마다 따로 끌 수 있어요.</span></span>
 </div>
 <button type="button" onClick="{{toggleNoti}}" aria-pressed="{{noti}}" style="align-self: flex-end; height: 40px; padding: 0 16px; border: none; border-radius: 999px; background: {{notiBg}}; color: {{notiFg}}; display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; cursor: pointer">{{notiLabel}}</button>
 </div>
@@ -45,7 +45,7 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 <div style="padding: 14px 16px; border-radius: 20px; background: #f4f4f6; display: flex; flex-direction: column; gap: 8px">
 <div style="display: flex; gap: 14px">
 <span style="flex: none; width: 44px; height: 44px; border-radius: 12px; background: #ffffff; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: #1b1b1f; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M5 19V11M12 19V5M19 19v-8"></path></svg></span>
-<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 17px; font-weight: 600">테스트 통계 보내기 <span style="font-size: 12px; font-weight: 600; color: #5c5c66; vertical-align: 2px">알파 빌드만</span></span><span style="font-size: 14px; line-height: 1.5; color: #5c5c66">하루 한 번 숫자 두 개(그날 만든 일정 수, 그중 추천으로 만든 수)만 보내요. 제목·시간·이름은 가지 않아요.</span></span>
+<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 17px; font-weight: 600">테스트 통계 보내기 <span style="font-size: 12px; font-weight: 600; color: #5c5c66; vertical-align: 2px">알파 빌드만</span></span><span style="font-size: 14px; line-height: 1.5; color: #5c5c66">하루 한 번 숫자 네 개만 보내요: 앱을 연 횟수, 만든 일정 수, 그중 추천으로 만든 수, 비정상 종료 수. 제목·시간·이름은 가지 않아요.</span></span>
 </div>
 <button type="button" onClick="{{toggleStats}}" aria-pressed="{{stats}}" style="align-self: flex-end; height: 40px; padding: 0 16px; border: none; border-radius: 999px; background: {{statsBg}}; color: {{statsFg}}; display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; cursor: pointer">{{statsLabel}}</button>
 </div>

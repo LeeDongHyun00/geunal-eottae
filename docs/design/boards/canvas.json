@@ -426,6 +426,15 @@
    "w": 390,
    "x": 2350,
    "y": 6220
+  },
+  "KeepLocal.dc.html": {
+   "h": 844,
+   "is_interactive": true,
+   "page": "m1",
+   "title": "다른 계정의 일정이 남았을 때",
+   "w": 390,
+   "x": 2820,
+   "y": 6220
   }
  },
  "createdOnFiles": {
@@ -548,7 +557,7 @@
   },
   "n_m1f": {
    "kind": "title1",
-   "maxW": 2740,
+   "maxW": 3210,
    "page": "m1",
    "text": "알림 · 백업 · 기기 바꾸기 · 계정 삭제 · 기기 로그아웃됨",
    "w": 240,
@@ -604,7 +613,8 @@
   "Restore.dc.html",
   "DeleteAccount.dc.html",
   "Revoked.dc.html",
-  "RestoreGuest.dc.html"
+  "RestoreGuest.dc.html",
+  "KeepLocal.dc.html"
  ],
  "pages": [
   {
