@@ -42,10 +42,10 @@
 | <img src="screens/m1/10-shift@2x.png" width="240" alt="교대 템플릿"> | <img src="screens/m1/11-people@2x.png" width="240" alt="사람·생일"> | <img src="screens/m1/12-me@2x.png" width="240" alt="나"> |
 | 템플릿을 고르고 날짜를 누르면 근무가 찍힙니다. 같은 날을 한 번 더 누르면 빠집니다. | 양력·음력 생일과 D-day, 그룹 공개 여부. 연락처에서 가져오기는 선택입니다. | 계정, 플러스, 캘린더 관리, 복구 코드, 암호화 백업, 기기 바꾸기. |
 
-| 복구 코드 | 위젯 |
-| --- | --- |
-| <img src="screens/m1/13-recovery@2x.png" width="240" alt="복구 코드"> | <img src="screens/m1/14-widgets@2x.png" width="240" alt="위젯"> |
-| 12단어 복구 코드(BIP39 한국어 목록). 종이에 적어 두라고 안내합니다. | 작은·중간 위젯, 밝은·어두운 모드. |
+| 복구 코드 | 위젯 | 나 · 계정 묶음 |
+| --- | --- | --- |
+| <img src="screens/m1/13-recovery@2x.png" width="240" alt="복구 코드"> | <img src="screens/m1/14-widgets@2x.png" width="240" alt="위젯"> <img src="screens/m1/12-me--account@2x.png" width="240" alt="나 화면 아래쪽"> |
+| 12단어 복구 코드(BIP39 한국어 목록). 종이에 적어 두라고 안내합니다. | 작은·중간 위젯, 밝은·어두운 모드. | 아래로 내리면 알림, 보안 안내, 알파 빌드의 테스트 통계 스위치, 계정 삭제. |
 
 ### 설정: 캘린더 관리 · 사람 추가 · 템플릿 편집
 
