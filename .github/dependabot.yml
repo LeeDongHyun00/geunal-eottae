@@ -26,3 +26,36 @@ updates:
     commit-message:
       prefix: build
       include: scope
+
+  # Spring Boot's BOM sets most library versions, so this mostly moves Boot and the build plugins. Kotlin stays on the
+  # release line Boot is built with, and the Gradle wrapper on the line that Kotlin's Gradle plugin supports; moving
+  # either is its own PR.
+  - package-ecosystem: gradle
+    directory: /server/api
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "org.jetbrains.kotlin*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: gradle-wrapper
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: org.springframework.boot*
+        update-types: ["version-update:semver-major"]
+    groups:
+      gradle:
+        patterns: ["*"]
+    commit-message:
+      prefix: build
+      include: scope
+
+  # The image's Java follows the toolchain in build.gradle.kts, so a new Java release is its own PR.
+  - package-ecosystem: docker
+    directory: /server/api
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: eclipse-temurin
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: build
+      include: scope

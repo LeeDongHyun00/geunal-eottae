@@ -1,0 +1,3 @@
+# Only the boot jar goes into the image build.
+*
+!build/libs/api.jar

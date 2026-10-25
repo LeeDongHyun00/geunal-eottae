@@ -6,7 +6,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-tool="${1:?usage: scripts/tool.sh actionlint|shellcheck|cargo-deny|cargo-ndk|android-ndk}"
+tool="${1:?usage: scripts/tool.sh actionlint|shellcheck|cargo-deny|trivy|cargo-ndk|android-ndk}"
 
 case "$(uname -sm)" in
   "Linux x86_64") platform=linux-x86_64 ;;
@@ -91,6 +91,17 @@ case "$tool" in
     install_binary \
       "https://github.com/EmbarkStudios/cargo-deny/releases/download/$version/cargo-deny-$version-$triple.tar.gz" \
       "$sha256" "cargo-deny-$version-$triple/cargo-deny" "$repo_root/.tools/cargo-deny-$version/cargo-deny"
+    ;;
+  trivy)
+    version=0.76.1
+    case "$platform" in
+      linux-x86_64) asset=Linux-64bit sha256=c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0 ;;
+      linux-aarch64) asset=Linux-ARM64 sha256=e174dff2a6dba5e3ae41f8d0537a6324405bd08132497340304c6b20e0f16a1f ;;
+      darwin-x86_64) asset=macOS-64bit sha256=7aa762eacd582052d053b62dcf972a1ab058abe39a57ccae234ed8894945b6b7 ;;
+      darwin-aarch64) asset=macOS-ARM64 sha256=11a9b6cd2752011b54f01ea4bd0dbfa9f0c41dc6538d5a3f9d23955f471bf4e5 ;;
+    esac
+    install_binary "https://github.com/aquasecurity/trivy/releases/download/v$version/trivy_${version}_$asset.tar.gz" \
+      "$sha256" trivy "$repo_root/.tools/trivy-$version/trivy"
     ;;
   cargo-ndk)
     # cargo-ndk publishes no release binaries; cargo builds it from crates.io and checks each crate's checksum.
