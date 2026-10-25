@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>캘린더 관리</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+input{font:inherit;letter-spacing:inherit;color:inherit}
+input::placeholder{color:#696973}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #f4f4f6; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+<div style="position: absolute; top: 54px; left: 0; width: 390px; height: 44px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; justify-content: space-between"><a href="Me.dc.html" style="height: 44px; padding-right: 8px; display: flex; align-items: center; gap: 2px; font-size: 17px"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg>나</a><a href="CalendarEdit.dc.html" aria-label="새 캘린더" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M12 5v14M5 12h14"></path></svg></a></div><div style="position: absolute; top: 102px; left: 20px; width: 350px; display: flex; flex-direction: column; gap: 8px"><h1 style="margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.03em">캘린더 관리</h1><p style="margin: 0; font-size: 15px; line-height: 1.5; color: #5c5c66">색은 내 화면의 일정 색이에요. 그룹에는 어느 캘린더든 비어 있는지만 보여요.</p></div><div style="position: absolute; top: 210px; left: 16px; width: 358px; display: flex; flex-direction: column; gap: 24px"><div style="display: flex; flex-direction: column; gap: 8px"><h2 style="margin: 0 0 0 16px; font-size: 13px; font-weight: 600; color: #5c5c66">내 캘린더 · 4개</h2><div style="border-radius: 16px; background: #ffffff; display: flex; flex-direction: column"><sc-for list="{{cals}}" as="c" hint-placeholder-count="4">
+<div style="min-height: 60px; padding: 0 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #ebebef">
+<a href="CalendarEdit.dc.html" aria-label="{{c.label}}" style="flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 12px">
+<span aria-hidden="true" style="flex: none; width: 14px; height: 14px; border-radius: 4px; background: {{c.c}}; box-shadow: {{c.ring}}"></span>
+<span style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 10px 0"><span style="font-size: 17px">{{c.name}}</span><span style="font-size: 13px; color: #5c5c66">{{c.sub}}</span></span>
+</a>
+<button type="button" role="switch" aria-checked="{{c.on}}" aria-label="{{c.name}} 표시" onClick="{{c.toggle}}" style="flex: none; width: 51px; height: 31px; padding: 2px; border: none; border-radius: 16px; background: {{c.track}}; display: flex; justify-content: {{c.side}}; cursor: pointer"><span style="width: 27px; height: 27px; border-radius: 14px; background: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.18)"></span></button>
+</div>
+</sc-for>
+<a href="CalendarEdit.dc.html" style="min-height: 48px; padding: 0 16px; display: flex; align-items: center; gap: 10px; font-size: 17px"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M12 5v14M5 12h14"></path></svg>새 캘린더</a></div></div><div style="display: flex; flex-direction: column; gap: 8px"><h2 style="margin: 0 0 0 16px; font-size: 13px; font-weight: 600; color: #5c5c66">기기 캘린더</h2><div style="border-radius: 16px; background: #ffffff; display: flex; flex-direction: column"><div  style="min-height: 52px; padding: 0 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #ebebef;"><span style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 10px 0"><span style="font-size: 17px">기기 캘린더 가져오기</span><span style="font-size: 13px; line-height: 1.45; color: #5c5c66">읽기만 해요. 제목은 이 기기 밖으로 나가지 않아요.</span></span><button type="button" role="switch" aria-checked="{{devOn}}" aria-label="기기 캘린더 가져오기" onClick="{{toggleDev}}" style="flex: none; width: 51px; height: 31px; padding: 2px; border: none; border-radius: 16px; background: {{devTrack}}; display: flex; justify-content: {{devSide}}; cursor: pointer"><span style="width: 27px; height: 27px; border-radius: 14px; background: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.18)"></span></button></div><sc-for list="{{devs}}" as="d" hint-placeholder-count="2">
+<div style="min-height: 52px; padding: 0 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #ebebef; opacity: {{devOp}}">
+<span aria-hidden="true" style="flex: none; width: 14px; height: 14px; border-radius: 4px; background: #d5b9aa"></span>
+<span style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 8px 0"><span style="font-size: 17px">{{d.name}}</span><span style="font-size: 13px; color: #5c5c66">{{d.sub}}</span></span>
+<button type="button" role="checkbox" aria-checked="{{d.on}}" aria-label="{{d.name}} 가져오기" onClick="{{d.toggle}}" style="flex: none; width: 24px; height: 24px; box-sizing: border-box; padding: 0; border: none; border-radius: 6px; background: {{d.bg}}; box-shadow: {{d.ring}}; color: #ffffff; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round"><path d="M5.5 12.5l4 4 9-9"></path></svg></button>
+</div>
+</sc-for><div  style="min-height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 10px;"><span style="font-size: 13px; line-height: 1.5; color: #5c5c66">가져온 일정은 내 캘린더에 ‘기기 캘린더’ 색으로 보이고, 그룹에는 비어 있는지만 보여요. 이 앱에서 고치거나 지울 수 없어요.</span></div></div></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { on: { school: true, cafe: true, personal: true, gym: true }, dev: true, picked: { icloud: true, work: false } };
+  }
+  renderVals() {
+    const soft = 'repeating-linear-gradient(135deg, #d3dfbb 0 4px, #e4ecd5 4px 8px)';
+    const CALS = [
+      { id: 'school', name: '학교', c: '#a0c0fa', sub: '바다 · 일정 42개' },
+      { id: 'cafe', name: '알바', c: '#77d1c2', sub: '민트 · 교대 템플릿 3개' },
+      { id: 'personal', name: '개인', c: '#efb08a', sub: '귤 · 일정 18개' },
+      { id: 'gym', name: '운동', c: soft, sub: '올리브 · 소프트 캘린더, 그룹에는 비어 있음으로' },
+    ];
+    const { on, dev, picked } = this.state;
+    const cals = CALS.map((c) => ({
+      name: c.name, c: c.c, sub: c.sub, ring: c.id === 'gym' ? 'inset 0 0 0 1px #c5d1a6' : 'none',
+      label: c.name + ' 캘린더 편집, ' + c.sub,
+      on: on[c.id] ? 'true' : 'false', track: on[c.id] ? '#1b1b1f' : '#e1e1e6', side: on[c.id] ? 'flex-end' : 'flex-start',
+      toggle: () => this.setState({ on: Object.assign({}, on, { [c.id]: !on[c.id] }) }),
+    }));
+    const DEVS = [
+      { id: 'icloud', name: 'iCloud · 개인', sub: '일정 9개' },
+      { id: 'work', name: 'Google · 회사', sub: '일정 31개' },
+    ];
+    const devs = DEVS.map((d) => ({
+      name: d.name, sub: d.sub,
+      on: picked[d.id] ? 'true' : 'false', bg: picked[d.id] ? '#1b1b1f' : '#ffffff', ring: picked[d.id] ? 'none' : 'inset 0 0 0 2px #c7c7cc',
+      toggle: () => dev && this.setState({ picked: Object.assign({}, picked, { [d.id]: !picked[d.id] }) }),
+    }));
+    return Object.assign({ cals, devs, devOp: dev ? 1 : 0.4, toggleDev: () => this.setState({ dev: !dev }) },
+      { devOn: dev ? 'true' : 'false', devTrack: dev ? '#1b1b1f' : '#e1e1e6', devSide: dev ? 'flex-end' : 'flex-start' });
+  }
+}
+</script>
+</body>
+</html>

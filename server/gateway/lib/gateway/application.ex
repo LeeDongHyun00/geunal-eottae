@@ -9,6 +9,10 @@ defmodule Gateway.Application do
       # Connects in the background and keeps reconnecting, so the gateway starts and reports unhealthy while Redis is
       # away instead of crashing.
       {Redix, {Application.fetch_env!(:gateway, :redis_url), [name: Gateway.Redis]}},
+      {Registry, keys: :duplicate, name: Gateway.DeviceRegistry},
+      Gateway.RedisRouter,
+      Gateway.Jwks,
+      Gateway.ConnectLimiter,
       GatewayWeb.Endpoint
     ]
 
