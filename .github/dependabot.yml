@@ -35,6 +35,12 @@ updates:
     schedule:
       interval: weekly
     ignore:
+      # Dependabot names a plugin applied as `kotlin("jvm")` by the bare argument, so the Kotlin plugins appear as `jvm`
+      # and `plugin.spring`; the prefix covers Kotlin libraries and plugins applied by full id.
+      - dependency-name: jvm
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: plugin.spring
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "org.jetbrains.kotlin*"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: gradle-wrapper
