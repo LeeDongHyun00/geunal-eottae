@@ -1,0 +1,20 @@
+[package]
+name = "geunal-mls"
+description = "mls-rs wrapper: clients, key packages, commits, exporter state keys, external join"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+geunal-crypto.workspace = true
+geunal-store.workspace = true
+mls-rs.workspace = true
+mls-rs-crypto-rustcrypto.workspace = true
+mls-rs-provider-sqlite.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

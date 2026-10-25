@@ -1,0 +1,9 @@
+# Names the apps import (docs/parts/ios.md §3, docs/parts/android.md §2).
+[bindings.kotlin]
+package_name = "app.geunal.core"
+cdylib_name = "geunal_ffi"
+
+[bindings.swift]
+module_name = "GeunalCore"
+ffi_module_name = "GeunalCoreFFI"
+ffi_module_filename = "GeunalCoreFFI"

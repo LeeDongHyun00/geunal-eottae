@@ -1,0 +1,6 @@
+# Every cargo command under core/ uses this toolchain. The Android and iOS build scripts add the targets they need,
+# so Linux test jobs do not download mobile standard libraries.
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

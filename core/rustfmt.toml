@@ -1,0 +1,3 @@
+# The compact style of the snippets in docs/parts/rust-core.md: short literals and calls stay on one line.
+max_width = 120
+use_small_heuristics = "Max"

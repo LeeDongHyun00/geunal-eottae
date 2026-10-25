@@ -31,6 +31,8 @@ scripts/            # toolchain setup and CI helpers
 
 필요한 것은 GNU Make, Bash, curl, unzip이고, 서버 파트부터는 Docker도 필요합니다. 파트별 도구는 그 파트가 들어올 때 여기에 더합니다.
 
+- **Rust 코어:** rustup. 툴체인 버전은 `core/rust-toolchain.toml`이 고정하고, 안드로이드 빌드에 쓰는 NDK와 cargo-ndk는 `make build-android`가 받아 둡니다. iOS 빌드(`make build-ios`)는 macOS와 Xcode에서만 됩니다.
+
 ```sh
 make setup   # install the toolchain; safe to rerun
 make help    # list targets
