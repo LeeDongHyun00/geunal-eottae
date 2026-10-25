@@ -300,8 +300,8 @@ paths:
                 apple_authorization_code: { type: string, description: Apple accounts }
       responses:
         "204": { description: deleted; this device's tokens stop working }
-        "401": { description: "provider_token_invalid (the Kakao token or Apple code does not verify or names another account)" }
-        "403": { description: "reauth_required (no proof, or the wrong kind for this account); replace_required (called with a replacement ticket)" }
+        "403": { description: "reauth_required (the proof is missing, of the wrong kind for this account, or does not verify, including a provider token for another account; the session stays valid); replace_required (called with a replacement ticket)" }
+        "409": { description: "recovery_missing (a guest whose recovery material is not stored yet: PUT /me/recovery first, then delete again)" }
 
   /me/recovery:
     put:
