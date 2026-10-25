@@ -1,0 +1,12 @@
+# Grouped weekly updates. Each part adds its ecosystem (cargo, gradle, mix, docker) here in its own PR.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci

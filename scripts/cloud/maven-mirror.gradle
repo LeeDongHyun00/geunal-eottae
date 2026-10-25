@@ -1,0 +1,23 @@
+// Copied to ~/.gradle/init.d by scripts/dev-setup.sh in Claude Code cloud sessions only. Maven Central answers that
+// environment's egress proxy with intermittent 404 and 429 responses, so its URL is swapped for Google's mirror of it.
+// Project build files keep plain mavenCentral(); CI and other machines never load this file.
+def mirror = 'https://maven-central.storage-download.googleapis.com/maven2/'
+def central = ['https://repo.maven.apache.org/maven2', 'https://repo1.maven.org/maven2']
+
+def redirect = { RepositoryHandler repositories ->
+    repositories.withType(MavenArtifactRepository).configureEach { repository ->
+        if (central.contains(repository.url.toString().replaceAll('/+$', ''))) {
+            repository.url = mirror
+        }
+    }
+}
+
+beforeSettings { settings ->
+    redirect(settings.pluginManagement.repositories)
+    redirect(settings.dependencyResolutionManagement.repositories)
+}
+
+allprojects {
+    redirect(buildscript.repositories)
+    redirect(repositories)
+}

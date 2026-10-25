@@ -1,0 +1,13 @@
+# Keep LF in the repository and in checkouts; Windows batch files (the Gradle wrapper's) need CRLF to run.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.gif binary
+*.heic binary
+*.jar binary
+*.jpeg binary
+*.jpg binary
+*.pdf binary
+*.png binary
+*.zip binary
