@@ -8,6 +8,7 @@
 
 pub mod account;
 pub mod calendar;
+mod local;
 pub mod people;
 
 pub use account::*;
@@ -264,7 +265,7 @@ pub enum RealtimeEvent {
 }
 
 enum State {
-    SignedOut(Store),
+    SignedOut,
     SignedIn(Box<Engine<Arc<HttpTransport>>>),
 }
 
@@ -272,12 +273,17 @@ enum State {
 pub struct Core {
     runtime: tokio::runtime::Runtime,
     store_dir: PathBuf,
+    /// The one connection to the store. The calendar reads and writes through it directly, signed in or not, so a
+    /// month view never waits for a sync holding the engine; the engine keeps a clone of it.
+    store: Store,
     api: Arc<HttpTransport>,
     listener: Arc<dyn CoreListener>,
     secrets: Arc<dyn SecretStore>,
     db_key: [u8; 32],
     state: Mutex<State>,
     realtime: Mutex<Option<Realtime>>,
+    /// A fixed "now" for tests; `None` reads the system clock.
+    clock: std::sync::Mutex<Option<chrono::DateTime<chrono::Utc>>>,
 }
 
 #[uniffi::export]
@@ -302,36 +308,40 @@ impl Core {
             .build()
             .map_err(|e| CoreError::Sync { reason: e.to_string() })?;
         let api = Arc::new(HttpTransport::new(&api_base).map_err(|e| CoreError::Network { reason: e.to_string() })?);
+        calendar::ensure_default_calendar(&store)?;
         let state = match saved_session(secrets.as_ref()) {
             Some(session) => {
                 api.restore_session(&session.access_token);
-                let engine =
-                    build_engine(&store_dir, &db_key, &session, secrets.as_ref(), api.clone(), listener.clone())?;
-                drop(store);
+                let engine = build_engine(
+                    &store_dir,
+                    &store,
+                    &db_key,
+                    &session,
+                    secrets.as_ref(),
+                    api.clone(),
+                    listener.clone(),
+                )?;
                 State::SignedIn(Box::new(engine))
             }
-            None => State::SignedOut(store),
+            None => State::SignedOut,
         };
         Ok(Arc::new(Self {
             runtime,
             store_dir,
+            store,
             api,
             listener,
             secrets,
             db_key,
             state: Mutex::new(state),
             realtime: Mutex::new(None),
+            clock: std::sync::Mutex::new(None),
         }))
     }
 
     /// The SQLCipher release inside the app build, for the M0 screen that shows the core runs on the device.
     pub fn cipher_version(&self) -> Result<String, CoreError> {
-        let state = self.state.blocking_lock();
-        let version = match &*state {
-            State::SignedOut(store) => store.cipher_version()?,
-            State::SignedIn(engine) => engine.store().cipher_version()?,
-        };
-        Ok(version)
+        Ok(self.store.cipher_version()?)
     }
 
     /// The signed-in account, if any.
@@ -357,6 +367,7 @@ impl Core {
             this.secrets.put(SESSION.to_owned(), json);
             let engine = build_engine(
                 &this.store_dir,
+                &this.store,
                 &this.db_key,
                 &session,
                 this.secrets.as_ref(),
@@ -607,6 +618,21 @@ impl Core {
 }
 
 impl Core {
+    /// Fixes the clock the calendar reads ("today", the next-up bar, alerts) for tests. Not part of the FFI.
+    #[doc(hidden)]
+    pub fn set_clock(&self, now: Option<chrono::DateTime<chrono::Utc>>) {
+        *self.clock.lock().unwrap_or_else(|p| p.into_inner()) = now;
+    }
+
+    pub(crate) fn now(&self) -> chrono::DateTime<chrono::Utc> {
+        self.clock.lock().unwrap_or_else(|p| p.into_inner()).unwrap_or_else(chrono::Utc::now)
+    }
+
+    /// Tells the app the calendar screens and the widget snapshot are out of date.
+    pub(crate) fn calendar_changed(&self) {
+        self.listener.on_change(Change::Calendar);
+    }
+
     /// Runs network work on the core's runtime; the app's executor only awaits the handle.
     async fn run<F, R>(&self, fut: F) -> Result<R, CoreError>
     where
@@ -687,6 +713,7 @@ fn view_of(state: &GroupState) -> GroupStateView {
 
 fn build_engine(
     store_dir: &Path,
+    store: &Store,
     db_key: &[u8; 32],
     session: &SyncSession,
     secrets: &dyn SecretStore,
@@ -694,11 +721,10 @@ fn build_engine(
     listener: Arc<dyn CoreListener>,
 ) -> Result<Engine<Arc<HttpTransport>>, CoreError> {
     let db = store_dir.join(DB_FILE);
-    let store = Store::open(&db, db_key)?;
     let secret = signing_secret(secrets)?;
     let identity = Identity::new(session.user_id.clone(), session.device_id.clone());
     let mls = MlsClient::open(&db, db_key, identity, &secret)?;
-    Ok(Engine::new(store, mls, api, Arc::new(Forward(listener))))
+    Ok(Engine::new(store.clone(), mls, api, Arc::new(Forward(listener))))
 }
 
 fn saved_session(secrets: &dyn SecretStore) -> Option<SyncSession> {

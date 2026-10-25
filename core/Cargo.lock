@@ -1014,12 +1014,14 @@ dependencies = [
 name = "geunal-ffi"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "geunal-domain",
  "geunal-mls",
  "geunal-store",
  "geunal-sync",
  "pollster",
  "rand_core 0.6.4",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror",
