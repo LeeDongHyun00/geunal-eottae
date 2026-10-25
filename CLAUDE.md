@@ -16,7 +16,7 @@
 | `apps/ios/`, `apps/android/` | iOS, 안드로이드 |
 | `server/api/` | 백엔드 |
 | `server/gateway/` | 실시간 |
-| `infra/`, `scripts/`, `.github/`, `Makefile`, 루트 설정 파일 | 인프라 |
+| `infra/`, `scripts/`, `.github/`, `.claude/`, `Makefile`, 루트 설정 파일 | 인프라 |
 | `docs/` | 기획(사용자가 확정). `docs/parts/protocol.md`는 계약을 바꾸는 파트가 벡터와 함께 고침 |
 
 - 파트는 자기 `make` 대상과 `.github/workflows/<part>.yml`을 직접 더합니다.
@@ -24,7 +24,7 @@
 
 ## 환경
 
-- 세션을 시작하면 `make setup`을 실행합니다. 클라우드 환경의 Setup script에 이미 들어 있으면 생략합니다.
+- 클라우드 세션은 시작할 때(재개 포함) SessionStart 훅(`.claude/settings.json`, `.claude/hooks/session-start.sh`)이 `scripts/dev-setup.sh`를 실행합니다. 다른 곳에서는 `make setup`을 직접 실행합니다.
 - Docker가 필요한 대상은 `scripts/ensure-docker.sh`를 먼저 부릅니다. 클라우드 세션은 Docker 데몬 없이 시작하고 기계가 재시작되면 데몬도 사라지므로, 이 스크립트가 필요할 때 데몬을 띄웁니다.
 - 린트 도구(actionlint, shellcheck)는 `scripts/tool.sh`가 GitHub 릴리스에서 받아 SHA-256을 확인한 뒤 `.tools/`에 둡니다. 버전을 올릴 때는 이 파일의 해시도 함께 바꿉니다.
 - 클라우드 세션의 바깥 연결은 프록시를 거칩니다.

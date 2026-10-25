@@ -16,5 +16,5 @@ lint: lint-repo ## Run every linter
 
 lint-repo: ## Lint workflows (actionlint) and shell scripts (shellcheck)
 	shellcheck="$$(scripts/tool.sh shellcheck)"; \
-	"$$shellcheck" scripts/*.sh scripts/ci/*.sh; \
+	"$$shellcheck" scripts/*.sh scripts/ci/*.sh .claude/hooks/*.sh; \
 	"$$(scripts/tool.sh actionlint)" -color -shellcheck "$$shellcheck" .github/workflows/*.yml

@@ -8,6 +8,7 @@
 .env
 .env.*
 !.env.example
+.claude/settings.local.json
 
 # Pinned tools downloaded by scripts/tool.sh
 .tools/

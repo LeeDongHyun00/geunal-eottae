@@ -38,11 +38,7 @@ make lint    # lint workflows and shell scripts
 ```
 
 - `make setup`은 `scripts/dev-setup.sh`를 실행합니다. 우분투(x86_64)에서는 `.tool-versions`에 고정한 Erlang/OTP와 Elixir를 builds.hex.pm에서 받아 체크섬을 확인한 뒤 설치합니다. 다른 시스템에서는 mise나 asdf로 `.tool-versions`를 설치합니다.
-- Claude Code 클라우드 세션에서는 환경 설정의 Setup script에 아래 한 줄을 넣어 두면 새 세션마다 같은 도구로 시작합니다.
-
-  ```sh
-  cd geunal-eottae && ./scripts/dev-setup.sh
-  ```
+- Claude Code 클라우드 세션은 시작할 때 SessionStart 훅(`.claude/hooks/session-start.sh`)이 `scripts/dev-setup.sh`를 실행하므로 따로 할 일이 없습니다.
 
 ## CI와 머지 규칙
 
