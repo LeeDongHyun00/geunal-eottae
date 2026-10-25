@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>권한</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #ffffff; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+
+<div style="position: absolute; top: 54px; left: 8px; height: 44px; display: flex; align-items: center">
+<a href="SignIn.dc.html" aria-label="뒤로" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg></a>
+</div>
+
+<div style="position: absolute; top: 118px; left: 24px; width: 342px; display: flex; flex-direction: column; gap: 12px">
+<h1 style="margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.2">두 가지만<br>허락해 주세요</h1>
+<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #5c5c66">둘 다 나중에 설정에서 바꿀 수 있어요.</p>
+</div>
+
+<div style="position: absolute; top: 270px; left: 16px; width: 358px; display: flex; flex-direction: column; gap: 12px">
+<div style="padding: 20px; border-radius: 20px; background: #f4f4f6; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; gap: 14px">
+<span style="flex: none; width: 44px; height: 44px; border-radius: 12px; background: #ffffff; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: #1b1b1f; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"></rect><path d="M3.5 9.5h17M8 3v4M16 3v4"></path></svg></span>
+<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 17px; font-weight: 600">기기 캘린더 가져오기</span><span style="font-size: 15px; line-height: 1.5; color: #5c5c66">읽기만 해요. 가져온 일정의 제목은 이 기기 밖으로 나가지 않고, 그룹에는 비어 있는지만 보여요.</span></span>
+</div>
+<button type="button" onClick="{{toggleCal}}" aria-pressed="{{cal}}" style="align-self: flex-end; height: 44px; padding: 0 20px; border: none; border-radius: 999px; background: {{calBg}}; color: {{calFg}}; display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; cursor: pointer">{{calLabel}}</button>
+</div>
+<div style="padding: 20px; border-radius: 20px; background: #f4f4f6; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; gap: 14px">
+<span style="flex: none; width: 44px; height: 44px; border-radius: 12px; background: #ffffff; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: #1b1b1f; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"></path><path d="M10 20.5a2 2 0 0 0 4 0"></path></svg></span>
+<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 17px; font-weight: 600">알림 받기</span><span style="font-size: 15px; line-height: 1.5; color: #5c5c66">일정 알림, 친구의 날짜 잡기와 투표를 알려 드려요. 그룹마다 채팅·약속 알림을 따로 끌 수 있어요.</span></span>
+</div>
+<button type="button" onClick="{{toggleNoti}}" aria-pressed="{{noti}}" style="align-self: flex-end; height: 44px; padding: 0 20px; border: none; border-radius: 999px; background: {{notiBg}}; color: {{notiFg}}; display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; cursor: pointer">{{notiLabel}}</button>
+</div>
+</div>
+
+<div style="position: absolute; left: 24px; bottom: 34px; width: 342px; display: flex; flex-direction: column; gap: 4px">
+<a href="Month.dc.html" style="height: 56px; border-radius: 999px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600">캘린더 열기</a>
+<a href="Month.dc.html" style="height: 48px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; color: #5c5c66">나중에 할게요</a>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { cal: true, noti: false };
+  }
+  renderVals() {
+    const { cal, noti } = this.state;
+    return {
+      cal, noti,
+      calLabel: cal ? '가져왔어요 · 캘린더 3개' : '가져오기',
+      calBg: cal ? '#ffffff' : '#1b1b1f',
+      calFg: cal ? '#1b1b1f' : '#ffffff',
+      notiLabel: noti ? '허용했어요' : '허용',
+      notiBg: noti ? '#ffffff' : '#1b1b1f',
+      notiFg: noti ? '#1b1b1f' : '#ffffff',
+      toggleCal: () => this.setState({ cal: !cal }),
+      toggleNoti: () => this.setState({ noti: !noti }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>글꼴 간격 컴포넌트</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+</style>
+</helmet>
+<div style="width: 1440px; height: 2340px; box-sizing: border-box; padding: 80px; background: #ffffff; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word; display: flex; flex-direction: column; gap: 64px">
+
+<header style="display: flex; flex-direction: column; gap: 16px">
+<h1 style="margin: 0; font-size: 56px; font-weight: 600; letter-spacing: -0.03em">글꼴 · 간격 · 컴포넌트</h1>
+<p style="margin: 0; font-size: 21px; line-height: 1.55; color: #5c5c66">Pretendard 400·600 두 굵기, 4의 배수 간격, 알약 모양 버튼. 숫자는 고정폭으로 맞춥니다.</p>
+</header>
+
+<section style="display: flex; gap: 48px; align-items: flex-start">
+<div style="flex: 1 1 0; display: flex; flex-direction: column">
+<h2 style="margin: 0 0 12px; font-size: 28px; font-weight: 600; letter-spacing: -0.02em">글자 단계</h2>
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: baseline; gap: 16px; padding: 16px 0; border-top: 1px solid #e1e1e6"><span style="font-size: 14px; color: #5c5c66"><b style="color: #1b1b1f; font-weight: 600">큰 제목</b> 32 · 600 · −2.5%</span><span style="font-size: 32px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15">10월</span></div>
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: baseline; gap: 16px; padding: 16px 0; border-top: 1px solid #e1e1e6"><span style="font-size: 14px; color: #5c5c66"><b style="color: #1b1b1f; font-weight: 600">제목 1</b> 26 · 600 · −2.5%</span><span style="font-size: 26px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.2">11월 7일 토요일</span></div>
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: baseline; gap: 16px; padding: 16px 0; border-top: 1px solid #e1e1e6"><span style="font-size: 14px; color: #5c5c66"><b style="color: #1b1b1f; font-weight: 600">제목 2</b> 20 · 600 · −1.5%</span><span style="font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.3">응답</span></div>
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: baseline; gap: 16px; padding: 16px 0; border-top: 1px solid #e1e1e6"><span style="font-size: 14px; color: #5c5c66"><b style="color: #1b1b1f; font-weight: 600">본문 강조</b> 17 · 600</span><span style="font-size: 17px; font-weight: 600; line-height: 1.4">카페 마감을 추가했어요</span></div>
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: baseline; gap: 16px; padding: 16px 0; border-top: 1px solid #e1e1e6"><span style="font-size: 14px; color: #5c5c66"><b style="color: #1b1b1f; font-weight: 600">본문</b> 17 · 400 · 행간 1.5</span><span style="font-size: 17px; line-height: 1.5">수락하면 내 캘린더에 종일 일정으로 들어가고, 시간이 정해지면 그 시간으로 바뀌어요.</span></div>
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: baseline; gap: 16px; padding: 16px 0; border-top: 1px solid #e1e1e6"><span style="font-size: 14px; color: #5c5c66"><b style="color: #1b1b1f; font-weight: 600">보조</b> 15 · 400</span><span style="font-size: 15px; line-height: 1.45; color: #5c5c66">5명 모두 비어 있어요</span></div>
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: baseline; gap: 16px; padding: 16px 0; border-top: 1px solid #e1e1e6"><span style="font-size: 14px; color: #5c5c66"><b style="color: #1b1b1f; font-weight: 600">캡션</b> 13 · 400</span><span style="font-size: 13px; line-height: 1.4; color: #5c5c66">마지막으로 바꾼 사람 · 지영 · 어제</span></div>
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: baseline; gap: 16px; padding: 16px 0; border-top: 1px solid #e1e1e6"><span style="font-size: 14px; color: #5c5c66"><b style="color: #1b1b1f; font-weight: 600">최소</b> 11 · 600</span><span style="font-size: 11px; font-weight: 600; color: #696973; font-variant-numeric: tabular-nums; word-spacing: 12px">0 6 12 18 24</span></div>
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: baseline; gap: 16px; padding: 16px 0; border-top: 1px solid #e1e1e6; border-bottom: 1px solid #e1e1e6"><span style="font-size: 14px; color: #5c5c66"><b style="color: #1b1b1f; font-weight: 600">숫자</b> 고정폭</span><span style="font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums">09:00–18:00 · 17:00–22:00 · 4.62:1</span></div>
+<p style="margin: 16px 0 0; font-size: 15px; line-height: 1.6; color: #5c5c66">글꼴은 Pretendard를 앱에 넣습니다(400·600). iOS는 UIFontMetrics, 안드로이드는 sp로 글자 크기 설정을 따르고, 글자가 커지면 날짜 칸의 띠와 날 테이블은 칸 대신 목록(“14시, 3명 비어 있음”)으로 바뀝니다.</p>
+</div>
+
+<div style="width: 460px; display: flex; flex-direction: column; gap: 40px">
+<div style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.02em">간격</h2>
+<div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: #5c5c66; font-variant-numeric: tabular-nums">
+<div style="display: flex; align-items: center; gap: 12px"><span style="width: 28px">4</span><span style="width: 4px; height: 16px; background: #1b1b1f; border-radius: 2px"></span><span>아이콘과 글자</span></div>
+<div style="display: flex; align-items: center; gap: 12px"><span style="width: 28px">8</span><span style="width: 8px; height: 16px; background: #1b1b1f; border-radius: 2px"></span><span>칩 사이</span></div>
+<div style="display: flex; align-items: center; gap: 12px"><span style="width: 28px">12</span><span style="width: 12px; height: 16px; background: #1b1b1f; border-radius: 2px"></span><span>목록 행 안</span></div>
+<div style="display: flex; align-items: center; gap: 12px"><span style="width: 28px">16</span><span style="width: 16px; height: 16px; background: #1b1b1f; border-radius: 2px"></span><span>카드 안쪽</span></div>
+<div style="display: flex; align-items: center; gap: 12px"><span style="width: 28px">20</span><span style="width: 20px; height: 16px; background: #1b1b1f; border-radius: 2px"></span><span>화면 가장자리</span></div>
+<div style="display: flex; align-items: center; gap: 12px"><span style="width: 28px">24</span><span style="width: 24px; height: 16px; background: #1b1b1f; border-radius: 2px"></span><span>묶음 사이</span></div>
+<div style="display: flex; align-items: center; gap: 12px"><span style="width: 28px">32</span><span style="width: 32px; height: 16px; background: #1b1b1f; border-radius: 2px"></span><span>구역 사이</span></div>
+<div style="display: flex; align-items: center; gap: 12px"><span style="width: 28px">48</span><span style="width: 48px; height: 16px; background: #1b1b1f; border-radius: 2px"></span><span>큰 구역 사이</span></div>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.02em">모서리</h2>
+<div style="display: flex; gap: 12px; align-items: flex-end">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><span style="width: 64px; height: 48px; border-radius: 4px; background: #ebebef"></span><span style="font-size: 13px; color: #5c5c66">4 막대·띠</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><span style="width: 64px; height: 48px; border-radius: 8px; background: #ebebef"></span><span style="font-size: 13px; color: #5c5c66">8 칸</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><span style="width: 64px; height: 48px; border-radius: 12px; background: #ebebef"></span><span style="font-size: 13px; color: #5c5c66">12 입력</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><span style="width: 64px; height: 48px; border-radius: 20px; background: #ebebef"></span><span style="font-size: 13px; color: #5c5c66">20 카드·시트</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><span style="width: 96px; height: 48px; border-radius: 999px; background: #ebebef"></span><span style="font-size: 13px; color: #5c5c66">알약 버튼·칩</span></div>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.02em">층</h2>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<div style="height: 72px; border-radius: 16px; background: #f4f4f6; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #3a3a40">평면 · 바탕색 차이</div>
+<div style="height: 72px; border-radius: 16px; box-shadow: inset 0 0 0 1px #e1e1e6; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #3a3a40">구분선 1px</div>
+<div style="height: 72px; border-radius: 16px; background: rgba(255,255,255,0.86); box-shadow: inset 0 0 0 1px #e1e1e6; backdrop-filter: blur(20px); display: flex; align-items: center; justify-content: center; font-size: 14px; color: #3a3a40">리퀴드 글라스 · 탭 막대</div>
+<div style="height: 72px; border-radius: 16px; background: #ffffff; box-shadow: 0 12px 32px rgba(0,0,0,0.14); display: flex; align-items: center; justify-content: center; font-size: 14px; color: #3a3a40">떠 있는 층 · 시트·토스트</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 24px">
+<h2 style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.02em">컴포넌트</h2>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px">
+
+<div style="border-radius: 20px; background: #f4f4f6; padding: 28px; display: flex; flex-direction: column; gap: 16px">
+<span style="font-size: 15px; font-weight: 600; color: #5c5c66">버튼 · 누르면 0.97배</span>
+<div style="display: flex; flex-wrap: wrap; gap: 10px">
+<button type="button" style="height: 52px; padding: 0 24px; border: none; border-radius: 999px; background: #1b1b1f; color: #ffffff; font-size: 17px; font-weight: 600">저장</button>
+<button type="button" style="height: 52px; padding: 0 24px; border: none; border-radius: 999px; background: #7d63cb; color: #ffffff; font-size: 17px; font-weight: 600">신청하기</button>
+<button type="button" style="height: 52px; padding: 0 24px; border: none; border-radius: 999px; background: #ebebef; font-size: 17px; font-weight: 600">다음에</button>
+<button type="button" style="height: 52px; padding: 0 12px; border: none; background: none; font-size: 17px; font-weight: 600; color: #5c5c66">자세히</button>
+<button type="button" style="height: 52px; padding: 0 24px; border: none; border-radius: 999px; background: #ebebef; color: #c92f26; font-size: 17px; font-weight: 600">약속 취소</button>
+</div>
+<span style="font-size: 13px; line-height: 1.5; color: #5c5c66">주요 버튼은 내 공간에서 먹색, 그룹 안에서 그룹 색 5단계. 위험한 동작은 빨간 글자로만.</span>
+</div>
+
+<div style="border-radius: 20px; background: #f4f4f6; padding: 28px; display: flex; flex-direction: column; gap: 16px">
+<span style="font-size: 15px; font-weight: 600; color: #5c5c66">칩</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<span style="height: 44px; padding: 0 16px; border-radius: 999px; box-shadow: inset 0 0 0 1px #e1e1e6; background: #ffffff; display: flex; align-items: center; gap: 8px"><span style="width: 8px; height: 8px; border-radius: 4px; background: #008476"></span><span style="font-size: 15px; font-weight: 600">카페 마감</span><span style="font-size: 15px; color: #5c5c66; font-variant-numeric: tabular-nums">17–22</span></span>
+<span style="height: 44px; padding: 0 16px; border-radius: 999px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; font-size: 15px; font-weight: 600">선택됨</span>
+<span style="height: 36px; padding: 0 12px 0 4px; border-radius: 999px; box-shadow: inset 0 0 0 1px #e1e1e6; background: #ffffff; display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600"><span style="width: 28px; height: 28px; border-radius: 14px; background: #c1b6f6; display: flex; align-items: center; justify-content: center; font-size: 12px">지</span>지영<span style="font-size: 13px; font-weight: 400; color: #5c5c66">수락</span></span>
+<span style="height: 36px; padding: 0 12px 0 4px; border-radius: 999px; background: #ebebef; display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; color: #5c5c66"><span style="width: 28px; height: 28px; border-radius: 14px; background: #e1e1e6; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #1b1b1f">현</span>현우<span style="font-size: 13px; font-weight: 400">다음에</span></span>
+</div>
+<span style="font-size: 13px; line-height: 1.5; color: #5c5c66">추천 칩은 44px 높이, 누르면 바로 저장. 응답 칩은 이름과 응답을 함께 씁니다.</span>
+</div>
+
+<div style="border-radius: 20px; background: #f4f4f6; padding: 28px; display: flex; flex-direction: column; gap: 16px">
+<span style="font-size: 15px; font-weight: 600; color: #5c5c66">세그먼트 · 스위치</span>
+<div style="align-self: flex-start; display: flex; padding: 2px; border-radius: 999px; background: #e1e1e6">
+<span style="height: 40px; padding: 0 16px; border-radius: 999px; background: #ffffff; display: flex; align-items: center; font-size: 14px; font-weight: 600">월</span>
+<span style="height: 40px; padding: 0 16px; display: flex; align-items: center; font-size: 14px; font-weight: 600; color: #5c5c66">주</span>
+<span style="height: 40px; padding: 0 16px; display: flex; align-items: center; font-size: 14px; font-weight: 600; color: #5c5c66">목록</span>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 0 16px; border-radius: 12px; background: #ffffff">
+<span style="font-size: 17px">생일 공개</span>
+<button type="button" role="switch" aria-checked="true" aria-label="생일 공개" style="width: 51px; height: 31px; padding: 2px; border: none; border-radius: 16px; background: #7d63cb; display: flex; justify-content: flex-end"><span style="width: 27px; height: 27px; border-radius: 14px; background: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.18)"></span></button>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; border-radius: 12px; background: #ffffff">
+<span style="flex: 1 1 0; font-size: 17px">공유 기간</span><span style="font-size: 17px; color: #5c5c66">8주</span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="fill: none; stroke: #696973; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg>
+</div>
+</div>
+
+<div style="border-radius: 20px; background: #f4f4f6; padding: 28px; display: flex; flex-direction: column; gap: 16px">
+<span style="font-size: 15px; font-weight: 600; color: #5c5c66">토스트 · 배너</span>
+<div style="display: flex; align-items: center; gap: 10px; padding: 4px 8px 4px 18px; border-radius: 20px; background: #1b1b1f; color: #ffffff; box-shadow: 0 12px 32px rgba(0,0,0,0.22)">
+<span style="flex: 1 1 0; font-size: 16px; font-weight: 600">카페 마감을 추가했어요</span>
+<span style="height: 44px; padding: 0 12px; display: flex; align-items: center; font-size: 15px; font-weight: 600">되돌리기</span>
+</div>
+<div style="display: flex; gap: 12px; padding: 16px; border-radius: 16px; background: #ffffff; box-shadow: inset 0 0 0 1px #e1e1e6">
+<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="flex: none; fill: none; stroke: #1b1b1f; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg>
+<span style="flex: 1 1 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 16px; font-weight: 600">복구 코드를 저장해 두세요</span><span style="font-size: 14px; line-height: 1.45; color: #5c5c66">첫 그룹에 들어가기 전까지 이 배너로 알려요.</span></span>
+<span style="align-self: center; height: 36px; padding: 0 14px; border-radius: 999px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; font-size: 14px; font-weight: 600">저장</span>
+</div>
+</div>
+
+<div style="border-radius: 20px; background: #f4f4f6; padding: 28px; display: flex; flex-direction: column; gap: 16px">
+<span style="font-size: 15px; font-weight: 600; color: #5c5c66">날짜 칸 · 1시간 띠</span>
+<div style="display: flex; gap: 12px; align-items: flex-end">
+<div style="width: 56px; height: 92px; box-sizing: border-box; padding: 6px 3px 7px; border-radius: 8px; background: #ffffff; display: flex; flex-direction: column; gap: 3px">
+<span style="align-self: center; font-size: 13px; font-weight: 600; color: #2958c8">7</span>
+<span style="margin-top: auto; height: 14px; border-radius: 3px; background: {{cellStrip}}"></span>
+</div>
+<div style="width: 56px; height: 92px; box-sizing: border-box; padding: 6px 3px 7px; border-radius: 8px; background: #ffffff; display: flex; flex-direction: column; gap: 3px">
+<span style="align-self: center; font-size: 13px; font-weight: 600">21</span>
+<span style="display: block; height: 16px; border-radius: 4px; padding: 0 3px; font-size: 11px; font-weight: 600; line-height: 16px; letter-spacing: -0.03em; white-space: nowrap; overflow: hidden; background: #7d63cb; color: #ffffff">집들이</span>
+<span style="margin-top: auto; height: 14px; border-radius: 3px; background: {{cellStrip2}}"></span>
+</div>
+<span style="flex: 1 1 0; font-size: 13px; line-height: 1.55; color: #5c5c66">한 칸 = 1시간, 0–24시. 6시간마다 흰 선. 칸을 누르면 그날 30분 테이블.</span>
+</div>
+</div>
+
+<div style="border-radius: 20px; background: #f4f4f6; padding: 28px; display: flex; flex-direction: column; gap: 12px">
+<span style="font-size: 15px; font-weight: 600; color: #5c5c66">날 테이블 줄</span>
+<div style="display: flex; align-items: center"><span style="width: 76px; font-size: 13px; font-weight: 600">모두</span><span style="flex: 1 1 0; height: 32px; border-radius: 6px; background: {{rowAll}}"></span></div>
+<div style="display: flex; align-items: center"><span style="width: 76px; font-size: 13px; font-weight: 600">지영</span><span style="flex: 1 1 0; height: 28px; border-radius: 6px; background: {{rowOne}}"></span></div>
+<div style="display: flex; align-items: center"><span style="width: 76px; font-size: 13px; font-weight: 600; color: #5c5c66">도윤</span><span style="flex: 1 1 0; height: 28px; border-radius: 6px; background: repeating-linear-gradient(135deg, #e1e1e6 0 4px, #f2f2f5 4px 8px); display: flex; align-items: center; justify-content: center; font-size: 12px; color: #5c5c66">공유 안 함 · 불참으로 셈</span></div>
+<span style="font-size: 13px; line-height: 1.55; color: #5c5c66">합친 줄은 사람 수 단계, 멤버 줄은 비어 있으면 3단계. 공유하지 않은 멤버는 빗금.</span>
+</div>
+
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; align-items: baseline; gap: 16px">
+<h2 style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.02em">내비게이션</h2>
+<span style="font-size: 16px; color: #5c5c66">떠 있는 캡슐 두 개. 위는 다음 할 일, 아래는 탭 막대. iOS는 리퀴드 글라스, 안드로이드는 Material 3 내비게이션 바.</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px">
+
+<div style="display: flex; flex-direction: column; gap: 12px">
+<span style="font-size: 15px; font-weight: 600; color: #5c5c66">iOS · 밝은 모드</span>
+<div style="position: relative; height: 320px; border-radius: 28px; overflow: hidden; background: #ffffff; box-shadow: inset 0 0 0 1px #e1e1e6">
+<div aria-hidden="true" style="position: absolute; inset: 0; padding: 12px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: 64px">
+<sc-for list="{{sampleLight}}" as="c" hint-placeholder-count="28">
+<div style="border-top: 1px solid #ebebef; padding: 4px 2px; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 11px; font-weight: 600; text-align: center; color: #5c5c66">{{c.d}}</span>
+<span style="height: 12px; border-radius: 3px; background: {{c.a}}"></span>
+<span style="height: 12px; border-radius: 3px; background: {{c.b}}"></span>
+</div>
+</sc-for>
+</div>
+<div style="position: absolute; left: 12px; right: 12px; bottom: 88px; height: 56px; box-sizing: border-box; padding: 0 4px; border-radius: 28px; background: rgba(255,255,255,0.66); backdrop-filter: blur(16px) saturate(180%); box-shadow: 0 12px 32px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.05), inset 0 0 0 1px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.9); display: flex; align-items: center; gap: 2px">
+<button type="button" aria-label="이전 할 일" style="flex: none; width: 44px; height: 44px; border: none; background: transparent; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg></button>
+<span style="flex: none; width: 40px; height: 40px; border-radius: 10px; background: #c04c7b; color: #ffffff; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="9" cy="8" r="3.6" style="fill: currentColor"></circle><path d="M2.5 19.2c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6c0 .7-.5 1.3-1.2 1.3H3.7c-.7 0-1.2-.6-1.2-1.3z" style="fill: currentColor"></path><circle cx="16.8" cy="8.8" r="2.9" style="fill: currentColor"></circle><path d="M16.4 13.3c3 0 5.1 2 5.1 5.1 0 .6-.4 1-1 1h-3.6c.1-.3.1-.6.1-.9 0-2-.8-3.8-2.2-5 .5-.1 1-.2 1.6-.2z" style="fill: currentColor"></path></svg></span>
+<span style="flex: 1 1 0; min-width: 0; margin-left: 8px; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 15px; font-weight: 600">가족 · 저녁</span><span style="font-size: 13px; color: #5c5c66; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">오늘 18:00–20:00 · 3시간 40분 뒤</span></span>
+<button type="button" aria-label="다음 할 일" style="flex: none; width: 44px; height: 44px; border: none; background: transparent; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg></button>
+</div>
+<div style="position: absolute; left: 12px; right: 12px; bottom: 16px; height: 64px; box-sizing: border-box; padding: 4px; border-radius: 32px; background: rgba(255,255,255,0.66); backdrop-filter: blur(16px) saturate(180%); box-shadow: 0 12px 32px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.05), inset 0 0 0 1px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.9); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr))">
+<span style="border-radius: 28px; background: rgba(0,0,0,0.07); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #7152c4; font-size: 11px; font-weight: 600"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="3.5" style="fill: currentColor"></rect><rect x="6" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="10.5" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="15" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="6" y="15.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="10.5" y="15.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><path d="M8 2.75v3.5M16 2.75v3.5" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round"></path></svg>캘린더</span>
+<span style="border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #696973; font-size: 11px; font-weight: 600"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="9" cy="8" r="3.6" style="fill: currentColor"></circle><path d="M2.5 19.2c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6c0 .7-.5 1.3-1.2 1.3H3.7c-.7 0-1.2-.6-1.2-1.3z" style="fill: currentColor"></path><circle cx="16.8" cy="8.8" r="2.9" style="fill: currentColor"></circle><path d="M16.4 13.3c3 0 5.1 2 5.1 5.1 0 .6-.4 1-1 1h-3.6c.1-.3.1-.6.1-.9 0-2-.8-3.8-2.2-5 .5-.1 1-.2 1.6-.2z" style="fill: currentColor"></path></svg>그룹</span>
+<span style="border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #696973; font-size: 11px; font-weight: 600"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 3.5c5 0 9 3.3 9 7.6s-4 7.6-9 7.6c-.9 0-1.8-.1-2.6-.3L5 20.5c-.5.2-1-.2-.9-.7l.7-3.2C3.7 15.2 3 13.3 3 11.1 3 6.8 7 3.5 12 3.5z" style="fill: currentColor"></path></svg>채팅</span>
+<span style="border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #696973; font-size: 11px; font-weight: 600"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="12" cy="8" r="4.2" style="fill: currentColor"></circle><path d="M4 20c0-4.2 3.6-7 8-7s8 2.8 8 7c0 .6-.4 1-1 1H5c-.6 0-1-.4-1-1z" style="fill: currentColor"></path></svg>나</span>
+</div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px">
+<span style="font-size: 15px; font-weight: 600; color: #5c5c66">iOS · 어두운 모드</span>
+<div style="position: relative; height: 320px; border-radius: 28px; overflow: hidden; background: #000000">
+<div aria-hidden="true" style="position: absolute; inset: 0; padding: 12px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: 64px">
+<sc-for list="{{sampleDark}}" as="c" hint-placeholder-count="28">
+<div style="border-top: 1px solid #2a2a2e; padding: 4px 2px; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 11px; font-weight: 600; text-align: center; color: #93939d">{{c.d}}</span>
+<span style="height: 12px; border-radius: 3px; background: {{c.a}}"></span>
+<span style="height: 12px; border-radius: 3px; background: {{c.b}}"></span>
+</div>
+</sc-for>
+</div>
+<div style="position: absolute; left: 12px; right: 12px; bottom: 88px; height: 56px; box-sizing: border-box; padding: 0 4px; border-radius: 28px; background: rgba(36,36,40,0.62); backdrop-filter: blur(16px) saturate(180%); box-shadow: 0 12px 32px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.10), inset 0 1px 0 rgba(255,255,255,0.14); color: #f4f4f6; display: flex; align-items: center; gap: 2px">
+<button type="button" aria-label="이전 할 일" style="flex: none; width: 44px; height: 44px; border: none; background: transparent; color: #f4f4f6; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg></button>
+<span style="flex: none; width: 40px; height: 40px; border-radius: 10px; background: #c04c7b; color: #ffffff; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="9" cy="8" r="3.6" style="fill: currentColor"></circle><path d="M2.5 19.2c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6c0 .7-.5 1.3-1.2 1.3H3.7c-.7 0-1.2-.6-1.2-1.3z" style="fill: currentColor"></path><circle cx="16.8" cy="8.8" r="2.9" style="fill: currentColor"></circle><path d="M16.4 13.3c3 0 5.1 2 5.1 5.1 0 .6-.4 1-1 1h-3.6c.1-.3.1-.6.1-.9 0-2-.8-3.8-2.2-5 .5-.1 1-.2 1.6-.2z" style="fill: currentColor"></path></svg></span>
+<span style="flex: 1 1 0; min-width: 0; margin-left: 8px; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 15px; font-weight: 600">가족 · 저녁</span><span style="font-size: 13px; color: #b4b4bc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">오늘 18:00–20:00 · 3시간 40분 뒤</span></span>
+<button type="button" aria-label="다음 할 일" style="flex: none; width: 44px; height: 44px; border: none; background: transparent; color: #f4f4f6; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg></button>
+</div>
+<div style="position: absolute; left: 12px; right: 12px; bottom: 16px; height: 64px; box-sizing: border-box; padding: 4px; border-radius: 32px; background: rgba(36,36,40,0.62); backdrop-filter: blur(16px) saturate(180%); box-shadow: 0 12px 32px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.10), inset 0 1px 0 rgba(255,255,255,0.14); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr))">
+<span style="border-radius: 28px; background: rgba(255,255,255,0.14); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #a898eb; font-size: 11px; font-weight: 600"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="3.5" style="fill: currentColor"></rect><rect x="6" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #2a2a2e"></rect><rect x="10.5" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #2a2a2e"></rect><rect x="15" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #2a2a2e"></rect><rect x="6" y="15.5" width="3" height="2.5" rx="0.8" style="fill: #2a2a2e"></rect><rect x="10.5" y="15.5" width="3" height="2.5" rx="0.8" style="fill: #2a2a2e"></rect><path d="M8 2.75v3.5M16 2.75v3.5" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round"></path></svg>캘린더</span>
+<span style="border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #93939d; font-size: 11px; font-weight: 600"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="9" cy="8" r="3.6" style="fill: currentColor"></circle><path d="M2.5 19.2c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6c0 .7-.5 1.3-1.2 1.3H3.7c-.7 0-1.2-.6-1.2-1.3z" style="fill: currentColor"></path><circle cx="16.8" cy="8.8" r="2.9" style="fill: currentColor"></circle><path d="M16.4 13.3c3 0 5.1 2 5.1 5.1 0 .6-.4 1-1 1h-3.6c.1-.3.1-.6.1-.9 0-2-.8-3.8-2.2-5 .5-.1 1-.2 1.6-.2z" style="fill: currentColor"></path></svg>그룹</span>
+<span style="border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #93939d; font-size: 11px; font-weight: 600"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 3.5c5 0 9 3.3 9 7.6s-4 7.6-9 7.6c-.9 0-1.8-.1-2.6-.3L5 20.5c-.5.2-1-.2-.9-.7l.7-3.2C3.7 15.2 3 13.3 3 11.1 3 6.8 7 3.5 12 3.5z" style="fill: currentColor"></path></svg>채팅</span>
+<span style="border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #93939d; font-size: 11px; font-weight: 600"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="12" cy="8" r="4.2" style="fill: currentColor"></circle><path d="M4 20c0-4.2 3.6-7 8-7s8 2.8 8 7c0 .6-.4 1-1 1H5c-.6 0-1-.4-1-1z" style="fill: currentColor"></path></svg>나</span>
+</div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px">
+<span style="font-size: 15px; font-weight: 600; color: #5c5c66">안드로이드 · Material 3</span>
+<div style="position: relative; height: 320px; border-radius: 28px; overflow: hidden; background: #ffffff; box-shadow: inset 0 0 0 1px #e1e1e6">
+<div aria-hidden="true" style="position: absolute; inset: 0; padding: 12px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: 64px">
+<sc-for list="{{sampleLight}}" as="c" hint-placeholder-count="28">
+<div style="border-top: 1px solid #ebebef; padding: 4px 2px; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 11px; font-weight: 600; text-align: center; color: #5c5c66">{{c.d}}</span>
+<span style="height: 12px; border-radius: 3px; background: {{c.a}}"></span>
+<span style="height: 12px; border-radius: 3px; background: {{c.b}}"></span>
+</div>
+</sc-for>
+</div>
+<div style="position: absolute; left: 12px; right: 12px; bottom: 92px; height: 56px; box-sizing: border-box; padding: 0 4px; border-radius: 16px; background: #ebebef; display: flex; align-items: center; gap: 2px">
+<button type="button" aria-label="이전 할 일" style="flex: none; width: 44px; height: 44px; border: none; background: transparent; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg></button>
+<span style="flex: none; width: 40px; height: 40px; border-radius: 12px; background: #c04c7b; color: #ffffff; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="9" cy="8" r="3.6" style="fill: currentColor"></circle><path d="M2.5 19.2c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6c0 .7-.5 1.3-1.2 1.3H3.7c-.7 0-1.2-.6-1.2-1.3z" style="fill: currentColor"></path><circle cx="16.8" cy="8.8" r="2.9" style="fill: currentColor"></circle><path d="M16.4 13.3c3 0 5.1 2 5.1 5.1 0 .6-.4 1-1 1h-3.6c.1-.3.1-.6.1-.9 0-2-.8-3.8-2.2-5 .5-.1 1-.2 1.6-.2z" style="fill: currentColor"></path></svg></span>
+<span style="flex: 1 1 0; min-width: 0; margin-left: 8px; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 15px; font-weight: 600">가족 · 저녁</span><span style="font-size: 13px; color: #5c5c66; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">오늘 18:00–20:00 · 3시간 40분 뒤</span></span>
+<button type="button" aria-label="다음 할 일" style="flex: none; width: 44px; height: 44px; border: none; background: transparent; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg></button>
+</div>
+<div style="position: absolute; left: 0; right: 0; bottom: 0; height: 80px; box-sizing: border-box; padding: 12px 8px 16px; background: #f4f4f6; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr))">
+<span style="display: flex; flex-direction: column; align-items: center; gap: 4px; color: #7152c4; font-size: 12px; font-weight: 600"><span style="width: 56px; height: 32px; border-radius: 16px; background: #d9d4f8; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="3.5" style="fill: currentColor"></rect><rect x="6" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #d9d4f8"></rect><rect x="10.5" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #d9d4f8"></rect><rect x="15" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #d9d4f8"></rect><rect x="6" y="15.5" width="3" height="2.5" rx="0.8" style="fill: #d9d4f8"></rect><rect x="10.5" y="15.5" width="3" height="2.5" rx="0.8" style="fill: #d9d4f8"></rect><path d="M8 2.75v3.5M16 2.75v3.5" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round"></path></svg></span>캘린더</span>
+<span style="display: flex; flex-direction: column; align-items: center; gap: 4px; color: #5c5c66; font-size: 12px; font-weight: 600"><span style="width: 56px; height: 32px; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><circle cx="9" cy="8.5" r="3.25"></circle><path d="M3.5 19.5c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"></path><circle cx="16.5" cy="9.5" r="2.5"></circle><path d="M15.8 14.6c2.4-.2 4.1 1.4 4.7 4.4"></path></svg></span>그룹</span>
+<span style="display: flex; flex-direction: column; align-items: center; gap: 4px; color: #5c5c66; font-size: 12px; font-weight: 600"><span style="width: 56px; height: 32px; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M5 4.5h14A1.5 1.5 0 0 1 20.5 6v9.5A1.5 1.5 0 0 1 19 17h-8l-4.5 3.5V17H5a1.5 1.5 0 0 1-1.5-1.5V6A1.5 1.5 0 0 1 5 4.5z"></path></svg></span>채팅</span>
+<span style="display: flex; flex-direction: column; align-items: center; gap: 4px; color: #5c5c66; font-size: 12px; font-weight: 600"><span style="width: 56px; height: 32px; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><circle cx="12" cy="8.5" r="3.75"></circle><path d="M4.5 20c.9-3.9 3.8-6 7.5-6s6.6 2.1 7.5 6"></path></svg></span>나</span>
+</div>
+</div>
+</div>
+
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; font-size: 14px; line-height: 1.6; color: #3a3a40">
+<div style="display: flex; flex-direction: column; gap: 4px"><b style="font-size: 15px; font-weight: 600; color: #1b1b1f">탭 막대</b><span>높이 64 · 좌우 16 · 화면 아래에서 20. 선택한 탭은 브랜드 색 포도(글자용 #7152c4, 어두운 모드 #a898eb)의 채운 아이콘과 옅은 알약(검정 7%), 나머지는 흐린 글자색. 그룹 탭에는 응답할 일, 채팅 탭에는 읽지 않은 메시지 수(알림을 끈 방은 빼고).</span></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><b style="font-size: 15px; font-weight: 600; color: #1b1b1f">다음 할 일</b><span>높이 56 · 탭 막대 위 8. ‹ 와 › 로 이전·다음 일정을 시간순으로 넘기고, 가운데를 누르면 상세. 일정을 넣은 직후에는 이 자리가 ‘추가했어요 · 되돌리기’로 바뀝니다.</span></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><b style="font-size: 15px; font-weight: 600; color: #1b1b1f">보이는 곳</b><span>탭의 첫 화면(캘린더·그룹·채팅·나)과 그룹의 캘린더·사진에만. 날 테이블·약속 상세·편집·시트·채팅방에서는 숨깁니다. 글라스는 흰색 66% + 블러 + 안쪽 하이라이트 1px + 그림자 하나.</span></div>
+</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2340}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const palette = ['#f2f2f5', '#d9d4f8', '#c1b6f6', '#aa98f0', '#937ce3', '#7d63cb'];
+    const ticks = 'repeating-linear-gradient(to right, transparent 0 calc(25% - 1px), rgba(255,255,255,0.95) calc(25% - 1px) 25%)';
+    const grad = (s, n) => 'linear-gradient(to right, ' + s.split('').map((ch, i) => palette[Number(ch)] + ' ' + ((i * 100) / n).toFixed(3) + '% ' + (((i + 1) * 100) / n).toFixed(3) + '%').join(', ') + ')';
+    const hourLines = 'repeating-linear-gradient(to right, transparent 0 calc(100% / 24 - 1px), rgba(255,255,255,0.9) calc(100% / 24 - 1px) calc(100% / 24))';
+    const member = '111111111111111111111100000011111111111111111111'.split('').map((ch) => (ch === '1' ? '3' : '0')).join('');
+    // Sample month cells behind the floating bars so the glass has something to show through.
+    const lightTints = ['#a0c0fa', '#77d1c2', '#efb08a', '#c1b6f6', 'transparent'];
+    const darkTints = ['#273b61', '#00453d', '#593116', '#3d355e', 'transparent'];
+    const mk = (t) => Array.from({ length: 28 }, (_, i) => ({ d: String(i + 1), a: t[i % 5], b: t[(i * 3 + 1) % 5] }));
+    return {
+      sampleLight: mk(lightTints),
+      sampleDark: mk(darkTints),
+      cellStrip: ticks + ', ' + grad('555555554333334345555444', 24),
+      cellStrip2: ticks + ', ' + grad('555555554444344555222255', 24),
+      rowAll: hourLines + ', ' + grad('555555555555555544333333333344334455555555544444', 48),
+      rowOne: hourLines + ', ' + grad(member, 48),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>신고·차단</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #ffffff; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+
+<sc-if value="{{inRoom}}" hint-placeholder-val="{{true}}">
+<div style="position: absolute; inset: 0">
+<sc-if value="{{notPicking}}" hint-placeholder-val="{{true}}">
+<div style="position: absolute; top: 54px; left: 0; width: 390px; height: 44px; box-sizing: border-box; padding: 0 4px 0 8px; display: flex; align-items: center; justify-content: space-between">
+<a href="ChatList.dc.html" style="height: 44px; padding-right: 8px; display: flex; align-items: center; gap: 2px; font-size: 17px"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg>채팅</a>
+<span style="display: flex; flex-direction: column; align-items: center"><span style="font-size: 17px; font-weight: 600">사진 동아리</span><span style="font-size: 12px; color: #5c5c66">12명</span></span>
+<span style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg></span>
+</div>
+<nav aria-label="그룹 화면" style="position: absolute; top: 98px; left: 0; width: 390px; height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; gap: 4px; border-bottom: 1px solid #e1e1e6">
+<span style="height: 43px; padding: 0 12px; display: flex; align-items: center; font-size: 15px; font-weight: 600; color: #696973">캘린더</span>
+<span aria-current="page" style="height: 43px; padding: 0 12px; display: flex; align-items: center; font-size: 15px; font-weight: 600; box-shadow: inset 0 -2px 0 {{g.s5}}">채팅</span>
+<span style="height: 43px; padding: 0 12px; display: flex; align-items: center; font-size: 15px; font-weight: 600; color: #696973">사진</span>
+</nav>
+</sc-if>
+<sc-if value="{{picking}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; top: 54px; left: 0; width: 390px; height: 88px; box-sizing: border-box; padding: 0 16px; border-bottom: 1px solid #e1e1e6; display: flex; flex-direction: column; justify-content: center; gap: 2px">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<button type="button" onClick="{{toRoom}}" style="height: 44px; padding: 0; border: none; background: none; font-size: 17px; cursor: pointer">취소</button>
+<span style="font-size: 17px; font-weight: 600">신고할 메시지 고르기</span>
+<span style="width: 34px"></span>
+</div>
+<span style="text-align: center; font-size: 13px; color: #5c5c66">고른 메시지만 운영자에게 보내요. 다른 대화는 보내지 않아요.</span>
+</div>
+</sc-if>
+
+<div style="position: absolute; top: 152px; left: 0; width: 390px; box-sizing: border-box; padding: 0 12px; display: flex; flex-direction: column; gap: 10px">
+<span style="align-self: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #f4f4f6; display: flex; align-items: center; font-size: 12px; color: #5c5c66">오늘</span>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+<sc-if value="{{r.isBlockedRow}}" hint-placeholder-val="{{false}}">
+<div style="height: 40px; box-sizing: border-box; padding: 0 6px 0 14px; border-radius: 12px; background: #f4f4f6; display: flex; align-items: center; gap: 8px">
+<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="flex: none; color: #696973; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><circle cx="12" cy="12" r="8"></circle><path d="M6.5 6.5l11 11"></path></svg>
+<span style="flex: 1 1 0; font-size: 14px; color: #5c5c66">차단한 멤버의 메시지 3개</span>
+<button type="button" onClick="{{peekOn}}" style="height: 32px; padding: 0 10px; border: none; border-radius: 999px; background: none; font-size: 14px; font-weight: 600; cursor: pointer">보기</button>
+</div>
+</sc-if>
+<sc-if value="{{r.isMsg}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; align-items: center; gap: 10px; opacity: {{r.op}}">
+<sc-if value="{{r.picking}}" hint-placeholder-val="{{false}}">
+<button type="button" role="checkbox" aria-checked="{{r.checked}}" aria-label="{{r.checkLabel}}" onClick="{{r.tap}}" style="flex: none; width: 28px; height: 28px; box-sizing: border-box; padding: 0; border: none; border-radius: 14px; background: {{r.boxBg}}; box-shadow: {{r.boxRing}}; color: #ffffff; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round"><path d="M5.5 12.5l4 4 9-9"></path></svg></button>
+</sc-if>
+<sc-if value="{{r.isOther}}" hint-placeholder-val="{{true}}">
+<div style="flex: 1 1 0; min-width: 0; display: flex; gap: 8px; align-items: flex-end">
+<span aria-hidden="true" style="flex: none; width: 30px; height: 30px; border-radius: 15px; background: {{g.s2}}; visibility: {{r.avVis}}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600">{{r.ini}}</span>
+<span style="min-width: 0; display: flex; flex-direction: column; gap: 3px">
+<sc-if value="{{r.showName}}" hint-placeholder-val="{{true}}"><span style="font-size: 12px; color: #5c5c66">{{r.who}}</span></sc-if>
+<sc-if value="{{r.isText}}" hint-placeholder-val="{{true}}"><span style="max-width: {{r.maxW}}px; padding: 9px 13px; border-radius: 18px 18px 18px 6px; background: #f4f4f6; font-size: 16px; line-height: 1.4">{{r.text}}</span></sc-if>
+<sc-if value="{{r.isPhoto}}" hint-placeholder-val="{{false}}">
+<span style="position: relative; width: 196px; height: 132px; border-radius: 18px 18px 18px 6px; overflow: hidden; background: {{photoBg}}; display: flex; align-items: center; justify-content: center">
+<sc-if value="{{blurred}}" hint-placeholder-val="{{true}}">
+<span style="display: flex; flex-direction: column; align-items: center; gap: 6px; color: #ffffff">
+<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round"><path d="M3 12s3.3-6 9-6c1.6 0 3 .5 4.2 1.1M21 12s-3.3 6-9 6c-1.6 0-3-.5-4.2-1.1"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path><path d="M4.5 4.5l15 15"></path></svg>
+<span style="font-size: 13px; font-weight: 600">민감할 수 있는 사진</span>
+<button type="button" onClick="{{revealOn}}" style="height: 28px; padding: 0 12px; border: none; border-radius: 999px; background: rgba(255,255,255,0.24); color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer">보기</button>
+</span>
+</sc-if>
+</span>
+</sc-if>
+</span>
+<span style="flex: none; font-size: 11px; color: #696973; font-variant-numeric: tabular-nums">{{r.time}}</span>
+</div>
+</sc-if>
+<sc-if value="{{r.isMine}}" hint-placeholder-val="{{false}}">
+<div style="flex: 1 1 0; display: flex; gap: 8px; align-items: flex-end; justify-content: flex-end">
+<span style="font-size: 11px; color: #696973; font-variant-numeric: tabular-nums">{{r.time}}</span>
+<span style="max-width: 250px; padding: 9px 13px; border-radius: 18px 18px 6px 18px; background: {{g.s5}}; color: #ffffff; font-size: 16px; line-height: 1.4">{{r.text}}</span>
+</div>
+</sc-if>
+</div>
+</sc-if>
+</sc-for>
+</div>
+
+<sc-if value="{{showComposer}}" hint-placeholder-val="{{true}}">
+<div style="position: absolute; left: 0; bottom: 0; width: 390px; box-sizing: border-box; padding: 8px 12px 34px; background: rgba(255,255,255,0.92); backdrop-filter: blur(16px); border-top: 1px solid #e1e1e6; display: flex; align-items: center; gap: 8px">
+<span style="flex: none; width: 44px; height: 44px; border-radius: 22px; background: #ebebef; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M12 5v14M5 12h14"></path></svg></span>
+<span style="flex: 1 1 0; height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 22px; background: #f4f4f6; display: flex; align-items: center; font-size: 17px; color: #696973">메시지</span>
+<span style="flex: none; width: 44px; height: 44px; border-radius: 22px; background: {{g.s5}}; color: #ffffff; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M12 19V5M6 11l6-6 6 6"></path></svg></span>
+</div>
+</sc-if>
+
+<sc-if value="{{picking}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; left: 0; bottom: 0; width: 390px; box-sizing: border-box; padding: 10px 16px 34px; background: rgba(255,255,255,0.92); backdrop-filter: blur(16px); border-top: 1px solid #e1e1e6; display: flex; align-items: center; gap: 12px">
+<span style="flex: 1 1 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums">{{pickText}}</span>
+<button type="button" onClick="{{toReason}}" disabled="{{noPick}}" style="height: 44px; padding: 0 22px; border: none; border-radius: 999px; background: {{nextBg}}; color: {{nextFg}}; font-size: 16px; font-weight: 600; cursor: pointer">다음</button>
+</div>
+</sc-if>
+
+<sc-if value="{{isRoom}}" hint-placeholder-val="{{false}}">
+<button type="button" aria-label="태오의 메시지 길게 누르기" onClick="{{toMenu}}" style="position: absolute; left: 50px; top: 292px; width: 272px; height: 66px; padding: 0; border: none; border-radius: 18px; background: transparent; cursor: pointer"></button>
+</sc-if>
+
+<sc-if value="{{afterToast}}" hint-placeholder-val="{{false}}">
+<div role="status" style="position: absolute; left: 16px; bottom: 102px; width: 358px; height: 48px; box-sizing: border-box; padding: 0 8px 0 16px; border-radius: 14px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 8px 24px rgba(0,0,0,0.18)">
+<span style="font-size: 15px; font-weight: 600">태오님을 차단했어요</span>
+<button type="button" onClick="{{undoBlock}}" style="height: 36px; padding: 0 10px; border: none; background: none; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: underline; cursor: pointer">되돌리기</button>
+</div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{isMenu}}" hint-placeholder-val="{{true}}">
+<div style="position: absolute; inset: 0">
+<button type="button" aria-label="닫기" onClick="{{toRoom}}" style="position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: none; background: rgba(10,10,14,0.32); backdrop-filter: blur(6px); cursor: pointer"></button>
+<div style="position: absolute; left: 12px; top: 276px; display: flex; gap: 8px; align-items: flex-end">
+<span aria-hidden="true" style="flex: none; width: 30px; height: 30px; border-radius: 15px; background: {{g.s2}}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600">태</span>
+<span style="display: flex; flex-direction: column; gap: 3px"><span style="font-size: 12px; color: #ffffff">태오</span><span style="max-width: 250px; padding: 9px 13px; border-radius: 18px 18px 18px 6px; background: #ffffff; font-size: 16px; line-height: 1.4; box-shadow: 0 8px 24px rgba(0,0,0,0.16)">부업으로 하루 30만 원 벌 사람? 링크 눌러서 신청</span></span>
+</div>
+<div role="menu" aria-label="메시지 메뉴" style="position: absolute; left: 50px; top: 366px; width: 240px; border-radius: 14px; overflow: hidden; background: rgba(255,255,255,0.94); backdrop-filter: blur(20px) saturate(180%); box-shadow: 0 12px 40px rgba(0,0,0,0.2); display: flex; flex-direction: column">
+<button type="button" role="menuitem" onClick="{{toRoom}}" style="height: 46px; padding: 0 16px; border: none; border-bottom: 1px solid #e1e1e6; background: none; display: flex; align-items: center; justify-content: space-between; font-size: 17px; cursor: pointer">답장<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 7.5L5 12l4.5 4.5"></path><path d="M5.5 12h8a5 5 0 0 1 5 5v1"></path></svg></button>
+<button type="button" role="menuitem" onClick="{{toRoom}}" style="height: 46px; padding: 0 16px; border: none; border-bottom: 1px solid #e1e1e6; background: none; display: flex; align-items: center; justify-content: space-between; font-size: 17px; cursor: pointer">복사<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><rect x="8.5" y="8.5" width="11" height="11" rx="2.5"></rect><path d="M15.5 5.5v-.5a1.5 1.5 0 0 0-1.5-1.5H6A2.5 2.5 0 0 0 3.5 6v8A1.5 1.5 0 0 0 5 15.5h.5"></path></svg></button>
+<button type="button" role="menuitem" onClick="{{toBlock}}" style="height: 46px; padding: 0 16px; border: none; border-bottom: 1px solid #e1e1e6; background: none; display: flex; align-items: center; justify-content: space-between; font-size: 17px; cursor: pointer">태오 차단<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><circle cx="12" cy="12" r="8"></circle><path d="M6.5 6.5l11 11"></path></svg></button>
+<button type="button" role="menuitem" onClick="{{toPick}}" style="height: 46px; padding: 0 16px; border: none; background: none; color: #c92f26; display: flex; align-items: center; justify-content: space-between; font-size: 17px; cursor: pointer">신고<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M5.5 20.5V4.5"></path><path d="M5.5 5h11l-2 4 2 4h-11"></path></svg></button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isBlock}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; inset: 0">
+<button type="button" aria-label="닫기" onClick="{{toRoom}}" style="position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: none; background: rgba(10,10,14,0.32); cursor: pointer"></button>
+<section role="alertdialog" aria-modal="true" aria-label="태오님 차단" style="position: absolute; left: 0; bottom: 0; width: 390px; box-sizing: border-box; padding: 8px 20px 34px; background: #ffffff; border-radius: 20px 20px 0 0; box-shadow: 0 -8px 32px rgba(0,0,0,0.12); display: flex; flex-direction: column; gap: 16px">
+<div aria-hidden="true" style="align-self: center; width: 36px; height: 5px; border-radius: 3px; background: #d1d1d6"></div>
+<h2 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em">태오님을 차단할까요?</h2>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 1.5; color: #3a3a40">
+<li style="display: flex; gap: 10px"><span aria-hidden="true" style="flex: none; width: 24px; height: 24px; border-radius: 7px; background: #f4f4f6; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600">방</span><span>그룹 채팅에서는 태오님 메시지가 내 화면에서 가려져요. 다른 멤버에게는 그대로 보여요.</span></li>
+<li style="display: flex; gap: 10px"><span aria-hidden="true" style="flex: none; width: 24px; height: 24px; border-radius: 12px; background: #f4f4f6; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600">1:1</span><span>1:1에서는 태오님이 보내는 메시지를 받지 않아요.</span></li>
+<li style="display: flex; gap: 10px"><span aria-hidden="true" style="flex: none; width: 24px; height: 24px; border-radius: 7px; background: #f4f4f6; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="14" height="14" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"></rect><path d="M3.5 9.5h17"></path></svg></span><span>그룹 캘린더와 약속은 그대로예요. 태오님에게는 알리지 않아요.</span></li>
+</ul>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<button type="button" onClick="{{doBlock}}" style="height: 52px; border: none; border-radius: 999px; background: #f4f4f6; color: #c92f26; font-size: 17px; font-weight: 600; cursor: pointer">차단</button>
+<button type="button" onClick="{{toRoom}}" style="height: 52px; border: none; border-radius: 999px; background: none; font-size: 17px; font-weight: 600; cursor: pointer">취소</button>
+</div>
+</section>
+</div>
+</sc-if>
+
+<sc-if value="{{isReason}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; inset: 0; background: #ffffff">
+<div style="position: absolute; top: 54px; left: 0; width: 390px; height: 44px; box-sizing: border-box; padding: 0 4px; display: flex; align-items: center; justify-content: space-between">
+<button type="button" aria-label="메시지 다시 고르기" onClick="{{toPick}}" style="width: 44px; height: 44px; padding: 0; border: none; background: none; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg></button>
+<span style="font-size: 17px; font-weight: 600">신고하기</span>
+<button type="button" aria-label="닫기" onClick="{{toRoom}}" style="width: 44px; height: 44px; padding: 0; border: none; background: none; display: flex; align-items: center; justify-content: center; color: #5c5c66; cursor: pointer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg></button>
+</div>
+<div style="position: absolute; top: 106px; left: 20px; width: 350px; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 13px; font-weight: 600; color: #5c5c66">{{pickedTitle}}</span>
+<div style="padding: 10px 14px; border-radius: 12px; background: #f4f4f6; display: flex; flex-direction: column; gap: 4px">
+<sc-for list="{{pickedList}}" as="p" hint-placeholder-count="3">
+<span style="font-size: 14px; line-height: 1.45; color: #3a3a40; white-space: nowrap; overflow: hidden; text-overflow: ellipsis"><b style="font-weight: 600; color: #1b1b1f">{{p.who}}</b> {{p.text}}</span>
+</sc-for>
+</div>
+</div>
+<div role="radiogroup" aria-label="어떤 문제인가요?" style="display: flex; flex-direction: column">
+<span style="padding-bottom: 4px; font-size: 13px; font-weight: 600; color: #5c5c66">어떤 문제인가요?</span>
+<sc-for list="{{reasons}}" as="o" hint-placeholder-count="5">
+<button type="button" role="radio" aria-checked="{{o.checked}}" onClick="{{o.choose}}" style="height: 46px; padding: 0; border: none; background: none; display: flex; align-items: center; gap: 12px; font-size: 17px; text-align: left; cursor: pointer">
+<span aria-hidden="true" style="flex: none; width: 22px; height: 22px; box-sizing: border-box; border-radius: 11px; border: {{o.ring}}; background: #ffffff"></span>
+<span>{{o.label}}</span>
+</button>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 12px">
+<span style="flex: 1 1 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 17px">태오님도 차단하기</span><span style="font-size: 13px; line-height: 1.45; color: #5c5c66">이 방에서는 내 화면에서 가리고, 1:1에서는 받지 않아요.</span></span>
+<button type="button" role="switch" aria-checked="{{blockOn}}" aria-label="태오님도 차단하기" onClick="{{toggleBlock}}" style="flex: none; width: 51px; height: 31px; padding: 2px; border: none; border-radius: 16px; background: {{blockTrack}}; display: flex; justify-content: {{blockSide}}; cursor: pointer"><span style="width: 27px; height: 27px; border-radius: 14px; background: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.18)"></span></button>
+</div>
+<p style="margin: 0; padding: 12px 14px; border-radius: 12px; background: #f4f4f6; display: flex; gap: 10px; font-size: 13px; line-height: 1.55; color: #3a3a40"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="flex: none; margin-top: 2px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg><span>{{sealNote}}</span></p>
+</div>
+<div style="position: absolute; left: 20px; bottom: 34px; width: 350px">
+<sc-if value="{{canSubmit}}" hint-placeholder-val="{{false}}">
+<button type="button" onClick="{{submit}}" style="width: 100%; height: 52px; border: none; border-radius: 999px; background: #1b1b1f; color: #ffffff; font-size: 17px; font-weight: 600; cursor: pointer">신고하기</button>
+</sc-if>
+<sc-if value="{{cannotSubmit}}" hint-placeholder-val="{{true}}">
+<button type="button" disabled="{{true}}" style="width: 100%; height: 52px; border: none; border-radius: 999px; background: #ebebef; color: #696973; font-size: 17px; font-weight: 600">이유를 골라 주세요</button>
+</sc-if>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isDone}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; inset: 0; background: #ffffff">
+<div style="position: absolute; top: 250px; left: 32px; width: 326px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center">
+<span aria-hidden="true" style="width: 64px; height: 64px; border-radius: 32px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="30" height="30" style="fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round"><path d="M5.5 12.5l4 4 9-9"></path></svg></span>
+<h2 style="margin: 4px 0 0; font-size: 26px; font-weight: 600; letter-spacing: -0.025em">신고했어요</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.55; color: #3a3a40">{{doneNote}}</p>
+<sc-if value="{{blockOnBool}}" hint-placeholder-val="{{false}}">
+<p style="margin: 0; padding: 10px 14px; border-radius: 12px; background: #f4f4f6; font-size: 14px; line-height: 1.5; color: #3a3a40">태오님도 차단했어요. 차단은 태오님 프로필에서 풀 수 있어요.</p>
+</sc-if>
+</div>
+<div style="position: absolute; left: 20px; bottom: 34px; width: 350px">
+<button type="button" onClick="{{finish}}" style="width: 100%; height: 52px; border: none; border-radius: 999px; background: #1b1b1f; color: #ffffff; font-size: 17px; font-weight: 600; cursor: pointer">확인</button>
+</div>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"groupColor":{"editor":"enum","options":["토마토","귤","겨자","올리브","숲","민트","하늘","바다","포도","자두","벚꽃","코코아"],"default":"바다"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    // step: room | menu | pick | reason | done | block
+    this.state = { step: 'menu', picked: ['t1'], reason: '', block: false, blocked: false, reveal: false, peek: false };
+  }
+  renderVals() {
+    const RAMPS = {
+      '토마토': ['#f9cdc8', '#f5aaa1', '#ed887d', '#de685d', '#c54e45'],
+      '귤': ['#f5d1bc', '#efb08a', '#e5905a', '#d57128', '#ba5a00'],
+      '겨자': ['#ead7b4', '#dcba7b', '#cd9d3d', '#b58400', '#976d00'],
+      '올리브': ['#d3dfbb', '#b5c887', '#98b152', '#7d9911', '#667e00'],
+      '숲': ['#c3e3c8', '#94cf9f', '#64b979', '#32a256', '#00873d'],
+      '민트': ['#b6e5db', '#77d1c2', '#19bdaa', '#00a090', '#008476'],
+      '하늘': ['#b8e0f3', '#7dcaec', '#36b3e2', '#0099c6', '#007ea4'],
+      '바다': ['#c7dafb', '#a0c0fa', '#7ba6f5', '#5a8be9', '#4172d1'],
+      '포도': ['#d9d4f8', '#c1b6f6', '#aa98f0', '#937ce3', '#7d63cb'],
+      '자두': ['#ecceea', '#e1acde', '#d38cd1', '#c16dbf', '#aa54a9'],
+      '벚꽃': ['#f6ccd9', '#f1a9c0', '#e786a9', '#d86691', '#c04c7b'],
+      '코코아': ['#e5d5cd', '#d5b9aa', '#c29d89', '#ae836c', '#966b54'],
+    };
+    const ramp = RAMPS[this.props.groupColor ?? '바다'] || RAMPS['바다'];
+    const g = { s1: ramp[0], s2: ramp[1], s3: ramp[2], s4: ramp[3], s5: ramp[4] };
+    const { step, picked, reason, block, blocked, reveal, peek } = this.state;
+
+    const MSGS = [
+      { id: 'd1', who: '도윤', ini: '도', text: '이번 주 출사 장소 투표해요! 성수 vs 서촌', time: '20:10', first: true },
+      { id: 't1', who: '태오', ini: '태', text: '부업으로 하루 30만 원 벌 사람? 링크 눌러서 신청', time: '20:14', first: true, bad: true },
+      { id: 't2', who: '태오', ini: '태', photo: true, time: '20:14', bad: true },
+      { id: 't3', who: '태오', ini: '태', text: '답 없으면 한 명씩 개인톡 보낼게요', time: '20:15', bad: true },
+      { id: 'm1', mine: true, text: '그런 거 올리지 말아 주세요', time: '20:16' },
+    ];
+    const picking = step === 'pick';
+    const toggle = (id) => () => this.setState({ picked: picked.includes(id) ? picked.filter((x) => x !== id) : picked.concat(id) });
+    const msgRow = (m, i) => {
+      const on = picked.includes(m.id);
+      return {
+        isMsg: true, isBlockedRow: false,
+        isOther: !m.mine, isMine: !!m.mine, isText: !m.photo, isPhoto: !!m.photo,
+        who: m.who, ini: m.ini, text: m.text, time: m.time,
+        showName: !!m.first,
+        // Consecutive messages from one sender show the avatar once, on the last bubble.
+        avVis: MSGS[i + 1] && MSGS[i + 1].who === m.who && !m.mine ? 'hidden' : 'visible',
+        maxW: picking ? 212 : 250,
+        picking, checked: on ? 'true' : 'false',
+        checkLabel: (m.mine ? '내 메시지' : m.who + '의 메시지') + ', ' + (m.photo ? '사진' : m.text),
+        boxBg: on ? '#1b1b1f' : '#ffffff', boxRing: on ? 'none' : 'inset 0 0 0 2px #c7c7cc',
+        tap: toggle(m.id),
+        op: 1,
+      };
+    };
+    let rows = MSGS.map(msgRow);
+    if (blocked && !peek) {
+      const keep = MSGS.map((m, i) => (m.bad ? null : rows[i])).filter(Boolean);
+      rows = [keep[0], { isMsg: false, isBlockedRow: true }].concat(keep.slice(1));
+    } else if (blocked && peek) {
+      rows = rows.map((r, i) => (MSGS[i].bad ? Object.assign({}, r, { op: 0.45 }) : r));
+    }
+
+    const order = MSGS.filter((m) => picked.includes(m.id));
+    const REASONS = ['스팸·광고', '욕설·괴롭힘', '음란물', '사칭·사기', '기타'];
+    const reasons = REASONS.map((label) => ({
+      label, checked: reason === label ? 'true' : 'false',
+      ring: reason === label ? '7px solid #1b1b1f' : '2px solid #c7c7cc',
+      choose: () => this.setState({ reason: label }),
+    }));
+    const n = order.length;
+    const go = (s) => () => this.setState({ step: s });
+    return {
+      g, rows,
+      inRoom: step === 'room' || step === 'menu' || step === 'pick' || step === 'block',
+      isRoom: step === 'room', isMenu: step === 'menu', isBlock: step === 'block',
+      isReason: step === 'reason', isDone: step === 'done',
+      picking, notPicking: !picking,
+      showComposer: !picking,
+      afterToast: step === 'room' && blocked && !peek,
+      photoBg: reveal ? 'linear-gradient(160deg, #c9ccd4, #e4e6ea)' : 'linear-gradient(135deg, #7d808b, #a9acb6)',
+      blurred: !reveal,
+      revealOn: () => this.setState({ reveal: true }),
+      peekOn: () => this.setState({ peek: true }),
+      pickText: n + '개 고름',
+      noPick: n === 0,
+      nextBg: n ? '#1b1b1f' : '#ebebef', nextFg: n ? '#ffffff' : '#696973',
+      pickedTitle: '고른 메시지 ' + n + '개',
+      pickedList: order.map((m) => ({ who: m.mine ? '나' : m.who, text: m.photo ? '사진 1장' : m.text })),
+      reasons,
+      blockOn: block ? 'true' : 'false', blockOnBool: block,
+      blockTrack: block ? '#1b1b1f' : '#e1e1e6', blockSide: block ? 'flex-end' : 'flex-start',
+      toggleBlock: () => this.setState({ block: !block }),
+      sealNote: '고른 메시지 ' + n + '개만 이 기기에서 풀어 운영자에게 보내요. 운영자는 이 메시지 말고는 볼 수 없어요.',
+      canSubmit: !!reason && n > 0, cannotSubmit: !reason || n === 0,
+      doneNote: '운영자가 24시간 안에 검토해요. 신고한 사실은 태오님에게 알리지 않아요.',
+      toRoom: go('room'), toMenu: go('menu'), toPick: go('pick'), toReason: go('reason'), toBlock: go('block'),
+      submit: () => this.setState({ step: 'done' }),
+      finish: () => this.setState({ step: 'room', blocked: block, peek: false }),
+      doBlock: () => this.setState({ step: 'room', blocked: true, peek: false }),
+      undoBlock: () => this.setState({ blocked: false, block: false }),
+    };
+  }
+}
+</script>
+</body>
+</html>

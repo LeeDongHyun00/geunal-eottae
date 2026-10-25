@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>날짜 잡기 시트</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+input,textarea{font:inherit;letter-spacing:inherit;color:inherit}
+input::placeholder,textarea::placeholder{color:#696973}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #ffffff; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+
+<div aria-hidden="true" style="position: absolute; inset: 0">
+<div style="position: absolute; top: 64px; left: 20px; font-size: 26px; font-weight: 600; letter-spacing: -0.025em; color: #2958c8">11월 7일 토요일</div>
+<div style="position: absolute; top: 120px; left: 16px; width: 358px; display: flex; flex-direction: column; gap: 6px">
+<span style="height: 40px; border-radius: 6px; background: {{bgBar}}"></span>
+<span style="height: 34px; border-radius: 6px; background: #f2f2f5"></span>
+</div>
+<div style="position: absolute; inset: 0; background: rgba(10,10,14,0.32)"></div>
+</div>
+
+<form aria-label="날짜 잡기" style="position: absolute; left: 0; top: 104px; width: 390px; height: 740px; box-sizing: border-box; margin: 0; padding: 8px 20px 34px; background: #ffffff; border-radius: 20px 20px 0 0; box-shadow: 0 -8px 32px rgba(0,0,0,0.12); display: flex; flex-direction: column; gap: 20px">
+<div aria-hidden="true" style="align-self: center; width: 36px; height: 5px; border-radius: 3px; background: #d1d1d6"></div>
+
+<div style="display: flex; align-items: flex-start; justify-content: space-between; margin-top: -8px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 13px; font-weight: 600; color: {{g.s5}}">날짜 잡기</span>
+<h2 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">11월 7일 토요일</h2>
+<span style="font-size: 14px; color: #5c5c66">주말모임 5명 모두에게 신청해요</span>
+</div>
+<a href="DayTable.dc.html" aria-label="닫기" style="width: 44px; height: 44px; margin-right: -12px; display: flex; align-items: center; justify-content: center; color: #5c5c66"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg></a>
+</div>
+
+<fieldset style="margin: 0; padding: 0; border: none; display: flex; flex-direction: column; gap: 10px">
+<legend style="padding: 0 0 10px; font-size: 13px; font-weight: 600; color: #5c5c66">시간과 활동은 어떻게 정할까요?</legend>
+<label style="display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-radius: 16px; box-shadow: {{voteRing}}; cursor: pointer">
+<input type="radio" name="mode" checked="{{isVote}}" onChange="{{pickVote}}" style="margin: 2px 0 0; width: 20px; height: 20px; accent-color: {{g.s5}}">
+<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 17px; font-weight: 600">투표 <span style="font-size: 13px; font-weight: 600; color: #5c5c66">그룹 기본값</span></span><span style="font-size: 14px; line-height: 1.5; color: #5c5c66">수락한 사람들과 시간·활동을 투표로 골라요. 추천 3개와 ‘아무거나’가 먼저 들어가요.</span></span>
+</label>
+<label style="display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-radius: 16px; box-shadow: {{dictRing}}; cursor: pointer">
+<input type="radio" name="mode" checked="{{isDict}}" onChange="{{pickDict}}" style="margin: 2px 0 0; width: 20px; height: 20px; accent-color: {{g.s5}}">
+<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 17px; font-weight: 600">독재</span><span style="font-size: 14px; line-height: 1.5; color: #5c5c66">내가 시간과 활동을 정해요. 바꾸면 참가자 일정도 함께 바뀌어요.</span></span>
+</label>
+</fieldset>
+
+<sc-if value="{{isDict}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 16px; border-radius: 12px; background: #f4f4f6">
+<span style="font-size: 15px; color: #5c5c66">시간</span>
+<span style="font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums">18:00–22:00</span>
+</div>
+<span style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: #5c5c66"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 8v4.5M12 16h.01"></path></svg>현우는 21:30부터 일정이 있어요</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="height: 40px; padding: 0 14px; border-radius: 999px; border: none; background: {{g.s5}}; color: #ffffff; font-size: 15px; font-weight: 600">보드게임 카페</button>
+<button type="button" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #e1e1e6; background: #ffffff; font-size: 15px; font-weight: 600">방탈출</button>
+<button type="button" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #e1e1e6; background: #ffffff; font-size: 15px; font-weight: 600">식사</button>
+<button type="button" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 1px dashed #b4b4bc; background: #ffffff; font-size: 15px; font-weight: 600; color: #5c5c66">직접 입력</button>
+</div>
+</div>
+</sc-if>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<label for="ds-memo" style="font-size: 13px; font-weight: 600; color: #5c5c66">한마디 (선택)</label>
+<input id="ds-memo" type="text" placeholder="오랜만에 다 같이 보자!" style="height: 48px; box-sizing: border-box; padding: 0 16px; border: none; border-radius: 12px; background: #f4f4f6; font-size: 17px; outline: none">
+</div>
+
+<div style="margin-top: auto; display: flex; flex-direction: column; gap: 14px">
+<p style="margin: 0; font-size: 14px; line-height: 1.55; color: #5c5c66">신청하면 내가 주도자가 되고, 내 캘린더에 가안으로 들어가요. 첫 수락이 오면 확정되고, 11월 7일이 지나면 끝나요.</p>
+<a href="Appointment.dc.html" style="height: 52px; border-radius: 999px; background: {{g.s5}}; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600">신청하기</a>
+</div>
+</form>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"groupColor":{"editor":"enum","options":["토마토","귤","겨자","올리브","숲","민트","하늘","바다","포도","자두","벚꽃","코코아"],"default":"포도"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: 'vote' };
+  }
+  renderVals() {
+    const RAMPS = {
+      '토마토': ['#f9cdc8', '#f5aaa1', '#ed887d', '#de685d', '#c54e45'],
+      '귤': ['#f5d1bc', '#efb08a', '#e5905a', '#d57128', '#ba5a00'],
+      '겨자': ['#ead7b4', '#dcba7b', '#cd9d3d', '#b58400', '#976d00'],
+      '올리브': ['#d3dfbb', '#b5c887', '#98b152', '#7d9911', '#667e00'],
+      '숲': ['#c3e3c8', '#94cf9f', '#64b979', '#32a256', '#00873d'],
+      '민트': ['#b6e5db', '#77d1c2', '#19bdaa', '#00a090', '#008476'],
+      '하늘': ['#b8e0f3', '#7dcaec', '#36b3e2', '#0099c6', '#007ea4'],
+      '바다': ['#c7dafb', '#a0c0fa', '#7ba6f5', '#5a8be9', '#4172d1'],
+      '포도': ['#d9d4f8', '#c1b6f6', '#aa98f0', '#937ce3', '#7d63cb'],
+      '자두': ['#ecceea', '#e1acde', '#d38cd1', '#c16dbf', '#aa54a9'],
+      '벚꽃': ['#f6ccd9', '#f1a9c0', '#e786a9', '#d86691', '#c04c7b'],
+      '코코아': ['#e5d5cd', '#d5b9aa', '#c29d89', '#ae836c', '#966b54'],
+    };
+    const ramp = RAMPS[this.props.groupColor ?? '포도'] || RAMPS['포도'];
+    const g = { s1: ramp[0], s2: ramp[1], s3: ramp[2], s4: ramp[3], s5: ramp[4] };
+    const isVote = this.state.mode === 'vote';
+    const on = 'inset 0 0 0 2px ' + g.s5;
+    const off = 'inset 0 0 0 1px #e1e1e6';
+    return {
+      g,
+      isVote,
+      isDict: !isVote,
+      voteRing: isVote ? on : off,
+      dictRing: isVote ? off : on,
+      pickVote: () => this.setState({ mode: 'vote' }),
+      pickDict: () => this.setState({ mode: 'dict' }),
+      bgBar: 'linear-gradient(to right, ' + g.s5 + ' 0 33%, ' + g.s3 + ' 33% 70%, ' + g.s5 + ' 70% 90%, ' + g.s4 + ' 90% 100%)',
+    };
+  }
+}
+</script>
+</body>
+</html>

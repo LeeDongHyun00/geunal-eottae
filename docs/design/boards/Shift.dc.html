@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>교대 템플릿 찍기</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #ffffff; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+
+<div style="position: absolute; top: 54px; left: 0; width: 390px; height: 44px; box-sizing: border-box; padding: 0 12px 0 8px; display: flex; align-items: center; justify-content: space-between">
+<a href="Me.dc.html" style="height: 44px; padding: 0 12px; display: flex; align-items: center; font-size: 17px; color: #5c5c66">취소</a>
+<h1 style="margin: 0; font-size: 17px; font-weight: 600">교대 찍기</h1>
+<a href="Month.dc.html" style="height: 36px; padding: 0 16px; border-radius: 999px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; font-size: 15px; font-weight: 600">완료</a>
+</div>
+
+<div style="position: absolute; top: 104px; left: 8px; height: 44px; display: flex; align-items: center">
+<button type="button" aria-label="이전 달" style="width: 40px; height: 44px; border: none; background: none; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg></button>
+<h2 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em">11월</h2>
+<button type="button" aria-label="다음 달" style="width: 40px; height: 44px; border: none; background: none; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg></button>
+</div>
+
+<div aria-hidden="true" style="position: absolute; top: 152px; left: 8px; width: 374px; height: 24px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); font-size: 12px; font-weight: 600; text-align: center; line-height: 24px; color: #696973">
+<span style="color: #c92f26">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span style="color: #2958c8">토</span>
+</div>
+
+<div style="position: absolute; top: 178px; left: 8px; width: 374px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: 72px">
+<sc-for list="{{cells}}" as="c" hint-placeholder-count="35">
+<button type="button" aria-label="{{c.label}}" style="min-width: 0; overflow: hidden; border: none; border-top: 1px solid #e1e1e6; border-radius: 0; background: {{c.bg}}; padding: 5px 2px 0; display: flex; flex-direction: column; align-items: stretch; gap: 3px; cursor: pointer">
+<span style="align-self: center; font-size: 13px; font-weight: 600; color: {{c.fg}}; font-variant-numeric: tabular-nums">{{c.d}}</span>
+<sc-if value="{{c.has}}" hint-placeholder-val="{{false}}">
+<span style="display: block; height: 18px; border-radius: 4px; background: {{c.sbg}}; color: {{c.sfg}}; box-shadow: {{c.ring}}; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; letter-spacing: -0.03em; white-space: nowrap; overflow: hidden">{{c.s}}</span>
+</sc-if>
+</button>
+</sc-for>
+</div>
+
+<section aria-label="교대 템플릿" style="position: absolute; left: 0; top: 556px; width: 390px; height: 288px; box-sizing: border-box; padding: 18px 16px 34px; background: #ffffff; border-radius: 24px 24px 0 0; box-shadow: 0 -8px 32px rgba(0,0,0,0.10); display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: baseline; justify-content: space-between; padding: 0 4px">
+<h2 style="margin: 0; font-size: 17px; font-weight: 600">템플릿을 고르고 날짜를 누르세요</h2>
+<span style="font-size: 13px; color: #5c5c66">11월 9번</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button type="button" aria-pressed="true" style="height: 60px; box-sizing: border-box; padding: 0 14px; border: none; border-radius: 16px; background: #ffffff; box-shadow: inset 0 0 0 2px #1b1b1f; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer">
+<span style="flex: none; width: 12px; height: 36px; border-radius: 4px; background: #77d1c2"></span>
+<span style="flex: 1 1 0; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 16px; font-weight: 600">오픈</span><span style="font-size: 13px; color: #5c5c66; font-variant-numeric: tabular-nums">08:00–13:00</span></span>
+<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="flex: none; fill: none; stroke: #1b1b1f; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+</button>
+<button type="button" style="height: 60px; box-sizing: border-box; padding: 0 14px; border: none; border-radius: 16px; background: #ffffff; box-shadow: inset 0 0 0 1px #e1e1e6; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer">
+<span style="flex: none; width: 12px; height: 36px; border-radius: 4px; background: #19bdaa"></span>
+<span style="flex: 1 1 0; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 16px; font-weight: 600">미들</span><span style="font-size: 13px; color: #5c5c66; font-variant-numeric: tabular-nums">12:00–18:00</span></span>
+</button>
+<button type="button" style="height: 60px; box-sizing: border-box; padding: 0 14px; border: none; border-radius: 16px; background: #ffffff; box-shadow: inset 0 0 0 1px #e1e1e6; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer">
+<span style="flex: none; width: 12px; height: 36px; border-radius: 4px; background: #008476"></span>
+<span style="flex: 1 1 0; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 16px; font-weight: 600">마감</span><span style="font-size: 13px; color: #5c5c66; font-variant-numeric: tabular-nums">17:00–22:00</span></span>
+</button>
+<button type="button" style="height: 60px; box-sizing: border-box; padding: 0 14px; border: 1.5px dashed #b4b4bc; border-radius: 16px; background: #ffffff; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 15px; font-weight: 600; color: #5c5c66; cursor: pointer"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M12 5v14M5 12h14"></path></svg>새 템플릿</button>
+</div>
+<p style="margin: 0; padding: 0 4px; font-size: 13px; line-height: 1.5; color: #5c5c66">찍은 근무는 ‘알바’ 캘린더의 일반 일정이 돼요. 같은 날을 한 번 더 누르면 빠져요.</p>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    // November 2026 starts on Sunday. Stamped shifts: open on Saturdays, middle on chosen weekdays, close on Fridays.
+    const T = { open: ['오픈', '#77d1c2', '#1b1b1f'], mid: ['미들', '#19bdaa', '#1b1b1f'], close: ['마감', '#008476', '#ffffff'] };
+    const stamps = { 4: 'mid', 6: 'close', 7: 'open', 11: 'mid', 13: 'close', 14: 'open', 18: 'mid', 20: 'close', 21: 'open', 25: 'mid', 27: 'close', 28: 'open' };
+    const fresh = 25;
+    const cells = [];
+    for (let i = 0; i < 35; i++) {
+      const inNov = i < 30;
+      const d = inNov ? i + 1 : i - 29;
+      const dow = i % 7;
+      const k = inNov ? stamps[d] : null;
+      let fg = inNov ? '#1b1b1f' : '#696973';
+      if (inNov && dow === 0) fg = '#c92f26';
+      else if (inNov && dow === 6) fg = '#2958c8';
+      const t = k ? T[k] : null;
+      cells.push({
+        d: String(d), fg, has: !!t,
+        s: t ? t[0] : '', sbg: t ? t[1] : 'transparent', sfg: t ? t[2] : '#1b1b1f',
+        ring: inNov && d === fresh ? '0 0 0 1.5px #1b1b1f' : 'none',
+        bg: inNov && d === fresh ? '#f4f4f6' : '#ffffff',
+        label: (inNov ? '11월 ' : '12월 ') + d + '일' + (t ? ', ' + t[0] : ''),
+      });
+    }
+    return { cells };
+  }
+}
+</script>
+</body>
+</html>

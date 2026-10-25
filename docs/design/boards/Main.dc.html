@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>그날어때 디자인 기초 원칙</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f}a:hover{color:#5c5c66}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1880px; box-sizing: border-box; padding: 80px; background: #ffffff; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word; display: flex; flex-direction: column; gap: 80px">
+
+<section style="display: flex; gap: 72px; align-items: center">
+<div style="flex: 1 1 0; display: flex; flex-direction: column; gap: 28px">
+<p style="margin: 0; font-size: 15px; font-weight: 600; color: #5c5c66">그날어때 디자인 시스템 v0 · 2026년 10월 25일</p>
+<h1 style="margin: 0; font-size: 76px; font-weight: 600; line-height: 1.06; letter-spacing: -0.03em">일정이 주인공인<br>캘린더</h1>
+<p style="margin: 0; max-width: 620px; font-size: 21px; line-height: 1.6; color: #5c5c66">Apple 디자인의 절제를 기초로 삼았습니다. 화면은 흰 바탕과 먹색 글자로 물러나고, 색은 일정과 그룹, 그리고 그 시간에 비어 있는 사람 수에만 씁니다.</p>
+</div>
+<figure style="margin: 0; width: 540px; box-sizing: border-box; padding: 36px; border: 1px solid #e1e1e6; border-radius: 28px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; justify-content: space-between; align-items: baseline">
+<span style="font-size: 26px; font-weight: 600; letter-spacing: -0.02em">11월 7일 토요일</span>
+<span style="font-size: 15px; color: #5c5c66">주말모임 · 5명</span>
+</div>
+<div style="position: relative; padding: 6px 0">
+<div style="display: flex; gap: 2px">
+<sc-for list="{{hours}}" as="hr" hint-placeholder-count="24">
+<div style="flex: 1 1 0; height: 64px; border-radius: 5px; background: {{hr.c}}"></div>
+</sc-for>
+</div>
+<div aria-hidden="true" style="position: absolute; top: 0; left: 329px; width: 84px; height: 76px; box-sizing: border-box; border: 2px solid #1b1b1f; border-radius: 10px"></div>
+</div>
+<div style="display: flex; justify-content: space-between; font-size: 13px; color: #696973; font-variant-numeric: tabular-nums">
+<span>0시</span><span>6</span><span>12</span><span>18</span><span>24시</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding-top: 4px">
+<span style="font-size: 19px; font-weight: 600">17–21시 · 5명 모두 비어 있어요</span>
+<span style="font-size: 15px; color: #5c5c66">진할수록 그 시간에 비어 있는 사람이 많습니다.</span>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; padding-top: 8px; border-top: 1px solid #e1e1e6">
+<span style="font-size: 13px; color: #5c5c66; padding-top: 12px">비어 있는 사람</span>
+<div style="display: flex; gap: 6px; padding-top: 12px">
+<sc-for list="{{legend}}" as="lg" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 4px">
+<div style="width: 32px; height: 16px; border-radius: 4px; background: {{lg.c}}"></div>
+<span style="font-size: 12px; color: #5c5c66; font-variant-numeric: tabular-nums">{{lg.n}}명</span>
+</div>
+</sc-for>
+</div>
+<span style="font-size: 13px; color: #696973; padding-top: 12px; margin-left: auto">0명은 비워 둡니다</span>
+</div>
+</figure>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 24px">
+<h2 style="margin: 0; font-size: 34px; font-weight: 600; letter-spacing: -0.02em">원칙</h2>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px">
+<article style="background: #f4f4f6; border-radius: 20px; padding: 32px; display: flex; flex-direction: column; gap: 12px">
+<span style="font-size: 15px; font-weight: 600; color: #696973; font-variant-numeric: tabular-nums">01</span>
+<h3 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">일정이 주인공</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #5c5c66">화면은 흰 바탕과 먹색 글자로 물러납니다. 색은 일정·그룹·비어 있는 사람 수에만 쓰고, 꾸밈용 그라데이션은 쓰지 않습니다.</p>
+</article>
+<article style="background: #f4f4f6; border-radius: 20px; padding: 32px; display: flex; flex-direction: column; gap: 12px">
+<span style="font-size: 15px; font-weight: 600; color: #696973; font-variant-numeric: tabular-nums">02</span>
+<h3 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">강조색은 내용마다 하나</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #5c5c66">내 캘린더의 버튼은 먹색, 그룹 안은 그룹 색이 맡습니다. 앱의 자리를 알려 주는 탭 막대만 브랜드 색 포도를 씁니다.</p>
+</article>
+<article style="background: #f4f4f6; border-radius: 20px; padding: 32px; display: flex; flex-direction: column; gap: 12px">
+<span style="font-size: 15px; font-weight: 600; color: #696973; font-variant-numeric: tabular-nums">03</span>
+<h3 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">색은 사람 수</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #5c5c66">그룹 캘린더의 진하기는 그 시간에 비어 있는 사람 수입니다. 0명은 비우고 판정하지 않습니다. 칸을 누르면 숫자와 이름이 나옵니다.</p>
+</article>
+<article style="background: #f4f4f6; border-radius: 20px; padding: 32px; display: flex; flex-direction: column; gap: 12px">
+<span style="font-size: 15px; font-weight: 600; color: #696973; font-variant-numeric: tabular-nums">04</span>
+<h3 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">탭 한 번이면 저장</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #5c5c66">추천 칩을 누르면 바로 저장하고 되돌리기를 띄웁니다. 확인 창으로 묻지 않고, 실수는 되돌리기로 고칩니다.</p>
+</article>
+<article style="background: #f4f4f6; border-radius: 20px; padding: 32px; display: flex; flex-direction: column; gap: 12px">
+<span style="font-size: 15px; font-weight: 600; color: #696973; font-variant-numeric: tabular-nums">05</span>
+<h3 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">떠 있는 것에만 그림자</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #5c5c66">시트, 토스트, 떠 있는 탭 막대만 그림자 하나를 씁니다. 나머지 층은 바탕색 차이로 나눕니다.</p>
+</article>
+<article style="background: #f4f4f6; border-radius: 20px; padding: 32px; display: flex; flex-direction: column; gap: 12px">
+<span style="font-size: 15px; font-weight: 600; color: #696973; font-variant-numeric: tabular-nums">06</span>
+<h3 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">안심은 한 줄로</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #5c5c66">암호화는 필요한 순간에 한 문장으로 알립니다. “이 대화는 멤버의 기기에서만 열려요.” 자물쇠 아이콘을 곳곳에 붙이지 않습니다.</p>
+</article>
+</div>
+</section>
+
+<section style="display: flex; gap: 64px; align-items: flex-start">
+<div style="flex: 1 1 0; display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-size: 34px; font-weight: 600; letter-spacing: -0.02em">Apple 기초에서 가져온 것과 바꾼 것</h2>
+<div role="table" aria-label="Apple 기초와 그날어때 비교" style="display: flex; flex-direction: column">
+<div role="row" style="display: grid; grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; padding: 12px 0; border-bottom: 1px solid #1b1b1f; font-size: 13px; font-weight: 600; color: #5c5c66">
+<span role="columnheader">항목</span><span role="columnheader">Apple 기초</span><span role="columnheader">그날어때</span>
+</div>
+<div role="row" style="display: grid; grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; padding: 14px 0; border-bottom: 1px solid #e1e1e6; font-size: 15px; line-height: 1.5">
+<span role="cell" style="font-weight: 600">강조색</span><span role="cell" style="color: #5c5c66">Action Blue 하나가 모든 버튼과 링크</span><span role="cell">내용은 먹색(내 캘린더)과 그룹 색(그룹 안), 탭 막대는 브랜드 색 포도</span>
+</div>
+<div role="row" style="display: grid; grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; padding: 14px 0; border-bottom: 1px solid #e1e1e6; font-size: 15px; line-height: 1.5">
+<span role="cell" style="font-weight: 600">빨강·파랑</span><span role="cell" style="color: #5c5c66">쓰지 않음</span><span role="cell">일요일·공휴일은 빨강, 토요일은 파랑으로 남겨 둠</span>
+</div>
+<div role="row" style="display: grid; grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; padding: 14px 0; border-bottom: 1px solid #e1e1e6; font-size: 15px; line-height: 1.5">
+<span role="cell" style="font-weight: 600">바탕</span><span role="cell" style="color: #5c5c66">흰색, 파치먼트 #f5f5f7, 어두운 타일</span><span role="cell">흰색 · #f4f4f6, 어두운 모드는 #000000 · #1c1c1f</span>
+</div>
+<div role="row" style="display: grid; grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; padding: 14px 0; border-bottom: 1px solid #e1e1e6; font-size: 15px; line-height: 1.5">
+<span role="cell" style="font-weight: 600">글꼴</span><span role="cell" style="color: #5c5c66">SF Pro Display · Text</span><span role="cell">Pretendard를 iOS·안드로이드 앱에 함께 넣음(400·600 두 굵기)</span>
+</div>
+<div role="row" style="display: grid; grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; padding: 14px 0; border-bottom: 1px solid #e1e1e6; font-size: 15px; line-height: 1.5">
+<span role="cell" style="font-weight: 600">굵기·자간</span><span role="cell" style="color: #5c5c66">300·400·600, 큰 제목만 음수 자간</span><span role="cell">400·600 두 단계. 한글 큰 제목 −2.5%, 본문 −1%</span>
+</div>
+<div role="row" style="display: grid; grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; padding: 14px 0; border-bottom: 1px solid #e1e1e6; font-size: 15px; line-height: 1.5">
+<span role="cell" style="font-weight: 600">버튼</span><span role="cell" style="color: #5c5c66">알약 모양, 누르면 0.95배</span><span role="cell">알약 모양 유지, 누르면 0.97배와 가벼운 햅틱</span>
+</div>
+<div role="row" style="display: grid; grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; padding: 14px 0; border-bottom: 1px solid #e1e1e6; font-size: 15px; line-height: 1.5">
+<span role="cell" style="font-weight: 600">모서리</span><span role="cell" style="color: #5c5c66">5 · 8 · 11 · 18 · 알약</span><span role="cell">4 · 8 · 12 · 20 · 알약</span>
+</div>
+<div role="row" style="display: grid; grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; padding: 14px 0; border-bottom: 1px solid #e1e1e6; font-size: 15px; line-height: 1.5">
+<span role="cell" style="font-weight: 600">그림자·층</span><span role="cell" style="color: #5c5c66">제품 사진 아래 하나, 반투명 블러 내비게이션</span><span role="cell">시트·토스트·떠 있는 내비게이션 아래 하나. iOS는 리퀴드 글라스, 안드로이드는 Material 3</span>
+</div>
+<div role="row" style="display: grid; grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; padding: 14px 0; border-bottom: 1px solid #e1e1e6; font-size: 15px; line-height: 1.5">
+<span role="cell" style="font-weight: 600">간격</span><span role="cell" style="color: #5c5c66">17px 본문 리듬</span><span role="cell">4의 배수: 4 · 8 · 12 · 16 · 20 · 24 · 32 · 48</span>
+</div>
+</div>
+</div>
+
+<div style="width: 500px; display: flex; flex-direction: column; gap: 48px">
+<div style="display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-size: 34px; font-weight: 600; letter-spacing: -0.02em">문구 톤</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #5c5c66">해요체로 짧게, 사람 이름과 숫자로 말합니다.</p>
+<div style="display: flex; flex-direction: column">
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 14px 0; border-top: 1px solid #e1e1e6">
+<span style="font-size: 18px; font-weight: 600">5명 모두 비어 있어요</span>
+<span style="font-size: 14px; color: #696973">대신 쓰지 않는 말: 모든 멤버가 참석 가능합니다</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 14px 0; border-top: 1px solid #e1e1e6">
+<span style="font-size: 18px; font-weight: 600">지영은 이 시간에 일정이 있어요</span>
+<span style="font-size: 14px; color: #696973">대신 쓰지 않는 말: 일정 충돌 1건</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 14px 0; border-top: 1px solid #e1e1e6">
+<span style="font-size: 18px; font-weight: 600">수락 · 다음에</span>
+<span style="font-size: 14px; color: #696973">대신 쓰지 않는 말: 참석 · 거절</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 14px 0; border-top: 1px solid #e1e1e6; border-bottom: 1px solid #e1e1e6">
+<span style="font-size: 18px; font-weight: 600">카페 마감을 추가했어요 · 되돌리기</span>
+<span style="font-size: 14px; color: #696973">대신 쓰지 않는 말: 정말 저장하시겠습니까?</span>
+</div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-size: 34px; font-weight: 600; letter-spacing: -0.02em">아이콘</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #5c5c66">24px 격자, 1.75px 선, 둥근 끝. 떠 있는 탭 막대만 채운 아이콘을 씁니다.</p>
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px 8px; color: #1b1b1f">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"></rect><path d="M3.5 9.5h17M8 3v4M16 3v4"></path></svg><span style="font-size: 12px; color: #5c5c66">캘린더</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><circle cx="9" cy="8.5" r="3.25"></circle><path d="M3.5 19.5c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"></path><circle cx="16.5" cy="9.5" r="2.5"></circle><path d="M15.8 14.6c2.4-.2 4.1 1.4 4.7 4.4"></path></svg><span style="font-size: 12px; color: #5c5c66">그룹</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M5 4.5h14A1.5 1.5 0 0 1 20.5 6v9.5A1.5 1.5 0 0 1 19 17h-8l-4.5 3.5V17H5a1.5 1.5 0 0 1-1.5-1.5V6A1.5 1.5 0 0 1 5 4.5z"></path></svg><span style="font-size: 12px; color: #5c5c66">채팅</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><circle cx="12" cy="8.5" r="3.75"></circle><path d="M4.5 20c.9-3.9 3.8-6 7.5-6s6.6 2.1 7.5 6"></path></svg><span style="font-size: 12px; color: #5c5c66">나</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M12 5v14M5 12h14"></path></svg><span style="font-size: 12px; color: #5c5c66">추가</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg><span style="font-size: 12px; color: #5c5c66">시간</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M16.5 3.5L19.5 6.5 16.5 9.5"></path><path d="M4.5 12v-2a3.5 3.5 0 0 1 3.5-3.5h11.5"></path><path d="M7.5 20.5L4.5 17.5 7.5 14.5"></path><path d="M19.5 12v2a3.5 3.5 0 0 1-3.5 3.5H4.5"></path></svg><span style="font-size: 12px; color: #5c5c66">반복</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"></path><path d="M10 20.5a2 2 0 0 0 4 0"></path></svg><span style="font-size: 12px; color: #5c5c66">알림</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M3.5 7.5h17v2.5h-17zM12 7.5V20"></path><path d="M12 7.5c-1.2-3-5-3.4-5-1.4 0 1.4 2.6 1.4 5 1.4zM12 7.5c1.2-3 5-3.4 5-1.4 0 1.4-2.6 1.4-5 1.4z"></path></svg><span style="font-size: 12px; color: #5c5c66">생일</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg><span style="font-size: 12px; color: #5c5c66">암호화</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg><span style="font-size: 12px; color: #5c5c66">검색</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg><span style="font-size: 12px; color: #5c5c66">설정</span></div>
+</div>
+</div>
+</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1880}}'>
+class Component extends DCLogic {
+  renderVals() {
+    // 포도 ramp, light mode: index 0 is the empty track, 1-5 the free-count steps.
+    const ramp = ['#f2f2f5', '#d9d4f8', '#c1b6f6', '#aa98f0', '#937ce3', '#7d63cb'];
+    const steps = '555555554333334345555444';
+    const hours = steps.split('').map((s, i) => ({ c: ramp[Number(s)], h: i }));
+    const legend = [1, 2, 3, 4, 5].map((n) => ({ n: String(n), c: ramp[n] }));
+    return { hours, legend };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>월 보기</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #ffffff; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+
+<header style="position: absolute; top: 54px; left: 0; width: 390px; height: 64px; box-sizing: border-box; padding: 0 8px 0 20px; display: flex; align-items: center; justify-content: space-between">
+<div style="display: flex; flex-direction: column">
+<span style="font-size: 13px; font-weight: 600; color: #5c5c66">2026년</span>
+<h1 style="margin: 0; font-size: 32px; font-weight: 600; line-height: 1.1; letter-spacing: -0.025em">10월</h1>
+</div>
+<div style="display: flex; align-items: center; gap: 4px">
+<div role="group" aria-label="보기 바꾸기" style="display: flex; padding: 2px; border-radius: 999px; background: #ebebef">
+<a href="Month.dc.html" aria-current="page" style="height: 40px; padding: 0 14px; border-radius: 999px; background: #ffffff; display: flex; align-items: center; font-size: 14px; font-weight: 600; color: #1b1b1f">월</a>
+<a href="Week.dc.html" style="height: 40px; padding: 0 14px; border-radius: 999px; display: flex; align-items: center; font-size: 14px; font-weight: 600; color: #5c5c66">주</a>
+<a href="List.dc.html" style="height: 40px; padding: 0 14px; border-radius: 999px; display: flex; align-items: center; font-size: 14px; font-weight: 600; color: #5c5c66">목록</a>
+</div>
+<a href="Editor.dc.html" aria-label="일정 추가" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #1b1b1f"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M12 5v14M5 12h14"></path></svg></a>
+</div>
+</header>
+
+<div aria-hidden="true" style="position: absolute; top: 122px; left: 8px; width: 374px; height: 24px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); font-size: 12px; font-weight: 600; text-align: center; line-height: 24px; color: #696973">
+<span style="color: #c92f26">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span style="color: #2958c8">토</span>
+</div>
+
+<div style="position: absolute; top: 148px; left: 8px; width: 374px; display: flex; flex-direction: column">
+<sc-for list="{{weeks}}" as="wk" hint-placeholder-count="5">
+<div style="height: 96px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid #e1e1e6">
+<sc-for list="{{wk.days}}" as="c" hint-placeholder-count="7">
+<a href="QuickEntry.dc.html" aria-label="{{c.label}}" style="min-width: 0; overflow: hidden; display: flex; flex-direction: column; gap: 2px; padding: 4px 1px 0">
+<span style="align-self: center; width: 24px; height: 24px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: {{c.fw}}; color: {{c.fg}}; background: {{c.bg}}; font-variant-numeric: tabular-nums">{{c.d}}</span>
+<sc-if value="{{c.hasHoliday}}" hint-placeholder-val="{{false}}">
+<span style="align-self: center; font-size: 10px; font-weight: 600; line-height: 12px; color: #c92f26; white-space: nowrap">{{c.holiday}}</span>
+</sc-if>
+<sc-if value="{{c.hasBday}}" hint-placeholder-val="{{false}}">
+<span style="height: 16px; display: flex; align-items: center; gap: 2px; padding: 0 2px; font-size: 11px; font-weight: 600; letter-spacing: -0.03em; white-space: nowrap; overflow: hidden"><svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" style="flex: none; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M3.5 7.5h17v2.5h-17zM12 7.5V20"></path></svg>{{c.bday}}</span>
+</sc-if>
+<sc-for list="{{c.events}}" as="e" hint-placeholder-count="1">
+<span style="display: block; height: 16px; border-radius: 4px; padding: 0 2px; font-size: 11px; font-weight: 600; line-height: 16px; letter-spacing: -0.03em; white-space: nowrap; overflow: hidden; background: {{e.bg}}; color: {{e.fg}}">{{e.t}}</span>
+</sc-for>
+</a>
+</sc-for>
+</div>
+</sc-for>
+</div>
+
+<section aria-label="다음 할 일" style="position: absolute; left: 16px; top: 696px; width: 358px; height: 56px; box-sizing: border-box; padding: 0 4px; border-radius: 28px; background: rgba(255,255,255,0.66); backdrop-filter: blur(16px) saturate(180%); box-shadow: 0 12px 32px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.05), inset 0 0 0 1px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.9); display: flex; align-items: center; gap: 2px">
+<button type="button" aria-label="이전 할 일" onClick="{{prevNext}}" disabled="{{atStart}}" style="flex: none; width: 44px; height: 44px; border: none; border-radius: 22px; background: transparent; display: flex; align-items: center; justify-content: center; opacity: {{prevOp}}; cursor: pointer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg></button>
+<a href="{{nx.href}}" style="flex: 1 1 0; min-width: 0; height: 48px; display: flex; align-items: center; gap: 10px">
+<span style="flex: none; width: 40px; height: 40px; border-radius: 10px; background: {{nx.bg}}; color: {{nx.fg}}; box-shadow: {{nx.ring}}; display: flex; align-items: center; justify-content: center">
+<sc-if value="{{nx.isGroup}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="9" cy="8" r="3.6" style="fill: currentColor"></circle><path d="M2.5 19.2c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6c0 .7-.5 1.3-1.2 1.3H3.7c-.7 0-1.2-.6-1.2-1.3z" style="fill: currentColor"></path><circle cx="16.8" cy="8.8" r="2.9" style="fill: currentColor"></circle><path d="M16.4 13.3c3 0 5.1 2 5.1 5.1 0 .6-.4 1-1 1h-3.6c.1-.3.1-.6.1-.9 0-2-.8-3.8-2.2-5 .5-.1 1-.2 1.6-.2z" style="fill: currentColor"></path></svg></sc-if>
+<sc-if value="{{nx.isEvent}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"></rect><path d="M3.5 9.5h17M8 3v4M16 3v4"></path></svg></sc-if>
+<sc-if value="{{nx.isBday}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M3.5 7.5h17v2.5h-17zM12 7.5V20"></path><path d="M12 7.5c-1.2-3-5-3.4-5-1.4 0 1.4 2.6 1.4 5 1.4zM12 7.5c1.2-3 5-3.4 5-1.4 0 1.4-2.6 1.4-5 1.4z"></path></svg></sc-if>
+</span>
+<span aria-live="polite" style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{nx.t}}</span>
+<span style="font-size: 13px; color: #5c5c66; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{nx.s}}</span>
+</span>
+</a>
+<button type="button" aria-label="다음 할 일" onClick="{{nextNext}}" disabled="{{atEnd}}" style="flex: none; width: 44px; height: 44px; border: none; border-radius: 22px; background: transparent; display: flex; align-items: center; justify-content: center; opacity: {{nextOp}}; cursor: pointer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg></button>
+</section>
+
+<nav aria-label="탭 막대" style="position: absolute; left: 16px; top: 760px; width: 358px; height: 64px; box-sizing: border-box; padding: 4px; border-radius: 32px; background: rgba(255,255,255,0.66); backdrop-filter: blur(16px) saturate(180%); box-shadow: 0 12px 32px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.05), inset 0 0 0 1px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.9); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr))">
+<a href="Month.dc.html" aria-current="page" style="border-radius: 28px; background: rgba(0,0,0,0.07); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #7152c4; font-size: 11px; font-weight: 600">
+<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="3.5" style="fill: currentColor"></rect><rect x="6" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="10.5" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="15" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="6" y="15.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="10.5" y="15.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><path d="M8 2.75v3.5M16 2.75v3.5" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round"></path></svg>
+<span>캘린더</span>
+</a>
+<a href="Groups.dc.html" aria-label="그룹, 응답할 일 1개" style="position: relative; border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #696973; font-size: 11px; font-weight: 600">
+<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="9" cy="8" r="3.6" style="fill: currentColor"></circle><path d="M2.5 19.2c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6c0 .7-.5 1.3-1.2 1.3H3.7c-.7 0-1.2-.6-1.2-1.3z" style="fill: currentColor"></path><circle cx="16.8" cy="8.8" r="2.9" style="fill: currentColor"></circle><path d="M16.4 13.3c3 0 5.1 2 5.1 5.1 0 .6-.4 1-1 1h-3.6c.1-.3.1-.6.1-.9 0-2-.8-3.8-2.2-5 .5-.1 1-.2 1.6-.2z" style="fill: currentColor"></path></svg>
+<span>그룹</span>
+<span aria-hidden="true" style="position: absolute; top: 4px; left: 50%; margin-left: 6px; min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; border: 2px solid #ffffff; background: #1b1b1f; color: #ffffff; font-size: 10px; font-weight: 600; line-height: 14px; text-align: center">1</span>
+</a>
+<a href="ChatList.dc.html" aria-label="채팅, 읽지 않은 메시지 3개" style="position: relative; border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #696973; font-size: 11px; font-weight: 600">
+<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 3.5c5 0 9 3.3 9 7.6s-4 7.6-9 7.6c-.9 0-1.8-.1-2.6-.3L5 20.5c-.5.2-1-.2-.9-.7l.7-3.2C3.7 15.2 3 13.3 3 11.1 3 6.8 7 3.5 12 3.5z" style="fill: currentColor"></path></svg>
+<span>채팅</span>
+<span aria-hidden="true" style="position: absolute; top: 4px; left: 50%; margin-left: 6px; min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; border: 2px solid #ffffff; background: #1b1b1f; color: #ffffff; font-size: 10px; font-weight: 600; line-height: 14px; text-align: center">3</span>
+</a>
+<a href="Me.dc.html" style="border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #696973; font-size: 11px; font-weight: 600">
+<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="12" cy="8" r="4.2" style="fill: currentColor"></circle><path d="M4 20c0-4.2 3.6-7 8-7s8 2.8 8 7c0 .6-.4 1-1 1H5c-.6 0-1-.4-1-1z" style="fill: currentColor"></path></svg>
+<span>나</span>
+</a>
+</nav>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    // Index into the next-up list; 1 is the first item after now (Sunday 14:20).
+    this.state = { ni: 1 };
+  }
+  renderVals() {
+    // Calendar colors: step 2 tints with ink text; group appointments use step 5 with white text.
+    const tint = { school: '#a0c0fa', cafe: '#77d1c2', personal: '#efb08a', device: '#d5b9aa' };
+    const soft = 'repeating-linear-gradient(135deg, #d3dfbb 0 4px, #e4ecd5 4px 8px)';
+    const ev = (t, kind) => {
+      if (kind === 'soft') return { t, bg: soft, fg: '#1b1b1f' };
+      if (kind === 'weekend') return { t, bg: '#7d63cb', fg: '#ffffff' };
+      if (kind === 'family') return { t, bg: '#c04c7b', fg: '#ffffff' };
+      return { t, bg: tint[kind], fg: '#1b1b1f' };
+    };
+    const E = {
+      '9-28': [ev('전공 수업', 'school')],
+      '9-29': [ev('교양 수업', 'school')],
+      '9-30': [ev('전공 수업', 'school')],
+      '10-1': [ev('교양 수업', 'school')],
+      '10-6': [ev('교양 수업', 'school')],
+      '10-7': [ev('전공 수업', 'school')],
+      '10-8': [ev('교양 수업', 'school')],
+      '10-10': [ev('카페 오픈', 'cafe')],
+      '10-11': [ev('가족 · 외식', 'family')],
+      '10-12': [ev('전공 수업', 'school'), ev('헬스', 'soft')],
+      '10-13': [ev('교양 수업', 'school')],
+      '10-14': [ev('전공 수업', 'school'), ev('헬스', 'soft')],
+      '10-15': [ev('교양 수업', 'school'), ev('팀플 회의', 'device')],
+      '10-16': [ev('카페 마감', 'cafe')],
+      '10-17': [ev('카페 오픈', 'cafe'), ev('주말모임 · 보드게임', 'weekend')],
+      '10-19': [ev('전공 수업', 'school'), ev('헬스', 'soft')],
+      '10-20': [ev('교양 수업', 'school')],
+      '10-21': [ev('전공 시험', 'school')],
+      '10-22': [ev('교양 수업', 'school'), ev('치과', 'personal')],
+      '10-23': [ev('카페 마감', 'cafe')],
+      '10-24': [ev('카페 오픈', 'cafe')],
+      '10-25': [ev('헬스', 'soft'), ev('가족 · 저녁', 'family')],
+      '10-26': [ev('전공 수업', 'school'), ev('헬스', 'soft')],
+      '10-27': [ev('교양 수업', 'school')],
+      '10-28': [ev('전공 수업', 'school'), ev('헬스', 'soft')],
+      '10-29': [ev('교양 수업', 'school'), ev('팀플 회의', 'device')],
+      '10-31': [ev('카페 오픈', 'cafe')],
+    };
+    const holidays = { '10-3': '개천절', '10-5': '대체휴일', '10-9': '한글날' };
+    const bdays = { '10-30': '민수' };
+    const dowName = ['일', '월', '화', '수', '목', '금', '토'];
+    const days = [];
+    for (let i = 0; i < 35; i++) {
+      const inOct = i >= 4;
+      const d = inOct ? i - 3 : 27 + i;
+      const m = inOct ? 10 : 9;
+      const key = m + '-' + d;
+      const dow = i % 7;
+      const holiday = holidays[key] || '';
+      const today = key === '10-25';
+      let fg = '#1b1b1f';
+      if (!inOct) fg = '#696973';
+      else if (holiday || dow === 0) fg = '#c92f26';
+      else if (dow === 6) fg = '#2958c8';
+      const events = E[key] || [];
+      const bday = bdays[key] || '';
+      const parts = [m + '월 ' + d + '일 ' + dowName[dow] + '요일'];
+      if (today) parts.push('오늘');
+      if (holiday) parts.push(holiday);
+      if (bday) parts.push(bday + ' 생일');
+      events.forEach((e) => parts.push(e.t));
+      days.push({
+        d: String(d),
+        fg: today ? '#ffffff' : fg,
+        bg: today ? '#1b1b1f' : 'transparent',
+        fw: inOct ? 600 : 400,
+        holiday,
+        hasHoliday: !!holiday,
+        bday,
+        hasBday: !!bday,
+        events,
+        label: parts.join(', '),
+      });
+    }
+    const weeks = [0, 1, 2, 3, 4].map((w) => ({ days: days.slice(w * 7, w * 7 + 7) }));
+
+    // Next-up bar: the user's own items in time order; arrows step through them.
+    const NEXT = [
+      { t: '헬스', s: '오늘 10:00–11:00 · 끝남', kind: 'event', bg: soft, fg: '#1b1b1f', href: 'Editor.dc.html' },
+      { t: '가족 · 저녁', s: '오늘 18:00–20:00 · 3시간 40분 뒤', kind: 'group', bg: '#c04c7b', fg: '#ffffff', href: 'Editor.dc.html' },
+      { t: '전공 수업', s: '내일(월) 10:00–12:00', kind: 'event', bg: '#a0c0fa', fg: '#1b1b1f', href: 'Editor.dc.html' },
+      { t: '교양 수업', s: '10월 27일(화) 13:00–15:00', kind: 'event', bg: '#a0c0fa', fg: '#1b1b1f', href: 'Editor.dc.html' },
+      { t: '팀플 회의', s: '10월 29일(목) 16:00–17:00 · 기기 캘린더', kind: 'event', bg: '#d5b9aa', fg: '#1b1b1f', href: 'Editor.dc.html' },
+      { t: '민수 생일', s: '10월 30일(금) · 종일', kind: 'bday', bg: '#ffffff', fg: '#1b1b1f', href: 'People.dc.html' },
+      { t: '주말모임 · 날짜 잡기', s: '11월 7일(토) · 가안, 시간 투표 중', kind: 'group', bg: '#7d63cb', fg: '#ffffff', href: 'Appointment.dc.html' },
+    ];
+    const ni = Math.max(0, Math.min(NEXT.length - 1, this.state.ni));
+    const cur = NEXT[ni];
+    const nx = Object.assign({}, cur, {
+      isGroup: cur.kind === 'group', isEvent: cur.kind === 'event', isBday: cur.kind === 'bday',
+      ring: cur.kind === 'bday' ? 'inset 0 0 0 1px #e1e1e6' : 'none',
+    });
+    return {
+      weeks, nx,
+      atStart: ni === 0, atEnd: ni === NEXT.length - 1,
+      prevOp: ni === 0 ? 0.3 : 1, nextOp: ni === NEXT.length - 1 ? 0.3 : 1,
+      prevNext: () => this.setState({ ni: Math.max(0, ni - 1) }),
+      nextNext: () => this.setState({ ni: Math.min(NEXT.length - 1, ni + 1) }),
+    };
+  }
+}
+</script>
+</body>
+</html>
