@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">그날어때</string>
+
+    <!-- The M0 screen: the core opened on this device and what sync returned (docs/parts/android.md §8). -->
+    <string name="core_status_title">코어 상태</string>
+    <string name="core_status_store">저장소</string>
+    <string name="core_status_cipher">SQLCipher</string>
+    <string name="core_status_sync">동기화</string>
+    <string name="core_status_changes">변경 알림</string>
+    <string name="core_status_pending">진행 중</string>
+    <string name="core_status_done">완료</string>
+    <string name="core_status_failed">실패</string>
+    <string name="core_status_unknown">-</string>
+    <string name="core_status_changes_count">%1$d건</string>
+    <string name="core_status_api_base">API %1$s</string>
+    <string name="core_status_api_base_none">API 주소 없음</string>
+</resources>

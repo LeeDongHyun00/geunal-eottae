@@ -5,7 +5,8 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 .PHONY: help setup lint test lint-repo lint-core test-core build-android build-ios lint-api test-api image-api scan-api \
-	lint-gateway test-gateway image-gateway scan-gateway lint-terraform lock-terraform up down e2e
+	lint-gateway test-gateway image-gateway scan-gateway lint-android test-android connected-android up down e2e \
+	audit audit-core lint-terraform lock-terraform
 
 # Providers download once into .tools (gitignored, cached in CI) instead of once per root.
 export TF_PLUGIN_CACHE_DIR ?= $(CURDIR)/.tools/terraform-plugins
@@ -17,9 +18,16 @@ help: ## List the targets
 setup: ## Install the toolchain (safe to rerun)
 	./scripts/dev-setup.sh
 
-lint: lint-repo lint-core lint-api lint-gateway lint-terraform ## Run every linter
+lint: lint-repo lint-core lint-api lint-gateway lint-android lint-terraform ## Run every linter
 
-test: test-core test-api test-gateway ## Run every part's tests
+test: test-core test-api test-gateway test-android ## Run every part's tests
+
+# PR CI runs these gates only for the parts a change touches, so .github/workflows/audit.yml runs them on main weekly:
+# an advisory published against code nobody is editing would otherwise go unnoticed (docs/security/dependencies.md).
+audit: audit-core scan-api scan-gateway ## Dependency vulnerability gates of every part, as the weekly audit runs them
+
+audit-core: ## Rust core: cargo-deny advisories only (lint-core runs the whole policy)
+	"$$(scripts/tool.sh cargo-deny)" --manifest-path core/Cargo.toml --locked check advisories
 
 lint-repo: ## Lint workflows (actionlint) and every tracked shell script (shellcheck)
 	shellcheck="$$(scripts/tool.sh shellcheck)"; \
@@ -78,6 +86,17 @@ scan-gateway: image-gateway ## Gateway: Trivy on the image and mix.lock; fails o
 	trivy="$$(scripts/tool.sh trivy)"; \
 	"$$trivy" image --quiet --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed geunal/gateway:local; \
 	"$$trivy" fs --quiet --scanners vuln --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed server/gateway/mix.lock
+
+# The Android app consumes the core's libraries and generated Kotlin from core/out/android, so its targets build them
+# first (docs/parts/android.md §6: cargo-ndk, then Gradle). The pinned SDK comes from scripts/tool.sh android-sdk.
+lint-android: build-android ## Android: ktlint and Android Lint
+	cd apps/android && ANDROID_HOME="$$(../../scripts/tool.sh android-sdk)" ./gradlew ktlintCheck lint
+
+test-android: build-android ## Android: assemble (debug, R8 release, instrumented tests) and run the unit tests
+	cd apps/android && ANDROID_HOME="$$(../../scripts/tool.sh android-sdk)" ./gradlew assembleDebug assembleRelease assembleDebugAndroidTest testDebugUnitTest
+
+connected-android: build-android ## Android: instrumented tests on the emulator or device adb sees
+	cd apps/android && ANDROID_HOME="$$(../../scripts/tool.sh android-sdk)" ./gradlew connectedDebugAndroidTest
 
 # -lockfile=readonly makes a root without a committed lock file, or one missing this platform, fail here rather than
 # silently pick a provider build CI never saw.
