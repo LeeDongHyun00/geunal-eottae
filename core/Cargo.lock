@@ -718,6 +718,15 @@ name = "geunal-domain"
 version = "0.1.0"
 
 [[package]]
+name = "geunal-e2e"
+version = "0.1.0"
+dependencies = [
+ "geunal-ffi",
+ "pollster",
+ "tempfile",
+]
+
+[[package]]
 name = "geunal-ffi"
 version = "0.1.0"
 dependencies = [

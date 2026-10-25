@@ -84,3 +84,19 @@ updates:
     commit-message:
       prefix: build
       include: scope
+
+  # PostgreSQL and Redis majors are decisions about the servers too, so they move by hand. The api and gateway images
+  # are built locally (make up).
+  - package-ecosystem: docker-compose
+    directory: /infra
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
+      - dependency-name: redis
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "geunal/*"
+    commit-message:
+      prefix: build
+      include: scope

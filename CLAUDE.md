@@ -55,6 +55,9 @@
 | `make test-gateway` | 게이트웨이: Redis에 붙는 테스트. `REDIS_URL`이 없으면 쓰고 버릴 컨테이너를 띄움 |
 | `make image-gateway` | 게이트웨이: 릴리스 이미지 `geunal/gateway:local` |
 | `make scan-gateway` | 게이트웨이: 이미지와 `mix.lock`의 Trivy 검사 |
+| `make up` | 로컬 스택(`infra/docker-compose.yml`): 이미지를 빌드하고 PostgreSQL·Redis·S3·API·게이트웨이를 띄움 |
+| `make down` | 로컬 스택을 멈추고 데이터를 지움 |
+| `make e2e` | 로컬 스택을 띄우고 `core/geunal-e2e`의 헤드리스 종단 시험을 돌림. 스택은 그대로 둠 |
 
 ## 규칙
 

@@ -44,6 +44,24 @@ make lint    # lint workflows and shell scripts
 - `make setup`은 `scripts/dev-setup.sh`를 실행합니다. 우분투(x86_64)에서는 `.tool-versions`에 고정한 Erlang/OTP와 Elixir를 builds.hex.pm에서 받아 체크섬을 확인한 뒤 설치합니다. 다른 시스템에서는 mise나 asdf로 `.tool-versions`를 설치합니다.
 - Claude Code 클라우드 세션은 시작할 때 SessionStart 훅(`.claude/hooks/session-start.sh`)이 `scripts/dev-setup.sh`를 실행하므로 따로 할 일이 없습니다.
 
+## 로컬 실행
+
+`make up`은 API와 게이트웨이 이미지를 지금 코드로 빌드한 뒤, `infra/docker-compose.yml`로 PostgreSQL·Redis·S3(SeaweedFS)·API·게이트웨이를 띄웁니다. 계정과 암호가 고정값이라 포트는 이 기기(127.0.0.1)에만 엽니다.
+
+| 서비스 | 주소 |
+| --- | --- |
+| API | `http://127.0.0.1:8080` (상태: `/actuator/health`) |
+| 게이트웨이 | `http://127.0.0.1:4000` (상태: `/healthz`, 기기 소켓: `/socket/websocket`) |
+| PostgreSQL | `127.0.0.1:5432` (DB와 사용자 `geunal`, 암호 `geunal-local`) |
+| Redis | `127.0.0.1:6379` |
+| S3 | `http://127.0.0.1:8333` |
+
+```sh
+make up     # build the images and start the stack
+make e2e    # headless end-to-end tests in core/geunal-e2e (starts the stack first)
+make down   # stop the stack and drop its data
+```
+
 ## CI와 머지 규칙
 
 - `.github/workflows/ci.yml` 하나가 진입점입니다. 바뀐 경로로 파트를 고르고(`scripts/ci/changed-parts.sh`) 그 파트의 워크플로만 부릅니다. `main`에 푸시되면 모든 파트를 돌립니다.
