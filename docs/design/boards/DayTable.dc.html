@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>날 테이블</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #ffffff; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+
+<div style="position: absolute; top: 54px; left: 0; width: 390px; height: 44px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; justify-content: space-between">
+<a href="GroupCal.dc.html" style="height: 44px; padding-right: 8px; display: flex; align-items: center; gap: 2px; font-size: 17px; color: #1b1b1f"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg>주말모임</a>
+<div style="display: flex">
+<button type="button" aria-label="전날" style="width: 44px; height: 44px; border: none; background: none; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg></button>
+<button type="button" aria-label="다음 날" style="width: 44px; height: 44px; border: none; background: none; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg></button>
+</div>
+</div>
+
+<div style="position: absolute; top: 100px; left: 20px; display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.025em; color: #2958c8">11월 7일 토요일</h1>
+<span style="font-size: 14px; color: #5c5c66">주말모임 5명 · 30분 단위 · 끌어서 시간 고르기</span>
+</div>
+
+<div aria-hidden="true" style="position: absolute; top: 162px; left: 20px; display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: #5c5c66; font-variant-numeric: tabular-nums">
+<span style="margin-right: 4px">비어 있는 사람</span>
+<sc-for list="{{legend}}" as="lg" hint-placeholder-count="5">
+<span style="display: flex; align-items: center; gap: 3px; margin-right: 6px"><span style="width: 14px; height: 14px; border-radius: 3px; background: {{lg.c}}"></span>{{lg.n}}</span>
+</sc-for>
+</div>
+
+<div style="position: absolute; top: 196px; left: 16px; width: 358px; height: 272px">
+<div aria-hidden="true" style="position: absolute; top: 0; left: 64px; width: 294px; height: 16px; font-size: 11px; color: #696973; font-variant-numeric: tabular-nums">
+<sc-for list="{{axis}}" as="ax" hint-placeholder-count="9">
+<span style="position: absolute; top: 0; left: {{ax.x}}px; transform: translateX(-50%)">{{ax.t}}</span>
+</sc-for>
+</div>
+
+<div role="img" aria-label="{{combinedLabel}}" style="position: absolute; top: 22px; left: 0; width: 358px; height: 40px; display: flex; align-items: center">
+<span style="width: 64px; font-size: 13px; font-weight: 600">모두</span>
+<span style="width: 294px; height: 40px; border-radius: 6px; background: {{combinedBg}}"></span>
+</div>
+
+<div style="position: absolute; top: 72px; left: 0; width: 358px; display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{members}}" as="mb" hint-placeholder-count="5">
+<div role="img" aria-label="{{mb.label}}" style="height: 34px; display: flex; align-items: center; opacity: {{mb.op}}">
+<span style="width: 64px; display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; white-space: nowrap"><span style="width: 24px; height: 24px; border-radius: 12px; background: #ebebef; display: flex; align-items: center; justify-content: center; font-size: 11px">{{mb.ini}}</span>{{mb.name}}</span>
+<span style="width: 294px; height: 34px; border-radius: 6px; background: {{mb.bg}}"></span>
+</div>
+</sc-for>
+</div>
+
+<div aria-hidden="true" style="position: absolute; top: 18px; left: {{sel.left}}px; width: {{sel.width}}px; height: 254px; box-sizing: border-box; border: 2px solid #1b1b1f; border-radius: 8px"></div>
+<div aria-hidden="true" style="position: absolute; top: 131px; left: {{sel.h1}}px; width: 8px; height: 28px; border-radius: 4px; background: #1b1b1f; box-shadow: 0 0 0 2px #ffffff"></div>
+<div aria-hidden="true" style="position: absolute; top: 131px; left: {{sel.h2}}px; width: 8px; height: 28px; border-radius: 4px; background: #1b1b1f; box-shadow: 0 0 0 2px #ffffff"></div>
+</div>
+
+<section aria-label="고른 시간" style="position: absolute; top: 488px; left: 16px; width: 358px; box-sizing: border-box; padding: 20px; border-radius: 20px; background: #f4f4f6; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: baseline; gap: 8px">
+<span style="font-size: 24px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums">18:00–22:00</span>
+<span style="font-size: 15px; color: #5c5c66">4시간</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 17px; font-weight: 600">4명 비어 있어요</span>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<span style="height: 30px; padding: 0 12px 0 4px; border-radius: 999px; background: #ffffff; display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600"><span style="width: 22px; height: 22px; border-radius: 11px; background: {{g.s2}}; display: flex; align-items: center; justify-content: center; font-size: 11px">나</span>나</span>
+<span style="height: 30px; padding: 0 12px 0 4px; border-radius: 999px; background: #ffffff; display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600"><span style="width: 22px; height: 22px; border-radius: 11px; background: {{g.s2}}; display: flex; align-items: center; justify-content: center; font-size: 11px">지</span>지영</span>
+<span style="height: 30px; padding: 0 12px 0 4px; border-radius: 999px; background: #ffffff; display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600"><span style="width: 22px; height: 22px; border-radius: 11px; background: {{g.s2}}; display: flex; align-items: center; justify-content: center; font-size: 11px">민</span>민수</span>
+<span style="height: 30px; padding: 0 12px 0 4px; border-radius: 999px; background: #ffffff; display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600"><span style="width: 22px; height: 22px; border-radius: 11px; background: {{g.s2}}; display: flex; align-items: center; justify-content: center; font-size: 11px">서</span>서연</span>
+</div>
+<span style="font-size: 15px; color: #5c5c66">현우는 21:30부터 일정이 있어요</span>
+</div>
+<a href="DateSheet.dc.html" style="height: 52px; border-radius: 999px; background: {{g.s5}}; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600">이 날로 날짜 잡기</a>
+</section>
+
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"groupColor":{"editor":"enum","options":["토마토","귤","겨자","올리브","숲","민트","하늘","바다","포도","자두","벚꽃","코코아"],"default":"포도"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const RAMPS = {
+      '토마토': ['#f9cdc8', '#f5aaa1', '#ed887d', '#de685d', '#c54e45'],
+      '귤': ['#f5d1bc', '#efb08a', '#e5905a', '#d57128', '#ba5a00'],
+      '겨자': ['#ead7b4', '#dcba7b', '#cd9d3d', '#b58400', '#976d00'],
+      '올리브': ['#d3dfbb', '#b5c887', '#98b152', '#7d9911', '#667e00'],
+      '숲': ['#c3e3c8', '#94cf9f', '#64b979', '#32a256', '#00873d'],
+      '민트': ['#b6e5db', '#77d1c2', '#19bdaa', '#00a090', '#008476'],
+      '하늘': ['#b8e0f3', '#7dcaec', '#36b3e2', '#0099c6', '#007ea4'],
+      '바다': ['#c7dafb', '#a0c0fa', '#7ba6f5', '#5a8be9', '#4172d1'],
+      '포도': ['#d9d4f8', '#c1b6f6', '#aa98f0', '#937ce3', '#7d63cb'],
+      '자두': ['#ecceea', '#e1acde', '#d38cd1', '#c16dbf', '#aa54a9'],
+      '벚꽃': ['#f6ccd9', '#f1a9c0', '#e786a9', '#d86691', '#c04c7b'],
+      '코코아': ['#e5d5cd', '#d5b9aa', '#c29d89', '#ae836c', '#966b54'],
+    };
+    const ramp = RAMPS[this.props.groupColor ?? '포도'] || RAMPS['포도'];
+    const track = '#f2f2f5';
+    const palette = [track].concat(ramp);
+    const g = { s1: ramp[0], s2: ramp[1], s3: ramp[2], s4: ramp[3], s5: ramp[4] };
+    const W = 294;
+    // White hairlines every hour; the bar underneath is one hard-stop gradient over 48 half-hour slots.
+    const hourLines = 'repeating-linear-gradient(to right, transparent 0 calc(100% / 24 - 1px), rgba(255,255,255,0.9) calc(100% / 24 - 1px) calc(100% / 24))';
+    const bar = (colors) => {
+      const stops = colors.map((c, i) => c + ' ' + ((i * 100) / 48).toFixed(3) + '% ' + (((i + 1) * 100) / 48).toFixed(3) + '%');
+      return hourLines + ', linear-gradient(to right, ' + stops.join(', ') + ')';
+    };
+    const rows = {
+      '하린': '111111111111111100000000001111111111111111111111',
+      '지영': '111111111111111111111100000011111111111111111111',
+      '민수': '111111111111111111000011111111001111111111111111',
+      '서연': '111111111111111111111111110000000011111111111111',
+      '현우': '111111111111111111111111111111111111111111100000',
+    };
+    const combined = '555555555555555544333333333344334455555555544444';
+    const selFrom = 36;
+    const selTo = 44;
+    const members = Object.keys(rows).map((name) => {
+      const r = rows[name];
+      const freeAll = r.slice(selFrom, selTo).indexOf('0') === -1;
+      const shown = name === '하린' ? '나' : name;
+      return {
+        name: shown,
+        ini: shown.slice(0, 1),
+        bg: bar(r.split('').map((ch) => (ch === '1' ? ramp[2] : track))),
+        op: freeAll ? 1 : 0.4,
+        label: shown + (freeAll ? ', 18시부터 22시까지 내내 비어 있음' : ', 21시 30분부터 일정 있음'),
+      };
+    });
+    const combinedBg = bar(combined.split('').map((ch) => palette[Number(ch)]));
+    const axis = [0, 3, 6, 9, 12, 15, 18, 21, 24].map((h) => ({ t: String(h), x: ((h * W) / 24).toFixed(1) }));
+    const left = 64 + (selFrom * W) / 48;
+    const width = ((selTo - selFrom) * W) / 48;
+    const sel = {
+      left: (left - 3).toFixed(1),
+      width: (width + 6).toFixed(1),
+      h1: (left - 7).toFixed(1),
+      h2: (left + width - 1).toFixed(1),
+    };
+    const legend = ramp.map((c, i) => ({ c, n: String(i + 1) }));
+    return {
+      g, members, combinedBg, axis, sel, legend,
+      combinedLabel: '모두: 0시부터 8시와 17시부터 21시 30분까지 5명 모두 비어 있음',
+    };
+  }
+}
+</script>
+</body>
+</html>

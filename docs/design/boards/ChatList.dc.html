@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>채팅 탭</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+input{font:inherit;letter-spacing:inherit;color:inherit}
+input::placeholder{color:#696973}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #ffffff; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+
+<header style="position: absolute; top: 54px; left: 0; width: 390px; height: 64px; box-sizing: border-box; padding: 0 8px 0 20px; display: flex; align-items: center; justify-content: space-between">
+<h1 style="margin: 0; font-size: 32px; font-weight: 600; letter-spacing: -0.025em">채팅</h1>
+<div style="display: flex; align-items: center">
+<button type="button" aria-label="대화 검색" aria-pressed="{{searchPressed}}" onClick="{{toggleSearch}}" style="width: 44px; height: 44px; border: none; background: none; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg></button>
+<button type="button" aria-label="1:1 시작" onClick="{{openPick}}" style="width: 44px; height: 44px; border: none; background: none; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M12 4.5H7.5a3 3 0 0 0-3 3v9a3 3 0 0 0 3 3h9a3 3 0 0 0 3-3V12"></path><path d="M17.8 4.2a1.9 1.9 0 0 1 2.7 2.7l-7.4 7.4-3.6.9.9-3.6z"></path></svg></button>
+</div>
+</header>
+
+<sc-if value="{{notSearching}}" hint-placeholder-val="{{true}}">
+<div role="group" aria-label="방 종류" style="position: absolute; top: 126px; left: 16px; display: flex; gap: 8px">
+<button type="button" aria-pressed="{{fAll.on}}" onClick="{{setAll}}" style="height: 36px; padding: 0 14px; border: none; border-radius: 999px; background: {{fAll.bg}}; color: {{fAll.fg}}; font-size: 14px; font-weight: 600; cursor: pointer">전체</button>
+<button type="button" aria-pressed="{{fGroup.on}}" onClick="{{setGroup}}" style="height: 36px; padding: 0 14px; border: none; border-radius: 999px; background: {{fGroup.bg}}; color: {{fGroup.fg}}; font-size: 14px; font-weight: 600; cursor: pointer">그룹</button>
+<button type="button" aria-pressed="{{fDm.on}}" onClick="{{setDm}}" style="height: 36px; padding: 0 14px; border: none; border-radius: 999px; background: {{fDm.bg}}; color: {{fDm.fg}}; font-size: 14px; font-weight: 600; cursor: pointer">1:1</button>
+</div>
+</sc-if>
+
+<sc-if value="{{searching}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; top: 122px; left: 16px; width: 358px; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px">
+<label style="flex: 1 1 0; min-width: 0; height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 12px; background: #f4f4f6; display: flex; align-items: center; gap: 8px; color: #696973"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%)">대화 검색</span><input type="search" placeholder="대화 검색" style="flex: 1 1 0; width: 0; min-width: 0; border: none; background: transparent; font-size: 16px; color: #1b1b1f; outline: none"></label>
+<button type="button" onClick="{{toggleSearch}}" style="flex: none; height: 40px; padding: 0 4px; border: none; background: none; font-size: 16px; cursor: pointer">취소</button>
+</div>
+<span style="padding-left: 4px; font-size: 12px; color: #5c5c66">이 기기에 저장된 대화에서만 찾아요. 서버는 내용을 몰라요.</span>
+</div>
+</sc-if>
+
+<div style="position: absolute; top: {{listTop}}px; left: 0; width: 390px; display: flex; flex-direction: column">
+<sc-for list="{{rooms}}" as="r" hint-placeholder-count="7">
+<a href="{{r.href}}" aria-label="{{r.label}}" style="height: 72px; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; gap: 12px">
+<sc-if value="{{r.isGroup}}" hint-placeholder-val="{{true}}">
+<span aria-hidden="true" style="flex: none; width: 52px; height: 52px; border-radius: 16px; background: {{r.c}}; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 600">{{r.ini}}</span>
+</sc-if>
+<sc-if value="{{r.isDm}}" hint-placeholder-val="{{false}}">
+<span aria-hidden="true" style="flex: none; width: 52px; height: 52px; border-radius: 26px; background: {{r.c}}; color: #1b1b1f; display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 600">{{r.ini}}</span>
+</sc-if>
+<span style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+<span style="display: flex; align-items: center; gap: 6px; min-width: 0">
+<span style="font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.name}}</span>
+<span style="flex: none; font-size: 13px; color: #5c5c66">{{r.meta}}</span>
+<sc-if value="{{r.muted}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="flex: none; color: #696973; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M18 16.5H6l1.4-1.9V10.5a4.6 4.6 0 0 1 9.2 0v4.1z"></path><path d="M10.2 19.2a2 2 0 0 0 3.6 0"></path><path d="M4.5 4.5l15 15"></path></svg></sc-if>
+</span>
+<span style="font-size: 14px; color: #3a3a40; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.preview}}</span>
+</span>
+<span style="flex: none; align-self: stretch; box-sizing: border-box; padding: 15px 0; display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between">
+<span style="font-size: 12px; color: #696973; font-variant-numeric: tabular-nums">{{r.time}}</span>
+<sc-if value="{{r.hasUnread}}" hint-placeholder-val="{{false}}"><span aria-hidden="true" style="min-width: 22px; height: 22px; box-sizing: border-box; padding: 0 7px; border-radius: 11px; background: {{r.badgeBg}}; color: {{r.badgeFg}}; font-size: 12px; font-weight: 600; line-height: 22px; text-align: center; font-variant-numeric: tabular-nums">{{r.unread}}</span></sc-if>
+</span>
+</a>
+</sc-for>
+<sc-if value="{{hasFoot}}" hint-placeholder-val="{{false}}">
+<p style="margin: 8px 20px 0; font-size: 13px; line-height: 1.5; color: #5c5c66">{{foot}}</p>
+</sc-if>
+</div>
+
+<section aria-label="다음 할 일" style="position: absolute; left: 16px; top: 696px; width: 358px; height: 56px; box-sizing: border-box; padding: 0 4px; border-radius: 28px; background: rgba(255,255,255,0.66); backdrop-filter: blur(16px) saturate(180%); box-shadow: 0 12px 32px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.05), inset 0 0 0 1px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.9); display: flex; align-items: center; gap: 2px">
+<button type="button" aria-label="이전 할 일" onClick="{{prevNext}}" disabled="{{atStart}}" style="flex: none; width: 44px; height: 44px; border: none; border-radius: 22px; background: transparent; display: flex; align-items: center; justify-content: center; opacity: {{prevOp}}; cursor: pointer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg></button>
+<a href="{{nx.href}}" style="flex: 1 1 0; min-width: 0; height: 48px; display: flex; align-items: center; gap: 10px">
+<span style="flex: none; width: 40px; height: 40px; border-radius: 10px; background: {{nx.bg}}; color: {{nx.fg}}; box-shadow: {{nx.ring}}; display: flex; align-items: center; justify-content: center">
+<sc-if value="{{nx.isGroup}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="9" cy="8" r="3.6" style="fill: currentColor"></circle><path d="M2.5 19.2c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6c0 .7-.5 1.3-1.2 1.3H3.7c-.7 0-1.2-.6-1.2-1.3z" style="fill: currentColor"></path><circle cx="16.8" cy="8.8" r="2.9" style="fill: currentColor"></circle><path d="M16.4 13.3c3 0 5.1 2 5.1 5.1 0 .6-.4 1-1 1h-3.6c.1-.3.1-.6.1-.9 0-2-.8-3.8-2.2-5 .5-.1 1-.2 1.6-.2z" style="fill: currentColor"></path></svg></sc-if>
+<sc-if value="{{nx.isEvent}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"></rect><path d="M3.5 9.5h17M8 3v4M16 3v4"></path></svg></sc-if>
+<sc-if value="{{nx.isBday}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M3.5 7.5h17v2.5h-17zM12 7.5V20"></path><path d="M12 7.5c-1.2-3-5-3.4-5-1.4 0 1.4 2.6 1.4 5 1.4zM12 7.5c1.2-3 5-3.4 5-1.4 0 1.4-2.6 1.4-5 1.4z"></path></svg></sc-if>
+</span>
+<span aria-live="polite" style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{nx.t}}</span>
+<span style="font-size: 13px; color: #5c5c66; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{nx.s}}</span>
+</span>
+</a>
+<button type="button" aria-label="다음 할 일" onClick="{{nextNext}}" disabled="{{atEnd}}" style="flex: none; width: 44px; height: 44px; border: none; border-radius: 22px; background: transparent; display: flex; align-items: center; justify-content: center; opacity: {{nextOp}}; cursor: pointer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg></button>
+</section>
+
+<nav aria-label="탭 막대" style="position: absolute; left: 16px; top: 760px; width: 358px; height: 64px; box-sizing: border-box; padding: 4px; border-radius: 32px; background: rgba(255,255,255,0.66); backdrop-filter: blur(16px) saturate(180%); box-shadow: 0 12px 32px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.05), inset 0 0 0 1px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.9); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr))">
+<a href="Month.dc.html" style="border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #696973; font-size: 11px; font-weight: 600">
+<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="3.5" style="fill: currentColor"></rect><rect x="6" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="10.5" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="15" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="6" y="15.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="10.5" y="15.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><path d="M8 2.75v3.5M16 2.75v3.5" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round"></path></svg>
+<span>캘린더</span>
+</a>
+<a href="Groups.dc.html" aria-label="그룹, 응답할 일 1개" style="position: relative; border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #696973; font-size: 11px; font-weight: 600">
+<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="9" cy="8" r="3.6" style="fill: currentColor"></circle><path d="M2.5 19.2c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6c0 .7-.5 1.3-1.2 1.3H3.7c-.7 0-1.2-.6-1.2-1.3z" style="fill: currentColor"></path><circle cx="16.8" cy="8.8" r="2.9" style="fill: currentColor"></circle><path d="M16.4 13.3c3 0 5.1 2 5.1 5.1 0 .6-.4 1-1 1h-3.6c.1-.3.1-.6.1-.9 0-2-.8-3.8-2.2-5 .5-.1 1-.2 1.6-.2z" style="fill: currentColor"></path></svg>
+<span>그룹</span>
+<span aria-hidden="true" style="position: absolute; top: 4px; left: 50%; margin-left: 6px; min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; border: 2px solid #ffffff; background: #1b1b1f; color: #ffffff; font-size: 10px; font-weight: 600; line-height: 14px; text-align: center">1</span>
+</a>
+<a href="ChatList.dc.html" aria-current="page" aria-label="채팅, 읽지 않은 메시지 3개" style="position: relative; border-radius: 28px; background: rgba(0,0,0,0.07); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #7152c4; font-size: 11px; font-weight: 600">
+<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 3.5c5 0 9 3.3 9 7.6s-4 7.6-9 7.6c-.9 0-1.8-.1-2.6-.3L5 20.5c-.5.2-1-.2-.9-.7l.7-3.2C3.7 15.2 3 13.3 3 11.1 3 6.8 7 3.5 12 3.5z" style="fill: currentColor"></path></svg>
+<span>채팅</span>
+<span aria-hidden="true" style="position: absolute; top: 4px; left: 50%; margin-left: 6px; min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; border: 2px solid #ffffff; background: #1b1b1f; color: #ffffff; font-size: 10px; font-weight: 600; line-height: 14px; text-align: center">3</span>
+</a>
+<a href="Me.dc.html" style="border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #696973; font-size: 11px; font-weight: 600">
+<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="12" cy="8" r="4.2" style="fill: currentColor"></circle><path d="M4 20c0-4.2 3.6-7 8-7s8 2.8 8 7c0 .6-.4 1-1 1H5c-.6 0-1-.4-1-1z" style="fill: currentColor"></path></svg>
+<span>나</span>
+</a>
+</nav>
+
+<sc-if value="{{pick}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; inset: 0">
+<button type="button" aria-label="닫기" onClick="{{closePick}}" style="position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: none; background: rgba(10,10,14,0.32); cursor: pointer"></button>
+<section role="dialog" aria-modal="true" aria-label="1:1 시작" style="position: absolute; left: 0; top: 120px; width: 390px; height: 724px; box-sizing: border-box; padding: 8px 20px 34px; background: #ffffff; border-radius: 20px 20px 0 0; box-shadow: 0 -8px 32px rgba(0,0,0,0.12); display: flex; flex-direction: column; gap: 14px">
+<div aria-hidden="true" style="align-self: center; width: 36px; height: 5px; border-radius: 3px; background: #d1d1d6"></div>
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-top: -6px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em">1:1 시작</h2>
+<span style="font-size: 14px; line-height: 1.45; color: #5c5c66">같은 그룹 멤버와만 시작할 수 있어요. 한 사람과의 방은 하나예요.</span>
+</div>
+<button type="button" aria-label="닫기" onClick="{{closePick}}" style="flex: none; width: 44px; height: 44px; margin: -6px -12px 0 0; border: none; background: none; display: flex; align-items: center; justify-content: center; color: #5c5c66; cursor: pointer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg></button>
+</div>
+<sc-for list="{{pickGroups}}" as="pg" hint-placeholder-count="2">
+<div style="display: flex; flex-direction: column">
+<span style="padding: 4px 0; font-size: 13px; font-weight: 600; color: #5c5c66">{{pg.name}}</span>
+<sc-for list="{{pg.members}}" as="m" hint-placeholder-count="3">
+<a href="Chat.dc.html" style="height: 48px; display: flex; align-items: center; gap: 12px">
+<span aria-hidden="true" style="flex: none; width: 36px; height: 36px; border-radius: 18px; background: {{m.c}}; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600">{{m.ini}}</span>
+<span style="flex: 1 1 0; font-size: 17px">{{m.name}}</span>
+<span style="font-size: 13px; color: #5c5c66">{{m.note}}</span>
+</a>
+</sc-for>
+</div>
+</sc-for>
+<div style="display: flex; flex-direction: column">
+<sc-for list="{{pickMore}}" as="pm" hint-placeholder-count="2">
+<button type="button" style="height: 48px; padding: 0; border: none; background: none; display: flex; align-items: center; gap: 12px; text-align: left; cursor: pointer">
+<span aria-hidden="true" style="flex: none; width: 36px; height: 36px; border-radius: 11px; background: {{pm.c}}; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600">{{pm.ini}}</span>
+<span style="flex: 1 1 0; font-size: 17px">{{pm.name}}</span>
+<span style="font-size: 13px; color: #5c5c66">{{pm.n}}</span>
+<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="flex: none; color: #696973; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg>
+</button>
+</sc-for>
+</div>
+</section>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { ni: 1, filter: 'all', searching: false, pick: false };
+  }
+  renderVals() {
+    // Rooms are sorted by last activity; muted rooms keep a grey count and stay out of the tab badge.
+    const ROOMS = [
+      { kind: 'group', name: '주말모임', meta: '5명', ini: '주', c: '#7d63cb', preview: '나: 좋아, 저녁에 보드게임 하자', time: '14:10', unread: 0, muted: false },
+      { kind: 'dm', name: '지영', meta: '주말모임', ini: '지', c: '#c1b6f6', preview: '내일 수업 끝나고 볼래?', time: '13:52', unread: 2, muted: false },
+      { kind: 'group', name: '가족', meta: '4명', ini: '가', c: '#c04c7b', preview: '엄마: 날짜 잡기 · 11월 15일(일) 저녁', time: '11:30', unread: 1, muted: false },
+      { kind: 'group', name: '카페 알바', meta: '8명', ini: '카', c: '#008476', preview: '사장님: 사진 1장', time: '어제', unread: 5, muted: true },
+      { kind: 'dm', name: '사장님', meta: '카페 알바', ini: '사', c: '#77d1c2', preview: '나: 네, 토요일 대타 가능해요', time: '어제', unread: 0, muted: false },
+      { kind: 'group', name: '사진 동아리', meta: '12명', ini: '사', c: '#4172d1', preview: '도윤: 사진 3장', time: '10월 21일', unread: 0, muted: false },
+      { kind: 'dm', name: '준호', meta: '사진 동아리를 나감', ini: '준', c: '#ebebef', preview: '다음에 또 찍으러 가요', time: '10월 12일', unread: 0, muted: false },
+    ];
+    const { filter, searching, pick } = this.state;
+    const rooms = ROOMS
+      .filter((r) => filter === 'all' || r.kind === filter)
+      .map((r) => Object.assign({}, r, {
+        href: 'Chat.dc.html',
+        isGroup: r.kind === 'group', isDm: r.kind === 'dm',
+        hasUnread: r.unread > 0,
+        badgeBg: r.muted ? '#ebebef' : '#1b1b1f', badgeFg: r.muted ? '#3a3a40' : '#ffffff',
+        label: [r.name, r.kind === 'group' ? '그룹 ' + r.meta : '1:1 ' + r.meta, r.preview, r.time,
+          r.unread ? '읽지 않은 메시지 ' + r.unread + '개' : '', r.muted ? '알림 꺼짐' : ''].filter(Boolean).join(', '),
+      }));
+    const FOOT = {
+      all: '',
+      group: '그룹마다 방이 하나예요. 새 멤버는 들어온 뒤의 대화부터 봐요.',
+      dm: '1:1은 같은 그룹 멤버끼리 시작해요. 그룹을 나가도 대화는 남아요.',
+    };
+    const chip = (on) => ({ on: on ? 'true' : 'false', bg: on ? '#1b1b1f' : '#f4f4f6', fg: on ? '#ffffff' : '#3a3a40' });
+
+    const pickGroups = [
+      { name: '주말모임', members: [
+        { name: '지영', ini: '지', c: '#c1b6f6', note: '대화 중' },
+        { name: '민수', ini: '민', c: '#c1b6f6', note: '' },
+        { name: '서연', ini: '서', c: '#c1b6f6', note: '' },
+        { name: '현우', ini: '현', c: '#c1b6f6', note: '' },
+      ] },
+      { name: '가족', members: [
+        { name: '엄마', ini: '엄', c: '#f1a9c0', note: '' },
+        { name: '아빠', ini: '아', c: '#f1a9c0', note: '' },
+        { name: '하준', ini: '하', c: '#f1a9c0', note: '' },
+      ] },
+    ];
+    const pickMore = [
+      { name: '카페 알바', ini: '카', c: '#008476', n: '7명' },
+      { name: '사진 동아리', ini: '사', c: '#4172d1', n: '11명' },
+    ];
+
+    const soft = 'repeating-linear-gradient(135deg, #d3dfbb 0 4px, #e4ecd5 4px 8px)';
+    const NEXT = [
+      { t: '헬스', s: '오늘 10:00–11:00 · 끝남', kind: 'event', bg: soft, fg: '#1b1b1f', href: 'Editor.dc.html' },
+      { t: '가족 · 저녁', s: '오늘 18:00–20:00 · 3시간 40분 뒤', kind: 'group', bg: '#c04c7b', fg: '#ffffff', href: 'Editor.dc.html' },
+      { t: '전공 수업', s: '내일(월) 10:00–12:00', kind: 'event', bg: '#a0c0fa', fg: '#1b1b1f', href: 'Editor.dc.html' },
+      { t: '교양 수업', s: '10월 27일(화) 13:00–15:00', kind: 'event', bg: '#a0c0fa', fg: '#1b1b1f', href: 'Editor.dc.html' },
+      { t: '민수 생일', s: '10월 30일(금) · 종일', kind: 'bday', bg: '#ffffff', fg: '#1b1b1f', href: 'People.dc.html' },
+      { t: '카페 마감', s: '10월 30일(금) 17:00–22:00', kind: 'event', bg: '#77d1c2', fg: '#1b1b1f', href: 'Editor.dc.html' },
+      { t: '주말모임 · 날짜 잡기', s: '11월 7일(토) · 가안, 시간 투표 중', kind: 'group', bg: '#7d63cb', fg: '#ffffff', href: 'Appointment.dc.html' },
+    ];
+    const ni = Math.max(0, Math.min(NEXT.length - 1, this.state.ni));
+    const cur = NEXT[ni];
+    const nx = Object.assign({}, cur, {
+      isGroup: cur.kind === 'group', isEvent: cur.kind === 'event', isBday: cur.kind === 'bday',
+      ring: cur.kind === 'bday' ? 'inset 0 0 0 1px #e1e1e6' : 'none',
+    });
+    return {
+      rooms, foot: FOOT[filter], hasFoot: !!FOOT[filter],
+      fAll: chip(filter === 'all'), fGroup: chip(filter === 'group'), fDm: chip(filter === 'dm'),
+      setAll: () => this.setState({ filter: 'all' }),
+      setGroup: () => this.setState({ filter: 'group' }),
+      setDm: () => this.setState({ filter: 'dm' }),
+      searching, notSearching: !searching, searchPressed: searching ? 'true' : 'false',
+      listTop: searching ? 194 : 174,
+      toggleSearch: () => this.setState({ searching: !searching }),
+      pick, pickGroups, pickMore,
+      openPick: () => this.setState({ pick: true }),
+      closePick: () => this.setState({ pick: false }),
+      nx,
+      atStart: ni === 0, atEnd: ni === NEXT.length - 1,
+      prevOp: ni === 0 ? 0.3 : 1, nextOp: ni === NEXT.length - 1 ? 0.3 : 1,
+      prevNext: () => this.setState({ ni: Math.max(0, ni - 1) }),
+      nextNext: () => this.setState({ ni: Math.min(NEXT.length - 1, ni + 1) }),
+    };
+  }
+}
+</script>
+</body>
+</html>

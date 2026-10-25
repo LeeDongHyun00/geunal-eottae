@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>시작</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #ffffff; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+
+<div style="position: absolute; top: 70px; left: 24px; font-size: 20px; font-weight: 700; letter-spacing: -0.03em">그날어때</div>
+
+<div aria-hidden="true" style="position: absolute; top: 132px; left: 24px; width: 342px; box-sizing: border-box; padding: 20px; border-radius: 24px; background: #f4f4f6; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: baseline; justify-content: space-between"><span style="font-size: 17px; font-weight: 600; color: #2958c8">11월 7일 토요일</span><span style="font-size: 13px; color: #5c5c66; font-variant-numeric: tabular-nums">0시 — 24시</span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600"><span style="width: 8px; height: 8px; border-radius: 4px; background: {{r.dot}}"></span>{{r.name}}</span>
+<span style="height: 22px; border-radius: 6px; background: {{r.strip}}"></span>
+</div>
+</sc-for>
+</div>
+
+<div style="position: absolute; top: 470px; left: 24px; width: 342px; display: flex; flex-direction: column; gap: 14px">
+<h1 style="margin: 0; font-size: 36px; font-weight: 600; line-height: 1.15; letter-spacing: -0.035em">일정은 쉽게,<br>약속은 빠르게</h1>
+<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #5c5c66">멤버들의 일정을 합쳐 비어 있는 시간을 보여 주고, 날짜를 잡으면 수락한 사람의 캘린더에 바로 들어가요.</p>
+<span style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: #5c5c66"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg>일정과 대화는 멤버의 기기에서만 열려요</span>
+</div>
+
+<div style="position: absolute; left: 24px; bottom: 34px; width: 342px; display: flex; flex-direction: column; gap: 4px">
+<a href="SignIn.dc.html" style="height: 56px; border-radius: 999px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600">시작하기</a>
+<a href="Join.dc.html" style="height: 48px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; color: #5c5c66">초대 코드가 있어요</a>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const ticks = 'repeating-linear-gradient(to right, transparent 0 calc(25% - 1px), rgba(244,244,246,1) calc(25% - 1px) 25%)';
+    const strip = (ramp, s) => {
+      const p = ['#ffffff'].concat(ramp);
+      const stops = s.split('').map((ch, i) => p[Number(ch)] + ' ' + ((i * 100) / 24).toFixed(3) + '% ' + (((i + 1) * 100) / 24).toFixed(3) + '%');
+      return ticks + ', linear-gradient(to right, ' + stops.join(', ') + ')';
+    };
+    const rows = [
+      { name: '주말모임', dot: '#7d63cb', strip: strip(['#d9d4f8', '#c1b6f6', '#aa98f0', '#937ce3', '#7d63cb'], '555555554333334345555444') },
+      { name: '가족', dot: '#c04c7b', strip: strip(['#f6ccd9', '#f1a9c0', '#e786a9', '#d86691', '#c04c7b'], '555555555544332233444555') },
+      { name: '카페 알바', dot: '#008476', strip: strip(['#b6e5db', '#77d1c2', '#19bdaa', '#00a090', '#008476'], '555555432112223321123455') },
+    ];
+    return { rows };
+  }
+}
+</script>
+</body>
+</html>

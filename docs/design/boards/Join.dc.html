@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>초대 받은 사람</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #ffffff; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+
+<div style="position: absolute; top: 54px; right: 8px; height: 44px; display: flex; align-items: center">
+<a href="Groups.dc.html" aria-label="닫기" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #5c5c66"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg></a>
+</div>
+
+<div style="position: absolute; top: 108px; left: 24px; width: 342px; display: flex; flex-direction: column; gap: 10px">
+<span style="width: 64px; height: 64px; border-radius: 18px; background: {{g.s5}}; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 600">주</span>
+<span style="margin-top: 6px; font-size: 15px; color: #5c5c66">하린님이 초대했어요</span>
+<h1 style="margin: 0; font-size: 32px; font-weight: 600; letter-spacing: -0.03em">주말모임</h1>
+<span style="font-size: 15px; color: #5c5c66">멤버 5명 · 하린, 지영, 민수, 서연, 현우</span>
+</div>
+
+<section aria-label="참여하면 보이는 것" style="position: absolute; top: 318px; left: 16px; width: 358px; display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0 0 0 8px; font-size: 13px; font-weight: 600; color: #5c5c66">참여하면 이 그룹에 보이는 것</h2>
+<div style="border-radius: 16px; background: #f4f4f6; display: flex; flex-direction: column">
+<div style="padding: 14px 16px; display: flex; gap: 12px; border-bottom: 1px solid #e6e6ea">
+<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="flex: none; fill: none; stroke: #1b1b1f; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg>
+<span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 16px; font-weight: 600">30분 단위로 비어 있는지만</span><span style="font-size: 14px; line-height: 1.45; color: #5c5c66">일정 제목·장소·첨부는 보이지 않아요. 내용은 멤버 기기에서만 열려요.</span></span>
+</div>
+<div style="min-height: 52px; padding: 0 16px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #e6e6ea"><span style="flex: 1 1 0; font-size: 16px">공유 기간</span><span style="font-size: 16px; color: #5c5c66">오늘부터 8주</span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="fill: none; stroke: #696973; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg></div>
+<div style="padding: 12px 16px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #e6e6ea"><span style="flex: 1 1 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 16px">포함할 캘린더</span><span style="font-size: 13px; color: #5c5c66">학교 · 알바 · 개인 (운동은 소프트 캘린더라 비어 있음으로)</span></span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="flex: none; fill: none; stroke: #696973; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg></div>
+<div style="padding: 12px 16px; display: flex; align-items: center; gap: 12px"><span style="flex: 1 1 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 16px">생일 공개</span><span style="font-size: 13px; color: #5c5c66">켜면 이 그룹 멤버에게만 생일이 보여요</span></span>
+<button type="button" role="switch" aria-checked="{{bday}}" aria-label="생일 공개" onClick="{{toggleBday}}" style="flex: none; width: 51px; height: 31px; padding: 2px; border: none; border-radius: 16px; background: {{trackBg}}; display: flex; justify-content: {{knob}}; cursor: pointer"><span style="width: 27px; height: 27px; border-radius: 14px; background: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.18)"></span></button>
+</div>
+</div>
+</section>
+
+<div style="position: absolute; left: 16px; bottom: 34px; width: 358px; display: flex; flex-direction: column; gap: 4px">
+<a href="GroupCal.dc.html" style="height: 56px; border-radius: 999px; background: {{g.s5}}; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600">주말모임 참여하기</a>
+<button type="button" style="height: 48px; border: none; background: none; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 15px; font-weight: 600; color: #5c5c66; cursor: pointer"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round"><rect x="6" y="4.5" width="12" height="16" rx="2"></rect><path d="M9 4.5V3.5h6v1"></path></svg>다른 초대 코드 붙여넣기</button>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"groupColor":{"editor":"enum","options":["토마토","귤","겨자","올리브","숲","민트","하늘","바다","포도","자두","벚꽃","코코아"],"default":"포도"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { bday: false };
+  }
+  renderVals() {
+    const RAMPS = {
+      '토마토': ['#f9cdc8', '#f5aaa1', '#ed887d', '#de685d', '#c54e45'],
+      '귤': ['#f5d1bc', '#efb08a', '#e5905a', '#d57128', '#ba5a00'],
+      '겨자': ['#ead7b4', '#dcba7b', '#cd9d3d', '#b58400', '#976d00'],
+      '올리브': ['#d3dfbb', '#b5c887', '#98b152', '#7d9911', '#667e00'],
+      '숲': ['#c3e3c8', '#94cf9f', '#64b979', '#32a256', '#00873d'],
+      '민트': ['#b6e5db', '#77d1c2', '#19bdaa', '#00a090', '#008476'],
+      '하늘': ['#b8e0f3', '#7dcaec', '#36b3e2', '#0099c6', '#007ea4'],
+      '바다': ['#c7dafb', '#a0c0fa', '#7ba6f5', '#5a8be9', '#4172d1'],
+      '포도': ['#d9d4f8', '#c1b6f6', '#aa98f0', '#937ce3', '#7d63cb'],
+      '자두': ['#ecceea', '#e1acde', '#d38cd1', '#c16dbf', '#aa54a9'],
+      '벚꽃': ['#f6ccd9', '#f1a9c0', '#e786a9', '#d86691', '#c04c7b'],
+      '코코아': ['#e5d5cd', '#d5b9aa', '#c29d89', '#ae836c', '#966b54'],
+    };
+    const ramp = RAMPS[this.props.groupColor ?? '포도'] || RAMPS['포도'];
+    const g = { s1: ramp[0], s2: ramp[1], s3: ramp[2], s4: ramp[3], s5: ramp[4] };
+    const bday = this.state.bday;
+    return {
+      g, bday,
+      trackBg: bday ? g.s5 : '#e1e1e6',
+      knob: bday ? 'flex-end' : 'flex-start',
+      toggleBday: () => this.setState({ bday: !bday }),
+    };
+  }
+}
+</script>
+</body>
+</html>

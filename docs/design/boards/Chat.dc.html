@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>그룹 채팅</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+input{font:inherit;letter-spacing:inherit;color:inherit}
+input::placeholder{color:#696973}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #ffffff; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+
+<div style="position: absolute; top: 54px; left: 0; width: 390px; height: 44px; box-sizing: border-box; padding: 0 4px 0 8px; display: flex; align-items: center; justify-content: space-between">
+<a href="Groups.dc.html" style="height: 44px; padding-right: 8px; display: flex; align-items: center; gap: 2px; font-size: 17px"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg>그룹</a>
+<span style="display: flex; flex-direction: column; align-items: center"><span style="font-size: 17px; font-weight: 600">주말모임</span><span style="font-size: 12px; color: #5c5c66">5명</span></span>
+<button type="button" aria-label="대화 검색" style="width: 44px; height: 44px; border: none; background: none; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg></button>
+</div>
+
+<nav aria-label="그룹 화면" style="position: absolute; top: 98px; left: 0; width: 390px; height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; gap: 4px; border-bottom: 1px solid #e1e1e6">
+<a href="GroupCal.dc.html" style="height: 43px; padding: 0 12px; display: flex; align-items: center; font-size: 15px; font-weight: 600; color: #696973">캘린더</a>
+<a href="Chat.dc.html" aria-current="page" style="height: 43px; padding: 0 12px; display: flex; align-items: center; font-size: 15px; font-weight: 600; color: #1b1b1f; box-shadow: inset 0 -2px 0 {{g.s5}}">채팅</a>
+<a href="Gallery.dc.html" style="height: 43px; padding: 0 12px; display: flex; align-items: center; font-size: 15px; font-weight: 600; color: #696973">사진</a>
+</nav>
+
+<div style="position: absolute; top: 150px; left: 0; width: 390px; height: 596px; box-sizing: border-box; padding: 0 12px; overflow: hidden; display: flex; flex-direction: column; gap: 10px">
+<span style="align-self: center; height: 28px; padding: 0 12px; border-radius: 999px; background: #f4f4f6; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #5c5c66"><svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg>이 방의 대화는 멤버의 기기에서만 열려요</span>
+
+<div style="display: flex; gap: 8px; align-items: flex-end">
+<span style="flex: none; width: 30px; height: 30px; border-radius: 15px; background: {{g.s2}}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600">지</span>
+<span style="display: flex; flex-direction: column; gap: 3px"><span style="font-size: 12px; color: #5c5c66">지영</span><span style="max-width: 250px; padding: 9px 13px; border-radius: 18px 18px 18px 6px; background: #f4f4f6; font-size: 16px; line-height: 1.4">다음 주 토요일 다들 시간 어때?</span></span>
+<span style="font-size: 11px; color: #696973; font-variant-numeric: tabular-nums">14:02</span>
+</div>
+
+<article aria-label="날짜 잡기 카드" style="align-self: stretch; margin: 2px 0; padding: 14px; border-radius: 20px; box-shadow: inset 0 0 0 1px #e1e1e6; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; gap: 10px">
+<span style="flex: none; width: 40px; height: 40px; border-radius: 12px; background: {{g.s5}}; color: #ffffff; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"></rect><path d="M3.5 9.5h17M8 3v4M16 3v4"></path></svg></span>
+<span style="flex: 1 1 0; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 12px; color: #5c5c66">하린님이 날짜를 잡았어요 · 투표</span><span style="font-size: 17px; font-weight: 600">11월 7일 토요일</span></span>
+<span style="height: 24px; padding: 0 8px; border-radius: 999px; background: {{g.s1}}; display: flex; align-items: center; font-size: 12px; font-weight: 600">확정</span>
+</div>
+<span aria-hidden="true" style="height: 10px; border-radius: 3px; background: {{dayStrip}}"></span>
+<div style="display: flex; justify-content: space-between; font-size: 14px">
+<span style="color: #3a3a40">수락 3 · 다음에 1</span>
+<span style="color: #3a3a40; font-variant-numeric: tabular-nums">시간 투표 3/4 · 19–21시 2표</span>
+</div>
+<div style="display: flex; gap: 8px">
+<a href="Appointment.dc.html" style="flex: 1 1 0; height: 44px; border-radius: 999px; background: #ebebef; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600">자세히</a>
+<a href="Vote.dc.html" style="flex: 1.4 1 0; height: 44px; border-radius: 999px; background: {{g.s5}}; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600">투표하기</a>
+</div>
+</article>
+
+<div style="display: flex; gap: 8px; align-items: flex-end">
+<span style="flex: none; width: 30px; height: 30px; border-radius: 15px; background: {{g.s2}}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600">서</span>
+<span style="display: flex; flex-direction: column; gap: 3px"><span style="font-size: 12px; color: #5c5c66">서연</span><span style="max-width: 250px; padding: 9px 13px; border-radius: 18px 18px 18px 6px; background: #f4f4f6; display: flex; flex-direction: column; gap: 6px"><span style="padding: 5px 8px; border-radius: 10px; background: #e8e8ec; font-size: 13px; color: #5c5c66">지영 · 다음 주 토요일 다들 시간 어때?</span><span style="font-size: 16px; line-height: 1.4">스터디 끝나고 5시부터 돼!</span></span></span>
+<span style="font-size: 11px; color: #696973; font-variant-numeric: tabular-nums">14:06</span>
+</div>
+
+<div style="display: flex; gap: 8px; align-items: flex-end">
+<span style="flex: none; width: 30px; height: 30px; border-radius: 15px; background: {{g.s2}}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600">민</span>
+<span style="display: flex; flex-direction: column; gap: 3px"><span style="font-size: 12px; color: #5c5c66">민수</span><span role="img" aria-label="사진, 보드게임 카페 사진" style="width: 196px; height: 132px; border-radius: 18px 18px 18px 6px; background: #ebebef; display: flex; align-items: center; justify-content: center; color: #696973"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round"><rect x="3.5" y="5" width="17" height="14" rx="2.5"></rect><circle cx="9" cy="10" r="1.75"></circle><path d="M4 17l4.5-4.5 3.5 3.5 3-3 5 5"></path></svg></span></span>
+<span style="font-size: 11px; color: #696973; font-variant-numeric: tabular-nums">14:08</span>
+</div>
+
+<div style="display: flex; gap: 8px; align-items: flex-end; justify-content: flex-end">
+<span style="font-size: 11px; color: #696973; font-variant-numeric: tabular-nums">14:10</span>
+<span style="max-width: 250px; padding: 9px 13px; border-radius: 18px 18px 6px 18px; background: {{g.s5}}; color: #ffffff; font-size: 16px; line-height: 1.4">좋아, 저녁에 보드게임 하자</span>
+</div>
+</div>
+
+<div style="position: absolute; left: 0; bottom: 0; width: 390px; box-sizing: border-box; padding: 8px 12px 34px; background: rgba(255,255,255,0.92); backdrop-filter: blur(16px); border-top: 1px solid #e1e1e6; display: flex; align-items: center; gap: 8px">
+<a href="Attach.dc.html" aria-label="사진, 파일, 날짜 잡기 보내기" style="flex: none; width: 44px; height: 44px; border-radius: 22px; background: #ebebef; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M12 5v14M5 12h14"></path></svg></a>
+<label style="flex: 1 1 0; min-width: 0; height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 22px; background: #f4f4f6; display: flex; align-items: center"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%)">메시지</span><input type="text" placeholder="메시지" style="flex: 1 1 0; width: 0; min-width: 0; border: none; background: transparent; font-size: 17px; outline: none"></label>
+<button type="button" aria-label="보내기" style="flex: none; width: 44px; height: 44px; border: none; border-radius: 22px; background: {{g.s5}}; color: #ffffff; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M12 19V5M6 11l6-6 6 6"></path></svg></button>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"groupColor":{"editor":"enum","options":["토마토","귤","겨자","올리브","숲","민트","하늘","바다","포도","자두","벚꽃","코코아"],"default":"포도"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const RAMPS = {
+      '토마토': ['#f9cdc8', '#f5aaa1', '#ed887d', '#de685d', '#c54e45'],
+      '귤': ['#f5d1bc', '#efb08a', '#e5905a', '#d57128', '#ba5a00'],
+      '겨자': ['#ead7b4', '#dcba7b', '#cd9d3d', '#b58400', '#976d00'],
+      '올리브': ['#d3dfbb', '#b5c887', '#98b152', '#7d9911', '#667e00'],
+      '숲': ['#c3e3c8', '#94cf9f', '#64b979', '#32a256', '#00873d'],
+      '민트': ['#b6e5db', '#77d1c2', '#19bdaa', '#00a090', '#008476'],
+      '하늘': ['#b8e0f3', '#7dcaec', '#36b3e2', '#0099c6', '#007ea4'],
+      '바다': ['#c7dafb', '#a0c0fa', '#7ba6f5', '#5a8be9', '#4172d1'],
+      '포도': ['#d9d4f8', '#c1b6f6', '#aa98f0', '#937ce3', '#7d63cb'],
+      '자두': ['#ecceea', '#e1acde', '#d38cd1', '#c16dbf', '#aa54a9'],
+      '벚꽃': ['#f6ccd9', '#f1a9c0', '#e786a9', '#d86691', '#c04c7b'],
+      '코코아': ['#e5d5cd', '#d5b9aa', '#c29d89', '#ae836c', '#966b54'],
+    };
+    const ramp = RAMPS[this.props.groupColor ?? '포도'] || RAMPS['포도'];
+    const g = { s1: ramp[0], s2: ramp[1], s3: ramp[2], s4: ramp[3], s5: ramp[4] };
+    const p = ['#f2f2f5'].concat(ramp);
+    const s = '555555554333334345555444';
+    const dayStrip = 'linear-gradient(to right, ' + s.split('').map((ch, i) => p[Number(ch)] + ' ' + ((i * 100) / 24).toFixed(3) + '% ' + (((i + 1) * 100) / 24).toFixed(3) + '%').join(', ') + ')';
+    return { g, dayStrip };
+  }
+}
+</script>
+</body>
+</html>
