@@ -64,7 +64,7 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 - **그룹:** 생성, 초대 코드, 그룹 설정(공통·나만), 그룹 프로필, 커버, 알림 종류별 끄기
 - **약속:** 주도자 이전, 투표, 선택지 추가, 취소, 약속 첨부
 - **채팅:** 미디어 보내기·받기, 검색, 신고, 차단
-- **계정:** 로그인, 복구 코드, 백업, 탈퇴
+- **계정:** 로그인, 복구 코드, 백업, 탈퇴, 구독 상태(서버가 확인한 혜택만 켬)
 
 **비밀 보관 콜백:** 앱이 `SecretStore` 콜백(`get(name)`, `put(name, value)`, `delete(name)`)을 구현합니다. 코어는 기기 서명 개인키, AMK, 데이터베이스 키를 이 콜백으로만 읽고 씁니다. 비밀은 SQLite에 저장하지 않습니다.
 
@@ -238,7 +238,7 @@ CREATE TABLE event_attachments (
   key         BLOB NOT NULL CHECK (length(key) = 32),
   name        TEXT NOT NULL,
   mime        TEXT NOT NULL,
-  size        INTEGER NOT NULL CHECK (size <= 104857600),
+  size        INTEGER NOT NULL CHECK (size <= 10485760),  -- 10 MB, TimeTree's limit; at most 3 per event, enforced in code
   sha256      BLOB NOT NULL,
   path        TEXT                           -- decrypted copy; NULL until downloaded again after a restore
 );
@@ -254,7 +254,7 @@ CREATE TABLE event_attachments (
   - 포그라운드로 돌아올 때와 푸시를 받았을 때는 모든 그룹을 커서부터 따라잡습니다.
 - **epoch가 바뀐 뒤:**
   1. 새 상태 키를 유도해 `state_keys`에 저장합니다.
-  2. 내 가용 시간과 멤버 프로필을 다시 봉인해 올립니다. 방장이면 그룹 메타도 올립니다.
+  2. 내 가용 시간과 멤버 프로필을 다시 봉인해 올립니다. epoch를 바꾼 커밋을 내가 했으면 그룹 메타도 다시 봉인합니다(`changed_by`는 그대로).
   3. 내가 멤버를 추가한 커밋이었다면 새 멤버용 번들을 올립니다.
   4. 30일이 지났거나 그룹당 50개를 넘는 상태 키는 지웁니다.
 - **가용 시간 올리기:** 캘린더가 바뀌면 2분 디바운스 뒤, 그리고 공유 설정이 바뀌거나 epoch가 바뀌면 그룹마다 비트맵을 다시 만들어 올립니다.
@@ -468,7 +468,8 @@ MLS와 동기화
 - `never decrypts the same application message twice across the app and the extension`
 
 그룹 설정
-- `reads group_meta only from the current owner`
+- `re-applies only my changed fields after a state_conflict on group_meta`
+- `keeps changed_by when re-sealing group_meta after an epoch change`
 - `keeps a member's group nickname and avatar inside that group only`
 
 채팅과 첨부
@@ -476,6 +477,8 @@ MLS와 동기화
 - `rejects media whose ciphertext hash does not match the entry`
 - `hides group messages from a blocked member on this device only`
 - `ignores a media_remove written by someone other than the uploader`
+- `keeps only the first three live attachments of an appointment in log order`
+- `refuses files over 10 MB and types outside the nine allowed formats before upload`
 - `restores a personal event attachment from the keys in the backup`
 
 ## 10. 완료 조건

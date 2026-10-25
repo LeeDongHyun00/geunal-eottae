@@ -103,6 +103,7 @@ pub fn decode(bytes: &[u8]) -> Result<Entry, ciborium::de::Error<std::io::Error>
 - **작성자:** MLS가 확인한 발신자 leaf의 자격 증명에서 `user_id`를 읽습니다. 엔트리 안에는 넣지 않으므로 위조할 수 없습니다.
 - **주도자 전용:** `RequestUpdate`, `LeadTransfer`, `Poll`, `PollClose`, `Cancel`은 현재 주도자가 쓴 것만 유효합니다. 상태 함수가 검사하고, 아니면 무시합니다.
 - **첨부 빼기:** `MediaRemove`는 그 `Media`를 쓴 사람이 쓴 것만, 그리고 `appt`가 있는 첨부에만 유효합니다. 채팅 메시지 삭제는 아직 없습니다.
+- **약속 첨부 개수:** 약속마다 빠지지 않은 첨부 중 로그 순서로 앞의 3개만 유효합니다. 기기도 3개가 차 있으면 올리지 않습니다.
 - **그룹 설정은 신청에 담습니다:** 상태 블롭은 로그 밖에 있어서 기기마다 받은 시점이 다를 수 있습니다. 그래서 상태 함수는 `group_meta`를 읽지 않습니다. 선택지 추가 권한은 신청할 때 `Request.leader_options`로 복사하고, 참이면 `PollOption`은 주도자가 쓴 것만 유효합니다. 기본 결정 방식과 시간 추천 범위는 신청하는 기기의 화면 기본값일 뿐이고, 결과는 `Request.mode`와 `Poll.options`에 이미 들어 있습니다.
 - **시각:** 모든 시각 판정(투표 마감, 약속 날 00:00)은 서버가 엔트리를 받은 시각(`received_at`)으로 합니다. 기기 시계는 화면 표시에만 씁니다.
 - **모르는 종류:** 새 버전의 엔트리는 원문 그대로 저장하고 "업데이트가 필요한 메시지"로 보여 줍니다.
@@ -119,9 +120,13 @@ pub fn decode(bytes: &[u8]) -> Result<Entry, ciborium::de::Error<std::io::Error>
 | 종류(`kind`) | 주인 | 평문(CBOR) | 언제 씀 |
 | --- | --- | --- | --- |
 | `availability` | 멤버 | `{window_start, days, bits}`: 30분마다 1비트, 1은 일정 없음, MSB부터 | 캘린더가 바뀔 때, epoch가 바뀔 때 |
-| `group_meta` | 방장 | `{name, color, cover?, plan}`. `cover`는 `{object, key, sha256}`, `plan`은 날짜 잡기 기본값 `{mode: Mode, window: [from, to], options_by}`(`window`는 30분 칸 번호, `options_by`는 `anyone` 또는 `leader`) | 공통 설정을 바꿀 때, epoch가 바뀔 때 |
+| `group_meta` | 그룹당 하나. 마지막으로 봉인한 멤버 | `{name, color, cover?, plan, changed_by, changed_at}`. `cover`는 `{object, key, sha256}`, `plan`은 날짜 잡기 기본값 `{mode: Mode, window: [from, to], options_by}`(`window`는 30분 칸 번호, `options_by`는 `anyone` 또는 `leader`) | 멤버 누구나 공통 설정을 바꿀 때. epoch를 바꾼 커밋을 한 기기가 다시 봉인 |
 | `member_profile` | 멤버 | `{nickname?, avatar?, birthday_md?, lunar?, tags?}`. `avatar`는 `{object, key, sha256}` | 그룹 프로필이나 공개 설정을 바꿀 때, epoch가 바뀔 때 |
 | `newcomer_bundle` | 추가 커밋을 한 기기의 주인 | 날이 지나지 않은 약속의 엔트리 목록 `[(author_id, received_at, Entry)]` | 멤버를 추가한 직후 |
+
+**그룹 메타는 공용 자리입니다.** 멤버 누구나 바꿀 수 있어서 서버는 그룹마다 한 줄만 두고 버전을 셉니다.
+- 쓰는 기기는 읽었던 버전(`base_version`)을 함께 보냅니다. 그사이 다른 멤버가 바꿨으면 409 `state_conflict`를 받고, 최신 블롭을 읽어 자기가 바꾼 항목만 다시 얹은 뒤 재시도합니다.
+- AAD의 `owner_id`는 그 블롭을 봉인한 멤버입니다. 화면에 보이는 "마지막으로 바꾼 사람"은 평문의 `changed_by`이고, epoch 때문에 다시 봉인한 기기는 이 값을 그대로 둡니다.
 
 epoch 규칙:
 - 쓰는 쪽은 epoch가 바뀌면 자기 블롭을 새 키로 다시 봉인합니다.
@@ -206,13 +211,14 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
 
 | 범위(`scope`) | 올리기 | 키가 있는 곳 | 크기 | 서버 보관 |
 | --- | --- | --- | --- | --- |
-| `chat` | `POST /groups/{id}/media` | `Media` 엔트리 | 100MB 이하 | 30일 |
-| `appt` | `POST /groups/{id}/media` | `Media` 엔트리(`appt` 있음) | 100MB 이하 | 1년 |
-| `personal` | `POST /me/attachments` | 내 로컬 저장소와 백업 | 100MB 이하, 계정당 합계 1GB | 지울 때까지 |
-| `cover` | `PUT /groups/{id}/cover`(방장) | `group_meta` | 1MB 이하 | 새 커버를 올리면 이전 것은 7일 뒤 |
+| `chat` | `POST /groups/{id}/media` | `Media` 엔트리 | 10MB 이하 | 30일 |
+| `appt` | `POST /groups/{id}/media` | `Media` 엔트리(`appt` 있음) | 10MB 이하 | 1년 |
+| `personal` | `POST /me/attachments` | 내 로컬 저장소와 백업 | 10MB 이하 | 1년 |
+| `cover` | `PUT /groups/{id}/cover`(멤버 누구나) | `group_meta` | 1MB 이하 | 새 커버를 올리면 이전 것은 7일 뒤 |
 | `avatar` | `PUT /groups/{id}/members/me/avatar` | `member_profile` | 256KB 이하 | 새 사진을 올리면 이전 것은 7일 뒤 |
 
-커버와 프로필 사진은 자리마다 하나만 남깁니다. 이전 것을 7일 남기는 이유는, 방장이나 멤버가 새 블롭을 올리기 전까지 다른 기기가 이전 블롭을 읽기 때문입니다.
+- **TimeTree와 같은 제한:** 파일당 10MB, 일정·약속 하나에 3개, 형식은 PDF·JPEG·PNG·HEIC·GIF·TXT·DOCX·XLSX·PPTX. 서버는 형식을 모르므로 크기만 검사하고, 형식과 개수는 기기가 검사합니다(약속 첨부 개수는 4장 규칙으로도 막음).
+- 커버와 프로필 사진은 자리마다 하나만 남깁니다. 이전 것을 7일 남기는 이유는, 새 블롭이 올라오기 전까지 다른 기기가 이전 블롭을 읽기 때문입니다.
 
 ## 10. 백업
 
@@ -232,6 +238,7 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
 | 404 | `not_found` | 중단 |
 | 409 | `epoch_conflict` | 동기화 후 커밋을 다시 만들어 재시도 |
 | 409 | `stale_epoch` | 대기 커밋 처리 후 다시 암호화해 재시도 |
+| 409 | `state_conflict` | 그룹 메타를 다시 읽고 내 변경을 얹어 재시도 |
 | 410 | `cursor_expired` | 외부 가입으로 다시 들어오기 |
 | 413 | `too_large` | 미디어로 보내기 |
 | 429 | `rate_limited` | `Retry-After`만큼 기다린 뒤 재시도 |

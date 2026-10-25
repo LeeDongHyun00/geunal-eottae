@@ -11,7 +11,8 @@
   - Welcome, GroupInfo, 외부 가입 허가
   - 30일 우편함
 - **상태 블롭:** 덮어쓰기 저장(epoch가 뒤로 가지 않게)
-- **미디어·백업:** 범위별(채팅·약속·개인 일정·커버·프로필 사진) 서명된 업로드·다운로드 URL, 보관 기간 정리, 개인 첨부 한도(계정당 1GB)
+- **미디어·백업:** 범위별(채팅·약속·개인 일정·커버·프로필 사진) 서명된 업로드·다운로드 URL, 보관 기간 정리, 파일 크기 한도(10MB)
+- **구독:** 스토어 거래 검증, App Store 서버 알림 v2와 Play 실시간 개발자 알림으로 구독 상태 맞추기, 혜택 확인
 - **알림:** 게이트웨이 신호(Redis), APNs·FCM 직접 발송
 - **그 밖:** 신고 접수, 퍼널 마커, 공휴일 동기화, 계정 삭제
 
@@ -102,12 +103,22 @@ INSERT INTO group_log (group_id, seq, epoch, kind, author_id, ciphertext)
 SELECT :group_id, seq, :epoch, 'app', :author_id, :ciphertext FROM s
 RETURNING seq;
 
--- name: put_state — overwrite, but never with an older epoch.
+-- name: put_state — overwrite, but never with an older epoch. Not for group_meta.
 INSERT INTO group_state (group_id, kind, owner_id, epoch, ciphertext)
 VALUES (:group_id, :kind::state_kind, :owner_id, :epoch, :ciphertext)
 ON CONFLICT (group_id, kind, owner_id) DO UPDATE
   SET epoch = EXCLUDED.epoch, ciphertext = EXCLUDED.ciphertext, updated_at = now()
   WHERE group_state.epoch <= EXCLUDED.epoch;
+
+-- name: put_group_meta — one shared slot any active member may overwrite. base_version is the version the writer
+-- read (0 when there was none); no row back means 409 state_conflict: re-read, re-apply the change, retry.
+INSERT INTO group_state (group_id, kind, owner_id, epoch, ciphertext)
+VALUES (:group_id, 'group_meta', :writer_id, :epoch, :ciphertext)
+ON CONFLICT (group_id) WHERE kind = 'group_meta' DO UPDATE
+  SET owner_id = EXCLUDED.owner_id, epoch = EXCLUDED.epoch, ciphertext = EXCLUDED.ciphertext,
+      version = group_state.version + 1, updated_at = now()
+  WHERE group_state.version = :base_version AND group_state.epoch <= EXCLUDED.epoch
+RETURNING version;
 ```
 
 ## 6. 스키마
@@ -262,12 +273,15 @@ CREATE TABLE group_state (
   owner_id    uuid REFERENCES users(id) ON DELETE CASCADE,
   epoch       bigint NOT NULL,
   ciphertext  bytea NOT NULL CHECK (octet_length(ciphertext) <= 16384),
+  version     bigint NOT NULL DEFAULT 1,      -- bumped on every overwrite; group_meta writers compare it
   updated_at  timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (group_id, kind, owner_id)
 );
+-- group_meta is shared: any member may write it, so a group keeps exactly one row whatever its owner_id.
+CREATE UNIQUE INDEX one_group_meta ON group_state (group_id) WHERE kind = 'group_meta';
 
 -- Encrypted files in object storage, one bucket per scope. A nightly job removes rows past expires_at and queues
--- their objects; bucket lifecycle rules (chat 31 days, appt 366 days) catch anything the job missed.
+-- their objects; bucket lifecycle rules (chat 31 days, appt and personal 366 days) catch anything the job missed.
 CREATE TYPE media_scope AS ENUM ('chat', 'appt', 'personal', 'cover', 'avatar');
 CREATE TABLE media_objects (
   object_key   text PRIMARY KEY,
@@ -276,14 +290,28 @@ CREATE TABLE media_objects (
   uploader_id  uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   size_bytes   bigint NOT NULL,
   created_at   timestamptz NOT NULL DEFAULT now(),
-  expires_at   timestamptz,                                     -- NULL: kept until deleted (personal, current cover or avatar)
+  expires_at   timestamptz,                                     -- NULL only for the current cover or avatar
   CHECK ((scope = 'personal') = (group_id IS NULL)),
-  CHECK (size_bytes <= CASE scope WHEN 'cover' THEN 1024 * 1024 WHEN 'avatar' THEN 256 * 1024 ELSE 100 * 1024 * 1024 END)
+  CHECK ((scope IN ('cover', 'avatar')) OR expires_at IS NOT NULL),
+  -- 10 MB per file is TimeTree's limit; a paid tier with larger files would change this in its own migration.
+  CHECK (size_bytes <= CASE scope WHEN 'cover' THEN 1024 * 1024 WHEN 'avatar' THEN 256 * 1024 ELSE 10 * 1024 * 1024 END)
 );
 -- One current cover per group and one current avatar per member; a replaced one gets expires_at = now() + 7 days.
 CREATE UNIQUE INDEX one_current_cover ON media_objects (group_id) WHERE scope = 'cover' AND expires_at IS NULL;
 CREATE UNIQUE INDEX one_current_avatar ON media_objects (group_id, uploader_id) WHERE scope = 'avatar' AND expires_at IS NULL;
-CREATE INDEX personal_usage ON media_objects (uploader_id) WHERE scope = 'personal';
+CREATE INDEX media_expiry ON media_objects (expires_at) WHERE expires_at IS NOT NULL;
+
+-- Paid plan, mirrored from the stores. Entitlement comes only from verified store data, never from the app.
+CREATE TYPE store_kind AS ENUM ('app_store', 'play');
+CREATE TABLE subscriptions (
+  user_id          uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  store            store_kind NOT NULL,
+  product_id       text NOT NULL,
+  original_txn_id  text NOT NULL UNIQUE,      -- App Store originalTransactionId or Play purchase token
+  expires_at       timestamptz NOT NULL,
+  auto_renew       boolean NOT NULL,
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
 
 -- Blobs to delete from object storage, queued in the same transaction that deletes their rows (account deletion, pruning).
 CREATE TABLE object_deletions (
@@ -309,6 +337,15 @@ CREATE TABLE funnel_events (
   kind      funnel_kind NOT NULL,
   at        timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (group_id, ref, kind)
+);
+
+-- Alpha builds only: opted-in testers' daily counts behind the M1 gate. A migration drops it before the public beta.
+CREATE TABLE alpha_stats (
+  user_id    uuid REFERENCES users(id) ON DELETE CASCADE,
+  day        date NOT NULL,
+  events     integer NOT NULL CHECK (events >= 0),
+  suggested  integer NOT NULL CHECK (suggested >= 0 AND suggested <= events),
+  PRIMARY KEY (user_id, day)
 );
 
 CREATE TABLE holidays (
@@ -348,7 +385,7 @@ CREATE TABLE holidays (
 | GET | `/groups/{id}/members` | 멤버, 역할, 상태 |
 | DELETE | `/groups/{id}/members/{userId}` | 탈퇴·강퇴 |
 | PATCH | `/groups/{id}/members/me` | 알림 설정(`muted_until`, `notify_chat`, `notify_plan`) |
-| PUT | `/groups/{id}/cover` | 커버 업로드 URL(방장만). 이전 커버는 7일 뒤 삭제 |
+| PUT | `/groups/{id}/cover` | 커버 업로드 URL(멤버 누구나). 이전 커버는 7일 뒤 삭제 |
 | PUT | `/groups/{id}/members/me/avatar` | 그룹 프로필 사진 업로드 URL. 이전 사진은 7일 뒤 삭제 |
 | POST | `/dms` | 1:1 만들기(같은 그룹 멤버, 차단 아님, 한 쌍에 하나) |
 | POST, DELETE | `/blocks/{userId}` | 차단, 해제 |
@@ -356,14 +393,19 @@ CREATE TABLE holidays (
 | POST | `/groups/{id}/messages` | 애플리케이션 메시지(epoch, 암호문, `alert`, `cat`) |
 | GET | `/groups/{id}/log` | 순번 이후 항목 |
 | GET | `/groups/{id}/group-info` | 외부 가입용 GroupInfo |
-| PUT | `/groups/{id}/state/{kind}` | 내 상태 블롭 덮어쓰기 |
+| PUT | `/groups/{id}/state/{kind}` | 내 상태 블롭 덮어쓰기. `group_meta`는 멤버 누구나, `base_version`을 함께 보내고 어긋나면 409 `state_conflict` |
 | GET | `/groups/{id}/state` | 그룹의 상태 블롭 전부 |
 | POST | `/groups/{id}/media` | 채팅·약속 첨부 업로드 URL과 `object` 키(`scope`: `chat`, `appt`) |
-| POST | `/me/attachments` | 개인 일정 첨부 업로드 URL(계정당 합계 1GB를 넘으면 413) |
+| POST | `/me/attachments` | 개인 일정 첨부 업로드 URL(1년 보관) |
+| POST | `/me/purchases` | 앱이 받은 스토어 거래(App Store 서명 거래, Play 구매 토큰)를 검증해 구독 저장 |
+| GET | `/me/entitlements` | 현재 혜택과 만료일 |
+| POST | `/webhooks/app-store` | App Store 서버 알림 v2(서명 검증 후 반영) |
+| POST | `/webhooks/play` | Play 실시간 개발자 알림(Pub/Sub 푸시, 토큰 검증 후 반영) |
 | GET | `/media/{object}` | 다운로드 URL(그룹 범위는 멤버만, 개인 첨부는 본인만) |
 | DELETE | `/media/{object}` | 올린 사람만. 행을 지우고 `object_deletions`에 넣기 |
 | POST | `/reports` | 신고(운영자 검토 키로 봉인한 증거) |
 | POST | `/groups/{id}/funnel` | 퍼널 마커 |
+| POST | `/me/alpha-stats` | 알파 빌드 전용. 동의한 테스터 기기가 하루 한 번 숫자(전체 일정 수, 추천으로 만든 일정 수)만 보냄. 공개 빌드에서는 404 |
 | GET | `/holidays?from&to` | 공휴일 |
 
 ## 8. 정기 작업
@@ -371,7 +413,8 @@ CREATE TABLE holidays (
 | 작업 | 주기 | 하는 일 |
 | --- | --- | --- |
 | 로그 파티션 | 매일 | 내일 파티션 만들기, 30일 지난 파티션 삭제 |
-| 미디어 정리 | 매일 | `expires_at`이 지난 `media_objects`(채팅 30일, 약속 1년, 바뀐 커버·사진 7일)를 지우고 `object_deletions`에 넣기 |
+| 미디어 정리 | 매일 | `expires_at`이 지난 `media_objects`(채팅 30일, 약속·개인 1년, 바뀐 커버·사진 7일)를 지우고 `object_deletions`에 넣기 |
+| 구독 대조 | 매일 | 만료가 가까운 구독을 스토어 API로 다시 확인(알림을 놓친 경우 대비) |
 | 오브젝트 삭제 | 10분 | `object_deletions`를 비우며 스토리지에서 삭제 |
 | 백업 정리 | 업로드 완료 때 | 사람마다 최근 3개만 남기기 |
 | Welcome 정리 | 매일 | 30일 지난 Welcome 삭제 |
@@ -387,8 +430,7 @@ CREATE TABLE holidays (
 | 메시지 | 사용자당 그룹마다 분당 60개 |
 | 커밋 | 그룹당 분당 30개 |
 | 키 패키지 가져가기 | 사용자당 분당 30개 |
-| 미디어 업로드 | 사용자당 하루 1GB |
-| 개인 일정 첨부 | 계정당 합계 1GB |
+| 미디어 업로드 | 사용자당 하루 200MB(10MB 파일 20개) |
 | 백업 | 사용자당 하루 10회 |
 
 초과하면 429와 `Retry-After`를 줍니다.
@@ -408,6 +450,8 @@ CREATE TABLE holidays (
   - 메시지 1,000개를 동시에 보내 순번에 빈틈이나 중복이 없는지
 - **MLS 헤더:** Rust 코어 벡터로 파서를 검증합니다.
 - **계정 삭제:** 기기·세션·멤버십·로그·상태·미디어·백업이 지워지고, 오브젝트 키가 `object_deletions`에 들어가는지 확인합니다.
+- **그룹 메타:** 두 멤버가 같은 버전에서 동시에 쓰면 하나만 저장되고 다른 하나는 409를 받는지, 오래된 epoch로는 덮어쓰지 못하는지 확인합니다.
+- **구독:** 서명이 틀린 App Store 알림과 검증되지 않은 Play 토큰을 거절하는지, 환불·만료 알림에 혜택이 꺼지는지 확인합니다.
 - **차단과 1:1:** 같은 그룹이 아니면 1:1을 만들 수 없고, 차단하면 메시지가 거절되는지 확인합니다.
 - **파티션 작업:** 31일 전 파티션이 지워지고 내일 파티션이 생기는지 확인합니다.
 
@@ -417,6 +461,6 @@ CREATE TABLE holidays (
 | --- | --- |
 | M0 | 인증 스텁, 기기, 키 패키지, 그룹, 커밋·메시지·로그·Welcome·GroupInfo, 상태 블롭, Redis 신호. 헤드리스 종단 시험 통과 |
 | M1 | 카카오·애플·게스트 로그인, 복구, 백업 URL, 계정 삭제, 알파 서버 배포 |
-| M2 | 초대, 멤버 상태, 방장 승계, 푸시(APNs·FCM)와 종류별 알림 설정, 커버·프로필 사진, 퍼널, 공휴일 |
-| M3 | 1:1, 차단, 범위별 첨부와 개인 첨부 한도, 신고, 동시성 테스트 |
-| M4 | 운영 레이트 리밋 조정, 보존 기간 문서화, 장애 대응 절차 |
+| M2 | 초대, 멤버 상태, 방장 승계, 푸시(APNs·FCM)와 종류별 알림 설정, 그룹 메타 공용 자리(버전 비교), 커버·프로필 사진, 퍼널, 공휴일 |
+| M3 | 1:1, 차단, 범위별 첨부와 크기 한도, 신고, 동시성 테스트 |
+| M4 | 구독 검증과 스토어 알림, 운영 레이트 리밋 조정, 보존 기간 문서화, 장애 대응 절차 |
