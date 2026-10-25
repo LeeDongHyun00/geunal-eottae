@@ -52,10 +52,15 @@ jobs:
     if: needs.changes.outputs.core == 'true'
     uses: ./.github/workflows/core.yml
 
+  api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    uses: ./.github/workflows/api.yml
+
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [changes, lint, core]
+    needs: [changes, lint, core, api]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

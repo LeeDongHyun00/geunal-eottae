@@ -30,7 +30,7 @@
 - 클라우드 세션의 바깥 연결은 프록시를 거칩니다.
   - Docker Hub는 세션들이 함께 쓰는 주소에 익명 내려받기 한도(429)를 걸어서, `ensure-docker.sh`가 데몬을 Google 미러(`mirror.gcr.io`)를 거치게 띄웁니다.
   - Maven Central은 같은 파일에도 404·429를 섞어 돌려줍니다. 그래서 `make setup`이 `~/.gradle/init.d`에 초기화 스크립트를 넣어 Gradle이 Google의 Maven Central 미러를 쓰게 합니다. 빌드 파일에는 `mavenCentral()`을 그대로 씁니다.
-  - 컨테이너 안의 프로세스는 프록시에 닿지 못하고 프록시 인증서도 믿지 않습니다. 이미지 빌드처럼 컨테이너 안에서 무언가를 내려받는 작업은 이 점을 따로 처리해야 합니다.
+  - 컨테이너 안의 프로세스는 프록시에 닿지 못하고 프록시 인증서도 믿지 않습니다. 그래서 이미지는 `scripts/docker-build.sh`로 빌드합니다. 클라우드 세션에서는 이 스크립트가 빌드를 호스트 네트워크에 붙이고 프록시 주소(`https_proxy`)와 인증서(빌드 비밀값 `ca`)를 넘깁니다. 무언가를 내려받는 Dockerfile은 HTTPS로 받고, `ca`가 있으면 그 인증서를 믿게 합니다.
   - 세션에 붙지 않은 GitHub 저장소는 웹 페이지와 API가 막혀 있습니다. 릴리스 파일 직접 다운로드와 `git ls-remote`는 됩니다.
 
 ## 명령
@@ -47,6 +47,10 @@
 | `make test-core` | Rust 코어: 단위·스모크 테스트 |
 | `make build-android` | 안드로이드 3개 ABI 라이브러리와 Kotlin 바인딩(`core/out/android`), ABI별 크기 기록 |
 | `make build-ios` | XCFramework와 Swift 바인딩(`core/out/ios`). macOS에서만 되고, 이 환경에서는 CI가 확인합니다 |
+| `make lint-api` | API: ktlint |
+| `make test-api` | API: Testcontainers의 PostgreSQL·Redis에 붙는 테스트 |
+| `make image-api` | API: boot jar와 이미지 `geunal/api:local` |
+| `make scan-api` | API: 이미지 Trivy 검사. 고칠 수 있는 높음·심각 항목이 있으면 실패 |
 
 ## 규칙
 

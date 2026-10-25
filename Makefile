@@ -4,7 +4,7 @@ SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := help
 
-.PHONY: help setup lint test lint-repo lint-core test-core build-android build-ios
+.PHONY: help setup lint test lint-repo lint-core test-core build-android build-ios lint-api test-api image-api scan-api
 
 help: ## List the targets
 	@grep -hE '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{ printf "  %-14s %s\n", $$1, $$2 }'
@@ -12,9 +12,9 @@ help: ## List the targets
 setup: ## Install the toolchain (safe to rerun)
 	./scripts/dev-setup.sh
 
-lint: lint-repo lint-core ## Run every linter
+lint: lint-repo lint-core lint-api ## Run every linter
 
-test: test-core ## Run every part's tests
+test: test-core test-api ## Run every part's tests
 
 lint-repo: ## Lint workflows (actionlint) and every tracked shell script (shellcheck)
 	shellcheck="$$(scripts/tool.sh shellcheck)"; \
@@ -34,3 +34,18 @@ build-android: ## Rust core: Android libraries and Kotlin bindings in core/out/a
 
 build-ios: ## Rust core: XCFramework and Swift bindings in core/out/ios (macOS only)
 	core/scripts/build-ios.sh
+
+lint-api: ## API: ktlint
+	cd server/api && ./gradlew ktlintCheck
+
+test-api: ## API: tests against PostgreSQL and Redis in Testcontainers (needs Docker)
+	scripts/ensure-docker.sh
+	cd server/api && ./gradlew test
+
+image-api: ## API: boot jar and the container image geunal/api:local
+	scripts/ensure-docker.sh
+	cd server/api && ./gradlew bootJar
+	scripts/docker-build.sh -t geunal/api:local server/api
+
+scan-api: image-api ## API: Trivy on the image; fails on HIGH or CRITICAL findings that have a fix
+	"$$(scripts/tool.sh trivy)" image --quiet --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed geunal/api:local

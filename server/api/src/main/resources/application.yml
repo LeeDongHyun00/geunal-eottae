@@ -1,0 +1,26 @@
+# Connection settings come from the environment (SPRING_DATASOURCE_*, SPRING_DATA_REDIS_*), as in
+# infra/docker-compose.yml; nothing here points at a real server.
+spring:
+  application:
+    name: api
+  main:
+    banner-mode: off
+  threads:
+    virtual:
+      enabled: true
+
+# JSON lines only. Request and response bodies, ciphertext and tokens never reach a log (api-server.md §10).
+logging:
+  structured:
+    format:
+      console: ecs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+geunal:
+  auth:
+    stub: false

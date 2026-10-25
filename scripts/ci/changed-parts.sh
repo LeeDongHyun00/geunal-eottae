@@ -8,7 +8,7 @@ set -euo pipefail
 parts="core api gateway e2e ios android"
 
 # Files every part's CI runs through.
-shared='^(\.github/workflows/ci\.yml|scripts/ensure-docker\.sh|Makefile)$|^scripts/ci/'
+shared='^(\.github/workflows/ci\.yml|scripts/(ensure-docker|docker-build|tool)\.sh|Makefile)$|^scripts/ci/'
 
 rule() {
   case "$1" in
