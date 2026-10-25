@@ -1,0 +1,25 @@
+# Terraform skeleton for NCP: formatting and validation of every root under infra/terraform/envs. No plan or apply
+# yet; those arrive with the alpha server in M1, when the NCP keys exist. Called from ci.yml.
+name: terraform
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The Terraform binary scripts/tool.sh pins and the provider plugin cache.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .tools
+          key: terraform-${{ runner.os }}-${{ hashFiles('scripts/tool.sh', 'infra/terraform/envs/*/.terraform.lock.hcl') }}
+      - run: make lint-terraform

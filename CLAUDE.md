@@ -55,6 +55,8 @@
 | `make test-gateway` | 게이트웨이: Redis에 붙는 테스트. `REDIS_URL`이 없으면 쓰고 버릴 컨테이너를 띄움 |
 | `make image-gateway` | 게이트웨이: 릴리스 이미지 `geunal/gateway:local` |
 | `make scan-gateway` | 게이트웨이: 이미지와 `mix.lock`의 Trivy 검사 |
+| `make lint-terraform` | Terraform: `fmt` 검사와 `infra/terraform/envs/*` 루트의 `init`(백엔드 없이)·`validate` |
+| `make lock-terraform` | Terraform: 제공자 버전을 올린 뒤 루트의 잠금 파일에 Linux·macOS 체크섬을 다시 기록 |
 | `make up` | 로컬 스택(`infra/docker-compose.yml`): 이미지를 빌드하고 PostgreSQL·Redis·S3·API·게이트웨이를 띄움 |
 | `make down` | 로컬 스택을 멈추고 데이터를 지움 |
 | `make e2e` | 로컬 스택을 띄우고 `core/geunal-e2e`의 헤드리스 종단 시험을 돌림. 스택은 그대로 둠 |
@@ -86,5 +88,5 @@
 1. `.github/workflows/<part>.yml`을 `on: workflow_call`로 만들고, 단계에서는 `make` 대상을 부릅니다.
 2. `ci.yml`에 작업을 더합니다: `needs: changes`, `if: needs.changes.outputs.<part> == 'true'`, `uses: ./.github/workflows/<part>.yml`.
 3. 그 작업을 `ci-ok`의 `needs`에 넣습니다. 빠뜨리면 그 파트가 실패해도 머지가 막히지 않습니다.
-4. 경로 규칙은 `scripts/ci/changed-parts.sh`에 있습니다. core, api, gateway, e2e, ios, android 규칙이 이미 있습니다.
+4. 경로 규칙은 `scripts/ci/changed-parts.sh`에 있습니다. core, api, gateway, e2e, terraform, ios, android 규칙이 이미 있습니다.
 5. `.github/dependabot.yml`에 그 파트의 생태계(cargo, gradle, mix, docker)를 더합니다.

@@ -91,6 +91,16 @@ updates:
       prefix: build
       include: scope
 
+  # The exact provider pin and the lock file are in each root; modules only set a floor. Terraform itself moves by hand
+  # in scripts/tool.sh and versions.tf together. After a bump, make lock-terraform restores the macOS checksums.
+  - package-ecosystem: terraform
+    directories: ["/infra/terraform/envs/*"]
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
+
   # PostgreSQL and Redis majors are decisions about the servers too, so they move by hand. The api and gateway images
   # are built locally (make up).
   - package-ecosystem: docker-compose

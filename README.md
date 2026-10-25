@@ -62,6 +62,10 @@ make e2e    # headless end-to-end tests in core/geunal-e2e (starts the stack fir
 make down   # stop the stack and drop its data
 ```
 
+## 클라우드 구성
+
+NCP 자원은 `infra/terraform`의 Terraform 코드로 만듭니다(모듈 `vpc`, `server`, `bucket`과 환경 루트 `envs/alpha`). M0에서는 `make lint-terraform`으로 형식과 유효성만 확인하고, 적용은 M1부터 합니다. 상태 파일 위치와 적용 절차는 [infra/terraform/README.md](infra/terraform/README.md)에 있습니다.
+
 ## CI와 머지 규칙
 
 - `.github/workflows/ci.yml` 하나가 진입점입니다. 바뀐 경로로 파트를 고르고(`scripts/ci/changed-parts.sh`) 그 파트의 워크플로만 부릅니다. `main`에 푸시되면 모든 파트를 돌립니다.
