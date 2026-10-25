@@ -27,6 +27,7 @@
 - 클라우드 세션은 시작할 때(재개 포함) SessionStart 훅(`.claude/settings.json`, `.claude/hooks/session-start.sh`)이 `scripts/dev-setup.sh`를 실행합니다. 다른 곳에서는 `make setup`을 직접 실행합니다.
 - Docker가 필요한 대상은 `scripts/ensure-docker.sh`를 먼저 부릅니다. 클라우드 세션은 Docker 데몬 없이 시작하고 기계가 재시작되면 데몬도 사라지므로, 이 스크립트가 필요할 때 데몬을 띄웁니다.
 - 린트 도구(actionlint, shellcheck)는 `scripts/tool.sh`가 GitHub 릴리스에서 받아 SHA-256을 확인한 뒤 `.tools/`에 둡니다. 버전을 올릴 때는 이 파일의 해시도 함께 바꿉니다.
+- Android SDK(플랫폼 37.0, build-tools 36.0.0, platform-tools, NDK r28c)도 `scripts/tool.sh android-sdk`가 Google의 zip을 SHA-256으로 확인해 설치합니다. `ANDROID_HOME`이 있으면 그 SDK에 빠진 패키지를 넣고, 없으면 `.tools/android-sdk`에 둡니다. 안드로이드 `make` 대상이 이 경로를 Gradle에 넘깁니다.
 - 클라우드 세션의 바깥 연결은 프록시를 거칩니다.
   - Docker Hub는 세션들이 함께 쓰는 주소에 익명 내려받기 한도(429)를 걸어서, `ensure-docker.sh`가 데몬을 Google 미러(`mirror.gcr.io`)를 거치게 띄웁니다.
   - Maven Central은 같은 파일에도 404·429를 섞어 돌려줍니다. 그래서 `make setup`이 `~/.gradle/init.d`에 초기화 스크립트를 넣어 Gradle이 Google의 Maven Central 미러를 쓰게 합니다. 빌드 파일에는 `mavenCentral()`을 그대로 씁니다.
@@ -47,6 +48,9 @@
 | `make test-core` | Rust 코어: 단위·스모크 테스트 |
 | `make build-android` | 안드로이드 3개 ABI 라이브러리와 Kotlin 바인딩(`core/out/android`), ABI별 크기 기록 |
 | `make build-ios` | XCFramework와 Swift 바인딩(`core/out/ios`). macOS에서만 되고, 이 환경에서는 CI가 확인합니다 |
+| `make lint-android` | 안드로이드: ktlint와 Android Lint. 먼저 `build-android`를 돌림 |
+| `make test-android` | 안드로이드: 디버그·R8 릴리스·계측 테스트 조립과 단위 테스트. 먼저 `build-android`를 돌림 |
+| `make connected-android` | 안드로이드: adb에 보이는 에뮬레이터·기기에서 계측 테스트 |
 | `make lint-api` | API: ktlint |
 | `make test-api` | API: Testcontainers의 PostgreSQL·Redis에 붙는 테스트 |
 | `make image-api` | API: boot jar와 이미지 `geunal/api:local` |
