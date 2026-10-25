@@ -1,0 +1,433 @@
+# The request and response shapes of the API server at M0. docs/parts/api-server.md §7 lists the endpoints and their
+# rules; this file is the byte-level contract the Rust core's sync engine and the e2e client build against.
+#
+# Conventions:
+# - Field names are snake_case. Bytes (ciphertext, keys, MLS messages) are standard base64 with padding.
+# - Every error body is {"error": "<code>", "message": "..."} (docs/parts/protocol.md §11).
+# - Authentication: `Authorization: Bearer <access JWT>` on everything but /auth/*, /.well-known/jwks.json and
+#   /actuator/health. The JWT is ES256, 15 minutes, claims sub = user_id and did = device_id.
+openapi: 3.1.0
+info:
+  title: geunal-eottae API
+  version: 0.1.0-m0
+servers:
+  - url: http://127.0.0.1:8080
+    description: infra/docker-compose.yml
+
+paths:
+  /auth/nonce:
+    get:
+      summary: One-time value a device signs to prove it holds the Ed25519 key it registers (valid 5 minutes)
+      security: []
+      responses:
+        "200":
+          content: { application/json: { schema: { type: object, required: [nonce], properties: { nonce: { type: string } } } } }
+
+  /auth/stub:
+    post:
+      summary: Sign in without Kakao or Apple (only with GEUNAL_AUTH_STUB; otherwise 404) and register this device
+      description: |
+        `subject` stands for the identity a provider would assert; the same subject is the same account on every call.
+        `signature` is Ed25519 over the ASCII bytes of `nonce` with the key whose public part is `signature_key`.
+        Registering a device revokes the account's previous active device (MVP: one device per account), which gets a
+        `revoke` event and 403 `device_revoked` on its next request.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject, display_name, platform, signature_key, nonce, signature]
+              properties:
+                subject: { type: string, maxLength: 200 }
+                display_name: { type: string, maxLength: 40 }
+                platform: { type: string, enum: [ios, android] }
+                signature_key: { $ref: "#/components/schemas/Bytes", description: 32-byte Ed25519 public key }
+                nonce: { type: string }
+                signature: { $ref: "#/components/schemas/Bytes", description: 64-byte Ed25519 signature }
+      responses:
+        "201": { content: { application/json: { schema: { $ref: "#/components/schemas/Tokens" } } } }
+        "400": { description: invalid_request (bad signature, unknown or reused nonce, bad field) }
+
+  /auth/refresh:
+    post:
+      summary: Trade a refresh token for new tokens; the old refresh token is spent
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } }
+      responses:
+        "200": { content: { application/json: { schema: { $ref: "#/components/schemas/Tokens" } } } }
+        "401": { description: token_expired (unknown, spent or expired refresh token) }
+        "403": { description: device_revoked }
+
+  /.well-known/jwks.json:
+    get:
+      summary: Public keys (JWK Set) that verify access tokens; the gateway reads this
+      security: []
+      responses:
+        "200": { content: { application/json: { schema: { type: object } } } }
+
+  /me:
+    get:
+      summary: The account, its current device and how many key packages it has left
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user_id, display_name, device, key_packages]
+                properties:
+                  user_id: { $ref: "#/components/schemas/Uuid" }
+                  display_name: { type: string }
+                  device:
+                    type: object
+                    required: [id, platform, created_at]
+                    properties:
+                      id: { $ref: "#/components/schemas/Uuid" }
+                      platform: { type: string, enum: [ios, android] }
+                      created_at: { type: string, format: date-time }
+                  key_packages: { type: integer }
+
+  /me/push-token:
+    put:
+      summary: Set or clear (null) the current device's push token
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { token: { type: [string, "null"] } } } } }
+      responses:
+        "204": { description: stored }
+
+  /me/key-packages:
+    post:
+      summary: Upload 1 to 100 MLS KeyPackages (each an MLSMessage with wire_format key_package, at most 1024 bytes); 200 kept per device
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key_packages]
+              properties: { key_packages: { type: array, items: { $ref: "#/components/schemas/Bytes" } } }
+      responses:
+        "200": { content: { application/json: { schema: { type: object, required: [count], properties: { count: { type: integer, description: packages now stored } } } } } }
+        "413": { description: too_large }
+
+  /users/{id}/devices:
+    get:
+      summary: The user's active devices with their Ed25519 signature keys (to check a KeyPackage before an Add)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [devices]
+                properties:
+                  devices:
+                    type: array
+                    description: empty for an unknown user or one without an active device
+                    items:
+                      type: object
+                      required: [id, platform, signature_key]
+                      properties:
+                        id: { $ref: "#/components/schemas/Uuid" }
+                        platform: { type: string }
+                        signature_key: { $ref: "#/components/schemas/Bytes" }
+
+  /devices/{id}/key-packages/claim:
+    post:
+      summary: Take one unused KeyPackage of that device (oldest first); each is handed out once
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { content: { application/json: { schema: { type: object, required: [key_package], properties: { key_package: { $ref: "#/components/schemas/Bytes" } } } } } }
+        "404": { description: not_found (no such active device, or none left) }
+
+  /me/welcomes:
+    get:
+      summary: Welcomes addressed to this device; they are deleted as they are handed over
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [welcomes]
+                properties:
+                  welcomes:
+                    type: array
+                    items:
+                      type: object
+                      required: [group_id, seq, data]
+                      properties:
+                        group_id: { $ref: "#/components/schemas/Uuid" }
+                        seq: { type: integer, format: int64, description: the Add commit that brought this device in; read the log from here }
+                        data: { $ref: "#/components/schemas/Bytes", description: the MLS Welcome message }
+
+  /me/groups:
+    get:
+      summary: Groups the account is pending or active in, with the cursor data to sync by
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [groups]
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, kind, epoch, last_seq, role, status, joined_at]
+                      properties:
+                        id: { $ref: "#/components/schemas/Uuid" }
+                        kind: { type: string, enum: [circle, dm] }
+                        epoch: { type: integer, format: int64 }
+                        last_seq: { type: integer, format: int64, description: the newest seq in the log; 0 when empty }
+                        role: { type: string, enum: [owner, member] }
+                        status: { type: string, enum: [pending, active] }
+                        joined_at: { type: string, format: date-time }
+
+  /groups:
+    post:
+      summary: Create a group; the caller is its owner. The 16 bytes of `id` are the MLS group ID. No body.
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, kind, epoch, last_seq]
+                properties:
+                  id: { $ref: "#/components/schemas/Uuid" }
+                  kind: { type: string }
+                  epoch: { type: integer, format: int64, const: 0 }
+                  last_seq: { type: integer, format: int64, const: 0 }
+
+  /groups/{id}/members:
+    get:
+      summary: Members with role and status (active members only may read)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [members]
+                properties:
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      required: [user_id, display_name, device_id, role, status, joined_at]
+                      properties:
+                        user_id: { $ref: "#/components/schemas/Uuid" }
+                        display_name: { type: string }
+                        device_id: { oneOf: [{ $ref: "#/components/schemas/Uuid" }, { type: "null" }], description: the member's active device }
+                        role: { type: string, enum: [owner, member] }
+                        status: { type: string, enum: [pending, active, removed] }
+                        joined_at: { type: string, format: date-time }
+        "403": { description: not_member }
+
+  /groups/{id}/members/{userId}:
+    delete:
+      summary: Leave (own user_id) or, as owner, remove a member. Status becomes `removed` and every device involved gets `membership`; a remaining device then uploads the Remove commit. An owner who leaves is succeeded by the longest-standing active member.
+      parameters: [{ $ref: "#/components/parameters/Id" }, { name: userId, in: path, required: true, schema: { $ref: "#/components/schemas/Uuid" } }]
+      responses:
+        "204": { description: removed }
+        "403": { description: not_member, not_owner }
+        "404": { description: not_found (not a current member) }
+
+  /groups/{id}/commits:
+    post:
+      summary: Upload the one commit for `epoch`; the group moves to epoch + 1
+      description: |
+        `commit` is an MLSMessage PublicMessage whose group_id and epoch match the path and `epoch`, with content type
+        commit. An external commit (sender type new_member_commit) is accepted from an active member's current device.
+        `group_info` is the MLSMessage GroupInfo of epoch + 1. An Add commit lists the devices it adds in `added` and
+        carries their `welcome` (one MLS Welcome, stored once per device); those users become `active`, their devices
+        get a `welcome` event, and every other active device gets an `entry` event.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [epoch, commit, group_info]
+              properties:
+                epoch: { type: integer, format: int64, description: the epoch the commit was made in }
+                commit: { $ref: "#/components/schemas/Bytes", description: at most 65536 bytes }
+                group_info: { $ref: "#/components/schemas/Bytes", description: at most 65536 bytes }
+                welcome: { $ref: "#/components/schemas/Bytes", description: required when `added` is not empty }
+                added: { type: array, items: { $ref: "#/components/schemas/Uuid" }, description: device ids being added }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [seq, epoch, received_at]
+                properties:
+                  seq: { type: integer, format: int64, description: the commit's place in the log }
+                  epoch: { type: integer, format: int64, description: the epoch the commit was made in (same as the request) }
+                  received_at: { type: string, format: date-time, description: the server time stored with the entry (protocol §4) }
+        "400": { description: invalid_request (header mismatch, not a commit, welcome without added or the reverse) }
+        "403": { description: not_member }
+        "404": { description: not_found (group, or a device in `added`) }
+        "409": { description: epoch_conflict }
+        "413": { description: too_large }
+
+  /groups/{id}/messages:
+    post:
+      summary: Upload an application message for the current epoch
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [epoch, message, alert]
+              properties:
+                epoch: { type: integer, format: int64 }
+                message: { $ref: "#/components/schemas/Bytes", description: MLSMessage PrivateMessage for this group and epoch, at most 65536 bytes }
+                alert:
+                  description: who to push to (protocol §8); "all", "none" or a list of user ids
+                  oneOf: [{ type: string, enum: [all, none] }, { type: array, items: { $ref: "#/components/schemas/Uuid" } }]
+                cat: { type: string, enum: [chat, plan], description: required unless alert is "none" }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [seq, received_at]
+                properties:
+                  seq: { type: integer, format: int64 }
+                  received_at: { type: string, format: date-time, description: the server time stored with the entry (protocol §4) }
+        "403": { description: not_member }
+        "409": { description: stale_epoch }
+
+  /groups/{id}/log:
+    get:
+      summary: Log entries after a cursor, in seq order, at most 500
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: after, in: query, schema: { type: integer, format: int64, default: 0 }, description: last seq the device processed }
+        - { name: limit, in: query, schema: { type: integer, default: 500, maximum: 500 } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries, last_seq]
+                properties:
+                  last_seq: { type: integer, format: int64, description: the newest seq in the group; the device is caught up when entries end here }
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      required: [seq, epoch, kind, author_id, ciphertext, received_at]
+                      properties:
+                        seq: { type: integer, format: int64 }
+                        epoch: { type: integer, format: int64 }
+                        kind: { type: string, enum: [commit, app] }
+                        author_id: { $ref: "#/components/schemas/Uuid" }
+                        ciphertext: { $ref: "#/components/schemas/Bytes" }
+                        received_at: { type: string, format: date-time, description: the server time every time rule uses (protocol §4) }
+        "410": { description: cursor_expired (entries right after `after` were dropped with a 30-day partition) }
+
+  /groups/{id}/group-info:
+    get:
+      summary: The latest GroupInfo, for an external commit
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { content: { application/json: { schema: { $ref: "#/components/schemas/GroupInfo" } } } }
+        "404": { description: not_found (none published yet) }
+    put:
+      summary: Publish the GroupInfo of the current epoch (needed once at epoch 0; commits carry later ones)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/GroupInfo" } } } }
+      responses:
+        "204": { description: stored }
+        "409": { description: stale_epoch (the group is no longer in that epoch) }
+
+  /groups/{id}/state/{kind}:
+    put:
+      summary: Overwrite a state blob (protocol §5)
+      description: |
+        `availability`, `member_profile`, `newcomer_bundle`: the caller's own slot; a write sealed for an older epoch than
+        the stored blob is refused with 409 `stale_epoch`. `group_meta`: the group's one shared slot; send the `version`
+        you read as `base_version` (0 when there was none) and get 409 `state_conflict` when someone wrote in between.
+        `epoch` may not exceed the group's current epoch. Other active devices get a `state` event.
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: kind, in: path, required: true, schema: { type: string, enum: [availability, group_meta, member_profile, newcomer_bundle] } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [epoch, ciphertext]
+              properties:
+                epoch: { type: integer, format: int64 }
+                ciphertext: { $ref: "#/components/schemas/Bytes", description: nonce ‖ ciphertext ‖ tag, at most 16384 bytes }
+                base_version: { type: integer, format: int64, description: group_meta only }
+      responses:
+        "200": { content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, format: int64 } } } } } }
+        "409": { description: state_conflict, stale_epoch }
+        "413": { description: too_large }
+
+  /groups/{id}/state:
+    get:
+      summary: Every state blob of the group
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [states]
+                properties:
+                  states:
+                    type: array
+                    items:
+                      type: object
+                      required: [kind, owner_id, epoch, version, ciphertext, updated_at]
+                      properties:
+                        kind: { type: string }
+                        owner_id: { $ref: "#/components/schemas/Uuid", description: for group_meta, the member who sealed it last }
+                        epoch: { type: integer, format: int64 }
+                        version: { type: integer, format: int64 }
+                        ciphertext: { $ref: "#/components/schemas/Bytes" }
+                        updated_at: { type: string, format: date-time }
+
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { $ref: "#/components/schemas/Uuid" } }
+  schemas:
+    Uuid: { type: string, format: uuid }
+    Bytes: { type: string, contentEncoding: base64 }
+    Tokens:
+      type: object
+      required: [user_id, device_id, access_token, expires_in, refresh_token]
+      properties:
+        user_id: { $ref: "#/components/schemas/Uuid" }
+        device_id: { $ref: "#/components/schemas/Uuid" }
+        access_token: { type: string, description: ES256 JWT }
+        expires_in: { type: integer, description: access token lifetime in seconds (900) }
+        refresh_token: { type: string, description: 30 days; replaced on every /auth/refresh }
+    GroupInfo:
+      type: object
+      required: [epoch, group_info]
+      properties:
+        epoch: { type: integer, format: int64, description: the epoch the GroupInfo describes }
+        group_info: { $ref: "#/components/schemas/Bytes", description: MLSMessage GroupInfo whose group context matches the group and epoch }
+security:
+  - bearer: []

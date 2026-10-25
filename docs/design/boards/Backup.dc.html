@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>암호화 백업</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+input{font:inherit;letter-spacing:inherit;color:inherit}
+input::placeholder{color:#696973}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #f4f4f6; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+<div style="position: absolute; top: 54px; left: 0; width: 390px; height: 44px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; justify-content: space-between"><a href="Me.dc.html" style="height: 44px; padding-right: 8px; display: flex; align-items: center; gap: 2px; font-size: 17px"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg>나</a><span></span></div><div style="position: absolute; top: 102px; left: 20px; width: 350px; display: flex; flex-direction: column; gap: 8px"><h1 style="margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.03em">암호화 백업</h1><p style="margin: 0; font-size: 15px; line-height: 1.5; color: #5c5c66">기기에서 잠근 뒤 올려요. 복구 코드가 있어야 풀 수 있고, 그날어때는 열어 볼 수 없어요.</p></div><div style="position: absolute; top: 222px; left: 16px; width: 358px; display: flex; flex-direction: column; gap: 24px"><div style="padding: 16px; border-radius: 16px; background: #ffffff; display: flex; align-items: center; gap: 12px"><span style="flex: 1 1 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 13px; font-weight: 600; color: #5c5c66">{{statusLabel}}</span><span style="font-size: 20px; font-weight: 600; letter-spacing: -0.015em; font-variant-numeric: tabular-nums">{{statusText}}</span><span style="font-size: 13px; color: #5c5c66">{{statusSub}}</span></span><button type="button" onClick="{{backupNow}}" disabled="{{busy}}" style="flex: none; height: 40px; padding: 0 14px; border: none; border-radius: 999px; background: {{btnBg}}; color: {{btnFg}}; font-size: 14px; font-weight: 600; cursor: pointer">{{btnLabel}}</button></div><div style="display: flex; flex-direction: column; gap: 8px"><div style="border-radius: 16px; background: #ffffff; display: flex; flex-direction: column"><div  style="min-height: 52px; padding: 0 16px; display: flex; align-items: center; gap: 10px;"><span style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 10px 0"><span style="font-size: 17px">자동 백업</span><span style="font-size: 13px; line-height: 1.45; color: #5c5c66">와이파이에서 하루 한 번. 바뀐 게 없으면 건너뛰어요</span></span><button type="button" role="switch" aria-checked="{{autoOn}}" aria-label="자동 백업" onClick="{{toggleAuto}}" style="flex: none; width: 51px; height: 31px; padding: 2px; border: none; border-radius: 16px; background: {{autoTrack}}; display: flex; justify-content: {{autoSide}}; cursor: pointer"><span style="width: 27px; height: 27px; border-radius: 14px; background: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.18)"></span></button></div></div></div><div style="display: flex; flex-direction: column; gap: 8px"><h2 style="margin: 0 0 0 16px; font-size: 13px; font-weight: 600; color: #5c5c66">최근 백업 · 3개까지 보관</h2><div style="border-radius: 16px; background: #ffffff; display: flex; flex-direction: column"><sc-for list="{{backups}}" as="b" hint-placeholder-count="3">
+<div style="min-height: 52px; padding: 0 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #ebebef">
+<span style="flex: 1 1 0; display: flex; flex-direction: column; gap: 2px; padding: 8px 0"><span style="font-size: 17px; font-variant-numeric: tabular-nums">{{b.when}}</span><span style="font-size: 13px; color: #5c5c66">{{b.sub}}</span></span>
+<span style="font-size: 15px; color: #5c5c66; font-variant-numeric: tabular-nums">{{b.size}}</span>
+</div>
+</sc-for></div></div><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px"><div style="padding: 14px 16px; border-radius: 16px; background: #ffffff; display: flex; flex-direction: column; gap: 8px"><span style="font-size: 13px; font-weight: 600; color: #5c5c66">들어가는 것</span><span style="font-size: 15px; line-height: 1.5">내 일정과 캘린더<br>사람·생일<br>교대 템플릿<br>설정<br>채팅 글(M3)</span></div><div style="padding: 14px 16px; border-radius: 16px; background: #ffffff; display: flex; flex-direction: column; gap: 8px"><span style="font-size: 13px; font-weight: 600; color: #5c5c66">안 들어가는 것</span><span style="font-size: 15px; line-height: 1.5; color: #3a3a40">사진·파일<br>기기 캘린더 일정<br>그룹의 상태<br><span style="font-size: 13px; color: #5c5c66">보관 기간 안이면 다시 받아요</span></span></div></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { auto: true, phase: 'idle' };
+  }
+  renderVals() {
+    const { auto, phase } = this.state;
+    const backups = phase === 'done'
+      ? [{ when: '방금', sub: '일정 128개 · 사람 12명', size: '2.4MB' }, { when: '오늘 03:12', sub: '자동', size: '2.4MB' }, { when: '어제 03:10', sub: '자동', size: '2.3MB' }]
+      : [{ when: '오늘 03:12', sub: '자동 · 일정 128개 · 사람 12명', size: '2.4MB' }, { when: '어제 03:10', sub: '자동', size: '2.3MB' }, { when: '10월 23일 03:11', sub: '자동', size: '2.3MB' }];
+    const busy = phase === 'running';
+    const vals = {
+      backups, busy,
+      statusLabel: phase === 'running' ? '백업하는 중' : '마지막 백업',
+      statusText: phase === 'running' ? '잠그고 올리는 중…' : phase === 'done' ? '방금' : '오늘 03:12',
+      statusSub: phase === 'running' ? '2.4MB · 와이파이' : '일정 128개 · 사람 12명 · 2.4MB',
+      btnLabel: phase === 'running' ? '올리는 중' : '지금 백업',
+      btnBg: busy ? '#ebebef' : '#1b1b1f', btnFg: busy ? '#696973' : '#ffffff',
+      backupNow: () => { this.setState({ phase: 'running' }); setTimeout(() => this.setState({ phase: 'done' }), 1200); },
+      toggleAuto: () => this.setState({ auto: !auto }),
+    };
+    return Object.assign(vals, { autoOn: auto ? 'true' : 'false', autoTrack: auto ? '#1b1b1f' : '#e1e1e6', autoSide: auto ? 'flex-end' : 'flex-start' });
+  }
+}
+</script>
+</body>
+</html>

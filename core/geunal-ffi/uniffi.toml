@@ -2,6 +2,9 @@
 [bindings.kotlin]
 package_name = "app.geunal.core"
 cdylib_name = "geunal_ffi"
+# The Kotlin bindings only ever run on Android, so the generated code may use android.os.Build: it then picks
+# java.lang.ref.Cleaner on API 33+ and JNA's cleaner below, in a way Android Lint can follow.
+android = true
 
 [bindings.swift]
 module_name = "GeunalCore"

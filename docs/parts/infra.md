@@ -26,7 +26,7 @@ Supabase 같은 BaaS는 쓰지 않고, 클라우드의 기본 구성 요소(네�
 | 로드 밸런서 | HTTPS, WebSocket, 유휴 제한 120초 이상. 도메인 `api.`, `rt.`, 초대 링크 | API는 Application LB, 게이트웨이는 Network Proxy LB(유휴 시간 1~3600초) |
 | 비밀값 | 관리형 비밀 저장소(10장) | Secret Manager |
 | 초대 링크 도메인 | `/.well-known/apple-app-site-association`과 `/.well-known/assetlinks.json`을 API가 제공. `/i/<code>`는 앱이 없으면 스토어로 보냄 | Global DNS, Certificate Manager(무료 인증서) |
-| 구성 코드 | Terraform. 콘솔에서 손으로 만들지 않음. PR에서 `terraform plan` 결과를 검토하고 머지한 뒤 적용. 상태 파일은 잠금이 되는 원격 저장소에 | 공식 제공자 `NaverCloudPlatform/ncloud` |
+| 구성 코드 | Terraform. 콘솔에서 손으로 만들지 않음. PR에서 `terraform plan` 결과를 검토하고 머지한 뒤 적용. 상태 파일은 잠금이 되는 원격 저장소에 | 공식 제공자 `NaverCloudPlatform/ncloud`. 상태는 Object Storage 버킷 `geunal-tfstate`에 `s3` 백엔드와 잠금 파일로 둠. 이 버킷만 첫 적용 전에 손으로 만듦([infra/terraform](../../infra/terraform/README.md)) |
 | 계정과 권한 | 스테이징과 운영을 나눔. 사람은 MFA로 들어오고, 운영 쓰기 권한은 최소 인원만. CI는 배포 전용 키(5장) | VPC로 나눔(리전당 3개 무료), Sub Account로 권한 분리. 운영을 별도 계정으로 옮길지는 공개 베타 전에 정함 |
 | 네트워크 | 데이터베이스·Redis·컨테이너는 사설 서브넷. 인터넷에 열린 것은 로드 밸런서뿐. 서버 접속은 기록이 남는 방식으로 | 사설 서브넷 + NAT Gateway, ACG. 서버 접속은 배스천 한 대를 거치고, ACG로 관리자 IP만 SSH 허용. SSL VPN(VPC)은 월 12만 원부터라 ISMS 대상이 될 때 검토 |
 | 감사 기록 | 클라우드 콘솔·API 감사 로그와 데이터베이스 접근 기록(보존은 9장) | Cloud Activity Tracer(기본 무료) |
@@ -86,60 +86,80 @@ CDN은 두지 않습니다. 미디어는 암호문이고, 서명된 URL로 스�
 
 ## 4. 로컬 실행
 
-MinIO는 2025년 10월부터 커뮤니티 이미지를 내지 않아서, 로컬 S3는 SeaweedFS로 합니다. API 테스트(Testcontainers)도 같은 이미지를 씁니다. 아래 파일은 `docker compose config`로 문법을 확인했습니다.
+MinIO는 2025년 10월부터 커뮤니티 이미지를 내지 않아서, 로컬 S3는 SeaweedFS로 합니다. 아래는 `infra/docker-compose.yml` 그대로입니다. 둘이 다르면 저장소의 파일이 기준입니다. `make up`이 API·게이트웨이 이미지를 지금 코드로 빌드한 뒤 띄우고, `make down`이 멈추면서 데이터를 지웁니다.
 
 ```yaml
 # infra/docker-compose.yml — everything the apps and the core's end-to-end test need on one machine.
+# `make up` builds the api and gateway images and starts this file; `make down` stops it and drops its data. Ports are
+# published on loopback only, because the credentials here are fixed.
 name: geunal
 
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16.15
     environment:
       POSTGRES_DB: geunal
       POSTGRES_USER: geunal
       POSTGRES_PASSWORD: geunal-local
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U geunal"]
+      test: ["CMD-SHELL", "pg_isready -U geunal -d geunal"]
       interval: 5s
       retries: 20
 
   redis:
-    image: redis:7
-    ports: ["6379:6379"]
+    image: redis:7.4.11
+    ports: ["127.0.0.1:6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
 
-  # MinIO stopped publishing community images in 2025; SeaweedFS serves the S3 API locally. Pin the tag in M0.
+  # MinIO stopped publishing community images in 2025; SeaweedFS serves the S3 API locally.
   s3:
-    image: chrislusf/seaweedfs
+    image: chrislusf/seaweedfs:4.48
     command: server -s3 -dir=/data
-    ports: ["8333:8333"]
+    ports: ["127.0.0.1:8333:8333"]
 
+  # These two images come from make image-api and make image-gateway rather than a compose build: the API image
+  # packages a boot jar built outside it, and cloud sessions need scripts/docker-build.sh to reach package archives.
   api:
-    build: ../server/api
+    image: geunal/api:local
+    pull_policy: never
+    read_only: true
+    tmpfs: [/tmp]
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/geunal
       SPRING_DATASOURCE_USERNAME: geunal
       SPRING_DATASOURCE_PASSWORD: geunal-local
       SPRING_DATA_REDIS_HOST: redis
       GEUNAL_S3_ENDPOINT: http://s3:8333
-      GEUNAL_AUTH_STUB: "true"   # M0: sign in without Kakao or Apple
-    ports: ["8080:8080"]
+      GEUNAL_AUTH_STUB: "true" # M0: sign in without Kakao or Apple
+    ports: ["127.0.0.1:8080:8080"]
     depends_on:
       postgres: { condition: service_healthy }
-      redis: { condition: service_started }
+      redis: { condition: service_healthy }
       s3: { condition: service_started }
 
   gateway:
-    build: ../server/gateway
+    image: geunal/gateway:local
+    pull_policy: never
+    read_only: true
+    tmpfs: [/tmp]
     environment:
       JWKS_URL: http://api:8080/.well-known/jwks.json
       REDIS_URL: redis://redis:6379
-    ports: ["4000:4000"]
+    ports: ["127.0.0.1:4000:4000"]
     depends_on:
       api: { condition: service_started }
+      redis: { condition: service_healthy }
 ```
 
+- **태그 고정:** 모든 이미지의 태그를 고정합니다. API 테스트(Testcontainers)와 게이트웨이 CI도 같은 PostgreSQL·Redis 태그를 쓰고, 첨부를 다루는 API 테스트(M3)도 같은 SeaweedFS 이미지를 씁니다. 태그는 Dependabot(`docker-compose`)이 올리고, PostgreSQL·Redis 메이저는 서버의 결정이기도 해서 손으로 올립니다.
+- **빌드 대신 이미지:** `api`와 `gateway`는 `make image-api`, `make image-gateway`가 만든 `geunal/*:local`을 씁니다(`pull_policy: never`). API 이미지는 Gradle이 밖에서 만든 boot jar를 담고, 클라우드 세션은 `scripts/docker-build.sh`를 거쳐야 패키지 저장소에 닿아서, compose의 `build:`로는 둘 다 할 수 없습니다.
+- **루프백 포트:** 계정과 암호가 고정값이라 모든 포트를 이 기기(`127.0.0.1`)에만 엽니다.
+- **읽기 전용 루트:** `api`와 `gateway`는 루트 파일 시스템을 읽기 전용으로 두고(`read_only: true`) `/tmp`만 tmpfs로 씁니다. 3장의 API 이미지 조건을 로컬에서도 확인하고, 게이트웨이도 같게 둡니다.
+- **상태 확인:** Redis에도 healthcheck를 두어 `api`와 `gateway`는 Redis가 준비된 뒤 뜹니다. 두 이미지에는 자체 `HEALTHCHECK`가 있어, `make up`(`--wait`)은 상태 확인이 있는 서비스가 모두 healthy가 될 때까지 기다립니다.
 - `GEUNAL_AUTH_STUB`은 로컬과 CI에서만 켭니다. 운영 이미지에서는 이 설정이 있으면 API가 시작하지 않습니다.
 - 헤드리스 종단 시험은 이 구성에 Rust 테스트 클라이언트 3개를 붙여 돌립니다([Rust 코어](rust-core.md) 10장).
 - 알파 서버는 이 구성에서 SeaweedFS를 빼고(NCP Object Storage를 씀) Caddy를 더한 `infra/alpha/compose.yml`로 돌립니다.
@@ -155,7 +175,8 @@ services:
 | `android` | `apps/android/**`, 코어 산출물 | Ubuntu | 빌드, 단위 테스트, 에뮬레이터 테스트, M1부터 내부 테스트 트랙 |
 | `api` | `server/api/**`, `core/vectors/**` | Ubuntu | ktlint, 테스트(Testcontainers), 이미지 빌드·검사 |
 | `gateway` | `server/gateway/**` | Ubuntu(Redis 서비스) | format, credo, 테스트, 이미지 빌드·검사 |
-| `e2e` | 위 전부 | Ubuntu | compose 띄우기, 헤드리스 종단 시험 |
+| `e2e` | `core/**`, `server/**`, `infra/docker-compose.yml` | Ubuntu | compose 띄우기, 헤드리스 종단 시험 |
+| `terraform` | `infra/terraform/**` | Ubuntu | `fmt`, 루트마다 `init`(백엔드 없이)·`validate`. M1부터 PR에 `plan`, 머지 뒤 `apply` |
 | `deploy` | `main` 머지 | Ubuntu | 스테이징 자동 배포, 운영은 수동 승인 |
 
 배포 순서:

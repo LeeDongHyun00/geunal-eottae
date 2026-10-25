@@ -17,7 +17,7 @@
 
 ```
 core/               # Rust workspace shared by both apps
-apps/ios/           # Xcode project
+apps/ios/           # XcodeGen spec, Swift packages, app and test targets
 apps/android/       # Gradle project
 server/api/         # Spring Boot (Kotlin)
 server/gateway/     # Elixir/Phoenix
@@ -34,6 +34,8 @@ scripts/            # toolchain setup and CI helpers
 - **Rust 코어:** rustup. 툴체인 버전은 `core/rust-toolchain.toml`이 고정하고, 안드로이드 빌드에 쓰는 NDK와 cargo-ndk는 `make build-android`가 받아 둡니다. iOS 빌드(`make build-ios`)는 macOS와 Xcode에서만 됩니다.
 - **API 서버:** JDK 21과 Docker. Gradle은 `server/api/gradlew`가 고정한 버전을 받아 쓰고, 테스트는 Testcontainers로 PostgreSQL과 Redis를 띄웁니다.
 - **게이트웨이:** `.tool-versions`의 Erlang/OTP와 Elixir(`make setup`이 설치)와 Docker. `make test-gateway`는 `REDIS_URL`이 없으면 쓰고 버릴 Redis 컨테이너를 띄웁니다.
+- **iOS:** macOS와 `apps/ios/.xcode-version`에 고정한 Xcode. 프로젝트 파일은 `make project-ios`가 XcodeGen(`scripts/tool.sh`가 고정 버전을 받음)으로 `apps/ios/project.yml`에서 만들고, 코어는 `make build-ios`로 먼저 빌드합니다. 이 개발 환경에는 macOS가 없어서 CI의 macOS 러너가 유일한 검증 수단입니다.
+- **안드로이드:** JDK 17 이상. Gradle은 `apps/android/gradlew`가 고정한 버전을, Android SDK는 `scripts/tool.sh android-sdk`가 고정한 패키지를 받아 씁니다(`ANDROID_HOME`이 있으면 그 SDK에 더함). `make test-android`가 코어의 안드로이드 라이브러리(`make build-android`)를 먼저 만듭니다. 계측 테스트(`make connected-android`)는 에뮬레이터나 기기가 필요해서 CI가 돌립니다.
 
 ```sh
 make setup   # install the toolchain; safe to rerun
@@ -61,6 +63,10 @@ make up     # build the images and start the stack
 make e2e    # headless end-to-end tests in core/geunal-e2e (starts the stack first)
 make down   # stop the stack and drop its data
 ```
+
+## 클라우드 구성
+
+NCP 자원은 `infra/terraform`의 Terraform 코드로 만듭니다(모듈 `vpc`, `server`, `bucket`과 환경 루트 `envs/alpha`). M0에서는 `make lint-terraform`으로 형식과 유효성만 확인하고, 적용은 M1부터 합니다. 상태 파일 위치와 적용 절차는 [infra/terraform/README.md](infra/terraform/README.md)에 있습니다.
 
 ## CI와 머지 규칙
 

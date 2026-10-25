@@ -1,7 +1,12 @@
 package app.geunal.api.common
 
+import org.slf4j.LoggerFactory
+import org.springframework.beans.TypeMismatchException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.web.ErrorResponse
+import org.springframework.web.bind.ServletRequestBindingException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 
@@ -16,10 +21,52 @@ class ApiException(
     val status: HttpStatus,
     val code: String,
     message: String,
-) : RuntimeException(message)
+) : RuntimeException(message) {
+    companion object {
+        fun invalid(message: String) = ApiException(HttpStatus.BAD_REQUEST, "invalid_request", message)
+
+        fun notFound(what: String) = ApiException(HttpStatus.NOT_FOUND, "not_found", "$what not found")
+
+        fun notMember() = ApiException(HttpStatus.FORBIDDEN, "not_member", "not an active member of this group")
+
+        fun tooLarge(
+            what: String,
+            max: Int,
+        ) = ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "too_large", "$what is larger than $max bytes")
+    }
+}
 
 @RestControllerAdvice
 class ErrorHandler {
+    private val log = LoggerFactory.getLogger(ErrorHandler::class.java)
+
     @ExceptionHandler(ApiException::class)
     fun handle(e: ApiException): ResponseEntity<ErrorBody> = ResponseEntity.status(e.status).body(ErrorBody(e.code, e.message.orEmpty()))
+
+    /** A body Jackson could not bind: wrong type, missing field, bad base64. The message may quote the body, so it stays out of the log. */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handle(
+        @Suppress("unused") e: HttpMessageNotReadableException,
+    ): ResponseEntity<ErrorBody> = handle(ApiException.invalid("the request body does not match the endpoint's schema"))
+
+    /** A path variable or query parameter of the wrong shape, or a required one missing. */
+    @ExceptionHandler(TypeMismatchException::class, ServletRequestBindingException::class)
+    fun handleBinding(
+        @Suppress("unused") e: Exception,
+    ): ResponseEntity<ErrorBody> = handle(ApiException.invalid("a path or query parameter is missing or malformed"))
+
+    /** Everything else, kept in the protocol's body shape. Spring MVC's own errors (404, 405, type mismatches) carry their status. */
+    @ExceptionHandler(Exception::class)
+    fun handle(e: Exception): ResponseEntity<ErrorBody> {
+        val status = (e as? ErrorResponse)?.statusCode?.let { HttpStatus.resolve(it.value()) } ?: HttpStatus.INTERNAL_SERVER_ERROR
+        val code =
+            when {
+                status == HttpStatus.NOT_FOUND -> "not_found"
+                status == HttpStatus.PAYLOAD_TOO_LARGE -> "too_large"
+                status.is4xxClientError -> "invalid_request"
+                else -> "internal"
+            }
+        if (status.is5xxServerError) log.error("request failed", e)
+        return handle(ApiException(status, code, if (status.is5xxServerError) "internal error" else "the request is malformed"))
+    }
 }

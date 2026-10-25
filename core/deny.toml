@@ -26,11 +26,14 @@ ignore = [
 
 [licenses]
 version = 2
-# Permissive licenses, plus MPL-2.0 (UniFFI), whose copyleft covers only changes to its own files.
+# Permissive licenses, plus MPL-2.0 (UniFFI), whose copyleft covers only changes to its own files. ISC covers ring and
+# rustls-webpki; CDLA-Permissive-2.0 is the Mozilla root bundle in webpki-roots (docs/adr/0002-http-tls-stack.md).
 allow = [
   "Apache-2.0",
   "Apache-2.0 WITH LLVM-exception",
   "BSD-3-Clause",
+  "CDLA-Permissive-2.0",
+  "ISC",
   "MIT",
   "MPL-2.0",
   "Unicode-3.0",

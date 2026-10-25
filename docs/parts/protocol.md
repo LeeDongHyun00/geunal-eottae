@@ -107,7 +107,7 @@ pub fn decode(bytes: &[u8]) -> Result<Entry, ciborium::de::Error<std::io::Error>
 - **그룹 설정은 신청에 담습니다:** 상태 블롭은 로그 밖에 있어서 기기마다 받은 시점이 다를 수 있습니다. 그래서 상태 함수는 `group_meta`를 읽지 않습니다. 선택지 추가 권한은 신청할 때 `Request.leader_options`로 복사하고, 참이면 `PollOption`은 주도자가 쓴 것만 유효합니다. 기본 결정 방식과 시간 추천 범위는 신청하는 기기의 화면 기본값일 뿐이고, 결과는 `Request.mode`와 `Poll.options`에 이미 들어 있습니다.
 - **시각:** 모든 시각 판정(투표 마감, 약속 날 00:00)은 서버가 엔트리를 받은 시각(`received_at`)으로 합니다. 기기 시계는 화면 표시에만 씁니다.
 - **모르는 종류:** 새 버전의 엔트리는 원문 그대로 저장하고 "업데이트가 필요한 메시지"로 보여 줍니다.
-- **크기:** "토요일 7시 어때?" 엔트리는 CBOR로 62바이트이고, MLS 메시지로는 254바이트입니다. 엔트리 하나는 64KB를 넘지 않고, 큰 내용은 미디어로 보냅니다.
+- **크기:** "토요일 7시 어때?" 엔트리는 UUIDv7 `id`를 넣으면 CBOR로 97바이트입니다(`core/vectors/entries.json`의 `text` 항목). 엔트리 하나는 64KB를 넘지 않고, 큰 내용은 미디어로 보냅니다.
 
 ## 5. 상태 블롭
 
@@ -122,7 +122,7 @@ pub fn decode(bytes: &[u8]) -> Result<Entry, ciborium::de::Error<std::io::Error>
 | `availability` | 멤버 | `{window_start, days, bits}`: 30분마다 1비트, 1은 일정 없음, MSB부터 | 캘린더가 바뀔 때, epoch가 바뀔 때 |
 | `group_meta` | 그룹당 하나. 마지막으로 봉인한 멤버 | `{name, color, cover?, plan, changed_by, changed_at}`. `cover`는 `{object, key, sha256}`, `plan`은 날짜 잡기 기본값 `{mode: Mode, window: [from, to], options_by}`(`window`는 30분 칸 번호, `options_by`는 `anyone` 또는 `leader`) | 멤버 누구나 공통 설정을 바꿀 때. epoch를 바꾼 커밋을 한 기기가 다시 봉인 |
 | `member_profile` | 멤버 | `{nickname?, avatar?, birthday_md?, lunar?, tags?}`. `avatar`는 `{object, key, sha256}` | 그룹 프로필이나 공개 설정을 바꿀 때, epoch가 바뀔 때 |
-| `newcomer_bundle` | 추가 커밋을 한 기기의 주인 | 날이 지나지 않은 약속의 엔트리 목록 `[(author_id, received_at, Entry)]` | 멤버를 추가한 직후 |
+| `newcomer_bundle` | 추가 커밋을 한 기기의 주인 | 날이 지나지 않은 약속의 엔트리 목록 `[(seq?, author_id, received_at, Entry)]`. `seq`는 보낸 기기가 아는 서버 순번이고, 받는 기기는 그 자리에 항목을 끼워 자기 로그와 순서를 맞춤. 없으면 로그 앞에 둠 | 멤버를 추가한 직후 |
 
 **그룹 메타는 공용 자리입니다.** 멤버 누구나 바꿀 수 있어서 서버는 그룹마다 한 줄만 두고 버전을 셉니다.
 - 쓰는 기기는 읽었던 버전(`base_version`)을 함께 보냅니다. 그사이 다른 멤버가 바꿨으면 409 `state_conflict`를 받고, 최신 블롭을 읽어 자기가 바꾼 항목만 다시 얹은 뒤 재시도합니다.
@@ -176,7 +176,7 @@ sequenceDiagram
 
 | 서버 → 기기 이벤트 | 페이로드 | 기기가 할 일 |
 | --- | --- | --- |
-| `entry` | `{g, s, kind, c?}`: 그룹, 순번, `commit`/`app`, 암호문(4KB 이하일 때만) | `c`가 있으면 바로 처리, 없거나 빈틈이 있으면 API에서 가져오기 |
+| `entry` | `{g, s, kind, at, c?}`: 그룹, 순번, `commit`/`app`, 서버가 받은 시각(`received_at`, RFC 3339 UTC), 암호문(4KB 이하일 때만) | `c`가 있으면 `at`을 `received_at`으로 삼아 바로 처리, 없거나 빈틈이 있으면 API에서 가져오기 |
 | `state` | `{g, kind, owner, epoch}` | 해당 상태 블롭 가져오기 |
 | `membership` | `{g}` | 멤버 목록 다시 가져오기, 필요하면 Remove 커밋 |
 | `welcome` | `{}` | `GET /me/welcomes` |
@@ -196,7 +196,7 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
 
 - **종류(`cat`):** `alert`가 `none`이 아니면 기기가 `chat`(텍스트, 사진·파일) 또는 `plan`(날짜 잡기 신청·응답·변경·취소, 투표 열기·닫기, 약속 첨부)을 함께 보냅니다. 종류별 알림 끄기를 위해 서버가 아는 유일한 내용 정보입니다.
 - **빼는 대상:** 서버는 보낸 사람 자신, 전체 알림을 끈(`muted_until`) 멤버, 그 종류를 끈(`notify_chat`, `notify_plan`) 멤버를 뺍니다.
-- **페이로드:** `{"g": group_id, "s": seq, "c": base64 암호문}`. `c`는 암호문이 3KB 이하일 때만 넣습니다.
+- **페이로드:** `{"g": group_id, "s": seq, "at": received_at, "c": base64 암호문}`. `at`은 실시간 `entry` 이벤트와 같은 서버 수신 시각이고, `c`는 암호문이 3KB 이하일 때만 넣습니다.
 - **iOS:** `aps.alert`에 "새 메시지" 같은 자리표시 문구와 `mutable-content: 1`을 넣습니다. 알림 확장이 복호화해서 문구를 바꿉니다.
 - **안드로이드:** 우선순위 높은 데이터 전용 메시지로 보내고, 앱의 핸들러가 알림을 만듭니다.
 - **`c`가 없을 때:** 알림 확장이나 핸들러가 API에서 그 항목을 가져와 복호화합니다(30초 안).
@@ -233,8 +233,9 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
 
 | HTTP | `error` | 기기가 할 일 |
 | --- | --- | --- |
+| 400 | `invalid_request` | 요청 형식이 틀렸음(필드 누락, MLS 헤더와 요청 불일치). 고치기 전에는 재시도하지 않음 |
 | 401 | `token_expired` | 리프레시 토큰으로 갱신 후 재시도 |
-| 403 | `not_member`, `blocked`, `device_revoked` | 화면에 알리고 중단. `device_revoked`면 로그아웃 |
+| 403 | `not_member`, `not_owner`, `blocked`, `device_revoked` | 화면에 알리고 중단. `device_revoked`면 로그아웃 |
 | 404 | `not_found` | 중단 |
 | 409 | `epoch_conflict` | 동기화 후 커밋을 다시 만들어 재시도 |
 | 409 | `stale_epoch` | 대기 커밋 처리 후 다시 암호화해 재시도 |
@@ -242,6 +243,9 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
 | 410 | `cursor_expired` | 외부 가입으로 다시 들어오기 |
 | 413 | `too_large` | 미디어로 보내기 |
 | 429 | `rate_limited` | `Retry-After`만큼 기다린 뒤 재시도 |
+| 500 | `internal` | 지수 백오프로 재시도 |
+
+바이트 값(암호문, 키, MLS 메시지)은 JSON에서 표준 base64(패딩 있음) 문자열입니다. 요청·응답 본문의 모양은 `server/api/openapi.yaml`에 있습니다.
 
 ## 12. 테스트 벡터
 

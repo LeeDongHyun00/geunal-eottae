@@ -5,7 +5,7 @@
 # Locally, `scripts/ci/changed-parts.sh <base> [<head>]` shows what a PR from <head> into <base> would run.
 set -euo pipefail
 
-parts="core api gateway e2e ios android"
+parts="core api gateway e2e terraform ios android"
 
 # Files every part's CI runs through.
 shared='^(\.github/workflows/ci\.yml|scripts/(ensure-docker|docker-build|tool)\.sh|Makefile)$|^scripts/ci/'
@@ -15,7 +15,8 @@ rule() {
     core) echo '^core/|^\.github/workflows/core\.yml$' ;;
     api) echo '^server/api/|^core/vectors/|^\.github/workflows/api\.yml$' ;;
     gateway) echo '^server/gateway/|^core/vectors/|^\.tool-versions$|^\.github/workflows/gateway\.yml$' ;;
-    e2e) echo '^core/|^server/|^infra/|^\.tool-versions$|^\.github/workflows/e2e\.yml$' ;;
+    e2e) echo '^core/|^server/|^infra/docker-compose\.yml$|^\.tool-versions$|^\.github/workflows/e2e\.yml$' ;;
+    terraform) echo '^infra/terraform/|^\.github/workflows/terraform\.yml$' ;;
     ios) echo '^apps/ios/|^core/|^\.github/workflows/ios\.yml$' ;;
     android) echo '^apps/android/|^core/|^\.github/workflows/android\.yml$' ;;
   esac

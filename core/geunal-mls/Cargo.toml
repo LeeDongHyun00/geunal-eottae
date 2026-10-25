@@ -12,8 +12,13 @@ geunal-store.workspace = true
 mls-rs.workspace = true
 mls-rs-crypto-rustcrypto.workspace = true
 mls-rs-provider-sqlite.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
+ciborium.workspace = true
+geunal-domain.workspace = true
+hex.workspace = true
+serde_json.workspace = true
 tempfile.workspace = true
 
 [lints]
