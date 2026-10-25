@@ -50,6 +50,11 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.geunal.ios
+        # Keychain Sharing (docs/parts/ios.md §8): the notification extension reads the same keys from M3, and the
+        # simulator keychain works only for an app signed with entitlements. Automatic signing adds the capability to
+        # the App ID once a team is set (M1).
+        CODE_SIGN_ENTITLEMENTS: GeunalApp/GeunalApp.entitlements
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
         INFOPLIST_KEY_CFBundleDisplayName: 그날어때
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES

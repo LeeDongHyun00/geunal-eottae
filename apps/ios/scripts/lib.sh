@@ -40,15 +40,14 @@ simulator_destination() {
   echo "platform=iOS Simulator,name=$name,OS=latest"
 }
 
-# Run xcodebuild on the app scheme for the simulator. Signing is off because simulator builds need none and the CI
-# runner has no certificate. Extra arguments go to xcodebuild.
+# Run xcodebuild on the app scheme for the simulator. Simulator products get Xcode's ad-hoc signature, which needs no
+# certificate or team; signing stays on because the simulator keychain refuses an app without the entitlements that
+# signing embeds (errSecMissingEntitlement). Extra arguments go to xcodebuild.
 run_xcodebuild() {
   xcodebuild \
     -project "$project" \
     -scheme "$scheme" \
     -destination "$(simulator_destination)" \
     -derivedDataPath "$derived_data" \
-    CODE_SIGNING_ALLOWED=NO \
-    CODE_SIGN_IDENTITY= \
     "$@"
 }
