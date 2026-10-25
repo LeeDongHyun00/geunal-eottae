@@ -34,9 +34,10 @@ pub enum CoreError {
     SecretStore { reason: String },
     #[error("not signed in")]
     NotSignedIn,
-    /// A response the server chose to send (protocol §11); the app branches on `code`.
-    #[error("api {status} {code}: {message}")]
-    Api { status: u16, code: String, message: String },
+    /// A response the server chose to send (protocol §11); the app branches on `code`. The field is `detail`, not
+    /// `message`, because Kotlin's `Throwable` already has a `message` and the generated exception would clash.
+    #[error("api {status} {code}: {detail}")]
+    Api { status: u16, code: String, detail: String },
     #[error("network: {reason}")]
     Network { reason: String },
     #[error("sync: {reason}")]
@@ -49,7 +50,7 @@ impl From<SyncError> for CoreError {
     fn from(e: SyncError) -> Self {
         match e {
             SyncError::Api(geunal_sync::ApiError::Api { status, code, message }) => {
-                CoreError::Api { status, code, message }
+                CoreError::Api { status, code, detail: message }
             }
             SyncError::Api(geunal_sync::ApiError::Network(reason)) => CoreError::Network { reason },
             SyncError::Store(e) => CoreError::Store { reason: e.to_string() },
