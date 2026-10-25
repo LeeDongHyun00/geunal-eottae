@@ -269,6 +269,8 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
 2. `GET /me/recovery`로 salt와 래핑된 AMK를 받습니다.
 3. 복구 코드에서 `E`를, Argon2id로 복구 키를 얻어 AMK를 풉니다. 풀리지 않으면 코드가 틀린 것입니다.
 4. `GET /me/backups/latest`로 다운로드 URL을 받아 내려받고, 복호화해 로컬 저장소를 채웁니다. 백업이 없으면(404) 이 단계를 건너뜁니다.
+   - 로그아웃됐던 기기가 다시 들어오는 경우처럼 로컬 저장소에 이미 일정이 있으면 합칩니다.
+   - 같은 ID는 백업 쪽을 쓰고, 백업에 없는 로컬 항목은 남깁니다.
 5. 교체 티켓이 있으면 `POST /auth/replace`로 이 기기를 활성 기기로 만듭니다. 이전 기기는 로그아웃됩니다.
 6. 그룹마다 외부 가입으로 다시 들어갑니다(2장).
 
@@ -282,7 +284,7 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
 | 401 | `token_expired` | 리프레시 토큰으로 갱신 후 재시도. 교체 티켓이면 로그인부터 다시 |
 | 401 | `provider_token_invalid` | 카카오·Apple 토큰이 검증되지 않음(서명, `aud`, 만료, nonce). 제공자 로그인부터 다시 |
 | 401 | `recovery_invalid` | 게스트 복귀 실패. 복구 코드를 다시 확인하게 함 |
-| 403 | `not_member`, `not_owner`, `blocked`, `device_revoked` | 화면에 알리고 중단. `device_revoked`면 로그아웃 |
+| 403 | `not_member`, `not_owner`, `blocked`, `device_revoked` | 화면에 알리고 중단. `device_revoked`면 로그아웃. 기기 교체로 해제됐으면 본문에 `replaced_at`, `replaced_by`가 더 있음(13장) |
 | 403 | `replace_required` | 교체 티켓으로는 할 수 없는 요청. 기기 교체를 마친 뒤 다시 |
 | 404 | `not_found` | 중단 |
 | 409 | `epoch_conflict` | 동기화 후 커밋을 다시 만들어 재시도 |
@@ -342,6 +344,8 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
   - `POST /auth/replace`에 티켓을 보내면, 로그인 때 증명한 키로 이 기기를 등록하고 이전 기기를 해제합니다. 복원을 마친 뒤나 "백업 없이 새로 시작"을 고른 뒤 부릅니다.
   - 티켓이 만료되면 401 `token_expired`이고, 로그인부터 다시 합니다.
 - **기기 해제:** 서버는 이전 기기의 세션을 지우고 `revoke`를 보냅니다. 이전 기기는 다음 요청에서 403 `device_revoked`를 받고 로그아웃 상태가 됩니다. 그 기기에 저장된 일정은 그대로 남습니다. 그룹에서는 2장의 기기 교체 규칙을 따릅니다.
+  - 기기 교체로 해제된 기기가 받는 403 `device_revoked` 본문에는 `replaced_at`(해제된 시각, RFC 3339)과 `replaced_by`(그 계정의 지금 활성 기기 플랫폼, `ios`·`android`)가 더 들어갑니다.
+  - 이 두 값은 이전 기기가 "언제 어떤 기기에서 로그인했는지" 보여 주려고 넣습니다. 내가 한 로그인이 아니면 알아챌 수 있게 하려는 것입니다.
 
 ### 게스트 복귀
 

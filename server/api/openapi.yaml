@@ -5,7 +5,9 @@
 #
 # Conventions:
 # - Field names are snake_case. Bytes (ciphertext, keys, MLS messages) are standard base64 with padding.
-# - Every error body is {"error": "<code>", "message": "..."} (docs/parts/protocol.md §11).
+# - Every error body is {"error": "<code>", "message": "..."} (docs/parts/protocol.md §11). M1: 403 device_revoked
+#   for a device revoked by a replacement also carries replaced_at (date-time) and replaced_by (ios | android, the
+#   account's active device), so the old device can say when and where the account signed in (protocol §13).
 # - Authentication: `Authorization: Bearer <access JWT>` on everything but /auth/*, /.well-known/jwks.json, /holidays
 #   and /actuator/health. The JWT is ES256, 15 minutes, claims sub = user_id and did = device_id. A replacement
 #   ticket (protocol §13) is the bearer for GET /me/recovery, GET /me/backups and GET /me/backups/latest only.
