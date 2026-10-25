@@ -116,11 +116,13 @@ paths:
     post:
       summary: "M1: Android's Sign in with Apple web flow posts here (response_mode form_post)"
       description: |
-        The server checks nothing here and answers 303 to https://<domain>/auth/apple with `id_token`, `state` and
-        `user` in the fragment, each percent-encoded and length-limited. The app receives that App Link, checks
-        `state`, and calls POST /auth/apple with `id_token`. `user` (JSON with the name) arrives on the first
-        authorization only; the app may use it as `display_name`. The page at that address, opened when the app is not
-        installed, is static and never reads or renders the fragment.
+        The server checks nothing here and answers 303 to https://<domain>/auth/apple with `code`, `id_token`, `state`
+        and `user` in the fragment, each percent-encoded and length-limited. The app receives that App Link, checks
+        `state`, and calls POST /auth/apple with `id_token`; it keeps `code` only for an account deletion
+        (`apple_authorization_code` of DELETE /me), since this callback is the one way an Android device gets a fresh
+        code. `user` (JSON with the name) arrives on the first authorization only; the app may use it as
+        `display_name`. The page at that address, opened when the app is not installed, is static and never reads or
+        renders the fragment.
       security: []
       requestBody:
         content:
@@ -423,7 +425,7 @@ paths:
                       sessions: { type: integer, minimum: 0, description: times the app came to the foreground that day }
                       events: { type: integer, minimum: 0, description: "events created on this device that day (protocol §14 says what counts)" }
                       suggested: { type: integer, minimum: 0, description: "of those, created from a suggestion chip; at most events" }
-                      crashes: { type: integer, minimum: 0, description: "abnormal exits that day, from MetricKit (iOS) or ApplicationExitInfo (Android)" }
+                      crashes: { type: integer, minimum: 0, description: "crashes that day: MXCrashDiagnostic (iOS), ApplicationExitInfo REASON_CRASH and REASON_CRASH_NATIVE only (Android)" }
       responses:
         "204": { description: stored; a day sent again overwrites the earlier counts }
         "400": { description: "invalid_request (suggested above events, a day more than 14 days old)" }
