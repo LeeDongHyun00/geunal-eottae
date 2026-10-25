@@ -55,11 +55,11 @@ class DeliveryService(
 
         for (device in addedDevices) {
             groups.activate(groupId, device.userId)
-            repository.addWelcome(device.id, groupId, request.welcome!!)
+            repository.addWelcome(device.id, groupId, accepted.seq, request.welcome!!)
         }
         val addedIds = addedDevices.map { it.id }.toSet()
         val others = groups.activeDeviceIds(groupId, except = caller.deviceId).filterNot { it in addedIds }
-        signals.send(others, EntryEvent.of(groupId, accepted.seq, "commit", request.commit))
+        signals.send(others, EntryEvent.of(groupId, accepted.seq, "commit", accepted.receivedAt, request.commit))
         signals.send(addedIds, WelcomeEvent)
         return accepted
     }
@@ -69,16 +69,17 @@ class DeliveryService(
         caller: Caller,
         groupId: UUID,
         request: MessageRequest,
-    ): Long {
+    ): Appended {
         groups.requireActive(groupId, caller.userId)
         checkSize(request.message, "message", MAX_ENTRY)
         MlsHeader.parse(request.message).expectWireFormat(MlsHeader.PRIVATE_MESSAGE).expectGroup(groupId, request.epoch)
         request.validateAlert()
-        val seq =
+        val appended =
             repository.appendMessage(groupId, request.epoch, caller.userId, request.message)
                 ?: throw ApiException(HttpStatus.CONFLICT, "stale_epoch", "the group is no longer in epoch ${request.epoch}")
-        signals.send(groups.activeDeviceIds(groupId, except = caller.deviceId), EntryEvent.of(groupId, seq, "app", request.message))
-        return seq
+        val event = EntryEvent.of(groupId, appended.seq, "app", appended.receivedAt, request.message)
+        signals.send(groups.activeDeviceIds(groupId, except = caller.deviceId), event)
+        return appended
     }
 
     fun log(

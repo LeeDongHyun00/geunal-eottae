@@ -28,6 +28,7 @@ data class CommitRequest(
 data class CommitResponse(
     val seq: Long,
     val epoch: Long,
+    val receivedAt: Instant,
 )
 
 /** An application message. [alert] is `"all"`, `"none"` or a list of user IDs; [cat] is `chat` or `plan` unless alert is none (protocol §8). */
@@ -52,6 +53,7 @@ data class MessageRequest(
 
 data class MessageResponse(
     val seq: Long,
+    val receivedAt: Instant,
 )
 
 data class LogEntryView(
@@ -108,6 +110,7 @@ data class StatesResponse(
 
 data class WelcomeView(
     val groupId: UUID,
+    val seq: Long,
     val data: ByteArray,
 )
 
@@ -125,7 +128,7 @@ class DeliveryController(
         @AuthenticationPrincipal caller: Caller,
         @PathVariable id: UUID,
         @RequestBody body: CommitRequest,
-    ): CommitResponse = delivery.commit(caller, id, body).let { CommitResponse(it.seq, it.epoch) }
+    ): CommitResponse = delivery.commit(caller, id, body).let { CommitResponse(it.seq, it.epoch, it.receivedAt) }
 
     @PostMapping("/groups/{id}/messages")
     @ResponseStatus(HttpStatus.CREATED)
@@ -133,7 +136,7 @@ class DeliveryController(
         @AuthenticationPrincipal caller: Caller,
         @PathVariable id: UUID,
         @RequestBody body: MessageRequest,
-    ): MessageResponse = MessageResponse(delivery.message(caller, id, body))
+    ): MessageResponse = delivery.message(caller, id, body).let { MessageResponse(it.seq, it.receivedAt) }
 
     @GetMapping("/groups/{id}/log")
     fun log(
@@ -185,5 +188,5 @@ class DeliveryController(
     @GetMapping("/me/welcomes")
     fun welcomes(
         @AuthenticationPrincipal caller: Caller,
-    ): WelcomesResponse = WelcomesResponse(delivery.takeWelcomes(caller).map { WelcomeView(it.groupId, it.data) })
+    ): WelcomesResponse = WelcomesResponse(delivery.takeWelcomes(caller).map { WelcomeView(it.groupId, it.seq, it.data) })
 }
