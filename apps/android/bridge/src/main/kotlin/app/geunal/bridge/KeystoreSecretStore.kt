@@ -5,6 +5,7 @@ import android.security.keystore.KeyProperties
 import android.util.AtomicFile
 import app.geunal.core.SecretStore
 import java.io.File
+import java.io.FileNotFoundException
 import java.security.KeyStore
 import java.util.Base64
 import javax.crypto.Cipher
@@ -31,9 +32,14 @@ class KeystoreSecretStore(
 
     @Synchronized
     override fun get(name: String): ByteArray? {
-        val file = fileFor(name)
-        if (!file.exists()) return null
-        val sealed = AtomicFile(file).readFully()
+        // Read through AtomicFile rather than testing for the file: on API 26-29 a write in progress has already
+        // renamed the previous value to a backup, which AtomicFile restores, and only it knows when nothing is there.
+        val sealed =
+            try {
+                AtomicFile(fileFor(name)).readFully()
+            } catch (e: FileNotFoundException) {
+                return null
+            }
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_BITS, sealed, 0, IV_BYTES))
         // The name is authenticated with the value, so a file moved under another secret's name fails to open.
