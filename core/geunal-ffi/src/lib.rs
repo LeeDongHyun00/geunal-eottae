@@ -323,8 +323,12 @@ impl Core {
         .await
     }
 
-    /// Catches every group up from its cursor and sends what is waiting in the outbox.
+    /// Catches every group up from its cursor and sends what is waiting in the outbox. Before a sign-in there is
+    /// nothing to catch up, so this returns at once: the apps' first screen opens the core and syncs without an account.
     pub async fn sync(self: Arc<Self>) -> Result<(), CoreError> {
+        if saved_session(self.secrets.as_ref()).is_none() {
+            return Ok(());
+        }
         let this = self.clone();
         self.run(async move { this.engine(Box::new(|e| Box::pin(async move { e.sync().await }))).await }).await
     }

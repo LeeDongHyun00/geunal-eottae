@@ -69,12 +69,13 @@ fn rejects_a_stored_key_of_the_wrong_length() {
 }
 
 #[test]
-fn refuses_to_sync_before_a_sign_in_and_reports_no_session() {
+fn syncs_with_nothing_to_do_before_a_sign_in_and_reports_no_session() {
     let dir = tempfile::tempdir().unwrap();
     let core = open(&dir, &Arc::new(MemorySecrets::default())).unwrap();
 
     assert!(core.session().is_none());
-    assert!(matches!(pollster::block_on(core.clone().sync()), Err(CoreError::NotSignedIn)));
+    // The M0 status screens open the core and sync without an account; that is not an error.
+    pollster::block_on(core.clone().sync()).unwrap();
     assert!(matches!(core.groups(), Err(CoreError::NotSignedIn)));
 }
 
