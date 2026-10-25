@@ -1,17 +1,30 @@
 //! The UniFFI facade the apps call (docs/parts/rust-core.md §3): Swift sees `Core.open(...)` and `sync() async throws`,
-//! Kotlin `Core.open(...)` and `suspend fun sync()`. Only the M0 surface exists so far. Opening the encrypted store
-//! here also makes every app build link SQLCipher; `sync` has nothing to do until the sync engine lands.
+//! Kotlin `Core.open(...)` and `suspend fun sync()`. The M0 surface: open the encrypted store, sign in as a guest,
+//! sync, make and join groups, send entries, and read the state every device derives from the same log. Network work
+//! runs on a tokio runtime the core owns; the app's own executor only awaits the result.
 
-use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
 
-use geunal_store::Store;
+use geunal_domain::appointments::GroupState;
+use geunal_domain::availability::Availability;
+use geunal_domain::entry::{Choice, Entry};
+use geunal_mls::{Identity, MlsClient};
+use geunal_store::{DB_FILE, Store};
+use geunal_sync::realtime::{Event, Realtime};
+use geunal_sync::{Alert, Engine, HttpTransport, Listener, Session as SyncSession, SyncError, Transport as _};
 use rand_core::{OsRng, RngCore};
+use tokio::sync::Mutex;
 
 uniffi::setup_scaffolding!();
 
-/// The name under which the app's keychain or keystore holds the database key.
+/// Names under which the app's keychain or keystore holds the core's secrets.
 const DB_KEY: &str = "db_key";
+const SIGNING_KEY: &str = "device_signing_key";
+const SESSION: &str = "session";
+/// Key packages uploaded at sign-in; others consume one each time they add this device.
+const KEY_PACKAGES: usize = 10;
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum CoreError {
@@ -19,10 +32,48 @@ pub enum CoreError {
     Store { reason: String },
     #[error("secret store: {reason}")]
     SecretStore { reason: String },
+    #[error("not signed in")]
+    NotSignedIn,
+    /// A response the server chose to send (protocol §11); the app branches on `code`.
+    #[error("api {status} {code}: {message}")]
+    Api { status: u16, code: String, message: String },
+    #[error("network: {reason}")]
+    Network { reason: String },
+    #[error("sync: {reason}")]
+    Sync { reason: String },
+    #[error("realtime: {reason}")]
+    Realtime { reason: String },
+}
+
+impl From<SyncError> for CoreError {
+    fn from(e: SyncError) -> Self {
+        match e {
+            SyncError::Api(geunal_sync::ApiError::Api { status, code, message }) => {
+                CoreError::Api { status, code, message }
+            }
+            SyncError::Api(geunal_sync::ApiError::Network(reason)) => CoreError::Network { reason },
+            SyncError::Store(e) => CoreError::Store { reason: e.to_string() },
+            SyncError::NotSignedIn => CoreError::NotSignedIn,
+            SyncError::Realtime(reason) => CoreError::Realtime { reason },
+            other => CoreError::Sync { reason: other.to_string() },
+        }
+    }
+}
+
+impl From<geunal_store::StoreError> for CoreError {
+    fn from(e: geunal_store::StoreError) -> Self {
+        CoreError::Store { reason: e.to_string() }
+    }
+}
+
+impl From<geunal_mls::Error> for CoreError {
+    fn from(e: geunal_mls::Error) -> Self {
+        CoreError::Sync { reason: e.to_string() }
+    }
 }
 
 /// Implemented by the app over the iOS keychain or the Android keystore. The core keeps its secrets (device signing
-/// key, account master key, database key) only here, never in SQLite (docs/parts/rust-core.md §3).
+/// key, session, database key) only here, never in SQLite (docs/parts/rust-core.md §3).
 #[uniffi::export(with_foreign)]
 pub trait SecretStore: Send + Sync {
     fn get(&self, name: String) -> Option<Vec<u8>>;
@@ -44,20 +95,149 @@ pub trait CoreListener: Send + Sync {
     fn on_change(&self, change: Change);
 }
 
+struct Forward(Arc<dyn CoreListener>);
+
+impl Listener for Forward {
+    fn on_change(&self, change: geunal_sync::Change) {
+        self.0.on_change(match change {
+            geunal_sync::Change::Calendar => Change::Calendar,
+            geunal_sync::Change::Group { group_id } => Change::Group { group_id },
+            geunal_sync::Change::Chat { group_id } => Change::Chat { group_id },
+        })
+    }
+}
+
+/// The signed-in account and device.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Session {
+    pub user_id: String,
+    pub device_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct GroupInfo {
+    pub group_id: String,
+    pub name: Option<String>,
+    /// Last seq applied.
+    pub cursor: i64,
+    /// `None` while this device is not (or no longer) a member.
+    pub epoch: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum Mode {
+    Vote,
+    Dictator,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum Stage {
+    Time,
+    Activity,
+}
+
+impl From<Mode> for geunal_domain::entry::Mode {
+    fn from(m: Mode) -> Self {
+        match m {
+            Mode::Vote => Self::Vote,
+            Mode::Dictator => Self::Dictator,
+        }
+    }
+}
+
+impl From<Stage> for geunal_domain::entry::Stage {
+    fn from(s: Stage) -> Self {
+        match s {
+            Stage::Time => Self::Time,
+            Stage::Activity => Self::Activity,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct PollView {
+    pub stage: Stage,
+    pub options: Vec<String>,
+    /// Participants who have voted.
+    pub voters: Vec<String>,
+    pub closed: bool,
+    pub result: Option<String>,
+}
+
+/// An appointment as every device derives it from the log.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AppointmentView {
+    pub appt: String,
+    pub leader: String,
+    pub day: String,
+    pub mode: Mode,
+    pub start: Option<u16>,
+    pub end: Option<u16>,
+    pub activity: Option<String>,
+    pub note: Option<String>,
+    pub participants: Vec<String>,
+    pub tentative: bool,
+    pub cancelled: bool,
+    pub polls: Vec<PollView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct GroupStateView {
+    pub appointments: Vec<AppointmentView>,
+    /// The full state in one canonical string, so two devices can be compared for equality.
+    pub digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ChatMessage {
+    pub seq: i64,
+    pub author_id: String,
+    pub body: String,
+    pub received_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MemberAvailability {
+    pub user_id: String,
+    pub window_start: String,
+    pub days: u16,
+    pub bits: Vec<u8>,
+}
+
+/// A gateway event after the core has acted on it (protocol §7).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum RealtimeEvent {
+    Entry { group_id: String, seq: i64 },
+    State { group_id: String },
+    Membership { group_id: String },
+    Welcome,
+    Revoke,
+    Joined,
+    Closed { reason: String },
+}
+
+enum State {
+    SignedOut(Store),
+    SignedIn(Box<Engine<Arc<HttpTransport>>>),
+}
+
 #[derive(uniffi::Object)]
 pub struct Core {
-    store: Mutex<Store>,
-    // Kept from `open` for the sync engine (docs/parts/rust-core.md §5), which does not exist yet.
-    #[allow(dead_code)]
-    api_base: String,
-    #[allow(dead_code)]
+    runtime: tokio::runtime::Runtime,
+    store_dir: PathBuf,
+    api: Arc<HttpTransport>,
     listener: Arc<dyn CoreListener>,
+    secrets: Arc<dyn SecretStore>,
+    db_key: [u8; 32],
+    state: Mutex<State>,
+    realtime: Mutex<Option<Realtime>>,
 }
 
 #[uniffi::export]
 impl Core {
     /// Opens or creates the encrypted store in `store_dir`. The database key is made on first open and kept in
-    /// `secrets`, which is why `open` takes it in addition to the arguments in docs/parts/rust-core.md §3.
+    /// `secrets`, which is why `open` takes it: the key must come from the keychain before the file can be opened.
+    /// A session kept from an earlier run is restored, so `sync` works right away.
     #[uniffi::constructor]
     pub fn open(
         store_dir: String,
@@ -65,22 +245,407 @@ impl Core {
         listener: Arc<dyn CoreListener>,
         secrets: Arc<dyn SecretStore>,
     ) -> Result<Arc<Self>, CoreError> {
-        let key = database_key(secrets.as_ref())?;
-        let store = Store::open(&Path::new(&store_dir).join("geunal.db"), &key)
-            .map_err(|e| CoreError::Store { reason: e.to_string() })?;
-        Ok(Arc::new(Self { store: Mutex::new(store), api_base, listener }))
-    }
-
-    /// Catches every group up from its cursor.
-    pub async fn sync(&self) -> Result<(), CoreError> {
-        Ok(())
+        let db_key = database_key(secrets.as_ref())?;
+        let store_dir = PathBuf::from(store_dir);
+        let store = Store::open(&store_dir.join(DB_FILE), &db_key)?;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .thread_name("geunal-core")
+            .build()
+            .map_err(|e| CoreError::Sync { reason: e.to_string() })?;
+        let api = Arc::new(HttpTransport::new(&api_base).map_err(|e| CoreError::Network { reason: e.to_string() })?);
+        let state = match saved_session(secrets.as_ref()) {
+            Some(session) => {
+                api.restore_session(&session.access_token);
+                let engine =
+                    build_engine(&store_dir, &db_key, &session, secrets.as_ref(), api.clone(), listener.clone())?;
+                drop(store);
+                State::SignedIn(Box::new(engine))
+            }
+            None => State::SignedOut(store),
+        };
+        Ok(Arc::new(Self {
+            runtime,
+            store_dir,
+            api,
+            listener,
+            secrets,
+            db_key,
+            state: Mutex::new(state),
+            realtime: Mutex::new(None),
+        }))
     }
 
     /// The SQLCipher release inside the app build, for the M0 screen that shows the core runs on the device.
     pub fn cipher_version(&self) -> Result<String, CoreError> {
-        let store = self.store.lock().map_err(|_| CoreError::Store { reason: "store lock poisoned".into() })?;
-        store.cipher_version().map_err(|e| CoreError::Store { reason: e.to_string() })
+        let state = self.state.blocking_lock();
+        let version = match &*state {
+            State::SignedOut(store) => store.cipher_version()?,
+            State::SignedIn(engine) => engine.store().cipher_version()?,
+        };
+        Ok(version)
     }
+
+    /// The signed-in account, if any.
+    pub fn session(&self) -> Option<Session> {
+        saved_session(self.secrets.as_ref()).map(|s| Session { user_id: s.user_id, device_id: s.device_id })
+    }
+
+    /// Registers this device as a guest account (M0 auth stub, api-server.md §4): the device key is made and kept in
+    /// the secret store, the session too, and the first key packages go up.
+    pub async fn sign_in_guest(self: Arc<Self>, display_name: String, platform: String) -> Result<Session, CoreError> {
+        let this = self.clone();
+        self.run(async move {
+            let secret = signing_secret(this.secrets.as_ref())?;
+            let session = geunal_sync::sign_in_guest(&this.api, &display_name, &platform, &secret).await?;
+            let json = serde_json::to_vec(&session).map_err(|e| CoreError::Sync { reason: e.to_string() })?;
+            this.secrets.put(SESSION.to_owned(), json);
+            let engine = build_engine(
+                &this.store_dir,
+                &this.db_key,
+                &session,
+                this.secrets.as_ref(),
+                this.api.clone(),
+                this.listener.clone(),
+            )?;
+            engine.publish_key_packages(KEY_PACKAGES).await?;
+            *this.state.lock().await = State::SignedIn(Box::new(engine));
+            Ok(Session { user_id: session.user_id, device_id: session.device_id })
+        })
+        .await
+    }
+
+    /// Catches every group up from its cursor and sends what is waiting in the outbox.
+    pub async fn sync(self: Arc<Self>) -> Result<(), CoreError> {
+        let this = self.clone();
+        self.run(async move { this.engine(Box::new(|e| Box::pin(async move { e.sync().await }))).await }).await
+    }
+
+    pub async fn create_group(self: Arc<Self>, name: Option<String>) -> Result<String, CoreError> {
+        let this = self.clone();
+        self.run(async move {
+            this.engine(Box::new(|e| Box::pin(async move { e.create_group(name.as_deref()).await }))).await
+        })
+        .await
+    }
+
+    pub async fn create_invite(self: Arc<Self>, group_id: String) -> Result<String, CoreError> {
+        let this = self.clone();
+        self.run(
+            async move { this.engine(Box::new(|e| Box::pin(async move { e.create_invite(&group_id).await }))).await },
+        )
+        .await
+    }
+
+    /// Asks to join; membership arrives through `sync` once a member's device adds this one.
+    pub async fn join_invite(self: Arc<Self>, code: String) -> Result<String, CoreError> {
+        let this = self.clone();
+        self.run(async move { this.engine(Box::new(|e| Box::pin(async move { e.join_invite(&code).await }))).await })
+            .await
+    }
+
+    pub async fn remove_member(self: Arc<Self>, group_id: String, user_id: String) -> Result<(), CoreError> {
+        let this = self.clone();
+        self.run(async move {
+            this.engine(Box::new(|e| Box::pin(async move { e.remove_member(&group_id, &user_id).await }))).await
+        })
+        .await
+    }
+
+    pub async fn send_text(self: Arc<Self>, group_id: String, body: String) -> Result<String, CoreError> {
+        let id = uuid_v7();
+        let entry = Entry::Text { id: id.clone(), body, reply_to: None };
+        self.send(group_id, entry, Alert::All, Some("chat")).await?;
+        Ok(id)
+    }
+
+    /// Requests a date (kickoff §5.4); the requester becomes the leader. Returns the appointment id.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn request_date(
+        self: Arc<Self>,
+        group_id: String,
+        day: String,
+        mode: Mode,
+        start: Option<u16>,
+        end: Option<u16>,
+        activity: Option<String>,
+        note: Option<String>,
+        leader_options: bool,
+    ) -> Result<String, CoreError> {
+        let appt = uuid_v7();
+        let entry =
+            Entry::Request { appt: appt.clone(), day, mode: mode.into(), start, end, activity, note, leader_options };
+        self.send(group_id, entry, Alert::All, Some("plan")).await?;
+        Ok(appt)
+    }
+
+    /// Accept or "later"; the leader is alerted.
+    pub async fn respond(self: Arc<Self>, group_id: String, appt: String, accept: bool) -> Result<(), CoreError> {
+        let leader = self.leader_of(&group_id, &appt).await;
+        let entry = Entry::Response { appt, accept };
+        self.send(group_id, entry, Alert::Users(leader.into_iter().collect()), Some("plan")).await
+    }
+
+    /// Opens (or reopens) a poll with the options the leader's device fixed.
+    pub async fn open_poll(
+        self: Arc<Self>,
+        group_id: String,
+        appt: String,
+        stage: Stage,
+        options: Vec<String>,
+    ) -> Result<(), CoreError> {
+        let entry = Entry::Poll { appt, stage: stage.into(), options };
+        self.send(group_id, entry, Alert::All, Some("plan")).await
+    }
+
+    /// Votes for an option, or for "any" when `option` is `None`.
+    pub async fn vote(
+        self: Arc<Self>,
+        group_id: String,
+        appt: String,
+        stage: Stage,
+        option: Option<String>,
+    ) -> Result<(), CoreError> {
+        let choice = option.map(Choice::Opt).unwrap_or(Choice::Any);
+        let entry = Entry::PollVote { appt, stage: stage.into(), choice };
+        self.send(group_id, entry, Alert::None, None).await
+    }
+
+    pub async fn close_poll(self: Arc<Self>, group_id: String, appt: String, stage: Stage) -> Result<(), CoreError> {
+        let entry = Entry::PollClose { appt, stage: stage.into() };
+        self.send(group_id, entry, Alert::All, Some("plan")).await
+    }
+
+    pub async fn cancel(self: Arc<Self>, group_id: String, appt: String) -> Result<(), CoreError> {
+        self.send(group_id, Entry::Cancel { appt }, Alert::All, Some("plan")).await
+    }
+
+    /// Shares this member's availability with the group (sealed with the epoch's key on send).
+    pub async fn set_availability(
+        self: Arc<Self>,
+        group_id: String,
+        window_start: String,
+        days: u16,
+        bits: Vec<u8>,
+    ) -> Result<(), CoreError> {
+        let this = self.clone();
+        self.run(async move {
+            this.engine(Box::new(|e| {
+                Box::pin(async move {
+                    e.set_availability(&group_id, &Availability { window_start, days, bits })?;
+                    e.flush_group(&group_id).await
+                })
+            }))
+            .await
+        })
+        .await
+    }
+
+    pub fn groups(&self) -> Result<Vec<GroupInfo>, CoreError> {
+        let state = self.state.blocking_lock();
+        let State::SignedIn(engine) = &*state else { return Err(CoreError::NotSignedIn) };
+        engine
+            .store()
+            .groups()?
+            .into_iter()
+            .map(|g| Ok(GroupInfo { epoch: engine.epoch(&g.id)?, group_id: g.id, name: g.name, cursor: g.cursor }))
+            .collect()
+    }
+
+    /// Current MLS roster, as user ids.
+    pub fn members(&self, group_id: String) -> Result<Vec<String>, CoreError> {
+        let state = self.state.blocking_lock();
+        let State::SignedIn(engine) = &*state else { return Err(CoreError::NotSignedIn) };
+        let mut users: Vec<String> = engine.roster(&group_id)?.into_iter().map(|i| i.user_id).collect();
+        users.sort();
+        users.dedup();
+        Ok(users)
+    }
+
+    /// The group's appointments, derived from the stored log (kickoff §3 principle 3).
+    pub fn group_state(&self, group_id: String) -> Result<GroupStateView, CoreError> {
+        let state = self.state.blocking_lock();
+        let State::SignedIn(engine) = &*state else { return Err(CoreError::NotSignedIn) };
+        Ok(view_of(&engine.group_state(&group_id)?))
+    }
+
+    /// Chat texts in log order.
+    pub fn messages(&self, group_id: String) -> Result<Vec<ChatMessage>, CoreError> {
+        let state = self.state.blocking_lock();
+        let State::SignedIn(engine) = &*state else { return Err(CoreError::NotSignedIn) };
+        Ok(engine
+            .log(&group_id)?
+            .into_iter()
+            .filter_map(|e| match e.entry {
+                Entry::Text { body, .. } => Some(ChatMessage {
+                    seq: e.seq,
+                    author_id: e.author_id,
+                    body,
+                    received_at: e.received_at.to_rfc3339(),
+                }),
+                _ => None,
+            })
+            .collect())
+    }
+
+    /// Members' availability as the group calendar sees it; a member without a readable blob is absent.
+    pub fn group_availability(&self, group_id: String) -> Result<Vec<MemberAvailability>, CoreError> {
+        let state = self.state.blocking_lock();
+        let State::SignedIn(engine) = &*state else { return Err(CoreError::NotSignedIn) };
+        Ok(engine
+            .group_availability(&group_id)?
+            .into_iter()
+            .map(|a| MemberAvailability {
+                user_id: a.user_id,
+                window_start: a.window_start,
+                days: a.days as u16,
+                bits: a.bits,
+            })
+            .collect())
+    }
+
+    /// Connects to the gateway's device topic (protocol §7). Events are read with `next_realtime_event`.
+    pub async fn connect_realtime(self: Arc<Self>, gateway_base: String) -> Result<(), CoreError> {
+        let this = self.clone();
+        self.run(async move {
+            let session = saved_session(this.secrets.as_ref()).ok_or(CoreError::NotSignedIn)?;
+            let realtime = Realtime::connect(&gateway_base, &session.access_token, &session.device_id).await?;
+            *this.realtime.lock().await = Some(realtime);
+            Ok(())
+        })
+        .await
+    }
+
+    /// Waits up to `timeout_ms` for the next gateway event, applies it (fetching what it names) and returns it.
+    pub async fn next_realtime_event(self: Arc<Self>, timeout_ms: u64) -> Result<Option<RealtimeEvent>, CoreError> {
+        let this = self.clone();
+        self.run(async move {
+            let event = {
+                let mut realtime = this.realtime.lock().await;
+                let Some(realtime) = realtime.as_mut() else {
+                    return Err(CoreError::Realtime { reason: "not connected".into() });
+                };
+                realtime.next_within(Duration::from_millis(timeout_ms)).await
+            };
+            let Some(event) = event else { return Ok(None) };
+            let view = match &event {
+                Event::Entry { g, s, .. } => RealtimeEvent::Entry { group_id: g.clone(), seq: *s },
+                Event::State { g, .. } => RealtimeEvent::State { group_id: g.clone() },
+                Event::Membership { g } => RealtimeEvent::Membership { group_id: g.clone() },
+                Event::Welcome {} => RealtimeEvent::Welcome,
+                Event::Revoke {} => RealtimeEvent::Revoke,
+                Event::Joined => RealtimeEvent::Joined,
+                Event::Closed(reason) => RealtimeEvent::Closed { reason: reason.clone() },
+            };
+            this.engine(Box::new(|e| Box::pin(async move { e.handle_event(event).await }))).await?;
+            Ok(Some(view))
+        })
+        .await
+    }
+
+    pub async fn disconnect_realtime(self: Arc<Self>) {
+        *self.realtime.lock().await = None;
+    }
+}
+
+impl Core {
+    /// Runs network work on the core's runtime; the app's executor only awaits the handle.
+    async fn run<F, R>(&self, fut: F) -> Result<R, CoreError>
+    where
+        F: std::future::Future<Output = Result<R, CoreError>> + Send + 'static,
+        R: Send + 'static,
+    {
+        self.runtime.spawn(fut).await.map_err(|e| CoreError::Sync { reason: format!("task failed: {e}") })?
+    }
+
+    /// One engine operation at a time, under the state lock.
+    async fn engine<R>(&self, f: EngineOp<'_, R>) -> Result<R, CoreError> {
+        let mut state = self.state.lock().await;
+        let State::SignedIn(engine) = &mut *state else { return Err(CoreError::NotSignedIn) };
+        f(engine).await.map_err(CoreError::from)
+    }
+
+    async fn send(
+        self: Arc<Self>,
+        group_id: String,
+        entry: Entry,
+        alert: Alert,
+        cat: Option<&'static str>,
+    ) -> Result<(), CoreError> {
+        let this = self.clone();
+        self.run(async move {
+            this.engine(Box::new(|e| Box::pin(async move { e.send(&group_id, &entry, alert, cat).await }))).await
+        })
+        .await
+    }
+
+    async fn leader_of(&self, group_id: &str, appt: &str) -> Option<String> {
+        let state = self.state.lock().await;
+        let State::SignedIn(engine) = &*state else { return None };
+        engine.group_state(group_id).ok()?.appointments.get(appt).map(|a| a.leader.clone())
+    }
+}
+
+type EngineFuture<'b, R> = std::pin::Pin<Box<dyn std::future::Future<Output = Result<R, SyncError>> + Send + 'b>>;
+type EngineOp<'a, R> = Box<dyn for<'b> FnOnce(&'b mut Engine<Arc<HttpTransport>>) -> EngineFuture<'b, R> + Send + 'a>;
+
+fn view_of(state: &GroupState) -> GroupStateView {
+    let appointments = state
+        .appointments
+        .values()
+        .map(|a| AppointmentView {
+            appt: a.appt.clone(),
+            leader: a.leader.clone(),
+            day: a.day.to_string(),
+            mode: match a.mode {
+                geunal_domain::entry::Mode::Vote => Mode::Vote,
+                geunal_domain::entry::Mode::Dictator => Mode::Dictator,
+            },
+            start: a.start,
+            end: a.end,
+            activity: a.activity.clone(),
+            note: a.note.clone(),
+            participants: a.participants().into_iter().collect(),
+            tentative: a.is_tentative(),
+            cancelled: a.cancelled,
+            polls: a
+                .polls
+                .iter()
+                .map(|(stage, p)| PollView {
+                    stage: match stage {
+                        geunal_domain::entry::Stage::Time => Stage::Time,
+                        geunal_domain::entry::Stage::Activity => Stage::Activity,
+                    },
+                    options: p.options.clone(),
+                    voters: p.votes.keys().cloned().collect(),
+                    closed: p.closed,
+                    result: p.result.clone(),
+                })
+                .collect(),
+        })
+        .collect();
+    GroupStateView { appointments, digest: format!("{state:?}") }
+}
+
+fn build_engine(
+    store_dir: &Path,
+    db_key: &[u8; 32],
+    session: &SyncSession,
+    secrets: &dyn SecretStore,
+    api: Arc<HttpTransport>,
+    listener: Arc<dyn CoreListener>,
+) -> Result<Engine<Arc<HttpTransport>>, CoreError> {
+    let db = store_dir.join(DB_FILE);
+    let store = Store::open(&db, db_key)?;
+    let secret = signing_secret(secrets)?;
+    let identity = Identity::new(session.user_id.clone(), session.device_id.clone());
+    let mls = MlsClient::open(&db, db_key, identity, &secret)?;
+    Ok(Engine::new(store, mls, api, Arc::new(Forward(listener))))
+}
+
+fn saved_session(secrets: &dyn SecretStore) -> Option<SyncSession> {
+    secrets.get(SESSION.to_owned()).and_then(|bytes| serde_json::from_slice(&bytes).ok())
 }
 
 fn database_key(secrets: &dyn SecretStore) -> Result<[u8; 32], CoreError> {
@@ -91,4 +656,19 @@ fn database_key(secrets: &dyn SecretStore) -> Result<[u8; 32], CoreError> {
     OsRng.fill_bytes(&mut key);
     secrets.put(DB_KEY.to_owned(), key.to_vec());
     Ok(key)
+}
+
+/// The device's Ed25519 signing secret, made once and kept in the secret store (kickoff §6).
+fn signing_secret(secrets: &dyn SecretStore) -> Result<Vec<u8>, CoreError> {
+    if let Some(stored) = secrets.get(SIGNING_KEY.to_owned()) {
+        return Ok(stored);
+    }
+    let (secret, _) = MlsClient::generate_signing_key()?;
+    secrets.put(SIGNING_KEY.to_owned(), secret.clone());
+    Ok(secret)
+}
+
+/// UUIDv7 for appointment and message ids (protocol §1).
+fn uuid_v7() -> String {
+    uuid::Uuid::now_v7().to_string()
 }

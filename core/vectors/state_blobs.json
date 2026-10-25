@@ -1,0 +1,44 @@
+{
+  "blobs": [
+    {
+      "aad": "state|6f1d2c3b-4a59-4000-8000-000000000001|7|availability|2b7e1516-28ae-4000-8000-0000000000aa",
+      "blob_hex": "000102030405060708090a0b0c0d0e0f1011121314151617447c7dd75ddd535048000ae85bb703f7819f63a42b2ed2bf5fa3a0bc7f010a70175066e3e0564204fd966b46d902765f38f24c48e6f5753f2dcbd1231fcbc94123cdb00f0bce6e7b2ce784577108abe6aed8606e3199b12f64a7b9dca810d8abeeec4c2cb3b5c5238fd7de6479a870a15331550a8a1c425b8b9ad56f37f66ed681bcd26349d9e53f0a0e92e0b2c02cb75f9bbd048f9182de13615a9941d271abd9855d1c0214e6c0d3c0973d8fee781e89667a337a8aedfbfa353bc28462a5a5e85e0ff7d5f600a3cc9ae67ea626e7c8dd03a885131a15875d1bce9e777256a6dc764ea4aafc81decf36f3c7be6bb9341562530b1d8f6e45fa596335ecc0e6ecb37c03626475552a9fe0b29be5693759367345c6e904f6fc6de6d5681bcf6c49131126ceede225d07e125ef6a68edca2dffd78f551e47182ca2c82a54502f8a5221b05d122880c56b9f5917bf26acc40b77414db7bb8048181f247f23065589efd868e5604b7b3d7aec102be78fdf6d449962cd17a77e97f09ecb3dcbb6afe03dbd6411f846b68cf",
+      "epoch": 7,
+      "group_id": "6f1d2c3b-4a59-4000-8000-000000000001",
+      "key_hex": "030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc",
+      "kind": "availability",
+      "name": "availability",
+      "nonce_hex": "000102030405060708090a0b0c0d0e0f1011121314151617",
+      "owner_id": "2b7e1516-28ae-4000-8000-0000000000aa",
+      "plaintext_hex": "a36c77696e646f775f73746172746a323032362d31312d3031646461797318386462697473590150ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    {
+      "aad": "state|6f1d2c3b-4a59-4000-8000-000000000001|7|group_meta|2b7e1516-28ae-4000-8000-0000000000aa",
+      "blob_hex": "000102030405060708090a0b0c0d0e0f1011121314151617427a69d652d75b42732c1ffd5df159f7878064b8372fcedb5efefeed3648227829586cfff26124316636f6c05ed9bbc2f0688282283ca7f2ea554bf1d404068ef10a7fc0c41ca1b4e3284b98bec764293046faf2a10a21a2fe3b29513683433a707ed6bea7c5a337f48c01773fcb65eb00aada99148d1ec0190a4ef5ac7ffe5d1b2942ecc24f75ae86ae0f662b5ebd31cf0a279d0707134583e92774a60761b875fe1027074ca46016e2b73080bc",
+      "epoch": 7,
+      "group_id": "6f1d2c3b-4a59-4000-8000-000000000001",
+      "key_hex": "030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc",
+      "kind": "group_meta",
+      "name": "group_meta",
+      "nonce_hex": "000102030405060708090a0b0c0d0e0f1011121314151617",
+      "owner_id": "2b7e1516-28ae-4000-8000-0000000000aa",
+      "plaintext_hex": "a56a6368616e6765645f617474323032362d31312d30315430393a30303a30305a6a6368616e6765645f6279782432623765313531362d323861652d343030302d383030302d30303030303030303030616165636f6c6f7265636f72616c646e616d656deb8f99eb84a420ecb99ceab5ac64706c616ea3646d6f646564766f74656a6f7074696f6e735f627966616e796f6e656677696e646f778212182a"
+    },
+    {
+      "aad": "state|6f1d2c3b-4a59-4000-8000-000000000001|8|newcomer_bundle|2b7e1516-28ae-4000-8000-0000000000bb",
+      "blob_hex": "000102030405060708090a0b0c0d0e0f1011121314151617bc4df7f30abe4e6d2382a5f9312beb6cedc7",
+      "epoch": 8,
+      "group_id": "6f1d2c3b-4a59-4000-8000-000000000001",
+      "key_hex": "030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc",
+      "kind": "newcomer_bundle",
+      "name": "newcomer_bundle",
+      "nonce_hex": "000102030405060708090a0b0c0d0e0f1011121314151617",
+      "owner_id": "2b7e1516-28ae-4000-8000-0000000000bb",
+      "plaintext_hex": "5b5d"
+    }
+  ],
+  "exporter_label": "geunal state v1",
+  "format": "nonce (24) ‖ XChaCha20-Poly1305 ciphertext ‖ tag (16); key = MLS-Exporter(\"geunal state v1\", \"\", 32); AAD = state|{group_id}|{epoch}|{kind}|{owner_id} (protocol §5)",
+  "generated_by": "cd core && GEUNAL_WRITE_VECTORS=1 cargo test -p geunal-mls --locked --test vectors",
+  "version": 1
+}

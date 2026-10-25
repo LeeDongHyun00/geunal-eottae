@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use geunal_e2e::{MemorySecrets, Quiet, api_url, gateway_url, get, websocket_status};
-use geunal_ffi::Core;
+use geunal_ffi::{Core, CoreError};
 
 #[test]
 fn api_reports_up_with_its_database_and_redis() {
@@ -27,9 +27,9 @@ fn gateway_refuses_a_socket_whose_token_it_cannot_verify() {
     assert_eq!(status, 403);
 }
 
-/// `sync` has nothing to do yet; once the sync engine lands, this runs it against the stack's API.
+/// A fresh install opens its store and has no session yet; `sync` says so instead of calling the API.
 #[test]
-fn core_opens_its_store_and_syncs_with_the_stack() {
+fn core_opens_its_store_and_refuses_to_sync_before_signing_in() {
     let dir = tempfile::tempdir().unwrap();
     let core = Core::open(
         dir.path().to_str().unwrap().to_owned(),
@@ -39,5 +39,6 @@ fn core_opens_its_store_and_syncs_with_the_stack() {
     )
     .unwrap();
 
-    pollster::block_on(core.sync()).unwrap();
+    assert!(core.session().is_none());
+    assert!(matches!(pollster::block_on(core.sync()), Err(CoreError::NotSignedIn)));
 }
