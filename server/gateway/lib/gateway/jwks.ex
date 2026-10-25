@@ -25,12 +25,13 @@ defmodule Gateway.Jwks do
           | :not_yet_valid
           | :claims
 
+  @connect_timeout :timer.seconds(3)
   @uuid ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
   @doc """
   Options: `:name` (default `#{inspect(__MODULE__)}`; also the ETS table name), `:url` (a string or a zero-arity
-  function; default: the `:jwks_url` application env, read at each fetch), `:max_age` and `:min_interval` in
-  milliseconds.
+  function; default: the `:jwks_url` application env, read at each fetch), `:max_age`, `:min_interval` and
+  `:fetch_timeout` (how long one HTTP response may take) in milliseconds.
   """
   def start_link(opts) do
     name = Keyword.get(opts, :name, __MODULE__)
@@ -68,8 +69,12 @@ defmodule Gateway.Jwks do
   defp key(server, kid) do
     case cached(server, kid) do
       {:ok, jwk} -> {:ok, jwk}
-      :miss -> GenServer.call(server, {:refresh, kid})
+      :miss -> GenServer.call(server, {:refresh, kid}, :ets.lookup_element(server, :call_timeout, 2))
     end
+  catch
+    # The fetch, or a fetch queued ahead of it, outlived the call: a stalled API refuses the token, it does not crash
+    # the handshake.
+    :exit, _ -> {:error, :jwks_unavailable}
   end
 
   defp cached(server, kid) do
@@ -122,13 +127,17 @@ defmodule Gateway.Jwks do
   def init(opts) do
     name = Keyword.fetch!(opts, :name)
     table = :ets.new(name, [:named_table, :protected, :set, read_concurrency: true])
+    fetch_timeout = Keyword.get(opts, :fetch_timeout, :timer.seconds(5))
     :ets.insert(table, {:max_age, Keyword.get(opts, :max_age, :timer.hours(1))})
+    # A caller may wait for its own fetch and for one already running (connect plus response each).
+    :ets.insert(table, {:call_timeout, 2 * (@connect_timeout + fetch_timeout) + 500})
 
     {:ok,
      %{
        table: table,
        url: Keyword.get(opts, :url, fn -> Application.fetch_env!(:gateway, :jwks_url) end),
        min_interval: Keyword.get(opts, :min_interval, :timer.seconds(5)),
+       fetch_timeout: fetch_timeout,
        last_attempt: nil
      }}
   end
@@ -153,7 +162,7 @@ defmodule Gateway.Jwks do
   defp refresh(kid, state) do
     state = %{state | last_attempt: now_ms()}
 
-    case fetch(url(state.url)) do
+    case fetch(url(state.url), state.fetch_timeout) do
       {:ok, keys} ->
         :ets.insert(state.table, Map.to_list(keys))
         :ets.insert(state.table, {:fetched_at, now_ms()})
@@ -174,9 +183,9 @@ defmodule Gateway.Jwks do
   defp url(fun) when is_function(fun, 0), do: fun.()
   defp url(url) when is_binary(url), do: url
 
-  defp fetch(url) do
+  defp fetch(url, timeout) do
     request = {String.to_charlist(url), [{~c"accept", ~c"application/json"}]}
-    http_opts = [timeout: 5_000, connect_timeout: 3_000] ++ ssl_opts(URI.parse(url))
+    http_opts = [timeout: timeout, connect_timeout: @connect_timeout] ++ ssl_opts(URI.parse(url))
 
     case :httpc.request(:get, request, http_opts, body_format: :binary) do
       {:ok, {{_, 200, _}, _headers, body}} -> parse(body)

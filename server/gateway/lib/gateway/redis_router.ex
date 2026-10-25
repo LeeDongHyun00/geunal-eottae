@@ -47,8 +47,9 @@ defmodule Gateway.RedisRouter do
   @impl true
   def init(opts) do
     url = Keyword.get_lazy(opts, :redis_url, fn -> Application.fetch_env!(:gateway, :redis_url) end)
-    # Connects in the background and reconnects on its own, re-subscribing everything it was subscribed to.
-    {:ok, conn} = Redix.PubSub.start_link(url)
+    # Connects in the background and reconnects on its own, re-subscribing everything it was subscribed to. The client
+    # id lets a test (and an operator) kill exactly this connection on the Redis side.
+    {:ok, conn} = Redix.PubSub.start_link(url, fetch_client_id_on_connect: true)
 
     {:ok,
      %{
@@ -107,9 +108,14 @@ defmodule Gateway.RedisRouter do
   end
 
   def handle_info({:redix_pubsub, _conn, _ref, :disconnected, %{error: error}}, state) do
-    # Redix resubscribes on reconnect and confirms again, which releases the joins waiting by then.
-    Logger.warning("Redis pub/sub disconnected: #{Exception.message(error)}")
-    devices = Map.new(state.devices, fn {id, device} -> {id, %{device | confirmed?: false}} end)
+    # Whatever the API publishes until Redix reconnects is lost here, and the device would not know: close its
+    # connections, so it comes back with backoff and catches up through the API (protocol.md §7), which also ends
+    # the channels and, with them, the subscriptions. Joins still waiting for a confirmation fail the same way.
+    Logger.warning(
+      "Redis pub/sub disconnected, closing #{map_size(state.devices)} devices: #{Exception.message(error)}"
+    )
+
+    devices = Map.new(state.devices, fn {device_id, device} -> {device_id, close_device(device_id, device, state)} end)
     {:noreply, %{state | devices: devices}}
   end
 
@@ -140,6 +146,22 @@ defmodule Gateway.RedisRouter do
     end
   end
 
+  defp close_device(device_id, device, state) do
+    Enum.each(device.waiting, &GenServer.reply(&1, {:error, :unavailable}))
+
+    Registry.dispatch(state.registry, device_id, fn entries ->
+      Enum.each(entries, fn {_pid, %{socket_id: socket_id}} -> close(socket_id, state) end)
+    end)
+
+    %{device | confirmed?: false, waiting: []}
+  end
+
+  # The socket process closes the connection on this broadcast, and the channels end with it.
+  defp close(socket_id, state) do
+    broadcast = %Phoenix.Socket.Broadcast{topic: socket_id, event: "disconnect", payload: %{}}
+    Phoenix.PubSub.broadcast(state.pubsub, socket_id, broadcast)
+  end
+
   defp add_pid(device, pid), do: %{device | pids: MapSet.put(device.pids, pid)}
 
   defp channel(device_id), do: "d:" <> device_id
@@ -148,12 +170,7 @@ defmodule Gateway.RedisRouter do
     case Process.info(pid, :message_queue_len) do
       {:message_queue_len, len} when len > state.limit ->
         Logger.warning("closing a slow device connection: #{len} messages waiting")
-
-        Phoenix.PubSub.broadcast(state.pubsub, socket_id, %Phoenix.Socket.Broadcast{
-          topic: socket_id,
-          event: "disconnect",
-          payload: %{}
-        })
+        close(socket_id, state)
 
       {:message_queue_len, _len} ->
         send(pid, {:redis_event, payload})

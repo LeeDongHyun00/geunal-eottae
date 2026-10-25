@@ -127,6 +127,14 @@ defmodule Gateway.JwksTest do
     assert Jwks.verify(Keys.token(key), jwks) == {:error, :jwks_unavailable}
   end
 
+  @tag jwks_opts: [fetch_timeout: 100]
+  test "refuses the token when the JWKS endpoint stalls, instead of crashing the handshake", context do
+    %{key: key, server: server, jwks: jwks} = context
+    JwksServer.set_delay(server, 500)
+
+    assert Jwks.verify(Keys.token(key), jwks) == {:error, :jwks_unavailable}
+  end
+
   test "ignores keys in the set that cannot verify ES256", %{key: key, server: server, jwks: jwks} do
     # An RSA key, an encryption key and a key without a kid sit next to the real one in the document.
     {_meta, rsa} = JOSE.JWK.to_public_map(JOSE.JWK.generate_key({:rsa, 1024}))

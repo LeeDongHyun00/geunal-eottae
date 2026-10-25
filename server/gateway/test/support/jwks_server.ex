@@ -8,7 +8,7 @@ defmodule GatewayTest.JwksServer do
 
   @doc "Starts a server for `keys` (see `GatewayTest.Keys.jwks/1`) and returns `{server, url}`."
   def start(keys) do
-    {:ok, state} = Agent.start_link(fn -> %{document: Keys.jwks(keys), status: 200, requests: 0} end)
+    {:ok, state} = Agent.start_link(fn -> %{document: Keys.jwks(keys), status: 200, delay: 0, requests: 0} end)
 
     {:ok, listener} =
       Bandit.start_link(plug: {__MODULE__.Plug, state}, ip: :loopback, port: 0, startup_log: false, scheme: :http)
@@ -38,6 +38,9 @@ defmodule GatewayTest.JwksServer do
   @doc "Every request gets this HTTP status from now on."
   def set_status(%{state: state}, status), do: Agent.update(state, &%{&1 | status: status})
 
+  @doc "Every response from now on takes at least this many milliseconds."
+  def set_delay(%{state: state}, delay), do: Agent.update(state, &%{&1 | delay: delay})
+
   def requests(%{state: state}), do: Agent.get(state, & &1.requests)
 
   defmodule Plug do
@@ -51,7 +54,10 @@ defmodule GatewayTest.JwksServer do
 
     @impl true
     def call(%{method: "GET", path_info: [".well-known", "jwks.json"]} = conn, state) do
-      %{document: document, status: status} = Agent.get_and_update(state, &{&1, %{&1 | requests: &1.requests + 1}})
+      %{document: document, status: status, delay: delay} =
+        Agent.get_and_update(state, &{&1, %{&1 | requests: &1.requests + 1}})
+
+      Process.sleep(delay)
 
       conn
       |> put_resp_content_type("application/json")

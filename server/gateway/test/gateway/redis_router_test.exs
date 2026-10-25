@@ -77,6 +77,19 @@ defmodule Gateway.RedisRouterTest do
     assert {:message_queue_len, 4} = Process.info(slow, :message_queue_len)
   end
 
+  test "closes the joined connections when the Redis connection drops", %{router: router, device_id: device_id} do
+    socket_id = "device_socket:" <> device_id
+    Phoenix.PubSub.subscribe(Gateway.PubSub, socket_id)
+    channel(router, device_id, socket_id)
+    assert_receive {:subscribed, {:ok, _}}
+
+    # Kill this router's pub/sub connection on the server side, as a network blip would.
+    {:ok, client_id} = Redix.PubSub.get_client_id(GenServer.call(router, :connection))
+    {:ok, 1} = Redix.command(Gateway.Redis, ["CLIENT", "KILL", "ID", Integer.to_string(client_id)])
+
+    assert_receive %Phoenix.Socket.Broadcast{topic: ^socket_id, event: "disconnect"}, 5_000
+  end
+
   test "reports a join unavailable while Redis does not confirm", context do
     registry = :"registry_down_#{context.test}"
     router = :"router_down_#{context.test}"
