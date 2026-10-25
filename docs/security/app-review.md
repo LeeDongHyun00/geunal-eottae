@@ -42,7 +42,7 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 | --- | --- |
 | 제공자에게 넘기는 nonce | 카카오·Apple 로그인에는 `GET /auth/nonce`의 값을 그대로 넘기지 않고, 코어가 계산한 묶기 값(`hex(SHA-256("geunal login v1" ‖ nonce ‖ signature_key))`)을 넘김([공통 계약](../parts/protocol.md) 13장). 벡터 `login_nonce.json`과 같아야 함 |
 | 서명 | 교체(`POST /auth/replace`), 게스트 복귀(`POST /auth/recover`), 복구 자료 덮어쓰기의 서명은 코어가 만듦. 앱은 키를 직접 다루지 않음 |
-| Apple 계정 삭제 | 삭제 직전에 Sign in with Apple을 다시 받아 `apple_authorization_code`를 `DELETE /me`에 넣음. 코드를 저장하거나 로그에 남기지 않음. 안드로이드는 웹 로그인 콜백이 `code`를 넘겨야 함(PR #26 재검토) |
+| Apple 계정 삭제 | 삭제 직전에 Sign in with Apple을 다시 받아 `apple_authorization_code`를 `DELETE /me`에 넣음. 코드를 저장하거나 로그에 남기지 않음. 안드로이드는 웹 로그인 콜백이 넘긴 `code`를 로그인에는 버리고 삭제 때만 씀([공통 계약](../parts/protocol.md) 13장) |
 
 ## 5. 로그와 크래시
 

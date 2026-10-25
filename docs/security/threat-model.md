@@ -165,10 +165,10 @@ M1부터 계정을 다른 기기로 옮기는 길이 둘입니다([공통 계약
 | 제공자 토큰이나 nonce 가로채기 | 다른 기기 키로 먼저 로그인 | 제공자에게 넘기는 nonce가 `SHA-256("geunal login v1" ‖ nonce ‖ signature_key)`라, 토큰이 그 기기의 키에 묶임(13장) | 없음. 카카오 SDK가 인가 코드에 PKCE를 쓰는지는 확인할 것 | API ＋`refuses a provider token bound to another device key`, 벡터 `login_nonce.json` |
 | 교체 티켓 가로채기 | 새 기기의 토큰 | 교체 요청에 기기 키의 서명이 필요하고, 서버는 티켓의 SHA-256만 저장(13장) | 없음 | API ＋`refuses a replacement without the device key's signature` |
 | 요청 기록의 복구 서명(3.2) | 없음 | 서명은 그 요청의 nonce에만 맞고, 서버에는 공개키만 있음 | 없음 | API `logs no request body, ciphertext or token at any level` |
-| 제공자 연결 끊김 알림 위조 | 남의 계정을 제공자에게서 떼어 냄. 원래 사용자가 다시 로그인하면 새 빈 계정이 생기고, 원래 계정은 복구 코드만으로 열림 | 없음. 알림을 받는 엔드포인트는 백엔드가 정함(13장) | 제안: 보낸 쪽을 확인(카카오 어드민 키, Apple JWT 서명)하고, 연결은 지우지 말고 끊김으로 표시(PR #26 재검토) | API ＋`ignores a provider unlink notification it cannot verify`(결정 뒤) |
+| 제공자 연결 끊김 알림 위조 | 남의 계정을 제공자에게서 떼어 내, 복구 코드만으로 열리게 함 | 엔드포인트는 보낸 쪽을 확인(카카오는 요청 헤더의 앱 어드민 키, Apple은 JWT 서명과 `iss`·`aud`)하고, 확인되지 않으면 아무것도 바꾸지 않음. 진짜 끊김도 연결을 지우지 않고 끊긴 시각만 적어, 같은 제공자로 다시 로그인하면 원래 계정으로 돌아옴(13장) | 진짜로 끊긴 동안은 그 계정도 복구 코드만으로 들어올 수 있습니다. 제공자 계정을 잃은 사람이 돌아올 길이라 받아들입니다 | API ＋`ignores a provider unlink notification it cannot verify`, ＋`a provider sign-in after an unlink returns to the same account` |
 | 넘겨받은 기기, 다시 설치 | iOS는 앱을 지워도 키체인 항목이 남아, 다시 설치한 앱이 이전 계정의 세션과 `E`·AMK를 읽음. 복원 합치기가 이전 계정의 일정을 새 계정에 섞음 | 코어가 저장소에 주인 `user_id`를 두고, 다른 계정이면 합치지 않음(10장). 안드로이드는 앱을 지우면 키와 파일이 함께 지워짐 | iOS 첫 실행 때 키체인 정리는 앱이 할 일입니다([앱 PR 보안 점검표](app-review.md) 1장) | iOS ＋`wipes the previous installation's keychain items on first launch`, 코어 ＋`does not merge a backup into a store that belongs to another account` |
 
-- PR #26 리뷰의 제안은 대부분 계약에 들어갔습니다([공통 계약](../parts/protocol.md) 10·13장). 남은 것은 제공자 연결 끊김 알림의 확인(재검토 스레드), 복구 코드 화면의 기기 인증, 세션만으로 하는 계정 삭제입니다.
+- PR #26 리뷰의 제안은 대부분 계약에 들어갔습니다([공통 계약](../parts/protocol.md) 10·13장). 남은 것은 복구 코드 화면의 기기 인증과, 세션만으로 하는 계정 삭제(PR #26 스레드)입니다.
 - 보안 안내 페이지(M4)에 적을 것: 게스트의 12단어는 계정과 백업을 여는 유일한 열쇠이고, 본 사람은 계정을 가져갈 수 있습니다.
 
 ## 4. 가로지르는 것
@@ -207,7 +207,8 @@ M1부터 계정을 다른 기기로 옮기는 길이 둘입니다([공통 계약
 | `refuses a provider token bound to another device key` | API | M1 | 3.6 |
 | `refuses a replacement without the device key's signature` | API | M1 | 3.6 |
 | `tells the revoked device whether a provider sign-in or the recovery code replaced it` | API | M1 | 3.6 |
-| `ignores a provider unlink notification it cannot verify` | API | M1 | 3.6(결정 뒤) |
+| `ignores a provider unlink notification it cannot verify` | API | M1 | 3.6 |
+| `a provider sign-in after an unlink returns to the same account` | API | M1 | 3.6 |
 | `answers holidays from the stored table without calling the upstream API` | API | M1 | 4 |
 | `rejects a commit whose new leaf is not an active member's current device` | 코어 | M2 | 3.1, 3.4 |
 | `a removed member gets not_member on the log and on state blobs` | API | M2 | 3.4 |
