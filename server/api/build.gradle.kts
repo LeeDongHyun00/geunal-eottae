@@ -2,8 +2,8 @@ import org.springframework.boot.gradle.plugin.SpringBootPlugin
 
 // Kotlin follows the version Spring Boot 4.1 manages; Gradle stays on 9.3, the newest release Kotlin 2.3.21 supports.
 plugins {
-    kotlin("jvm") version "2.3.21"
-    kotlin("plugin.spring") version "2.3.21"
+    kotlin("jvm") version "2.4.21"
+    kotlin("plugin.spring") version "2.4.21"
     id("org.springframework.boot") version "4.1.2"
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
 }
