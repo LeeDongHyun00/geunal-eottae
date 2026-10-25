@@ -42,7 +42,11 @@ defmodule Gateway.RedisRouterTest do
 
     {:ok, 1} = Redix.command(Gateway.Redis, ["PUBLISH", "d:" <> device_id, "hello"])
     assert_receive {:redis_event, "hello"}
-    assert {:message_queue_len, 1} = Process.info(other, :message_queue_len)
+    # The router hands the event to the channels one after another, and this process may come first: wait for the
+    # other channel's copy rather than look for it the moment this one arrives.
+    assert Enum.any?(1..50, fn _ ->
+             match?({:message_queue_len, 1}, Process.info(other, :message_queue_len)) || (Process.sleep(10) && false)
+           end)
   end
 
   test "unsubscribes when the last channel of the device exits", %{router: router, device_id: device_id} do
