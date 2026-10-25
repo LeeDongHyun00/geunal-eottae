@@ -26,7 +26,7 @@ TLS 백엔드와 신뢰 저장소를 어떻게 잡는지에 따라 안드로이�
 
 (B)를 씁니다.
 
-- `reqwest 0.13`은 기본 기능을 끄고 `rustls-no-provider`, `json`, `http2`만 켭니다.
+- `reqwest 0.13`은 기본 기능을 끄고 `rustls-no-provider`, `json`만 켭니다. 처음에는 `http2`도 켰지만 M1에서 뺐습니다(아래 "바뀐 것").
 - `rustls 0.23`은 기본 기능을 끄고 `ring`, `std`, `tls12`, `logging`을 켭니다.
 - `core/geunal-sync/src/tls.rs`의 `client_config()`가 `ring::default_provider()`와 `webpki_roots::TLS_SERVER_ROOTS`로 `ClientConfig` 하나를 만듭니다.
 - HTTP는 `Client::builder().use_preconfigured_tls(...)`로, WebSocket은 `connect_async_tls_with_config(..., Some(Connector::Rustls(...)))`로 같은 설정을 받습니다.
@@ -55,6 +55,10 @@ TLS 백엔드와 신뢰 저장소를 어떻게 잡는지에 따라 안드로이�
 
 - reqwest의 `rustls-no-provider`는 호출되지 않는 `rustls-platform-verifier`(안드로이드에서는 `jni`까지)를 그대로 컴파일합니다. 크기는 `make build-android`가 남기는 `sizes.md`로 ABI당 8MB 예산 안에서 확인합니다.
 - `webpki-roots`를 올리지 않으면 새 루트로 발급된 인증서를 믿지 못합니다.
+
+## 바뀐 것
+
+- **2026-10-25, M1: HTTP/2를 뺐습니다.** HTTP/2 클라이언트(h2)가 안드로이드 라이브러리를 ABI마다 약 0.5MB 키웠습니다. API 요청과 미디어 전송은 HTTP/1.1 연결 풀로 충분하고, Caddy는 ALPN으로 HTTP/1.1을 받습니다. 쓰지 않는 플랫폼 검증기와 `jni`는 약 0.16MB로 재서 그대로 둡니다([Rust 코어](../parts/rust-core.md) 7장).
 
 ## 다시 볼 때
 
