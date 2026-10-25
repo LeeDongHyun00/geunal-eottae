@@ -1,15 +1,18 @@
-# The request and response shapes of the API server at M0. docs/parts/api-server.md §7 lists the endpoints and their
-# rules; this file is the byte-level contract the Rust core's sync engine and the e2e client build against.
+# The request and response shapes of the API server at M0, plus the M1 contract: paths and operations whose summary
+# starts with "M1:" answer 404 until the backend ships them. docs/parts/api-server.md §7 lists the endpoints and their
+# rules, docs/parts/protocol.md §10 and §13–14 the M1 flows; this file is the byte-level contract the Rust core's sync
+# engine and the e2e client build against.
 #
 # Conventions:
 # - Field names are snake_case. Bytes (ciphertext, keys, MLS messages) are standard base64 with padding.
 # - Every error body is {"error": "<code>", "message": "..."} (docs/parts/protocol.md §11).
-# - Authentication: `Authorization: Bearer <access JWT>` on everything but /auth/*, /.well-known/jwks.json and
-#   /actuator/health. The JWT is ES256, 15 minutes, claims sub = user_id and did = device_id.
+# - Authentication: `Authorization: Bearer <access JWT>` on everything but /auth/*, /.well-known/jwks.json, /holidays
+#   and /actuator/health. The JWT is ES256, 15 minutes, claims sub = user_id and did = device_id. A replacement
+#   ticket (protocol §13) is the bearer for GET /me/recovery, GET /me/backups and GET /me/backups/latest only.
 openapi: 3.1.0
 info:
   title: geunal-eottae API
-  version: 0.1.0-m0
+  version: 0.2.0-m1
 servers:
   - url: http://127.0.0.1:8080
     description: infra/docker-compose.yml
@@ -29,8 +32,9 @@ paths:
       description: |
         `subject` stands for the identity a provider would assert; the same subject is the same account on every call.
         `signature` is Ed25519 over the ASCII bytes of `nonce` with the key whose public part is `signature_key`.
-        Registering a device revokes the account's previous active device (MVP: one device per account), which gets a
-        `revoke` event and 403 `device_revoked` on its next request.
+        M0 registered every call and revoked the account's previous device. M1: the same rules as /auth/kakao
+        (protocol §13): 201 registers this device; when the account already has another active device the answer is 200
+        `replace_required` with a ticket for /auth/replace, and nothing is registered yet.
       security: []
       requestBody:
         content:
@@ -46,8 +50,164 @@ paths:
                 nonce: { type: string }
                 signature: { $ref: "#/components/schemas/Bytes", description: 64-byte Ed25519 signature }
       responses:
-        "201": { content: { application/json: { schema: { $ref: "#/components/schemas/Tokens" } } } }
-        "400": { description: invalid_request (bad signature, unknown or reused nonce, bad field) }
+        "201": { content: { application/json: { schema: { $ref: "#/components/schemas/Registered" } } } }
+        "200": { content: { application/json: { schema: { $ref: "#/components/schemas/ReplaceRequired" } } } }
+        "400": { description: "invalid_request (bad signature, unknown or reused nonce, bad field)" }
+
+  /auth/kakao:
+    post:
+      summary: "M1: Sign in with Kakao and register this device (protocol §13)"
+      description: |
+        `id_token` is the Kakao OIDC ID token for our app key whose `nonce` claim equals the request's `nonce`. 201
+        registers this device; 200 means another device is active, and a replacement ticket comes back instead.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/DeviceProof"
+                - $ref: "#/components/schemas/NewAccount"
+                - type: object
+                  required: [id_token]
+                  properties:
+                    id_token: { type: string }
+      responses:
+        "201": { content: { application/json: { schema: { $ref: "#/components/schemas/Registered" } } } }
+        "200": { content: { application/json: { schema: { $ref: "#/components/schemas/ReplaceRequired" } } } }
+        "400": { description: "invalid_request (bad proof, unknown or reused nonce, a new account without age_confirmed_at or display_name)" }
+        "401": { description: provider_token_invalid }
+        "429": { description: rate_limited }
+
+  /auth/apple:
+    post:
+      summary: "M1: Sign in with Apple and register this device (protocol §13)"
+      description: |
+        `id_token` is the identity token for the iOS bundle ID or the Android services ID whose `nonce` claim is the
+        lowercase hex SHA-256 of the request's `nonce`. The server exchanges `authorization_code` for Apple tokens and
+        keeps them encrypted to revoke them when the account is deleted. 201 and 200 as for /auth/kakao.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/DeviceProof"
+                - $ref: "#/components/schemas/NewAccount"
+                - type: object
+                  required: [id_token, authorization_code]
+                  properties:
+                    id_token: { type: string }
+                    authorization_code: { type: string }
+      responses:
+        "201": { content: { application/json: { schema: { $ref: "#/components/schemas/Registered" } } } }
+        "200": { content: { application/json: { schema: { $ref: "#/components/schemas/ReplaceRequired" } } } }
+        "400": { description: invalid_request }
+        "401": { description: provider_token_invalid }
+        "429": { description: rate_limited }
+
+  /auth/apple/callback:
+    post:
+      summary: "M1: Android's Sign in with Apple web flow posts here (response_mode form_post)"
+      description: |
+        The server checks nothing here and answers 303 to https://<domain>/auth/apple with the form fields in the
+        fragment. The app receives that App Link, checks `state`, and calls POST /auth/apple with `id_token` and `code`.
+        `user` (JSON with the name) arrives on the first authorization only; the app may use it as `display_name`.
+      security: []
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                code: { type: string }
+                id_token: { type: string }
+                state: { type: string }
+                user: { type: string }
+      responses:
+        "303": { description: redirect to the App Links address carrying the fields in the fragment }
+
+  /auth/guest:
+    post:
+      summary: "M1: Create a guest account and register this device"
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/DeviceProof"
+                - type: object
+                  required: [age_confirmed_at, display_name]
+                  properties:
+                    age_confirmed_at: { type: string, format: date-time }
+                    display_name: { type: string, minLength: 1, maxLength: 40 }
+      responses:
+        "201": { description: always a new account, content: { application/json: { schema: { $ref: "#/components/schemas/Registered" } } } }
+        "400": { description: invalid_request }
+        "429": { description: rate_limited }
+
+  /auth/recover:
+    post:
+      summary: "M1: A guest comes back on another device with the recovery code (protocol §10, §13)"
+      description: |
+        The server finds the account by `recovery_id` and compares SHA-256(`recovery_auth`) with the stored hash in
+        constant time. On a match it registers this device at once and revokes the previous one: no ticket, the code
+        is the proof. Accounts linked to Kakao or Apple cannot come back this way.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/DeviceProof"
+                - type: object
+                  required: [recovery_id, recovery_auth]
+                  properties:
+                    recovery_id: { $ref: "#/components/schemas/Bytes", description: 16 bytes }
+                    recovery_auth: { $ref: "#/components/schemas/Bytes", description: 32 bytes }
+      responses:
+        "201": { content: { application/json: { schema: { $ref: "#/components/schemas/Registered" } } } }
+        "400": { description: invalid_request }
+        "401": { description: "recovery_invalid (no such account, a wrong value, or an account linked to Kakao or Apple)" }
+        "429": { description: rate_limited }
+
+  /auth/replace:
+    post:
+      summary: "M1: Finish a device replacement with the ticket of a replace_required sign-in"
+      description: |
+        Registers the key the sign-in proved, revokes the previous device (it gets `revoke`; the other members of its
+        groups get `membership`) and returns tokens. The ticket is spent.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [ticket], properties: { ticket: { type: string } } }
+      responses:
+        "201": { content: { application/json: { schema: { $ref: "#/components/schemas/Registered" } } } }
+        "401": { description: "token_expired (unknown, spent or expired ticket)" }
+
+  /auth/link:
+    post:
+      summary: "M1: Link the guest account to Kakao or Apple"
+      description: |
+        `nonce` comes from GET /auth/nonce and is bound into `id_token` as for sign-in. After linking, the account no
+        longer comes back by recovery code alone; its recovery material and backups stay.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, id_token, nonce]
+              properties:
+                provider: { type: string, enum: [kakao, apple] }
+                id_token: { type: string }
+                nonce: { type: string }
+                authorization_code: { type: string, description: required for apple }
+      responses:
+        "200": { content: { application/json: { schema: { type: object, required: [providers], properties: { providers: { $ref: "#/components/schemas/Providers" } } } } } }
+        "401": { description: provider_token_invalid }
+        "409": { description: "account_exists (that Kakao or Apple account belongs to another account), already_linked" }
 
   /auth/refresh:
     post:
@@ -59,7 +219,7 @@ paths:
             schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } }
       responses:
         "200": { content: { application/json: { schema: { $ref: "#/components/schemas/Tokens" } } } }
-        "401": { description: token_expired (unknown, spent or expired refresh token) }
+        "401": { description: "token_expired (unknown, spent or expired refresh token)" }
         "403": { description: device_revoked }
 
   /.well-known/jwks.json:
@@ -90,6 +250,175 @@ paths:
                       platform: { type: string, enum: [ios, android] }
                       created_at: { type: string, format: date-time }
                   key_packages: { type: integer }
+                  providers: { $ref: "#/components/schemas/Providers", description: "M1: required from M1" }
+                  recovery: { type: boolean, description: "M1, required from M1: the server holds recovery material" }
+    delete:
+      summary: "M1: Delete the account (protocol §13); only the active device may call this"
+      description: |
+        Deletes the account, devices, sessions, key packages, recovery material, backups, memberships, the log entries
+        the account wrote, its state blobs, its media and alpha stats in one transaction; objects go to
+        object_deletions and the remaining members' devices get `membership`. Kakao unlink and Apple token revocation
+        run after the transaction and are retried until they succeed.
+      responses:
+        "204": { description: deleted; this device's tokens stop working }
+        "403": { description: replace_required (called with a replacement ticket) }
+
+  /me/recovery:
+    put:
+      summary: "M1: Store the account's recovery material (protocol §10)"
+      description: |
+        Overwrites what was stored. `new_key: true` says the material wraps a new AMK, so the server deletes every
+        backup of the account in the same transaction: nobody can open a backup sealed with the old one.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kdf_salt, amk_wrapped, recovery_id, recovery_auth_hash]
+              properties:
+                kdf_salt: { $ref: "#/components/schemas/Bytes", description: 16 bytes }
+                amk_wrapped: { $ref: "#/components/schemas/Bytes", description: "nonce ‖ ciphertext ‖ tag, 72 bytes" }
+                recovery_id: { $ref: "#/components/schemas/Bytes", description: "16 bytes, unique" }
+                recovery_auth_hash: { $ref: "#/components/schemas/Bytes", description: "32 bytes, SHA-256 of the recovery auth value" }
+                new_key: { type: boolean, default: false }
+      responses:
+        "204": { description: stored }
+        "400": { description: invalid_request (a field of the wrong length) }
+    get:
+      summary: "M1: The recovery material a restoring device needs; also with a replacement ticket"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [kdf_salt, amk_wrapped, updated_at]
+                properties:
+                  kdf_salt: { $ref: "#/components/schemas/Bytes" }
+                  amk_wrapped: { $ref: "#/components/schemas/Bytes" }
+                  updated_at: { type: string, format: date-time }
+        "404": { description: not_found (none stored) }
+
+  /me/backups:
+    post:
+      summary: "M1: Start a backup upload (protocol §10)"
+      description: |
+        Upload the sealed object with `PUT upload_url` and `Content-Length: size`, then call
+        POST /me/backups/{id}/complete. An upload that is never completed is not listed and is deleted after a day.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [size]
+              properties:
+                size: { type: integer, format: int64, minimum: 1, maximum: 67108864, description: bytes of the sealed object (64 MiB at most) }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, upload_url, expires_in]
+                properties:
+                  id: { type: integer, format: int64 }
+                  upload_url: { type: string, description: presigned PUT }
+                  expires_in: { type: integer, description: seconds (900) }
+        "409": { description: recovery_missing }
+        "413": { description: too_large }
+        "429": { description: rate_limited (10 a day) }
+    get:
+      summary: "M1: Completed backups, newest first, at most three; also with a replacement ticket"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [backups]
+                properties:
+                  backups: { type: array, items: { $ref: "#/components/schemas/Backup" } }
+
+  /me/backups/{id}/complete:
+    post:
+      summary: "M1: The upload finished; the server checks the object's size and keeps the newest three backups"
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer, format: int64 } }]
+      responses:
+        "200": { content: { application/json: { schema: { $ref: "#/components/schemas/Backup" } } } }
+        "404": { description: not_found (no such upload of this account) }
+        "409": { description: "upload_incomplete (no object, or not the declared size)" }
+
+  /me/backups/latest:
+    get:
+      summary: "M1: Where to download the newest completed backup; also with a replacement ticket"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Backup"
+                  - type: object
+                    required: [download_url, expires_in]
+                    properties:
+                      download_url: { type: string, description: presigned GET }
+                      expires_in: { type: integer, description: seconds (900) }
+        "404": { description: not_found (no completed backup) }
+
+  /me/alpha-stats:
+    post:
+      summary: "M1: Alpha builds only: daily counts from an opted-in tester's device (protocol §14); 404 on public builds"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stats]
+              properties:
+                stats:
+                  type: array
+                  minItems: 1
+                  maxItems: 14
+                  items:
+                    type: object
+                    required: [day, events, suggested]
+                    properties:
+                      day: { type: string, format: date, description: date in Asia/Seoul }
+                      events: { type: integer, minimum: 0, description: events created on this device that day }
+                      suggested: { type: integer, minimum: 0, description: "of those, created from a suggestion chip; at most events" }
+      responses:
+        "204": { description: stored; a day sent again overwrites the earlier counts }
+        "400": { description: "invalid_request (suggested above events, a day more than 14 days old)" }
+        "404": { description: not_found (public build) }
+
+  /holidays:
+    get:
+      summary: "M1: Public holidays between two dates, at most two years apart (protocol §14)"
+      security: []
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: carries Cache-Control and ETag
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [years, holidays]
+                properties:
+                  years: { type: array, items: { type: integer }, description: years in the range the server knows completely; a device replaces those years }
+                  holidays:
+                    type: array
+                    items:
+                      type: object
+                      required: [day, name, substitute]
+                      properties:
+                        day: { type: string, format: date }
+                        name: { type: string }
+                        substitute: { type: boolean, description: 대체공휴일 }
+        "304": { description: not modified (If-None-Match) }
+        "400": { description: "invalid_request (bad dates, to before from, more than two years)" }
 
   /me/push-token:
     put:
@@ -142,7 +471,7 @@ paths:
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200": { content: { application/json: { schema: { type: object, required: [key_package], properties: { key_package: { $ref: "#/components/schemas/Bytes" } } } } } }
-        "404": { description: not_found (no such active device, or none left) }
+        "404": { description: "not_found (no such active device, or none left)" }
 
   /me/welcomes:
     get:
@@ -238,7 +567,7 @@ paths:
       parameters: [{ $ref: "#/components/parameters/Id" }, { name: userId, in: path, required: true, schema: { $ref: "#/components/schemas/Uuid" } }]
       responses:
         "204": { description: removed }
-        "403": { description: not_member, not_owner }
+        "403": { description: "not_member, not_owner" }
         "404": { description: not_found (not a current member) }
 
   /groups/{id}/commits:
@@ -274,9 +603,9 @@ paths:
                   seq: { type: integer, format: int64, description: the commit's place in the log }
                   epoch: { type: integer, format: int64, description: the epoch the commit was made in (same as the request) }
                   received_at: { type: string, format: date-time, description: the server time stored with the entry (protocol §4) }
-        "400": { description: invalid_request (header mismatch, not a commit, welcome without added or the reverse) }
+        "400": { description: "invalid_request (header mismatch, not a commit, welcome without added or the reverse)" }
         "403": { description: not_member }
-        "404": { description: not_found (group, or a device in `added`) }
+        "404": { description: "not_found (group, or a device in `added`)" }
         "409": { description: epoch_conflict }
         "413": { description: too_large }
 
@@ -292,7 +621,7 @@ paths:
               required: [epoch, message, alert]
               properties:
                 epoch: { type: integer, format: int64 }
-                message: { $ref: "#/components/schemas/Bytes", description: MLSMessage PrivateMessage for this group and epoch, at most 65536 bytes }
+                message: { $ref: "#/components/schemas/Bytes", description: "MLSMessage PrivateMessage for this group and epoch, at most 65536 bytes" }
                 alert:
                   description: who to push to (protocol §8); "all", "none" or a list of user ids
                   oneOf: [{ type: string, enum: [all, none] }, { type: array, items: { $ref: "#/components/schemas/Uuid" } }]
@@ -374,11 +703,11 @@ paths:
               required: [epoch, ciphertext]
               properties:
                 epoch: { type: integer, format: int64 }
-                ciphertext: { $ref: "#/components/schemas/Bytes", description: nonce ‖ ciphertext ‖ tag, at most 16384 bytes }
+                ciphertext: { $ref: "#/components/schemas/Bytes", description: "nonce ‖ ciphertext ‖ tag, at most 16384 bytes" }
                 base_version: { type: integer, format: int64, description: group_meta only }
       responses:
         "200": { content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, format: int64 } } } } } }
-        "409": { description: state_conflict, stale_epoch }
+        "409": { description: "state_conflict, stale_epoch" }
         "413": { description: too_large }
 
   /groups/{id}/state:
@@ -400,7 +729,7 @@ paths:
                       required: [kind, owner_id, epoch, version, ciphertext, updated_at]
                       properties:
                         kind: { type: string }
-                        owner_id: { $ref: "#/components/schemas/Uuid", description: for group_meta, the member who sealed it last }
+                        owner_id: { $ref: "#/components/schemas/Uuid", description: "for group_meta, the member who sealed it last" }
                         epoch: { type: integer, format: int64 }
                         version: { type: integer, format: int64 }
                         ciphertext: { $ref: "#/components/schemas/Bytes" }
@@ -423,6 +752,60 @@ components:
         access_token: { type: string, description: ES256 JWT }
         expires_in: { type: integer, description: access token lifetime in seconds (900) }
         refresh_token: { type: string, description: 30 days; replaced on every /auth/refresh }
+    DeviceProof:
+      description: The device registration every sign-in carries (protocol §13)
+      type: object
+      required: [platform, signature_key, nonce, signature]
+      properties:
+        platform: { type: string, enum: [ios, android] }
+        signature_key: { $ref: "#/components/schemas/Bytes", description: 32-byte Ed25519 public key }
+        nonce: { type: string, description: "from GET /auth/nonce, single use" }
+        signature: { $ref: "#/components/schemas/Bytes", description: 64-byte Ed25519 signature over the ASCII bytes of nonce }
+    NewAccount:
+      description: Read only when the call creates the account, and then required; ignored for an existing account
+      type: object
+      properties:
+        age_confirmed_at: { type: string, format: date-time, description: when the user ticked the 14-or-older box }
+        display_name: { type: string, minLength: 1, maxLength: 40 }
+    Registered:
+      description: This device is now the account's active device (HTTP 201)
+      allOf:
+        - $ref: "#/components/schemas/Tokens"
+        - type: object
+          required: [result, new_account, recovery]
+          properties:
+            result: { const: registered }
+            new_account: { type: boolean, description: this call created the account }
+            recovery: { type: boolean, description: the server holds recovery material for the account }
+    ReplaceRequired:
+      description: |
+        Another device is active and nothing was registered (HTTP 200). The ticket is the bearer for GET /me/recovery,
+        GET /me/backups and GET /me/backups/latest, and POST /auth/replace turns it into this device's registration.
+      type: object
+      required: [result, user_id, ticket, expires_in, active_device, recovery]
+      properties:
+        result: { const: replace_required }
+        user_id: { $ref: "#/components/schemas/Uuid" }
+        ticket: { type: string, description: opaque }
+        expires_in: { type: integer, description: seconds (1800) }
+        active_device:
+          type: object
+          required: [platform, created_at]
+          properties:
+            platform: { type: string, enum: [ios, android] }
+            created_at: { type: string, format: date-time }
+        recovery: { type: boolean }
+    Providers:
+      type: array
+      description: the sign-in providers linked to the account; empty for a guest
+      items: { type: string, enum: [kakao, apple] }
+    Backup:
+      type: object
+      required: [id, size, created_at]
+      properties:
+        id: { type: integer, format: int64 }
+        size: { type: integer, format: int64, description: bytes of the sealed object }
+        created_at: { type: string, format: date-time, description: when the upload was completed }
     GroupInfo:
       type: object
       required: [epoch, group_info]
