@@ -1,8 +1,10 @@
 import Foundation
 import GeunalCore
 
-/// A core that answers with whatever the test decided (docs/parts/ios.md §9).
-final class FakeCore: CoreProtocol {
+/// A core that answers with whatever the test decided (docs/parts/ios.md §9). It subclasses the generated `Core`
+/// without a Rust handle, the way UniFFI provides for fakes, and overrides only what the status screen calls; any other
+/// method traps. That keeps this fake unchanged as the core's surface grows.
+final class FakeCore: Core, @unchecked Sendable {
     let version: Result<String, CoreError>
     let syncOutcome: Result<Void, CoreError>
 
@@ -10,43 +12,22 @@ final class FakeCore: CoreProtocol {
     {
         self.version = version
         self.syncOutcome = sync
+        super.init(noHandle: Core.NoHandle())
     }
 
-    func cipherVersion() throws -> String {
+    required init(unsafeFromHandle handle: UInt64) {
+        fatalError("a fake core never comes from Rust")
+    }
+
+    override func cipherVersion() throws -> String {
         try version.get()
     }
 
-    func sync() async throws {
+    override func sync() async throws {
         try syncOutcome.get()
     }
 
-    // The status screen calls only the two above; the rest of the M0 surface is not reached from these tests.
-    func session() -> Session? { nil }
-    func signInStub(subject: String, displayName: String, platform: String) async throws -> Session { unused() }
-    func createGroup(name: String?) async throws -> String { unused() }
-    func addMembers(groupId: String, userIds: [String]) async throws { unused() }
-    func removeMember(groupId: String, userId: String) async throws { unused() }
-    func sendText(groupId: String, body: String) async throws -> String { unused() }
-    func requestDate(
-        groupId: String, day: String, mode: Mode, start: UInt16?, end: UInt16?, activity: String?, note: String?,
-        leaderOptions: Bool
-    ) async throws -> String { unused() }
-    func respond(groupId: String, appt: String, accept: Bool) async throws { unused() }
-    func openPoll(groupId: String, appt: String, stage: Stage, options: [String]) async throws { unused() }
-    func vote(groupId: String, appt: String, stage: Stage, option: String?) async throws { unused() }
-    func closePoll(groupId: String, appt: String, stage: Stage) async throws { unused() }
-    func cancel(groupId: String, appt: String) async throws { unused() }
-    func setAvailability(groupId: String, windowStart: String, days: UInt16, bits: Data) async throws { unused() }
-    func groups() throws -> [GroupInfo] { unused() }
-    func members(groupId: String) throws -> [String] { unused() }
-    func groupState(groupId: String) throws -> GroupStateView { unused() }
-    func messages(groupId: String) throws -> [ChatMessage] { unused() }
-    func groupAvailability(groupId: String) throws -> [MemberAvailability] { unused() }
-    func connectRealtime(gatewayBase: String) async throws { unused() }
-    func nextRealtimeEvent(timeoutMs: UInt64) async throws -> RealtimeEvent? { unused() }
-    func disconnectRealtime() async { unused() }
-
-    private func unused() -> Never { fatalError("the status screen does not call this") }
+    override func session() -> Session? { nil }
 }
 
 /// A secret store in memory, for opening the real core in a test without touching the keychain.

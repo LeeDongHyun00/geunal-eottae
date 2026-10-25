@@ -2,6 +2,17 @@
 //! Kotlin `Core.open(...)` and `suspend fun sync()`. The M0 surface: open the encrypted store, sign in as a guest,
 //! sync, make and join groups, send entries, and read the state every device derives from the same log. Network work
 //! runs on a tokio runtime the core owns; the app's own executor only awaits the result.
+//!
+//! The M1 surface (docs/design/m1.md) lives in [`calendar`], [`people`] and [`account`]. Every function the screens
+//! call is a method of `Core`, so a view model depends on the one generated protocol and a test hands it a fake.
+
+pub mod account;
+pub mod calendar;
+pub mod people;
+
+pub use account::*;
+pub use calendar::*;
+pub use people::*;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -44,6 +55,25 @@ pub enum CoreError {
     Sync { reason: String },
     #[error("realtime: {reason}")]
     Realtime { reason: String },
+    /// The input breaks a rule the screen should already have enforced: an empty title, an end before the start, the
+    /// last calendar. `reason` is for logs and tests, not for display.
+    #[error("invalid: {reason}")]
+    Invalid { reason: String },
+    /// No such calendar, event, person or template on this device.
+    #[error("not found: {what}")]
+    NotFound { what: String },
+    /// The twelve words are not this account's recovery code: a word outside the list, a checksum that does not
+    /// match, or a code that does not unwrap the account master key (protocol §10).
+    #[error("wrong recovery code")]
+    WrongRecoveryCode,
+    /// A function of the M1 surface whose body has not landed yet. Gone by the end of M1.
+    #[error("not implemented yet: {what}")]
+    NotImplemented { what: String },
+}
+
+/// The error of an M1 function whose body comes in a later pull request; the signature is final already.
+pub(crate) fn not_yet(what: &str) -> CoreError {
+    CoreError::NotImplemented { what: what.to_owned() }
 }
 
 impl From<SyncError> for CoreError {
@@ -85,9 +115,17 @@ pub trait SecretStore: Send + Sync {
 /// What changed, so the app knows which screens to redraw.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum Change {
+    /// Calendars, events, shift templates, people or holidays: every calendar screen and the widget snapshot.
     Calendar,
-    Group { group_id: String },
-    Chat { group_id: String },
+    Group {
+        group_id: String,
+    },
+    Chat {
+        group_id: String,
+    },
+    /// The account changed: signed in, linked, revoked by another device's sign-in, or deleted. The app reads
+    /// `session()` and `account()` again.
+    Account,
 }
 
 /// Implemented by the app to hear about changes.
@@ -293,15 +331,16 @@ impl Core {
         saved_session(self.secrets.as_ref()).map(|s| Session { user_id: s.user_id, device_id: s.device_id })
     }
 
-    /// Signs in through the M0 auth stub (`POST /auth/stub`, only on local and CI servers): `subject` stands for the
+    /// Signs in through the auth stub (`POST /auth/stub`, only on local and CI servers): `subject` stands for the
     /// identity Kakao or Apple would assert. The device key is made and kept in the secret store, the session too, and
-    /// the first key packages go up.
+    /// the first key packages go up. From M1 the stub follows the Kakao rules (protocol §13), so a second device gets
+    /// `ReplaceRequired`; against an M0 server every call registers.
     pub async fn sign_in_stub(
         self: Arc<Self>,
         subject: String,
         display_name: String,
         platform: String,
-    ) -> Result<Session, CoreError> {
+    ) -> Result<AuthResult, CoreError> {
         let this = self.clone();
         self.run(async move {
             let secret = signing_secret(this.secrets.as_ref())?;
@@ -318,7 +357,12 @@ impl Core {
             )?;
             engine.publish_key_packages(KEY_PACKAGES).await?;
             *this.state.lock().await = State::SignedIn(Box::new(engine));
-            Ok(Session { user_id: session.user_id, device_id: session.device_id })
+            // An M0 server says neither whether the account is new nor whether it holds recovery material.
+            Ok(AuthResult::Registered {
+                session: Session { user_id: session.user_id, device_id: session.device_id },
+                new_account: false,
+                recovery: false,
+            })
         })
         .await
     }

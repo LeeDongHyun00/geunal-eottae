@@ -48,31 +48,90 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 | Rust | Swift | Kotlin | 용도 | 단계 |
 | --- | --- | --- | --- | --- |
 | `Core::open(store_dir, api_base, listener, secrets)` | `Core.open(storeDir:apiBase:listener:secrets:)` | `Core.open(storeDir, apiBase, listener, secrets)` | 저장소 열기. 데이터베이스 키를 `secrets`에서 꺼내야 파일을 열 수 있어서 `SecretStore`를 여기서 받습니다. 저장된 세션이 있으면 복원 | M0 |
-| `sign_in_stub(subject, display_name, platform)` | `signInStub(subject:displayName:platform:) async throws` | `suspend fun signInStub(subject, displayName, platform)` | 인증 스텁(`POST /auth/stub`, 로컬·CI만)으로 로그인과 기기 등록. 세션과 기기 서명 키는 `SecretStore`에 둠 | M0 |
+| `sign_in_stub(subject, display_name, platform)` | `signInStub(subject:displayName:platform:) async throws` | `suspend fun signInStub(subject, displayName, platform)` | 인증 스텁(`POST /auth/stub`, 로컬·CI만)으로 로그인과 기기 등록. 세션과 기기 서명 키는 `SecretStore`에 둠. M1부터 `AuthResult`를 돌려주고, 다른 기기가 쓰는 계정이면 `ReplaceRequired`(protocol.md 13장) | M0 |
 | `sync()` | `sync() async throws` | `suspend fun sync()` | 모든 그룹 따라잡기, 대기 중 쓰기 보내기 | M0 |
 | `cipher_version()` | `cipherVersion()` | `cipherVersion()` | M0 화면용 SQLCipher 버전. 화면이 없어지면 지움 | M0 |
 | `create_group(name)`, `add_members(group_id, user_ids)`, `remove_member(group_id, user_id)` | `createGroup(name:) async throws` 등 | `suspend fun createGroup(name)` 등 | 그룹 만들기, 사용자 ID로 멤버 추가(초대 코드는 M2), 탈퇴·강퇴. 헤드리스 종단 시험이 쓰는 M0 표면 | M0 |
 | `send_text`, `request_date`, `respond`, `open_poll`, `vote`, `close_poll`, `cancel` | 같은 이름, `async throws` | 같은 이름, `suspend fun` | 엔트리 보내기(protocol.md 4장). M2·M3 화면이 그대로 씀 | M0 |
 | `group_state(group_id)`, `messages(group_id)`, `members(group_id)`, `groups()`, `group_availability(group_id)` | 같은 이름 | 같은 이름 | 저장된 로그에서 계산한 약속 상태, 채팅, 로스터, 그룹, 가용 시간 | M0 |
 | `connect_realtime(gateway_base)`, `next_realtime_event(timeout_ms)` | `connectRealtime(gatewayBase:) async throws` 등 | `suspend fun connectRealtime(gatewayBase)` 등 | 게이트웨이 채널에 붙고 이벤트를 받아 처리 | M0 |
-| `save_event(input)` | `saveEvent(input:)` | `saveEvent(input)` | 일정 저장 | M1 |
-| `suggestions(day)` | `suggestions(day:)` | `suggestions(day)` | 입력 추천 칩 5개 | M1 |
+| `calendars()`, `save_calendar(input)`, `set_calendar_visible(calendar_id, visible)`, `delete_calendar(calendar_id)` | `calendars()`, `saveCalendar(input:)` 등 | `calendars()`, `saveCalendar(input)` 등 | 캘린더 관리(m1.md 15·16번 화면). 마지막 내 캘린더는 지울 수 없음 | M1 |
+| `add_event(input, from_suggestion)`, `event(event_id, occurrence)`, `update_event(event_id, occurrence, scope, input)`, `delete_event(event_id, occurrence, scope)` | `addEvent(input:fromSuggestion:)` 등 | `addEvent(input, fromSuggestion)` 등 | 일정 넣기·열기·고치기·지우기. 반복 일정은 `scope`로 "이 일정만·이후 모두". 되돌리기는 `delete_event`. `add_event`가 같은 요일 3번째 제목이면 반복 제안(`repeat_hint`)을 한 번 돌려줌 | M1 |
+| `calendar_month(month)`, `calendar_week(start_day)`, `calendar_agenda(from_day, days)`, `next_up(count)` | `calendarMonth(month:)` 등 | `calendarMonth(month)` 등 | 월·주·목록 뷰와 다음 할 일 막대. 공휴일, 생일, 연차 다리 제안이 함께 옴 | M1 |
+| `widget_snapshot()` | `widgetSnapshot()` | `widgetSnapshot()` | 위젯이 읽는 JSON(아래). 앱이 공유 컨테이너에 씀 | M1 |
+| `suggestions(day)` | `suggestions(day:)` | `suggestions(day)` | 입력 추천 칩 5개. 칩을 누르면 `add_event(칩의 event, true)` | M1 |
+| `shift_templates()`, `save_shift_template(input)`, `delete_shift_template(template_id)`, `shift_days(month)`, `set_shift_days(days)` | `shiftTemplates()` 등 | `shiftTemplates()` 등 | 교대 템플릿과 찍기. 찍기 화면은 초안을 들고 있다가 "완료"에 `set_shift_days`로 한 번에 적용 | M1 |
+| `mirror_device_calendars(calendars)` | `mirrorDeviceCalendars(calendars:)` | `mirrorDeviceCalendars(calendars)` | 고른 기기 캘린더와 그 일정으로 미러를 바꿈. 빈 목록이면 끔 | M1 |
+| `notification_settings()`, `set_notification_settings(settings)`, `scheduled_alerts(limit)` | `notificationSettings()` 등 | `notificationSettings()` 등 | 알림 설정과, 앱이 예약할 가까운 알림(iOS는 64개) | M1 |
+| `export_ics()` | `exportIcs()` | `exportIcs()` | 내 일정의 iCalendar 내보내기. 기기 캘린더는 뺌 | M1 |
+| `people()`, `upcoming_birthdays(days)`, `save_person(input)`, `delete_person(person_id)`, `import_contacts(contacts)` | `people()` 등 | `people()` 등 | 사람·생일(11·17번 화면) | M1 |
+| `birthday_in_year(birthday, year)`, `lunar_to_solar(year, month, day, leap_month)` | `birthdayInYear(birthday:year:)` 등 | `birthdayInYear(birthday, year)` 등 | 음력 생일의 그해 양력 날짜(6장의 윤달·30일 규칙 적용), 음력 날짜 그대로의 변환. 표 범위 밖은 `nil`/`null` | M1 |
+| `sign_in_nonce()`, `sign_in_kakao(nonce, id_token, account)`, `sign_in_apple(nonce, id_token, authorization_code, account)`, `sign_in_guest(account)` | `signInNonce() async throws` 등 | `suspend fun signInNonce()` 등 | 로그인과 기기 등록(protocol.md 13장). 카카오·Apple은 `AuthResult`, 게스트는 늘 새 계정 | M1 |
+| `restore_from_code(words, progress)`, `start_fresh()` | `restoreFromCode(words:progress:) async throws` 등 | `suspend fun restoreFromCode(words, progress)` 등 | 복구 코드로 복원하고 이 기기를 활성 기기로(교체 티켓, 로그인한 기기, 게스트 복귀 모두), 또는 "백업 없이 새로 시작" | M1 |
+| `link_kakao(nonce, id_token)`, `link_apple(nonce, id_token, authorization_code)`, `account()`, `me_summary()`, `delete_account()` | `linkKakao(nonce:idToken:) async throws` 등 | `suspend fun linkKakao(nonce, idToken)` 등 | 게스트 연결, 계정 정보, "나" 화면 요약, 계정 삭제(일정과 사람은 남김) | M1 |
+| `recovery_words()`, `recovery_status()`, `mark_recovery_saved()`, `check_recovery_word(text)`, `recovery_completions(prefix)`, `split_recovery_code(text)` | `recoveryWords()` 등 | `recoveryWords()` 등 | 복구 코드 12단어, 저장 표시, 입력 칸의 단어 확인·자동 완성, 붙여넣기 | M1 |
+| `backup_status()`, `backup_now(progress)`, `auto_backup()`, `backups()`, `set_auto_backup(enabled)` | `backupStatus()`, `backupNow(progress:) async throws` 등 | `backupStatus()`, `suspend fun backupNow(progress)` 등 | 암호화 백업. `auto_backup`은 앱의 하루 한 번 와이파이 작업이 부르고, 바뀐 게 없으면 건너뜀 | M1 |
+| `alpha_stats_enabled()`, `set_alpha_stats(enabled)` | `alphaStatsEnabled()` 등 | `alphaStatsEnabled()` 등 | 알파 통계 동의. 켜져 있으면 `sync()`가 하루 한 번 보냄(protocol.md 14장) | M1 |
+| `ProgressListener.on_progress(done, total)` | `onProgress(done:total:)` | `onProgress(done, total)` | 앱이 구현. 백업·복원의 진행(바이트) | M1 |
 | `group_month(group_id, month)` | `groupMonth(groupId:month:)` | `groupMonth(groupId, month)` | 날짜 칸의 1시간 띠 | M2 |
 | `group_day(group_id, day)` | `groupDay(groupId:day:)` | `groupDay(groupId, day)` | 30분 테이블 | M2 |
 | `request_date(group_id, input)` | `requestDate(groupId:input:) async throws` | `suspend fun requestDate(...)` | 날짜 잡기 | M2 |
 | `respond(group_id, appt, accept)` | `respond(groupId:appt:accept:) async throws` | `suspend fun respond(...)` | 수락·다음에 | M2 |
 | `send_text(group_id, body)` | `sendText(groupId:body:) async throws` | `suspend fun sendText(...)` | 채팅 | M3 |
 | `decrypt_push(store_dir, payload)` | `decryptPush(storeDir:payload:)` | `decryptPush(storeDir, payload)` | 알림 확장·핸들러용 | M3 |
-| `CoreListener.on_change(change)` | `onChange(change:)` | `onChange(change)` | 앱이 구현. 캘린더·그룹·채팅 변경 알림 | M0 |
+| `CoreListener.on_change(change)` | `onChange(change:)` | `onChange(change)` | 앱이 구현. 캘린더·그룹·채팅 변경 알림. M1에 계정 변경(`Account`: 로그인, 다른 기기 로그인으로 해제, 삭제)이 더해짐 | M0 |
 
 나머지 함수는 같은 규칙으로 단계마다 추가합니다.
-- **캘린더:** 일정 조회·삭제, 교대 템플릿, 사람·생일, 기기 일정 넘기기, 일정 첨부
+- **캘린더:** 일정 첨부
 - **그룹:** 생성, 초대 코드, 그룹 설정(공통·나만), 그룹 프로필, 커버, 알림 종류별 끄기
 - **약속:** 주도자 이전, 투표, 선택지 추가, 취소, 약속 첨부
 - **채팅:** 미디어 보내기·받기, 검색, 신고, 차단
-- **계정:** 로그인, 복구 코드, 백업, 탈퇴, 구독 상태(서버가 확인한 혜택만 켬)
+- **계정:** 구독 상태(서버가 확인한 혜택만 켬)
 
 **비밀 보관 콜백:** 앱이 `SecretStore` 콜백(`get(name)`, `put(name, value)`, `delete(name)`)을 구현합니다. 코어는 기기 서명 개인키, AMK, 데이터베이스 키를 이 콜백으로만 읽고 씁니다. 비밀은 SQLite에 저장하지 않습니다.
+
+### 날짜와 시각
+
+코어와 앱이 주고받는 캘린더의 날짜와 시각은 모두 한국 시간(Asia/Seoul)입니다. 모든 규칙이 한국 시간으로 돌기 때문에([개요](../kickoff.md) 5장), 앱은 시간대를 바꾸지 않고 받은 값을 그대로 그립니다.
+
+| 값 | 형식 | 예 |
+| --- | --- | --- |
+| 날 | `"YYYY-MM-DD"` 문자열 | `"2026-10-30"` |
+| 달 | `"YYYY-MM"` 문자열 | `"2026-10"` |
+| 시각 | `DayTime { day, minute }`. `minute`은 자정부터의 분(0–1439) | 금요일 17:00은 `{ "2026-10-30", 1020 }` |
+| 시점 | `SystemTime`(Swift `Date`, Kotlin `java.time.Instant`) | 알림이 울리는 때, 백업한 때 |
+
+- 시간이 있는 일정의 끝은 그 시각을 포함하지 않습니다. 자정에 끝나면 끝은 다음 날 0분입니다.
+- 종일 일정은 시작 날부터 끝 날까지(끝 날 포함)이고, 분은 보지 않습니다.
+- 알림 시각은 시작 기준 몇 분 전인지(`AlertRule::Before { minutes }`)로 적습니다. 종일 일정과 생일은 그날 00:00이 시작이라 "전날 18:00"은 360, "당일 09:00"은 -540입니다. 일정은 캘린더를, 캘린더는 앱 전체 설정을 따를 수 있습니다(`Inherit`).
+
+### 테스트의 가짜 코어
+
+UniFFI는 Rust 쪽 객체 없이 만드는 생성자(Swift `Core(noHandle: Core.NoHandle())`, Kotlin `Core(NoHandle)`)를 가짜용으로 만듭니다. 앱 테스트의 가짜는 이것으로 `Core`를 상속하고, 그 테스트가 부르는 메서드만 재정의합니다. 그러면 코어에 함수가 늘어도 가짜를 고칠 필요가 없습니다. 재정의하지 않은 메서드를 부르면 테스트가 멈춥니다.
+
+### 위젯 스냅샷
+
+`widget_snapshot()`이 돌려주는 JSON입니다. 앱은 일정이 바뀔 때와 자정에 이것을 공유 컨테이너(iOS는 App Group, 안드로이드는 Glance가 읽는 앱 파일)에 쓰고, 위젯은 코어를 열지 않고 이 파일만 읽습니다.
+
+```json
+{
+  "v": 1,
+  "day": "2026-10-25",
+  "today": [
+    { "title": "가족 · 저녁", "color": "blossom", "all_day": false, "start": "18:00", "end": "20:00" }
+  ],
+  "tomorrow": [
+    { "title": "전공 수업", "color": "sea", "all_day": false, "start": "10:00", "end": "12:00" }
+  ],
+  "next_appointment": null
+}
+```
+
+- `v`는 형식 버전입니다. 위젯은 모르는 버전이면 "그날어때를 열어 주세요"로 둡니다.
+- `today`, `tomorrow`는 표시 중인 캘린더의 일정을 종일 먼저, 그다음 시작 순으로 5개까지 담습니다. 전날 시작해 그날까지 이어지는 일정도 들어갑니다.
+- `color`는 [`tokens.json`](../design/tokens.json) `color.group`의 키이고, 기기 캘린더 일정은 `null`(기기 캘린더 색)입니다. `start`·`end`는 `"HH:MM"`이고 종일 일정은 둘 다 `null`입니다.
+- `next_appointment`는 M1에서 늘 `null`이고, M2에서 그룹 약속의 모양을 정합니다.
+- 자정이 지났는데 앱이 아직 다시 쓰지 않았으면 `day`가 어제입니다. 위젯은 그때 `tomorrow`를 오늘로 보여 줍니다.
 
 ## 4. 로컬 저장소
 
