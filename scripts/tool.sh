@@ -6,7 +6,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-tool="${1:?usage: scripts/tool.sh actionlint|shellcheck|cargo-deny|trivy|cargo-ndk|android-ndk|android-sdk}"
+tool="${1:?usage: scripts/tool.sh actionlint|shellcheck|cargo-deny|trivy|cargo-ndk|android-ndk|android-sdk|xcodegen}"
 
 case "$(uname -sm)" in
   "Linux x86_64") platform=linux-x86_64 ;;
@@ -218,6 +218,25 @@ XML
       ln -sfn "$ndk" "$sdk/ndk/$ndk_revision"
     fi
     echo "$sdk"
+    ;;
+  xcodegen)
+    # Generates apps/ios/GeunalApp.xcodeproj from apps/ios/project.yml. One universal macOS binary that finds its
+    # SettingPresets next to bin/, so the whole release directory is kept.
+    version=2.46.0
+    case "$platform" in
+      darwin-*) sha256=4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806 ;;
+      *)
+        echo "xcodegen runs only on macOS" >&2
+        exit 1
+        ;;
+    esac
+    root="$repo_root/.tools/xcodegen-$version"
+    if [ ! -x "$root/bin/xcodegen" ]; then
+      fetch "https://github.com/yonaskolb/XcodeGen/releases/download/$version/xcodegen.zip" "$sha256" "$tmp/xcodegen.zip"
+      unzip -q "$tmp/xcodegen.zip" -d "$tmp"
+      settle "$tmp/xcodegen" "$root"
+    fi
+    echo "$root/bin/xcodegen"
     ;;
   *)
     echo "unknown tool: $tool" >&2
