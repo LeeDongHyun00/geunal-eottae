@@ -12,21 +12,21 @@ M0 QA 산출물입니다. [개요](kickoff.md) 8장의 게이트와 각 파트 �
 
 ## 2. 시험 종류와 담당
 
-| 시험 | 무엇을 확인하나 | 쓰는 파트 | 명령 | CI | 지금 상태(2026-10-25) |
+| 시험 | 무엇을 확인하나 | 쓰는 파트 | 명령 | CI | 지금 상태(2026-10-25, M0 머지 뒤) |
 | --- | --- | --- | --- | --- | --- |
-| 단위(코어) | [Rust 코어](parts/rust-core.md) 9장 "첫 테스트 목록". 반복 일정, 비트맵, 추천, 투표 집계, 그룹 설정, 채팅 | Rust 코어 | `make test-core` | `core.yml` → `check` | 저장소·MLS 저장소 스모크만. 목록은 M0~M3에 걸쳐 채움 |
-| 속성(proptest) | 같은 로그 → 같은 상태, 집계가 입력 순서에 무관, 엔트리 CBOR 왕복 | Rust 코어(`geunal-domain`) | `make test-core` | `core.yml` → `check` | `proptest`를 워크스페이스에 선언만 함. 테스트 없음 |
-| MLS 통합 | 한 프로세스의 클라이언트 여러 개로 추가·제거·자기 갱신·외부 가입·커밋 충돌 | Rust 코어(`geunal-mls`) | `make test-core` | `core.yml` → `check` | 없음 |
-| 동기화 통합 | 가짜 서버로 409·410·빈틈 처리 | Rust 코어(`geunal-sync`) | `make test-core` | `core.yml` → `check` | 없음 |
+| 단위(코어) | [Rust 코어](parts/rust-core.md) 9장 "첫 테스트 목록". 반복 일정, 비트맵, 추천, 투표 집계, 그룹 설정, 채팅 | Rust 코어 | `make test-core` | `core.yml` → `check` | crypto·domain·mls·store·sync 크레이트마다 있음. 목록의 나머지는 M1~M3에 걸쳐 채움 |
+| 속성(proptest) | 같은 로그 → 같은 상태, 집계가 입력 순서에 무관, 엔트리 CBOR 왕복 | Rust 코어(`geunal-domain`) | `make test-core` | `core.yml` → `check` | `geunal-domain/tests/properties.rs` 3개(같은 로그 → 같은 상태, 상태에는 로그에 나온 주도자·참가자만, 집계가 표 순서에 무관). CBOR 왕복은 단위 테스트(`round_trips_every_kind`)만 |
+| MLS 통합 | 한 프로세스의 클라이언트 여러 개로 추가·제거·자기 갱신·외부 가입·커밋 충돌 | Rust 코어(`geunal-mls`) | `make test-core` | `core.yml` → `check` | `geunal-mls/tests/groups.rs` |
+| 동기화 통합 | 가짜 서버로 409·410·빈틈 처리 | Rust 코어(`geunal-sync`) | `make test-core` | `core.yml` → `check` | `geunal-sync/tests/engine.rs`(가짜 서버 `src/fake.rs`). M1 엔드포인트는 가짜 서버에 더해 감([M1 시험](qa/m1.md) 2장) |
 | 퍼징(cargo-fuzz) | 엔트리 디코드, 푸시 페이로드, MLS 메시지 입력 | Rust 코어 | 없음 | 없음 | 없음. M4 게이트는 24시간 무중단(5.3 제안 6) |
-| 테스트 벡터 | [공통 계약](parts/protocol.md) 12장의 5개 파일 | 만드는 파트가 생성, 검증하는 파트가 읽음 | `make test-core`, `make test-api`, `make test-gateway` | `core.yml`, `api.yml`, `gateway.yml`. `core/vectors/`가 바뀌면 `api`·`gateway`도 돎(`scripts/ci/changed-parts.sh`) | `core/vectors/README.md`만 있음 |
-| API 계약·동시성 | 모든 엔드포인트, 커밋 선점 50개 동시, 메시지 1,000개 순번, 그룹 메타 버전 비교, 계정 삭제 | 백엔드 | `make test-api` | `api.yml` → `check`(Testcontainers) | 스텁 가드·오류 형식·기동 3개 |
-| 게이트웨이 채널·Redis | 자기 토픽만 join, 토큰 거절, `revoke`, PUBLISH→기기, 느린 기기 | 실시간 | `make test-gateway` | `gateway.yml` → `check`(Redis 서비스) | 소켓 인증·health 2개 |
-| 종단(헤드리스) | 3장의 M0 게이트 시나리오. 진짜 API·게이트웨이·PostgreSQL·Redis·S3 | 클라이언트는 Rust 코어(`core/geunal-e2e`), 워크플로는 인프라, 시나리오는 QA | `make e2e` | `e2e.yml`. `core/`·`server/`·`infra/`가 바뀌면 돎 | 스모크 4개(health, 토큰 거절, `Core::open`+`sync`). 게이트 시나리오 없음 |
-| iOS 단위·UI·스냅샷 | 뷰모델, 로컬 compose에 붙는 UI 흐름, 알림 확장 문구, 띠 색 단계 | iOS | 파트가 정함 | `ios.yml`(없음) | `apps/ios/` 없음 |
-| 안드로이드 단위·계측 | 뷰모델, 계측 흐름, 푸시 핸들러, Install Referrer | 안드로이드 | 파트가 정함 | `android.yml`(없음) | `apps/android/` 없음 |
+| 테스트 벡터 | [공통 계약](parts/protocol.md) 12장의 5개 파일 | 만드는 파트가 생성, 검증하는 파트가 읽음 | `make test-core`, `make test-api`, `make test-gateway` | `core.yml`, `api.yml`, `gateway.yml`. `core/vectors/`가 바뀌면 `api`·`gateway`도 돎(`scripts/ci/changed-parts.sh`) | `entries.json`, `mls_headers.json`, `realtime_events.json`, `state_blobs.json`. M1에 `recovery.json`, `backups.json`, `auth_results.json`([공통 계약](parts/protocol.md) 12장), M3에 `push_payloads.json` |
+| API 계약·동시성 | 모든 엔드포인트, 커밋 선점 50개 동시, 메시지 1,000개 순번, 그룹 메타 버전 비교, 계정 삭제 | 백엔드 | `make test-api` | `api.yml` → `check`(Testcontainers) | 인증 스텁, 기기, 그룹, 전달과 동시성, 상태, MLS 헤더 벡터, 파티션, 실시간 이벤트 벡터 |
+| 게이트웨이 채널·Redis | 자기 토픽만 join, 토큰 거절, `revoke`, PUBLISH→기기, 느린 기기 | 실시간 | `make test-gateway` | `gateway.yml` → `check`(Redis 서비스) | JWKS, Redis 라우터, 기기 채널·소켓, health |
+| 종단(헤드리스) | 3장의 M0 게이트 시나리오. 진짜 API·게이트웨이·PostgreSQL·Redis·S3 | 클라이언트는 Rust 코어(`core/geunal-e2e`), 워크플로는 인프라, 시나리오는 QA | `make e2e` | `e2e.yml`. `core/`·`server/`·`infra/`가 바뀌면 돎 | `gate.rs`(3.1의 1~8단계. 초대 코드는 M2라 사용자 ID로 추가)와 `stack.rs` 스모크 4개 |
+| iOS 단위·UI·스냅샷 | 뷰모델, 로컬 compose에 붙는 UI 흐름, 알림 확장 문구, 띠 색 단계 | iOS | `make test-ios`, `make uitest-ios` | `ios.yml`(macOS) | 단위(키체인, 저장소 경로, 코어 스모크, 뷰모델, 디자인 토큰)와 UI 하나 |
+| 안드로이드 단위·계측 | 뷰모델, 계측 흐름, 푸시 핸들러, Install Referrer | 안드로이드 | `make test-android`, `make connected-android` | `android.yml`(에뮬레이터) | 단위 하나(뷰모델), 계측 하나(Keystore) |
 | 이미지·의존성 검사 | cargo-deny advisories, Trivy(API 이미지, 게이트웨이 이미지와 `mix.lock`) | 보안(정책), 인프라(워크플로) | `make audit` | PR: `core.yml`·`api.yml`·`gateway.yml`. 주기: `audit.yml`([의존성 취약점 검사](security/dependencies.md)) | 있음 |
-| 실기기 시나리오 | 복원, 기기 캘린더, 푸시, 알림 확장, 결제 | 사용자(Claude가 체크리스트) | 없음 | 없음 | M1부터([직군별 할 일](plan.md) QA 줄) |
+| 실기기 시나리오 | 복원, 기기 캘린더, 푸시, 알림 확장, 결제 | 사용자(Claude가 체크리스트) | 없음 | 없음 | M1 체크리스트는 [M1 시험](qa/m1.md) 3장 |
 
 파트 완료 조건과 단계별로 어떤 테스트가 들어와야 하는지는 각 파트 문서의 마지막 장이 정합니다. QA는 게이트마다 그 표와 실제 테스트 이름을 대조합니다.
 
@@ -57,7 +57,7 @@ M0 QA 산출물입니다. [개요](kickoff.md) 8장의 게이트와 각 파트 �
 
 | 단계 | 시나리오 | 게이트 근거 |
 | --- | --- | --- |
-| M1 | 백업 → 새 저장소에서 복구 코드로 복원 → 그룹마다 외부 가입 → 같은 상태 | M1 "복구 코드로 새 기기 복원 100%" |
+| M1 | 백업 → 새 저장소에서 복구 코드로 복원 → 같은 상태. 백엔드가 생기기 전에는 코어의 가짜 서버로, 생긴 뒤에는 `make e2e`로. 시험 목록과 게이트 지표는 [M1 시험](qa/m1.md) | M1 "복구 코드로 새 기기 복원 100%" |
 | M2 | 두 기기가 같은 `base_version`에서 그룹 메타를 동시에 씀 → 하나는 409 `state_conflict` → 재시도 뒤 두 변경이 모두 남음. 외부 커밋으로 30일 넘은 기기 복귀(`cursor_expired`) | M2 "그룹 상태 불일치 신고 0건" |
 | M3 | 미디어 올리기·받기(SHA-256 검증), 차단된 멤버의 1:1 메시지 403, `decrypt_push`로 푸시 페이로드 복호화 | M3 전달 성공률, 알림 복호화 |
 | M4 | 계정 삭제 뒤 서버에 남는 것이 없음, 기기 변경(이전 기기 `revoke`), 7일 자기 갱신 뒤 키 갱신 | M4 "삭제·복구·기기 변경·키 갱신 종단 시험" |
@@ -113,12 +113,12 @@ M0 QA 산출물입니다. [개요](kickoff.md) 8장의 게이트와 각 파트 �
 | # | 빈틈 | 영향 | 제안 | 결정 |
 | --- | --- | --- | --- | --- |
 | 1 | 필수 검사가 최신 `main` 반영을 요구하지 않음(strict 아님) | 각각 녹색인 두 PR을 합치면 `main`이 빨개질 수 있음. `main` 푸시 CI가 잡지만 막지는 못함 | 지금은 유지하고 5.2 규칙 5로 다룸. strict로 바꾸면 머지마다 다른 PR의 검사가 무효가 되어 macOS 러너 분이 늘어남. 세션이 늘어 충돌이 잦아지면 strict로 바꿈 | 사용자 |
-| 2 | `ios.yml`·`android.yml`이 `ci.yml`과 `ci-ok`에 없음 | 지금 `apps/`를 바꾸는 PR은 `lint`만 거쳐 머지됨 | 각 앱 파트가 첫 PR에서 [CLAUDE.md](../CLAUDE.md) "CI에 파트 붙이기" 절차를 따름. 그 전에는 `apps/` 변경을 머지하지 않음 | iOS·안드로이드 파트 |
+| 2 | `ios.yml`·`android.yml`이 `ci.yml`과 `ci-ok`에 없음 | 지금 `apps/`를 바꾸는 PR은 `lint`만 거쳐 머지됨 | 각 앱 파트가 첫 PR에서 [CLAUDE.md](../CLAUDE.md) "CI에 파트 붙이기" 절차를 따름. 그 전에는 `apps/` 변경을 머지하지 않음 | 해결(M0): `ios.yml`·`android.yml`이 `ci-ok`에 들어감 |
 | 3 | 주기 취약점 검사는 머지를 막지 않음 | 새 권고가 `security` 이슈로만 남음 | 열린 `security` 이슈가 가리키는 파트의 PR은 그 이슈를 고치는 변경을 포함하거나, 고치는 PR 뒤에 머지 | 규칙으로 채택(5.2 규칙 2와 같은 뜻) |
 | 4 | 필수 승인 수 0 | 사람 리뷰 없이 머지 가능 | 1인 프로젝트이고 봇 리뷰 스레드 해결이 필수이므로 유지. 사용자가 머지 버튼을 누르는 것이 승인 | 유지 |
 | 5 | Trivy가 `--ignore-unfixed`로 고칠 수 없는 항목을 숨김 | 수정판 없는 심각 취약점을 모름 | 주기 검사의 요약에 미수정 항목을 참고로 출력(게이트는 그대로) | 보안(다음 PR) |
 | 6 | 퍼징이 CI 밖에 있음 | M4 게이트(24시간) 직전에만 돌리면 늦음 | M3부터 `audit.yml`에 짧은(10분) 퍼징 작업을 더하고, 24시간 실행은 M4 전에 수동 실행 | Rust 코어·보안 |
-| 7 | `make e2e`가 아직 게이트 시나리오를 돌리지 않음 | M0 게이트를 판정할 근거가 없음 | 3.1의 10단계를 `core/geunal-e2e/tests/`에 쓰고, QA가 번호로 대조 | Rust 코어 |
+| 7 | `make e2e`가 아직 게이트 시나리오를 돌리지 않음 | M0 게이트를 판정할 근거가 없음 | 3.1의 10단계를 `core/geunal-e2e/tests/`에 쓰고, QA가 번호로 대조 | 해결(M0): `gate.rs`가 1~8단계(초대 코드 대신 사용자 ID로 추가). 9·10단계는 API 동시성 테스트와 코어 동기화 테스트가 맡음 |
 | 8 | GitHub 보안 설정을 이 세션에서 확인할 수 없음(403) | Dependabot 보안 경보·자동 보안 업데이트, 비밀값 푸시 차단, 비공개 취약점 보고가 꺼져 있을 수 있음 | 사용자가 Settings → Code security에서 셋을 켬. 공개 저장소에서는 무료 | 사용자 |
 | 9 | 봇 리뷰가 없을 때(봇 장애, 할당량) 스레드 해결 규칙이 아무것도 요구하지 않음 | 리뷰 없이 머지 | PR 설명의 "검토할 결정"과 셀프 리뷰 체크(`make lint test` 결과, 바뀐 계약)를 PR 템플릿으로 둠 | 인프라(`.github/pull_request_template.md`), 사용자 확인 |
 | 10 | 예약 워크플로는 저장소에 60일 활동이 없으면 GitHub이 끔 | 운영 중단기에 주기 검사가 멈춤 | 활동이 없는 기간이 생기면 사용자가 Actions에서 다시 켬. M5 운영 체크리스트에 넣음 | 기록 |
