@@ -69,9 +69,30 @@ fn rejects_a_stored_key_of_the_wrong_length() {
 }
 
 #[test]
-fn syncs_with_nothing_to_catch_up() {
+fn syncs_with_nothing_to_do_before_a_sign_in_and_reports_no_session() {
     let dir = tempfile::tempdir().unwrap();
     let core = open(&dir, &Arc::new(MemorySecrets::default())).unwrap();
 
-    pollster::block_on(core.sync()).unwrap();
+    assert!(core.session().is_none());
+    // The M0 status screens open the core and sync without an account; that is not an error.
+    pollster::block_on(core.clone().sync()).unwrap();
+    assert!(matches!(core.groups(), Err(CoreError::NotSignedIn)));
+}
+
+#[test]
+fn restores_a_saved_session_on_open_and_opens_the_mls_client_over_the_store() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = Arc::new(MemorySecrets::default());
+    // What sign_in_guest would have left behind: a session and the device signing key.
+    let (secret, _) = geunal_mls::MlsClient::generate_signing_key().unwrap();
+    secrets.put("device_signing_key".to_owned(), secret);
+    secrets.put(
+        "session".to_owned(),
+        br#"{"user_id":"u1","device_id":"d1","access_token":"tok","refresh_token":"r"}"#.to_vec(),
+    );
+
+    let core = open(&dir, &secrets).unwrap();
+    assert_eq!(core.session().map(|s| (s.user_id, s.device_id)), Some(("u1".to_owned(), "d1".to_owned())));
+    assert!(core.groups().unwrap().is_empty());
+    assert!(!core.cipher_version().unwrap().is_empty());
 }
