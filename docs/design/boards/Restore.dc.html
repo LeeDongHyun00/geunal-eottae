@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>기기 바꾸기</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+input{font:inherit;letter-spacing:inherit;color:inherit}
+input::placeholder{color:#696973}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #f4f4f6; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+<div style="position: absolute; top: 54px; left: 0; width: 390px; height: 44px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; justify-content: space-between"><a href="SignIn.dc.html" style="height: 44px; padding-right: 8px; display: flex; align-items: center; gap: 2px; font-size: 17px"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg>로그인</a><span></span></div><div style="position: absolute; top: 102px; left: 20px; width: 350px; display: flex; flex-direction: column; gap: 8px"><h1 style="margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.03em">기기 바꾸기</h1><p style="margin: 0; font-size: 15px; line-height: 1.5; color: #5c5c66">이 계정은 다른 기기에서 쓰고 있어요. 복구 코드 12단어를 넣으면 암호화 백업을 이 기기로 가져오고, 이전 기기는 로그아웃돼요.</p></div><div style="position: absolute; top: 244px; left: 20px; width: 350px; display: flex; flex-direction: column; gap: 14px"><div style="display: flex; align-items: center; justify-content: space-between"><span style="font-size: 13px; font-weight: 600; color: #5c5c66">{{progress}}</span><button type="button" onClick="{{paste}}" style="height: 36px; padding: 0 12px; border: none; border-radius: 999px; background: #f4f4f6; font-size: 14px; font-weight: 600; cursor: pointer">붙여넣기</button></div><ol aria-label="복구 코드 12단어 입력" style="margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{words}}" as="w" hint-placeholder-count="12">
+<li style="height: 48px; box-sizing: border-box; padding: 0 10px; border-radius: 12px; background: {{w.bg}}; box-shadow: {{w.ring}}; display: flex; align-items: center; gap: 8px"><span style="font-size: 12px; color: #696973; font-variant-numeric: tabular-nums">{{w.n}}</span><span style="font-size: 16px; font-weight: 600; color: {{w.fg}}">{{w.t}}</span></li>
+</sc-for>
+</ol><p style="margin: 0; display: flex; gap: 10px; padding: 12px 14px; border-radius: 12px; background: #f4f4f6; font-size: 13px; line-height: 1.55; color: #3a3a40"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="flex: none; margin-top: 2px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg><span>단어는 이 기기에서만 쓰여요. 틀린 단어는 바로 빨갛게 표시되고, 횟수 제한은 없어요.</span></p></div><div style="position: absolute; left: 20px; bottom: 34px; width: 350px; display: flex; flex-direction: column; gap: 8px"><sc-if value="{{ready}}" hint-placeholder-val="{{false}}"><button type="button" onClick="{{restore}}" style="height: 52px; border: none; border-radius: 999px; background: #1b1b1f; color: #ffffff; font-size: 17px; font-weight: 600; cursor: pointer">백업 가져오기</button></sc-if><sc-if value="{{notReady}}" hint-placeholder-val="{{true}}"><button type="button" disabled="{{true}}" style="height: 52px; border: none; border-radius: 999px; background: #ebebef; color: #696973; font-size: 17px; font-weight: 600">{{notReadyLabel}}</button></sc-if><button type="button" onClick="{{noCode}}" style="height: 44px; border: none; background: none; font-size: 15px; color: #5c5c66; cursor: pointer">복구 코드가 없어요</button></div><sc-if value="{{lost}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; inset: 0">
+<button type="button" aria-label="닫기" onClick="{{closeLost}}" style="position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: none; background: rgba(10,10,14,0.32); cursor: pointer"></button>
+<section role="dialog" aria-modal="true" aria-label="복구 코드가 없을 때" style="position: absolute; left: 0; top: 432px; width: 390px; height: 412px; box-sizing: border-box; padding: 8px 20px 34px; background: #ffffff; border-radius: 20px 20px 0 0; box-shadow: 0 -8px 32px rgba(0,0,0,0.12); display: flex; flex-direction: column; gap: 16px"><div aria-hidden="true" style="align-self: center; width: 36px; height: 5px; border-radius: 3px; background: #d1d1d6"></div><h2 style="margin: -6px 0 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em">복구 코드 없이는 되찾을 수 없어요</h2><p style="margin: 0; font-size: 15px; line-height: 1.55; color: #3a3a40">백업은 이 코드로만 열리고, 그날어때도 열 수 없어요. 이전 기기가 아직 있다면 그 기기의 나 › 복구 코드에서 볼 수 있어요.</p><p style="margin: 0; font-size: 15px; line-height: 1.55; color: #3a3a40">새로 시작하면 이 계정의 백업은 지워지고, 그룹에는 새 기기로 다시 들어가요. 그룹 캘린더와 대화는 지금부터 다시 쌓여요.</p><div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px"><a href="Permissions.dc.html" style="height: 48px; border-radius: 12px; background: #f4f4f6; color: #c92f26; display: flex; align-items: center; justify-content: center; font-size: 17px">백업 없이 새로 시작</a><button type="button" onClick="{{closeLost}}" style="height: 52px; border: none; border-radius: 999px; background: none; font-size: 17px; font-weight: 600; cursor: pointer">이전 기기에서 찾아볼게요</button></div></section></div></sc-if><sc-if value="{{done}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; inset: 0; background: #ffffff">
+<div style="position: absolute; top: 250px; left: 32px; width: 326px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center">
+<span aria-hidden="true" style="width: 64px; height: 64px; border-radius: 32px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="30" height="30" style="fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round"><path d="M5.5 12.5l4 4 9-9"></path></svg></span>
+<h2 style="margin: 4px 0 0; font-size: 26px; font-weight: 600; letter-spacing: -0.025em">돌아왔어요</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.55; color: #3a3a40">일정 128개, 사람 12명, 템플릿 3개를 가져왔어요. 이전 기기는 로그아웃됐어요.</p>
+<p style="margin: 0; padding: 10px 14px; border-radius: 12px; background: #f4f4f6; font-size: 14px; line-height: 1.5; color: #3a3a40">그룹에는 다시 들어가는 중이에요. 그룹 캘린더는 잠시 뒤에 채워져요.</p>
+</div>
+<div style="position: absolute; left: 20px; bottom: 34px; width: 350px"><a href="Month.dc.html" style="height: 52px; border-radius: 999px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600">캘린더 열기</a></div>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filled: 7, done: false, lost: false };
+  }
+  renderVals() {
+    const WORDS = ['바다', '연필', '구름', '사과', '기차', '노을', '단추', '마당', '별빛', '소풍', '우산', '하늘'];
+    const { filled, done, lost } = this.state;
+    const words = WORDS.map((t, i) => ({
+      n: String(i + 1), t: i < filled ? t : '',
+      bg: i < filled ? '#f4f4f6' : '#ffffff', fg: '#1b1b1f',
+      ring: i === filled ? 'inset 0 0 0 2px #1b1b1f' : i < filled ? 'none' : 'inset 0 0 0 1px #e1e1e6',
+    }));
+    const ready = filled >= 12;
+    return {
+      words, done, lost, ready, notReady: !ready,
+      progress: ready ? '12단어 모두 넣었어요' : filled + ' / 12',
+      notReadyLabel: '단어 ' + (12 - filled) + '개 더',
+      paste: () => this.setState({ filled: 12 }),
+      restore: () => this.setState({ done: true }),
+      noCode: () => this.setState({ lost: true }), closeLost: () => this.setState({ lost: false }),
+    };
+  }
+}
+</script>
+</body>
+</html>

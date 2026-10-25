@@ -364,6 +364,7 @@ CREATE TABLE holidays (
 | POST | `/auth/kakao` | 카카오 로그인 + 기기 등록 |
 | POST | `/auth/apple` | Apple 로그인 + 기기 등록 |
 | POST | `/auth/guest` | 게스트 계정 + 기기 등록 |
+| POST | `/auth/stub` | `GEUNAL_AUTH_STUB`이 켜진 로컬·CI에서만: 제공자 토큰 대신 `subject` 문자열로 로그인 + 기기 등록. 꺼져 있으면 404 |
 | POST | `/auth/refresh` | 토큰 갱신(리프레시 교체) |
 | POST | `/auth/link` | 게스트를 카카오·애플에 연결 |
 | GET | `/.well-known/jwks.json` | 게이트웨이가 쓰는 공개키 |
@@ -393,6 +394,7 @@ CREATE TABLE holidays (
 | POST | `/groups/{id}/messages` | 애플리케이션 메시지(epoch, 암호문, `alert`, `cat`) |
 | GET | `/groups/{id}/log` | 순번 이후 항목 |
 | GET | `/groups/{id}/group-info` | 외부 가입용 GroupInfo |
+| PUT | `/groups/{id}/group-info` | 현재 epoch의 GroupInfo 올리기. 그룹 ID는 `POST /groups`가 만들므로 epoch 0의 GroupInfo는 이걸로 올림 |
 | PUT | `/groups/{id}/state/{kind}` | 내 상태 블롭 덮어쓰기. `group_meta`는 멤버 누구나, `base_version`을 함께 보내고 어긋나면 409 `state_conflict` |
 | GET | `/groups/{id}/state` | 그룹의 상태 블롭 전부 |
 | POST | `/groups/{id}/media` | 채팅·약속 첨부 업로드 URL과 `object` 키(`scope`: `chat`, `appt`) |

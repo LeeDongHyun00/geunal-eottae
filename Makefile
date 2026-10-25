@@ -5,7 +5,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 .PHONY: help setup lint test lint-repo lint-core test-core build-android build-ios lint-api test-api image-api scan-api \
-	lint-gateway test-gateway image-gateway scan-gateway up down e2e \
+	lint-gateway test-gateway image-gateway scan-gateway up down e2e audit audit-core \
 	lint-ios project-ios app-ios test-ios uitest-ios
 
 help: ## List the targets
@@ -17,6 +17,13 @@ setup: ## Install the toolchain (safe to rerun)
 lint: lint-repo lint-core lint-api lint-gateway ## Run every linter
 
 test: test-core test-api test-gateway ## Run every part's tests
+
+# PR CI runs these gates only for the parts a change touches, so .github/workflows/audit.yml runs them on main weekly:
+# an advisory published against code nobody is editing would otherwise go unnoticed (docs/security/dependencies.md).
+audit: audit-core scan-api scan-gateway ## Dependency vulnerability gates of every part, as the weekly audit runs them
+
+audit-core: ## Rust core: cargo-deny advisories only (lint-core runs the whole policy)
+	"$$(scripts/tool.sh cargo-deny)" --manifest-path core/Cargo.toml --locked check advisories
 
 lint-repo: ## Lint workflows (actionlint) and every tracked shell script (shellcheck)
 	shellcheck="$$(scripts/tool.sh shellcheck)"; \

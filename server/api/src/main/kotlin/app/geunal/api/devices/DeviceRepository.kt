@@ -1,0 +1,127 @@
+package app.geunal.api.devices
+
+import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.stereotype.Repository
+import java.time.Instant
+import java.util.UUID
+
+data class DeviceRow(
+    val id: UUID,
+    val userId: UUID,
+    val platform: String,
+    val signatureKey: ByteArray,
+    val createdAt: Instant,
+)
+
+@Repository
+class DeviceRepository(
+    private val jdbc: JdbcClient,
+) {
+    /** True while the device is the account's current one. Revocation makes every token it holds useless at once. */
+    fun isCurrent(
+        deviceId: UUID,
+        userId: UUID,
+    ): Boolean =
+        jdbc
+            .sql("SELECT 1 FROM devices WHERE id = :id AND user_id = :user AND revoked_at IS NULL")
+            .param("id", deviceId)
+            .param("user", userId)
+            .query(Int::class.java)
+            .optional()
+            .isPresent
+
+    fun current(deviceId: UUID): DeviceRow? =
+        jdbc
+            .sql("SELECT id, user_id, platform, signature_key, created_at FROM devices WHERE id = :id AND revoked_at IS NULL")
+            .param("id", deviceId)
+            .query(::row)
+            .optional()
+            .orElse(null)
+
+    /** The account's active device, if any (MVP: at most one, api-server.md §6). */
+    fun activeOf(userId: UUID): DeviceRow? =
+        jdbc
+            .sql("SELECT id, user_id, platform, signature_key, created_at FROM devices WHERE user_id = :user AND revoked_at IS NULL")
+            .param("user", userId)
+            .query(::row)
+            .optional()
+            .orElse(null)
+
+    /** Revokes the account's active device and returns its id, so the caller can send it `revoke`. */
+    fun revokeActive(userId: UUID): UUID? =
+        jdbc
+            .sql("UPDATE devices SET revoked_at = now() WHERE user_id = :user AND revoked_at IS NULL RETURNING id")
+            .param("user", userId)
+            .query(UUID::class.java)
+            .optional()
+            .orElse(null)
+
+    fun insert(
+        userId: UUID,
+        platform: String,
+        signatureKey: ByteArray,
+    ): UUID =
+        jdbc
+            .sql("INSERT INTO devices (user_id, platform, signature_key) VALUES (:user, :platform, :key) RETURNING id")
+            .param("user", userId)
+            .param("platform", platform)
+            .param("key", signatureKey)
+            .query(UUID::class.java)
+            .single()
+
+    fun setPushToken(
+        deviceId: UUID,
+        token: String?,
+    ) {
+        jdbc
+            .sql("UPDATE devices SET push_token = :token WHERE id = :id")
+            .param("id", deviceId)
+            .param("token", token)
+            .update()
+    }
+
+    fun countKeyPackages(deviceId: UUID): Int =
+        jdbc
+            .sql("SELECT count(*) FROM key_packages WHERE device_id = :id")
+            .param("id", deviceId)
+            .query(Int::class.java)
+            .single()
+
+    fun addKeyPackages(
+        deviceId: UUID,
+        packages: List<ByteArray>,
+    ) {
+        for (data in packages) {
+            jdbc
+                .sql("INSERT INTO key_packages (device_id, data) VALUES (:id, :data)")
+                .param("id", deviceId)
+                .param("data", data)
+                .update()
+        }
+    }
+
+    /** Takes the oldest key package of the device, so two adders never get the same one (SKIP LOCKED). */
+    fun claimKeyPackage(deviceId: UUID): ByteArray? =
+        jdbc
+            .sql(
+                """
+                DELETE FROM key_packages WHERE id = (
+                  SELECT id FROM key_packages WHERE device_id = :id ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
+                ) RETURNING data
+                """,
+            ).param("id", deviceId)
+            .query(ByteArray::class.java)
+            .optional()
+            .orElse(null)
+
+    private fun row(
+        rs: java.sql.ResultSet,
+        @Suppress("unused") index: Int,
+    ) = DeviceRow(
+        id = rs.getObject("id", UUID::class.java),
+        userId = rs.getObject("user_id", UUID::class.java),
+        platform = rs.getString("platform"),
+        signatureKey = rs.getBytes("signature_key"),
+        createdAt = rs.getObject("created_at", java.time.OffsetDateTime::class.java).toInstant(),
+    )
+}
