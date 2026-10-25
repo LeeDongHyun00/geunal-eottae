@@ -8,6 +8,9 @@ spring:
   threads:
     virtual:
       enabled: true
+  jackson:
+    # Every JSON field the protocol names is snake_case (user_id, group_id, base_version).
+    property-naming-strategy: SNAKE_CASE
 
 # JSON lines only. Request and response bodies, ciphertext and tokens never reach a log (api-server.md §10).
 logging:
@@ -23,4 +26,14 @@ management:
 
 geunal:
   auth:
+    # GEUNAL_AUTH_STUB: sign in with POST /auth/stub instead of Kakao or Apple. Local and CI only; AuthStubGuard
+    # refuses to start a prod profile with it.
     stub: false
+    access-ttl: 15m
+    refresh-ttl: 30d
+    nonce-ttl: 5m
+    jwt:
+      # GEUNAL_AUTH_JWT_KEYS: a JWK Set with at least one P-256 private key; the first one signs, all are published at
+      # /.well-known/jwks.json so a key can be rotated by adding the new one in front. Empty means a fresh key for this
+      # process, which is fine locally (the gateway fetches the JWKS at runtime) and refused under the prod profile.
+      keys: ""

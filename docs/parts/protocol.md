@@ -233,8 +233,9 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
 
 | HTTP | `error` | 기기가 할 일 |
 | --- | --- | --- |
+| 400 | `invalid_request` | 요청 형식이 틀렸음(필드 누락, MLS 헤더와 요청 불일치). 고치기 전에는 재시도하지 않음 |
 | 401 | `token_expired` | 리프레시 토큰으로 갱신 후 재시도 |
-| 403 | `not_member`, `blocked`, `device_revoked` | 화면에 알리고 중단. `device_revoked`면 로그아웃 |
+| 403 | `not_member`, `not_owner`, `blocked`, `device_revoked` | 화면에 알리고 중단. `device_revoked`면 로그아웃 |
 | 404 | `not_found` | 중단 |
 | 409 | `epoch_conflict` | 동기화 후 커밋을 다시 만들어 재시도 |
 | 409 | `stale_epoch` | 대기 커밋 처리 후 다시 암호화해 재시도 |
@@ -242,6 +243,9 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
 | 410 | `cursor_expired` | 외부 가입으로 다시 들어오기 |
 | 413 | `too_large` | 미디어로 보내기 |
 | 429 | `rate_limited` | `Retry-After`만큼 기다린 뒤 재시도 |
+| 500 | `internal` | 지수 백오프로 재시도 |
+
+바이트 값(암호문, 키, MLS 메시지)은 JSON에서 표준 base64(패딩 있음) 문자열입니다. 요청·응답 본문의 모양은 `server/api/openapi.yaml`에 있습니다.
 
 ## 12. 테스트 벡터
 

@@ -62,6 +62,8 @@
 | `make up` | 로컬 스택(`infra/docker-compose.yml`): 이미지를 빌드하고 PostgreSQL·Redis·S3·API·게이트웨이를 띄움 |
 | `make down` | 로컬 스택을 멈추고 데이터를 지움 |
 | `make e2e` | 로컬 스택을 띄우고 `core/geunal-e2e`의 헤드리스 종단 시험을 돌림. 스택은 그대로 둠 |
+| `make audit` | 모든 파트의 의존성 취약점 게이트(cargo-deny advisories, Trivy). `.github/workflows/audit.yml`이 주 1회 `main`에서 돌림 |
+| `make audit-core` | Rust 코어: cargo-deny advisories만 |
 
 ## 규칙
 
