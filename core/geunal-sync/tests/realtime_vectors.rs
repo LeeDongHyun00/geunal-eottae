@@ -28,8 +28,11 @@ fn reads_every_realtime_event_the_api_publishes() {
         assert_eq!(pushed.len(), 1, "{name}: one event from the frame");
         let direct = direct.unwrap_or_else(|e| panic!("{name}: the Redis form does not parse: {e}"));
         assert_eq!(pushed[0], direct, "{name}: the pushed form and the Redis form agree");
-        if let Event::Entry { c: Some(c), .. } = &pushed[0] {
-            assert_eq!(hex::encode(c), case["ciphertext_hex"], "{name}: the inline ciphertext decodes");
+        if let Event::Entry { at, c, .. } = &pushed[0] {
+            assert_eq!(at.as_deref(), case["payload"]["at"].as_str(), "{name}: `at` is the server's received_at");
+            if let Some(c) = c {
+                assert_eq!(hex::encode(c), case["ciphertext_hex"], "{name}: the inline ciphertext decodes");
+            }
         }
         checked += 1;
     }

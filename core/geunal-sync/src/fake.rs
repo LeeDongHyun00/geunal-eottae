@@ -56,6 +56,7 @@ struct State {
     now: Option<DateTime<Utc>>,
     epoch_conflicts: u32,
     stale_epochs: u32,
+    log_reads: u32,
 }
 
 impl State {
@@ -148,6 +149,11 @@ impl FakeServer {
 
     pub fn stale_epochs(&self) -> u32 {
         self.state.lock().expect("fake server").stale_epochs
+    }
+
+    /// How many times `GET /groups/{id}/log` was called, to show an event was applied without a fetch.
+    pub fn log_reads(&self) -> u32 {
+        self.state.lock().expect("fake server").log_reads
     }
 
     pub fn group_epoch(&self, group_id: &str) -> Option<u64> {
@@ -413,7 +419,7 @@ impl Transport for FakeClient {
             kind: "commit".into(),
             author_id: user.clone(),
             ciphertext: req.commit.clone(),
-            received_at,
+            received_at: received_at.clone(),
         });
         for (added_user, _) in &added_users {
             match group.members.get_mut(added_user) {
@@ -424,7 +430,7 @@ impl Transport for FakeClient {
             }
         }
         let small = req.commit.len() <= 4096;
-        let event = json!({"t": "entry", "g": group_id, "s": seq, "kind": "commit", "c": small.then(|| b64::encode(&req.commit))});
+        let event = json!({"t": "entry", "g": group_id, "s": seq, "kind": "commit", "at": received_at, "c": small.then(|| b64::encode(&req.commit))});
         state.publish(group_id, Some(&user), event);
         if let Some(welcome) = req.welcome {
             for (_, device_id) in added_users {
@@ -432,15 +438,15 @@ impl Transport for FakeClient {
                 if let Some(events) = state.events.get_mut(&device_id) {
                     events.retain(|e| e["s"] != json!(seq));
                 }
-                state
-                    .welcomes
-                    .entry(device_id.clone())
-                    .or_default()
-                    .push(WelcomeItem { group_id: group_id.to_owned(), data: welcome.clone() });
+                state.welcomes.entry(device_id.clone()).or_default().push(WelcomeItem {
+                    group_id: group_id.to_owned(),
+                    seq: Some(seq),
+                    data: welcome.clone(),
+                });
                 state.events.entry(device_id).or_default().push(json!({"t": "welcome"}));
             }
         }
-        Ok(CommitAccepted { seq, epoch: req.epoch })
+        Ok(CommitAccepted { seq, epoch: req.epoch, received_at: Some(received_at) })
     }
 
     async fn post_message(&self, group_id: &str, req: MessageRequest) -> Result<MessageAccepted, ApiError> {
@@ -463,17 +469,18 @@ impl Transport for FakeClient {
             kind: "app".into(),
             author_id: user.clone(),
             ciphertext: req.message.clone(),
-            received_at,
+            received_at: received_at.clone(),
         });
         let small = req.message.len() <= 4096;
-        let event = json!({"t": "entry", "g": group_id, "s": seq, "kind": "app", "c": small.then(|| b64::encode(&req.message))});
+        let event = json!({"t": "entry", "g": group_id, "s": seq, "kind": "app", "at": received_at, "c": small.then(|| b64::encode(&req.message))});
         state.publish(group_id, Some(&user), event);
-        Ok(MessageAccepted { seq })
+        Ok(MessageAccepted { seq, received_at: Some(received_at) })
     }
 
     async fn log(&self, group_id: &str, after: i64, limit: u32) -> Result<LogPage, ApiError> {
         let (user, _) = self.who()?;
         let mut state = self.lock();
+        state.log_reads += 1;
         let group = Self::require_active(&mut state, group_id, &user)?;
         let last_seq = group.next_seq - 1;
         let entries: Vec<LogItem> = group.log.iter().filter(|i| i.seq > after).take(limit as usize).cloned().collect();

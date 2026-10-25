@@ -19,11 +19,16 @@ pub const HEARTBEAT: Duration = Duration::from_secs(30);
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "t", rename_all = "snake_case")]
 pub enum Event {
-    /// A new log item: fetch from the cursor, or process `c` directly when it is the next seq.
+    /// A new log item: fetch from the cursor, or process `c` directly when it is the next seq and `at` is there to
+    /// serve as the item's `received_at`.
     Entry {
         g: String,
         s: i64,
         kind: String,
+        /// The server's `received_at` of the item (RFC 3339 UTC). Optional so an event from a gateway or push from
+        /// before the field existed still parses; such an item is read from the log instead.
+        #[serde(default)]
+        at: Option<String>,
         #[serde(default, with = "crate::api::b64::option")]
         c: Option<Vec<u8>>,
     },
@@ -186,12 +191,22 @@ mod tests {
             vec![Event::Joined]
         );
         assert_eq!(
-            parse_frame(r#"[null,"7","device:d1","entry",{"g":"g1","s":4,"kind":"app","c":"AQID"}]"#, topic),
-            vec![Event::Entry { g: "g1".into(), s: 4, kind: "app".into(), c: Some(vec![1, 2, 3]) }]
+            parse_frame(
+                r#"[null,"7","device:d1","entry",{"g":"g1","s":4,"kind":"app","at":"2026-10-25T08:25:07.763555Z","c":"AQID"}]"#,
+                topic
+            ),
+            vec![Event::Entry {
+                g: "g1".into(),
+                s: 4,
+                kind: "app".into(),
+                at: Some("2026-10-25T08:25:07.763555Z".into()),
+                c: Some(vec![1, 2, 3]),
+            }]
         );
+        // An event from before `at` existed still parses; the item is then read from the log.
         assert_eq!(
             parse_frame(r#"[null,"8","device:d1","entry",{"g":"g1","s":5,"kind":"commit"}]"#, topic),
-            vec![Event::Entry { g: "g1".into(), s: 5, kind: "commit".into(), c: None }]
+            vec![Event::Entry { g: "g1".into(), s: 5, kind: "commit".into(), at: None, c: None }]
         );
         assert_eq!(
             parse_frame(r#"[null,"9","device:d1","membership",{"g":"g1"}]"#, topic),
