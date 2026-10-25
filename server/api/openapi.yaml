@@ -6,8 +6,12 @@
 # Conventions:
 # - Field names are snake_case. Bytes (ciphertext, keys, MLS messages) are standard base64 with padding.
 # - Every error body is {"error": "<code>", "message": "..."} (docs/parts/protocol.md §11). M1: 403 device_revoked
-#   for a device revoked by a replacement also carries replaced_at (date-time) and replaced_by (ios | android, the
-#   account's active device), so the old device can say when and where the account signed in (protocol §13).
+#   for a device revoked by a replacement also carries replaced_at (date-time), replaced_by (ios | android, the
+#   account's active device) and replaced_via (provider | recovery), so the old device can say when, where and how
+#   the account signed in (protocol §13).
+# - M1 sign-in binding: the nonce handed to Kakao or Apple is lowercase hex SHA-256("geunal login v1" ‖ nonce ‖
+#   signature_key), with nonce as its ASCII bytes and signature_key as the 32 raw bytes; the server recomputes it from
+#   the request and compares it with the token's nonce claim (protocol §13).
 # - Authentication: `Authorization: Bearer <access JWT>` on everything but /auth/*, /.well-known/jwks.json, /holidays
 #   and /actuator/health. The JWT is ES256, 15 minutes, claims sub = user_id and did = device_id. A replacement
 #   ticket (protocol §13) is the bearer for GET /me/recovery, GET /me/backups and GET /me/backups/latest only.
@@ -60,8 +64,9 @@ paths:
     post:
       summary: "M1: Sign in with Kakao and register this device (protocol §13)"
       description: |
-        `id_token` is the Kakao OIDC ID token for our app key whose `nonce` claim equals the request's `nonce`. 201
-        registers this device; 200 means another device is active, and a replacement ticket comes back instead.
+        `id_token` is the Kakao OIDC ID token for our app key whose `nonce` claim is the sign-in binding of the
+        request's `nonce` and `signature_key` (see the conventions above). 201 registers this device; 200 means another
+        device is active, and a replacement ticket comes back instead.
       security: []
       requestBody:
         content:
@@ -86,8 +91,8 @@ paths:
       summary: "M1: Sign in with Apple and register this device (protocol §13)"
       description: |
         `id_token` is the identity token for the iOS bundle ID or the Android services ID whose `nonce` claim is the
-        lowercase hex SHA-256 of the request's `nonce`. The server exchanges `authorization_code` for Apple tokens and
-        keeps them encrypted to revoke them when the account is deleted. 201 and 200 as for /auth/kakao.
+        sign-in binding of the request's `nonce` and `signature_key`. The server keeps no Apple token: account deletion
+        brings a fresh authorization code (DELETE /me). 201 and 200 as for /auth/kakao.
       security: []
       requestBody:
         content:
@@ -97,10 +102,9 @@ paths:
                 - $ref: "#/components/schemas/DeviceProof"
                 - $ref: "#/components/schemas/NewAccount"
                 - type: object
-                  required: [id_token, authorization_code]
+                  required: [id_token]
                   properties:
                     id_token: { type: string }
-                    authorization_code: { type: string }
       responses:
         "201": { content: { application/json: { schema: { $ref: "#/components/schemas/Registered" } } } }
         "200": { content: { application/json: { schema: { $ref: "#/components/schemas/ReplaceRequired" } } } }
@@ -112,9 +116,11 @@ paths:
     post:
       summary: "M1: Android's Sign in with Apple web flow posts here (response_mode form_post)"
       description: |
-        The server checks nothing here and answers 303 to https://<domain>/auth/apple with the form fields in the
-        fragment. The app receives that App Link, checks `state`, and calls POST /auth/apple with `id_token` and `code`.
-        `user` (JSON with the name) arrives on the first authorization only; the app may use it as `display_name`.
+        The server checks nothing here and answers 303 to https://<domain>/auth/apple with `id_token`, `state` and
+        `user` in the fragment, each percent-encoded and length-limited. The app receives that App Link, checks
+        `state`, and calls POST /auth/apple with `id_token`. `user` (JSON with the name) arrives on the first
+        authorization only; the app may use it as `display_name`. The page at that address, opened when the app is not
+        installed, is static and never reads or renders the fragment.
       security: []
       requestBody:
         content:
@@ -153,9 +159,10 @@ paths:
     post:
       summary: "M1: A guest comes back on another device with the recovery code (protocol §10, §13)"
       description: |
-        The server finds the account by `recovery_id` and compares SHA-256(`recovery_auth`) with the stored hash in
-        constant time. On a match it registers this device at once and revokes the previous one: no ticket, the code
-        is the proof. Accounts linked to Kakao or Apple cannot come back this way.
+        The server finds the account by `recovery_id` and checks `recovery_signature` with the stored recovery public
+        key; the signed message is the ASCII bytes "geunal recover v1" followed by the ASCII bytes of `nonce`, the same
+        nonce the device proof signs. On a match it registers this device at once and revokes the previous one: no
+        ticket, the code is the proof. Accounts linked to Kakao or Apple cannot come back this way.
       security: []
       requestBody:
         content:
@@ -164,37 +171,45 @@ paths:
               allOf:
                 - $ref: "#/components/schemas/DeviceProof"
                 - type: object
-                  required: [recovery_id, recovery_auth]
+                  required: [recovery_id, recovery_signature]
                   properties:
                     recovery_id: { $ref: "#/components/schemas/Bytes", description: 16 bytes }
-                    recovery_auth: { $ref: "#/components/schemas/Bytes", description: 32 bytes }
+                    recovery_signature: { $ref: "#/components/schemas/Bytes", description: 64-byte Ed25519 signature by the recovery signing key }
       responses:
         "201": { content: { application/json: { schema: { $ref: "#/components/schemas/Registered" } } } }
         "400": { description: invalid_request }
-        "401": { description: "recovery_invalid (no such account, a wrong value, or an account linked to Kakao or Apple)" }
+        "401": { description: "recovery_invalid (no such account, a bad signature, or an account linked to Kakao or Apple)" }
         "429": { description: rate_limited }
 
   /auth/replace:
     post:
       summary: "M1: Finish a device replacement with the ticket of a replace_required sign-in"
       description: |
-        Registers the key the sign-in proved, revokes the previous device (it gets `revoke`; the other members of its
-        groups get `membership`) and returns tokens. The ticket is spent.
+        `signature` is by the key the sign-in proved, over the ASCII bytes "geunal replace v1" followed by the ASCII
+        bytes of `ticket`, so a leaked ticket alone gets no tokens. Registers that key, revokes the previous device (it
+        gets `revoke`; the other members of its groups get `membership`) and returns tokens. The ticket is spent.
       security: []
       requestBody:
         content:
           application/json:
-            schema: { type: object, required: [ticket], properties: { ticket: { type: string } } }
+            schema:
+              type: object
+              required: [ticket, signature]
+              properties:
+                ticket: { type: string }
+                signature: { $ref: "#/components/schemas/Bytes", description: 64-byte Ed25519 signature }
       responses:
         "201": { content: { application/json: { schema: { $ref: "#/components/schemas/Registered" } } } }
+        "400": { description: "invalid_request (the signature does not verify with the ticket's key)" }
         "401": { description: "token_expired (unknown, spent or expired ticket)" }
 
   /auth/link:
     post:
       summary: "M1: Link the guest account to Kakao or Apple"
       description: |
-        `nonce` comes from GET /auth/nonce and is bound into `id_token` as for sign-in. After linking, the account no
-        longer comes back by recovery code alone; its recovery material and backups stay.
+        `nonce` comes from GET /auth/nonce and is bound into `id_token` as for sign-in, with the session device's
+        registered key as `signature_key`. After linking, the account no longer comes back by recovery code alone; its
+        recovery material and backups stay.
       requestBody:
         content:
           application/json:
@@ -205,7 +220,6 @@ paths:
                 provider: { type: string, enum: [kakao, apple] }
                 id_token: { type: string }
                 nonce: { type: string }
-                authorization_code: { type: string, description: required for apple }
       responses:
         "200": { content: { application/json: { schema: { type: object, required: [providers], properties: { providers: { $ref: "#/components/schemas/Providers" } } } } } }
         "401": { description: provider_token_invalid }
@@ -214,6 +228,7 @@ paths:
   /auth/refresh:
     post:
       summary: Trade a refresh token for new tokens; the old refresh token is spent
+      description: "M1: a refresh token that was already spent ends every session of its device (reuse detection)."
       security: []
       requestBody:
         content:
@@ -257,35 +272,53 @@ paths:
     delete:
       summary: "M1: Delete the account (protocol §13); only the active device may call this"
       description: |
-        Deletes the account, devices, sessions, key packages, recovery material, backups, memberships, the log entries
-        the account wrote, its state blobs, its media and alpha stats in one transaction; objects go to
-        object_deletions and the remaining members' devices get `membership`. Kakao unlink and Apple token revocation
-        run after the transaction and are retried until they succeed.
+        Deletes the account's identifying data, devices, sessions, key packages, recovery material, backups,
+        memberships, state blobs, media and alpha stats in one transaction; objects go to object_deletions and the
+        remaining members' devices get `membership`. Log entries the account wrote stay until their 30-day partition
+        is dropped, so other members' devices keep one group state; the account row stays as a placeholder for their
+        author_id. After the transaction the server unlinks Kakao (retried until it succeeds) and, for an account
+        linked to Apple, exchanges `apple_authorization_code` and revokes the Apple tokens at once.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apple_authorization_code: { type: string, description: "required for an account linked to Apple: from a Sign in with Apple made for this deletion" }
       responses:
         "204": { description: deleted; this device's tokens stop working }
+        "400": { description: "invalid_request (an account linked to Apple without apple_authorization_code)" }
         "403": { description: replace_required (called with a replacement ticket) }
 
   /me/recovery:
     put:
       summary: "M1: Store the account's recovery material (protocol §10)"
       description: |
-        Overwrites what was stored. `new_key: true` says the material wraps a new AMK, so the server deletes every
-        backup of the account in the same transaction: nobody can open a backup sealed with the old one.
+        The first upload needs no proof. When material is already stored, overwriting it needs `nonce` (GET
+        /auth/nonce) and `proof`: the current recovery signing key's signature over the ASCII bytes
+        "geunal recovery rotate v1" followed by the ASCII bytes of `nonce`, checked with the stored public key. The one
+        exception is `new_key: true` from a device registered by a Kakao or Apple sign-in less than 30 minutes ago
+        (starting over without the code); then the server also deletes every backup of the account in the same
+        transaction, since nobody can open a backup sealed with the old AMK.
       requestBody:
         content:
           application/json:
             schema:
               type: object
-              required: [kdf_salt, amk_wrapped, recovery_id, recovery_auth_hash]
+              required: [amk_wrapped, recovery_id, recovery_public_key]
               properties:
-                kdf_salt: { $ref: "#/components/schemas/Bytes", description: 16 bytes }
                 amk_wrapped: { $ref: "#/components/schemas/Bytes", description: "nonce ‖ ciphertext ‖ tag, 72 bytes" }
                 recovery_id: { $ref: "#/components/schemas/Bytes", description: "16 bytes, unique" }
-                recovery_auth_hash: { $ref: "#/components/schemas/Bytes", description: "32 bytes, SHA-256 of the recovery auth value" }
+                recovery_public_key: { $ref: "#/components/schemas/Bytes", description: 32-byte Ed25519 public key of the recovery signing key }
                 new_key: { type: boolean, default: false }
+                nonce: { type: string, description: with proof }
+                proof: { $ref: "#/components/schemas/Bytes", description: 64-byte Ed25519 signature by the current recovery signing key }
       responses:
         "204": { description: stored }
         "400": { description: invalid_request (a field of the wrong length) }
+        "403": { description: "recovery_proof_required (material exists and the proof is missing or wrong, outside the new_key exception)" }
+        "409": { description: recovery_conflict (another account uses this recovery_id) }
     get:
       summary: "M1: The recovery material a restoring device needs; also with a replacement ticket"
       responses:
@@ -294,9 +327,8 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [kdf_salt, amk_wrapped, updated_at]
+                required: [amk_wrapped, updated_at]
                 properties:
-                  kdf_salt: { $ref: "#/components/schemas/Bytes" }
                   amk_wrapped: { $ref: "#/components/schemas/Bytes" }
                   updated_at: { type: string, format: date-time }
         "404": { description: not_found (none stored) }
@@ -306,7 +338,9 @@ paths:
       summary: "M1: Start a backup upload (protocol §10)"
       description: |
         Upload the sealed object with `PUT upload_url` and `Content-Length: size`, then call
-        POST /me/backups/{id}/complete. An upload that is never completed is not listed and is deleted after a day.
+        POST /me/backups/{id}/complete. The URL is signed with that Content-Length, so a larger object is refused at
+        upload; completion checks the size again. An upload that is never completed is not listed and is deleted after
+        a day.
       requestBody:
         content:
           application/json:
@@ -383,11 +417,13 @@ paths:
                   maxItems: 14
                   items:
                     type: object
-                    required: [day, events, suggested]
+                    required: [day, sessions, events, suggested, crashes]
                     properties:
                       day: { type: string, format: date, description: date in Asia/Seoul }
-                      events: { type: integer, minimum: 0, description: events created on this device that day }
+                      sessions: { type: integer, minimum: 0, description: times the app came to the foreground that day }
+                      events: { type: integer, minimum: 0, description: "events created on this device that day (protocol §14 says what counts)" }
                       suggested: { type: integer, minimum: 0, description: "of those, created from a suggestion chip; at most events" }
+                      crashes: { type: integer, minimum: 0, description: "abnormal exits that day, from MetricKit (iOS) or ApplicationExitInfo (Android)" }
       responses:
         "204": { description: stored; a day sent again overwrites the earlier counts }
         "400": { description: "invalid_request (suggested above events, a day more than 14 days old)" }
@@ -400,10 +436,12 @@ paths:
         Requests are by whole years because a device replaces each year it receives, and replacing a year from part of
         it would drop the rest. `years` lists the requested years whose holidays the server knows completely, and
         `holidays` holds every holiday of those years and nothing else. A requested year missing from `years` (next
-        year before it is announced) stays as the device has it.
+        year before it is announced) stays as the device has it. A request reads only the stored table; the daily job
+        is the one caller of the 특일 정보 API, so this public endpoint cannot spend that key's daily quota. 60 an hour
+        per IP.
       security: []
       parameters:
-        - { name: from_year, in: query, required: true, schema: { type: integer, minimum: 2000 } }
+        - { name: from_year, in: query, required: true, schema: { type: integer, minimum: 2000 }, description: at most next year }
         - { name: to_year, in: query, required: true, schema: { type: integer }, description: "from_year or from_year + 1" }
       responses:
         "200":
@@ -425,7 +463,8 @@ paths:
                         name: { type: string }
                         substitute: { type: boolean, description: 대체공휴일 }
         "304": { description: not modified (If-None-Match) }
-        "400": { description: "invalid_request (to_year before from_year, or more than two years)" }
+        "400": { description: "invalid_request (to_year before from_year, more than two years, or from_year after next year)" }
+        "429": { description: rate_limited }
 
   /me/push-token:
     put:
@@ -793,7 +832,7 @@ components:
       properties:
         result: { const: replace_required }
         user_id: { $ref: "#/components/schemas/Uuid" }
-        ticket: { type: string, description: opaque }
+        ticket: { type: string, description: "opaque random of at least 128 bits, not a JWT; the server stores only its SHA-256" }
         expires_in: { type: integer, description: seconds (1800) }
         active_device:
           type: object

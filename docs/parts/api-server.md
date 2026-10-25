@@ -52,16 +52,21 @@ server/api/src/main/kotlin/app/geunal/api/
 
 로그인 방법, 결과, 기기 교체, 게스트 복귀, 계정 삭제의 규칙은 [공통 계약](protocol.md) 13장입니다.
 
-- **카카오:** OIDC ID 토큰을 카카오 JWKS로 검증하고 `sub`을 씁니다. `aud`는 앱 키, `nonce`는 요청의 nonce와 같아야 합니다. 동의 항목은 닉네임까지만 받습니다.
-- **애플:** 아이덴티티 토큰을 애플 JWKS로 검증합니다. `aud`는 iOS 번들 ID와 안드로이드 웹 로그인용 서비스 ID이고, `nonce`는 요청 nonce의 SHA-256(16진수)입니다. `authorization_code`는 Apple 토큰으로 바꿔 암호화해 두고, 계정 삭제 때 철회합니다.
-- **게스트:** 소셜 계정 없이 계정을 만듭니다. 다른 기기에서는 복구 코드로만 돌아옵니다(`POST /auth/recover`). 나중에 카카오·애플 계정에 연결할 수 있고, 연결하면 복구 코드만으로는 들어올 수 없습니다.
+- **카카오·애플 공통:** 토큰의 `nonce` 클레임은 `hex(SHA-256("geunal login v1" ‖ nonce ‖ signature_key))`여야 합니다. 서버가 요청의 `nonce`와 `signature_key`로 계산해 비교합니다. 제공자 토큰을 이 기기 키에 묶으려는 것입니다.
+- **카카오:** OIDC ID 토큰을 카카오 JWKS로 검증하고 `sub`을 씁니다. `aud`는 앱 키입니다. 동의 항목은 닉네임까지만 받습니다.
+- **애플:** 아이덴티티 토큰을 애플 JWKS로 검증합니다. `aud`는 iOS 번들 ID와 안드로이드 웹 로그인용 서비스 ID입니다.
+  - Apple 토큰은 저장하지 않습니다. 계정 삭제 요청에 앱이 새로 받은 `apple_authorization_code`를 넣고, 서버가 그 자리에서 교환하고 철회합니다.
+- **게스트:** 소셜 계정 없이 계정을 만듭니다. 다른 기기에서는 복구 코드로만 돌아옵니다(`POST /auth/recover`, 복구 공개키로 서명 확인). 나중에 카카오·애플 계정에 연결할 수 있고, 연결하면 복구 코드만으로는 들어올 수 없습니다.
+- **제공자 연결 끊김:** 카카오 연결 끊기 알림과 Apple의 동의 철회 알림을 받는 엔드포인트를 둡니다. 받으면 그 연결을 지워 계정이 복구 코드로 돌아올 수 있게 합니다.
 - **기기 등록:** 로그인 요청에 기기의 Ed25519 공개키와, 서버가 준 일회용 nonce(`GET /auth/nonce`)에 대한 서명을 함께 보냅니다.
-  - 계정에 다른 활성 기기가 있으면 등록하지 않고 교체 티켓(30분)을 줍니다. `POST /auth/replace`가 그 티켓으로 이 기기를 등록하고, 이전 활성 기기를 해제하고 `revoke` 신호를 보냅니다.
+  - 계정에 다른 활성 기기가 있으면 등록하지 않고 교체 티켓(30분, 128비트 이상의 불투명 난수, SHA-256만 저장)을 줍니다.
+  - `POST /auth/replace`는 티켓과 `"geunal replace v1" ‖ 티켓`에 대한 기기 키의 서명을 받아 이 기기를 등록하고, 이전 활성 기기를 해제하고 `revoke` 신호를 보냅니다.
   - 게스트 복귀는 복구 코드로 이미 증명했으므로 티켓 없이 바로 교체합니다.
   - 기기 교체는 멤버 상태를 바꾸지 않습니다. 이전 기기가 있던 그룹의 다른 멤버 기기에 `membership`을 보냅니다.
 - **토큰:**
   - 액세스 JWT(ES256)는 15분, 클레임은 `sub`(user_id), `did`(device_id)입니다.
   - 리프레시 토큰은 30일이고, 쓸 때마다 교체합니다. DB에는 SHA-256만 저장합니다.
+  - 이미 교체된 리프레시 토큰이 다시 오면 그 기기의 세션을 모두 끊습니다(재사용 감지). 토큰이 샜을 때 피해를 줄이는 표준 방법입니다.
   - JWKS는 `/.well-known/jwks.json`에 공개하고, 키를 바꿀 때 `kid`로 겹쳐 둡니다.
 
 ## 5. 전달 서비스 규칙
@@ -376,19 +381,19 @@ CREATE TABLE holidays (
 | POST | `/auth/apple` | Apple 로그인 + 기기 등록. 다른 활성 기기가 있으면 교체 티켓 |
 | POST | `/auth/apple/callback` | 안드로이드 Apple 웹 로그인의 form_post를 받아 App Links 주소로 앱에 넘기기 |
 | POST | `/auth/guest` | 게스트 계정 + 기기 등록 |
-| POST | `/auth/recover` | 게스트 복귀: 복구 ID와 복구 인증값으로 로그인 + 기기 교체 |
+| POST | `/auth/recover` | 게스트 복귀: 복구 ID와 복구 서명으로 로그인 + 기기 교체 |
 | POST | `/auth/replace` | 교체 티켓으로 이 기기 등록, 이전 기기 해제 |
 | POST | `/auth/stub` | `GEUNAL_AUTH_STUB`이 켜진 로컬·CI에서만: 제공자 토큰 대신 `subject` 문자열로 로그인 + 기기 등록(카카오와 같은 규칙). 꺼져 있으면 404 |
 | POST | `/auth/refresh` | 토큰 갱신(리프레시 교체) |
 | POST | `/auth/link` | 게스트를 카카오·애플에 연결 |
 | GET | `/.well-known/jwks.json` | 게이트웨이가 쓰는 공개키 |
 | GET | `/me` | 계정, 현재 기기, 남은 키 패키지 수, 연결한 로그인(`providers`), 복구 자료가 있는지 |
-| DELETE | `/me` | 계정 삭제 |
+| DELETE | `/me` | 계정 삭제. Apple에 연결된 계정은 새로 받은 `apple_authorization_code`로 그 자리에서 Apple 토큰 철회 |
 | PUT | `/me/push-token` | 현재 기기 푸시 토큰 |
 | POST | `/me/key-packages` | 키 패키지 묶음 올리기 |
 | GET | `/users/{id}/devices` | 활성 기기 ID와 서명 공개키(추가 전 확인용) |
 | POST | `/devices/{id}/key-packages/claim` | 그 기기를 추가하려고 키 패키지 하나 가져가기 |
-| PUT, GET | `/me/recovery` | salt, 래핑된 AMK, 복구 ID, 복구 인증값의 해시. `new_key`면 백업을 모두 지움 |
+| PUT, GET | `/me/recovery` | 래핑된 AMK, 복구 ID, 복구 공개키. 이미 있으면 지금 코드의 증명이 필요하고, `new_key`면 백업을 모두 지움 |
 | POST, GET | `/me/backups` | 업로드 URL 발급, 완료된 백업 목록(최근 3개) |
 | POST | `/me/backups/{id}/complete` | 올리기 완료, 오래된 백업 정리 |
 | GET | `/me/backups/latest` | 다운로드 URL |
@@ -448,6 +453,7 @@ CREATE TABLE holidays (
 | 키 패키지 가져가기 | 사용자당 분당 30개 |
 | 미디어 업로드 | 사용자당 하루 200MB(10MB 파일 20개) |
 | 백업 | 사용자당 하루 10회 |
+| 공휴일(로그인 없이) | IP당 시간당 60회 |
 
 초과하면 429와 `Retry-After`를 줍니다.
 
