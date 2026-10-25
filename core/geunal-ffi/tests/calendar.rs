@@ -2,91 +2,11 @@
 //! week and list views, shift stamping, the device mirror, alerts, the widget snapshot and the ICS export
 //! (docs/design/m1.md, rust-core §9 "캘린더와 추천").
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+mod common;
 
 use chrono::{TimeZone, Utc};
+use common::*;
 use geunal_ffi::*;
-
-#[derive(Default)]
-struct MemorySecrets(Mutex<HashMap<String, Vec<u8>>>);
-
-impl SecretStore for MemorySecrets {
-    fn get(&self, name: String) -> Option<Vec<u8>> {
-        self.0.lock().unwrap().get(&name).cloned()
-    }
-    fn put(&self, name: String, value: Vec<u8>) {
-        self.0.lock().unwrap().insert(name, value);
-    }
-    fn delete(&self, name: String) {
-        self.0.lock().unwrap().remove(&name);
-    }
-}
-
-#[derive(Default)]
-struct Changes(Mutex<u32>);
-
-impl CoreListener for Changes {
-    fn on_change(&self, change: Change) {
-        if change == Change::Calendar {
-            *self.0.lock().unwrap() += 1;
-        }
-    }
-}
-
-struct Device {
-    core: Arc<Core>,
-    changes: Arc<Changes>,
-    _dir: tempfile::TempDir,
-}
-
-/// A core on a fresh store whose clock reads Sunday 2026-10-25 09:00 in Korea.
-fn device() -> Device {
-    let dir = tempfile::tempdir().unwrap();
-    let changes = Arc::new(Changes::default());
-    let core = Core::open(
-        dir.path().to_str().unwrap().to_owned(),
-        "http://127.0.0.1:9".to_owned(),
-        changes.clone(),
-        Arc::new(MemorySecrets::default()),
-    )
-    .unwrap();
-    core.set_clock(Some(Utc.with_ymd_and_hms(2026, 10, 25, 0, 0, 0).unwrap()));
-    Device { core, changes, _dir: dir }
-}
-
-fn at(day: &str, minute: u16) -> DayTime {
-    DayTime { day: day.into(), minute }
-}
-
-fn timed(calendar: &str, title: &str, day: &str, from: u16, to: u16) -> EventInput {
-    EventInput {
-        calendar_id: calendar.into(),
-        title: title.into(),
-        all_day: false,
-        start: at(day, from),
-        end: at(day, to),
-        recurrence: None,
-        alert: AlertRule::Inherit,
-        note: None,
-    }
-}
-
-fn weekly(days: Vec<Weekday>) -> Recurrence {
-    Recurrence { frequency: Frequency::Weekly, interval: 1, weekdays: days, until: None, count: None }
-}
-
-fn personal(core: &Core) -> String {
-    core.calendars().unwrap().into_iter().find(|c| c.name == "개인").unwrap().id
-}
-
-fn titles(events: &[EventItem]) -> Vec<String> {
-    events.iter().map(|e| e.title.clone()).collect()
-}
-
-fn cell<'a>(month: &'a [DayCell], day: &str) -> &'a DayCell {
-    month.iter().find(|c| c.day == day).unwrap()
-}
 
 #[test]
 fn makes_a_default_calendar_on_first_open_and_keeps_the_last_one() {
@@ -214,6 +134,24 @@ fn takes_back_what_an_undone_add_counted() {
     d.core.set_clock(Some(Utc.with_ymd_and_hms(2026, 10, 25, 0, 5, 0).unwrap()));
     d.core.delete_event(fourth.event_id, None, EditScope::ThisAndFollowing).unwrap();
     assert_eq!(add("2026-11-30").repeat_hint, None);
+}
+
+#[test]
+fn counts_a_delete_within_five_seconds_as_the_toasts_undo() {
+    let d = device();
+    let cal = personal(&d.core);
+    let second = |s: u32| d.core.set_clock(Some(Utc.with_ymd_and_hms(2026, 10, 25, 0, 0, s).unwrap()));
+    let remembered = || d.core.suggestions("2026-11-04".into()).unwrap().iter().any(|s| s.event.title == "요가");
+    // Five seconds after the add the toast's undo still takes back what the add counted.
+    let yoga = d.core.add_event(timed(&cal, "요가", "2026-10-28", 420, 480), false).unwrap();
+    second(5);
+    d.core.delete_event(yoga.event_id, None, EditScope::ThisAndFollowing).unwrap();
+    assert!(!remembered());
+    // Six seconds after, it is an ordinary delete and the history keeps the use.
+    let yoga = d.core.add_event(timed(&cal, "요가", "2026-10-28", 420, 480), false).unwrap();
+    second(11);
+    d.core.delete_event(yoga.event_id, None, EditScope::ThisAndFollowing).unwrap();
+    assert!(remembered());
 }
 
 #[test]
@@ -551,4 +489,142 @@ fn exports_own_events_as_ics_and_leaves_device_events_out() {
     assert!(ics.contains("SUMMARY:전공 수업\r\n"));
     assert!(ics.contains("RRULE:FREQ=WEEKLY;BYDAY=MO\r\n"));
     assert!(!ics.contains("회사 일정"));
+}
+
+#[test]
+fn shows_holidays_birthdays_and_leave_bridges_in_the_views() {
+    let d = device();
+    let cal = personal(&d.core);
+    // 음력 4월 8일 is 부처님오신날, Thursday 13 May in 2027.
+    let grandma = add_person(&d.core, "할머니", lunar(4, 8, false));
+    add_person(&d.core, "민수", solar(5, 10));
+    let may = d.core.calendar_month("2027-05".into()).unwrap();
+    let names = |c: &DayCell| c.holidays.iter().map(|h| h.name.clone()).collect::<Vec<_>>();
+    assert_eq!(names(cell(&may, "2027-05-01")), vec!["노동절"]);
+    let substitute = &cell(&may, "2027-05-03").holidays[0];
+    assert!(substitute.substitute && substitute.name == "대체공휴일");
+    let thursday = cell(&may, "2027-05-13");
+    assert_eq!(names(thursday), vec!["부처님오신날"]);
+    assert_eq!(
+        thursday.birthdays,
+        vec![BirthdayItem { person_id: grandma, name: "할머니".into(), day: "2027-05-13".into(), lunar: true }]
+    );
+    assert_eq!(cell(&may, "2027-05-10").birthdays[0].name, "민수");
+    // Tuesday 4 May joins 1–3 May to 어린이날; Friday 14 May joins 부처님오신날 to the weekend.
+    assert_eq!(
+        cell(&may, "2027-05-04").leave_bridge,
+        Some(LeaveBridge {
+            leave_day: "2027-05-04".into(),
+            first_day: "2027-05-01".into(),
+            last_day: "2027-05-05".into(),
+            days_off: 5
+        })
+    );
+    assert_eq!(cell(&may, "2027-05-14").leave_bridge.as_ref().map(|b| b.days_off), Some(4));
+    assert_eq!(may.iter().filter(|c| c.leave_bridge.is_some()).count(), 2);
+
+    // Taking the day off ("연차", what the bridge chip fills in) closes that bridge; another all-day event does not.
+    d.core.add_event(all_day(&cal, "연차", "2027-05-14", "2027-05-14"), false).unwrap();
+    d.core.add_event(all_day(&cal, "약속", "2027-05-04", "2027-05-04"), false).unwrap();
+    let may = d.core.calendar_month("2027-05".into()).unwrap();
+    assert!(cell(&may, "2027-05-14").leave_bridge.is_none());
+    assert!(cell(&may, "2027-05-04").leave_bridge.is_some());
+
+    // The week and the list carry the same holidays and birthdays; a day with only a holiday is listed.
+    let week = d.core.calendar_week("2027-05-09".into()).unwrap();
+    assert_eq!(week[4].holidays[0].name, "부처님오신날");
+    assert_eq!(week[1].birthdays[0].name, "민수");
+    let agenda = d.core.calendar_agenda("2027-05-01".into(), 5).unwrap();
+    assert_eq!(
+        agenda.iter().map(|a| a.day.as_str()).collect::<Vec<_>>(),
+        vec!["2027-05-01", "2027-05-03", "2027-05-04", "2027-05-05"]
+    );
+
+    // With leave suggestions off the month shows no bridges.
+    let mut settings = d.core.notification_settings().unwrap();
+    settings.leave_suggestions = false;
+    d.core.set_notification_settings(settings).unwrap();
+    assert!(d.core.calendar_month("2027-05".into()).unwrap().iter().all(|c| c.leave_bridge.is_none()));
+}
+
+#[test]
+fn alerts_birthdays_at_nine_and_announces_a_leave_bridge_three_weeks_ahead() {
+    let d = device();
+    set_clock(&d, 2027, 4, 20, 0); // Tuesday 20 April 2027, 09:00 in Korea
+    let cal = personal(&d.core);
+    let minsu = add_person(&d.core, "민수", solar(5, 10));
+    let person = |name: &str, birthday: Birthday, alert: AlertRule| PersonInput {
+        id: None,
+        name: name.into(),
+        birthday: Some(birthday),
+        alert,
+        suggest: true,
+    };
+    // "전날 18:00" for 할머니; no alert for 지은.
+    let grandma = d.core.save_person(person("할머니", lunar(4, 8, false), AlertRule::Before { minutes: 360 })).unwrap();
+    d.core.save_person(person("지은", solar(4, 25), AlertRule::Off)).unwrap();
+
+    let kst = |m: u32, day: u32, h: u32| geunal_domain::KST.with_ymd_and_hms(2027, m, day, h, 0, 0).unwrap().to_utc();
+    let fired = |core: &Core| {
+        core.scheduled_alerts(64)
+            .unwrap()
+            .into_iter()
+            .map(|a| (a.id, chrono::DateTime::<Utc>::from(a.fire_at)))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        fired(&d.core),
+        vec![
+            // 14 May bridges 부처님오신날 into the weekend; the notice for 4 May (13 April) has passed.
+            ("bridge:2027-05-14".to_owned(), kst(4, 23, 9)),
+            (format!("birthday:{minsu}:2027-05-10:-540"), kst(5, 10, 9)),
+            (format!("birthday:{grandma}:2027-05-13:360"), kst(5, 12, 18)),
+        ]
+    );
+    let notice = d.core.scheduled_alerts(1).unwrap().remove(0);
+    assert_eq!(
+        notice.target,
+        AlertTarget::LeaveBridge {
+            bridge: LeaveBridge {
+                leave_day: "2027-05-14".into(),
+                first_day: "2027-05-13".into(),
+                last_day: "2027-05-16".into(),
+                days_off: 4
+            }
+        }
+    );
+    assert!(notice.all_day);
+
+    // The birthday switch is the default, so 할머니's own rule stays; leave suggestions off drop the bridge.
+    let mut settings = d.core.notification_settings().unwrap();
+    settings.birthday_alerts = false;
+    settings.leave_suggestions = false;
+    d.core.set_notification_settings(settings.clone()).unwrap();
+    assert_eq!(fired(&d.core), vec![(format!("birthday:{grandma}:2027-05-13:360"), kst(5, 12, 18))]);
+    // Back on, a "연차" on the leave day closes the bridge.
+    settings.leave_suggestions = true;
+    d.core.set_notification_settings(settings).unwrap();
+    d.core.add_event(all_day(&cal, "연차", "2027-05-14", "2027-05-14"), false).unwrap();
+    assert!(fired(&d.core).iter().all(|(id, _)| !id.starts_with("bridge:")));
+}
+
+#[test]
+fn puts_birthdays_in_the_next_up_bar_with_the_events() {
+    let d = device(); // Sunday 25 October, 09:00
+    let cal = personal(&d.core);
+    d.core.add_event(timed(&cal, "브런치", "2026-10-25", 510, 600), false).unwrap();
+    d.core.add_event(timed(&cal, "전공 수업", "2026-10-26", 600, 720), false).unwrap();
+    add_person(&d.core, "민수", solar(10, 25));
+    add_person(&d.core, "지은", solar(10, 26));
+    let next: Vec<String> = d
+        .core
+        .next_up(4)
+        .unwrap()
+        .into_iter()
+        .map(|n| match n {
+            UpNext::Event { item, .. } => item.title,
+            UpNext::Birthday { item } => format!("{} 생일", item.name),
+        })
+        .collect();
+    assert_eq!(next, vec!["민수 생일", "브런치", "지은 생일", "전공 수업"]);
 }

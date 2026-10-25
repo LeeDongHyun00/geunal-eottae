@@ -1,19 +1,21 @@
 //! What the calendar functions share: turning the FFI's Korean days and minutes into the instants the store keeps,
 //! expanding stored events into the occurrences a view shows, and resolving alerts. Nothing here is exported.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::SystemTime;
 
 use chrono::{DateTime, Datelike, Duration, FixedOffset, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Timelike, Utc};
 use geunal_domain::calendar::{EventSpec, Occurrence, occurrences};
+use geunal_domain::holidays::{self, Holiday};
+use geunal_domain::lunar;
 use geunal_domain::recurrence::{Freq, Rule, WEEK};
 use geunal_domain::time::KST;
-use geunal_store::{CalendarRow, Db, EventRow};
+use geunal_store::{CalendarRow, Db, EventRow, PersonRow};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AlertRule, CalendarKind, CoreError, DayTime, EventItem, EventSource, Frequency, NotificationSettings, Palette,
-    Recurrence, Weekday,
+    AlertRule, Birthday, BirthdayCalendar, BirthdayItem, CalendarKind, CoreError, DayTime, EventItem, EventSource,
+    Frequency, NotificationSettings, Palette, Recurrence, Weekday,
 };
 
 pub(crate) const TZ: &str = "Asia/Seoul";
@@ -367,6 +369,90 @@ pub(crate) fn effective_alert(row: &EventRow, calendar: &CalendarRow, settings: 
         return settings.all_day_alert;
     }
     resolve(alert_rule(calendar.default_alert.as_deref())).unwrap_or(settings.event_alert)
+}
+
+// ----- holidays and birthdays -----
+
+/// The holidays of the days [first, last]: a year the server sent in full comes from the store, any other year from
+/// the table built into the app (protocol §14).
+pub(crate) fn holidays_between(db: &Db<'_>, first: NaiveDate, last: NaiveDate) -> Result<Vec<Holiday>, CoreError> {
+    let from_server: HashSet<i64> = db.holiday_years()?.into_iter().collect();
+    let mut out = Vec::new();
+    for year in first.year()..=last.year() {
+        if from_server.contains(&i64::from(year)) {
+            let (from, to) = (first.max(jan_1(year)), last.min(dec_31(year)));
+            for row in db.holidays_between(&day_text(from), &day_text(to))? {
+                out.push(Holiday { day: day(&row.day)?, name: row.name, substitute: row.substitute });
+            }
+        } else {
+            out.extend(holidays::built_in(year).into_iter().filter(|h| h.day >= first && h.day <= last));
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+fn jan_1(year: i32) -> NaiveDate {
+    NaiveDate::from_ymd_opt(year, 1, 1).expect("a year has a first day")
+}
+
+fn dec_31(year: i32) -> NaiveDate {
+    NaiveDate::from_ymd_opt(year, 12, 31).expect("a year has a last day")
+}
+
+/// A person's birthday as stored: month and day on the calendar `is_lunar` names.
+pub(crate) fn stored_birthday(row: &PersonRow) -> Option<(u8, u8)> {
+    let (m, d) = row.birthday_md.as_deref()?.split_once('-')?;
+    Some((m.parse().ok()?, d.parse().ok()?))
+}
+
+pub(crate) fn birthday_of(row: &PersonRow) -> Option<Birthday> {
+    let (month, day) = stored_birthday(row)?;
+    Some(Birthday {
+        month,
+        day,
+        year: row.birth_year.map(|y| y as i32),
+        calendar: if row.is_lunar {
+            BirthdayCalendar::Lunar { leap_month: row.leap_month }
+        } else {
+            BirthdayCalendar::Solar
+        },
+    })
+}
+
+/// The solar days in [first, last] the person's birthday falls on.
+pub(crate) fn person_birthdays(row: &PersonRow, first: NaiveDate, last: NaiveDate) -> Vec<NaiveDate> {
+    let Some((month, day)) = stored_birthday(row) else { return Vec::new() };
+    lunar::birthdays_between(month, day, row.is_lunar, row.leap_month, first, last)
+}
+
+/// Every birthday in [first, last], by day and name.
+pub(crate) fn birthdays_between(
+    db: &Db<'_>,
+    first: NaiveDate,
+    last: NaiveDate,
+) -> Result<Vec<(NaiveDate, BirthdayItem)>, CoreError> {
+    let mut out = Vec::new();
+    for row in db.people()? {
+        for d in person_birthdays(&row, first, last) {
+            out.push((
+                d,
+                BirthdayItem {
+                    person_id: row.id.clone(),
+                    name: row.name.clone(),
+                    day: day_text(d),
+                    lunar: row.is_lunar,
+                },
+            ));
+        }
+    }
+    out.sort_by(|a, b| (a.0, &a.1.name, &a.1.person_id).cmp(&(b.0, &b.1.name, &b.1.person_id)));
+    Ok(out)
+}
+
+/// The calendar a suggestion or a birthday chip goes to: the first own calendar.
+pub(crate) fn default_calendar(db: &Db<'_>) -> Result<CalendarRow, CoreError> {
+    db.calendars()?.into_iter().find(|c| c.kind == OWN).ok_or_else(|| malformed("no own calendar"))
 }
 
 // ----- settings -----

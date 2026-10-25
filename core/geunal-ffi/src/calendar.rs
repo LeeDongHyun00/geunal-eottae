@@ -7,14 +7,16 @@
 //! never convert time zones for the calendar; they format what they get. Instants (`SystemTime`, Swift `Date`, Kotlin
 //! `Instant`) appear only where a moment is meant: when an alert fires, when a backup was made.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::time::SystemTime;
 
 use chrono::{DateTime, Datelike, Duration, FixedOffset, NaiveDate, Utc};
 use geunal_domain::calendar::{EventSpec, ShiftTemplate as DomainShift, occurrences, shift_event};
+use geunal_domain::holidays::{self, Bridge};
 use geunal_domain::ics::{self, IcsEvent};
 use geunal_domain::layout;
 use geunal_domain::recurrence::{Rule, weekday_index};
+use geunal_domain::suggest::{self, Candidate};
 use geunal_store::{CalendarRow, Db, EventRow, ShiftTemplateRow, Store, SuggestionStatRow};
 use serde::Serialize;
 
@@ -721,10 +723,10 @@ impl Core {
                 day: day_text(day),
                 weekday: weekday_of(day),
                 in_month: day.month() == first.month(),
-                holidays: Vec::new(),
+                holidays: days.holidays_on(day),
                 events: days.items_on(day),
-                birthdays: Vec::new(),
-                leave_bridge: None,
+                birthdays: days.birthdays_on(day),
+                leave_bridge: days.bridge_on(day),
             })
             .collect())
     }
@@ -767,9 +769,9 @@ impl Core {
                 WeekDay {
                     day: day_text(d),
                     weekday: weekday_of(d),
-                    holidays: Vec::new(),
+                    holidays: days.holidays_on(d),
                     all_day: all_day.into_iter().map(|(item, _, _)| item).collect(),
-                    birthdays: Vec::new(),
+                    birthdays: days.birthdays_on(d),
                     timed,
                     hidden,
                 }
@@ -792,9 +794,9 @@ impl Core {
             .map(|d| AgendaDay {
                 day: day_text(d),
                 weekday: weekday_of(d),
-                holidays: Vec::new(),
+                holidays: found.holidays_on(d),
                 events: found.items_on(d),
-                birthdays: Vec::new(),
+                birthdays: found.birthdays_on(d),
             })
             .filter(|a| !a.events.is_empty() || !a.holidays.is_empty() || !a.birthdays.is_empty())
             .collect())
@@ -803,31 +805,32 @@ impl Core {
     /// What is on now or next, nearest first: events that have not ended and birthdays from today.
     pub fn next_up(&self, count: u16) -> Result<Vec<UpNext>, CoreError> {
         let now = self.now().with_timezone(&geunal_domain::KST);
-        let found = self.store.read(|db| {
+        let today = now.date_naive();
+        let mut found: Vec<(DateTime<FixedOffset>, u8, UpNext)> = self.store.read(|db| {
             let calendars = calendars_by_id(db)?;
-            let mut items = Vec::new();
+            let mut found = Vec::new();
             for (row, occ) in instances(db, now, now + Duration::days(NEXT_UP_DAYS), |row| {
                 calendars.get(&row.calendar_id).is_some_and(|c| c.visible)
             })? {
                 if occ.ends_at <= now {
                     continue;
                 }
-                let calendar = &calendars[&row.calendar_id];
-                items.push((item(&row, &occ, calendar), occ.starts_at, occ.ends_at));
+                let item = item(&row, &occ, &calendars[&row.calendar_id]);
+                // Within one start time: all-day events, then birthdays, then timed events.
+                let rank = if item.all_day { 0 } else { 2 };
+                found.push((
+                    occ.starts_at,
+                    rank,
+                    UpNext::Event { item, starts_at: system_time(occ.starts_at), ends_at: system_time(occ.ends_at) },
+                ));
             }
-            Ok::<_, CoreError>(items)
+            for (d, item) in birthdays_between(db, today, today + Duration::days(NEXT_UP_DAYS))? {
+                found.push((midnight(d), 1, UpNext::Birthday { item }));
+            }
+            Ok::<_, CoreError>(found)
         })?;
-        let mut found = found;
-        sort_by_start(&mut found);
-        Ok(found
-            .into_iter()
-            .take(usize::from(count))
-            .map(|(item, starts_at, ends_at)| UpNext::Event {
-                item,
-                starts_at: system_time(starts_at),
-                ends_at: system_time(ends_at),
-            })
-            .collect())
+        found.sort_by_key(|(at, rank, _)| (*at, *rank));
+        Ok(found.into_iter().take(usize::from(count)).map(|(_, _, n)| n).collect())
     }
 
     /// The JSON the widgets read (docs/parts/rust-core.md §3, "위젯 스냅샷"). The app writes it to the shared
@@ -864,8 +867,48 @@ impl Core {
     /// Up to five chips for `day`, best first, without any that overlap what is already on that day (kickoff §5.2).
     /// Nothing about them leaves the device, and an untapped chip is never saved.
     pub fn suggestions(&self, day: String) -> Result<Vec<Suggestion>, CoreError> {
-        let _ = day;
-        Err(crate::not_yet("suggestions"))
+        let target = crate::local::day(&day)?;
+        let now = self.now();
+        let days = Days::read(&self.store, target, target)?;
+        let ranked = self.store.read(|db| suggestion_candidates(db, &days, target, now))?;
+        let busy: Vec<(u16, u16)> = days
+            .on(target)
+            .into_iter()
+            .filter(|(i, _, _)| !i.all_day)
+            .map(|(_, s, e)| {
+                let start_of_day = midnight(target);
+                let minutes = |at: DateTime<FixedOffset>| (at - start_of_day).num_minutes().clamp(0, 1440) as u16;
+                (minutes(s), minutes(e))
+            })
+            .collect();
+        let titles: HashSet<String> = days.items_on(target).into_iter().map(|i| i.title).collect();
+        let default = self.store.read(default_calendar)?;
+        Ok(suggest::rank(ranked, &busy, &titles)
+            .into_iter()
+            .map(|c| {
+                let next = target.succ_opt().expect("day in range");
+                let end_day = if !c.all_day && c.end_minute <= c.start_minute { next } else { target };
+                Suggestion {
+                    event: EventInput {
+                        calendar_id: c.calendar_id.clone().unwrap_or_else(|| default.id.clone()),
+                        title: c.title.clone(),
+                        all_day: c.all_day,
+                        start: DayTime { day: day_text(target), minute: if c.all_day { 0 } else { c.start_minute } },
+                        end: DayTime { day: day_text(end_day), minute: if c.all_day { 0 } else { c.end_minute } },
+                        recurrence: None,
+                        alert: AlertRule::Inherit,
+                        note: None,
+                    },
+                    source: match c.source {
+                        suggest::Source::Dictionary => SuggestionSource::Dictionary,
+                        suggest::Source::History => SuggestionSource::History,
+                        suggest::Source::Birthday { person_id } => SuggestionSource::Birthday { person_id },
+                        suggest::Source::Holiday => SuggestionSource::Holiday,
+                        suggest::Source::Shift { template_id } => SuggestionSource::Shift { template_id },
+                    },
+                }
+            })
+            .collect())
     }
 
     // ----- shift templates (screens 10, 18) -----
@@ -1120,6 +1163,54 @@ impl Core {
                     },
                 ));
             }
+            let today = now.date_naive();
+            let horizon = today + Duration::days(ALERT_DAYS);
+            for row in db.people()? {
+                let minutes = match alert_rule(row.alert.as_deref()) {
+                    AlertRule::Off => continue,
+                    AlertRule::Before { minutes } => minutes,
+                    AlertRule::Inherit if settings.birthday_alerts => BIRTHDAY_ALERT,
+                    AlertRule::Inherit => continue,
+                };
+                for d in person_birthdays(&row, today, horizon) {
+                    let fire_at = midnight(d) - Duration::minutes(i64::from(minutes));
+                    if fire_at <= now {
+                        continue;
+                    }
+                    alerts.push((
+                        fire_at,
+                        ScheduledAlert {
+                            id: format!("birthday:{}:{}:{minutes}", row.id, day_text(d)),
+                            fire_at: system_time(fire_at),
+                            target: AlertTarget::Birthday { person_id: row.id.clone() },
+                            title: row.name.clone(),
+                            start: DayTime { day: day_text(d), minute: 0 },
+                            all_day: true,
+                        },
+                    ));
+                }
+            }
+            if settings.leave_suggestions {
+                // A bridge is announced three weeks ahead at 09:00, in time to ask for the day off.
+                let lead = Duration::days(BRIDGE_ALERT_DAYS);
+                for b in open_bridges(db, today, horizon + lead)? {
+                    let fire_at = midnight(b.leave_day) - lead + Duration::minutes(i64::from(9 * 60));
+                    if fire_at <= now || fire_at > midnight(horizon) {
+                        continue;
+                    }
+                    alerts.push((
+                        fire_at,
+                        ScheduledAlert {
+                            id: format!("bridge:{}", day_text(b.leave_day)),
+                            fire_at: system_time(fire_at),
+                            target: AlertTarget::LeaveBridge { bridge: bridge(&b) },
+                            title: String::new(),
+                            start: DayTime { day: day_text(b.leave_day), minute: 0 },
+                            all_day: true,
+                        },
+                    ));
+                }
+            }
             alerts.sort_by(|a, b| (a.0, &a.1.id).cmp(&(b.0, &b.1.id)));
             Ok(alerts.into_iter().take(limit as usize).map(|(_, a)| a).collect())
         })
@@ -1155,11 +1246,20 @@ impl Core {
 
 /// How far ahead the next-up bar looks.
 const NEXT_UP_DAYS: i64 = 62;
+/// A birthday alert that follows the setting fires at 09:00 of the day ("당일 09:00").
+const BIRTHDAY_ALERT: i32 = -9 * 60;
+/// Days around a range whose holidays a leave bridge may need.
+const BRIDGE_MARGIN_DAYS: i64 = 10;
+/// How long before its leave day a bridge is announced.
+const BRIDGE_ALERT_DAYS: i64 = 21;
+/// Words in an all-day title that mean the day is already off.
+const LEAVE_WORDS: [&str; 2] = ["연차", "휴가"];
 /// How far ahead alerts are computed; the apps keep the nearest ones scheduled and ask again as days pass.
 const ALERT_DAYS: i64 = 35;
 const WIDGET_ITEMS: usize = 5;
-/// An event deleted this soon after it was added is an undo: what the add counted is taken back.
-const UNDO_SECONDS: i64 = 60;
+/// An event deleted this soon after it was added is the toast's undo ("되돌리기 5초", m1.md; protocol §14): what the
+/// add counted is taken back.
+const UNDO_SECONDS: i64 = 5;
 /// The third same title on the same weekday brings the repeat hint (kickoff §5.2).
 const HINT_USES: i64 = 3;
 /// Tints given to a calendar's shift templates in turn (docs/design/m1.md screen 10: 오픈, 미들, 마감).
@@ -1185,9 +1285,13 @@ struct WidgetEvent {
     end: Option<String>,
 }
 
-/// The visible calendars' occurrences of a range of days, ready to hand out per day.
+/// The visible calendars' occurrences of a range of days with its holidays, birthdays and leave bridges, ready to
+/// hand out per day.
 struct Days {
     items: Vec<(EventItem, DateTime<FixedOffset>, DateTime<FixedOffset>)>,
+    holidays: BTreeMap<NaiveDate, Vec<Holiday>>,
+    birthdays: BTreeMap<NaiveDate, Vec<BirthdayItem>>,
+    bridges: BTreeMap<NaiveDate, LeaveBridge>,
 }
 
 impl Days {
@@ -1202,7 +1306,24 @@ impl Days {
                 items.push((item(&row, &occ, calendar), occ.starts_at, occ.ends_at));
             }
             sort_items(&mut items);
-            Ok(Self { items })
+            let mut holidays: BTreeMap<NaiveDate, Vec<Holiday>> = BTreeMap::new();
+            for h in holidays_between(db, first, last)? {
+                holidays.entry(h.day).or_default().push(Holiday {
+                    day: day_text(h.day),
+                    name: h.name,
+                    substitute: h.substitute,
+                });
+            }
+            let mut birthdays: BTreeMap<NaiveDate, Vec<BirthdayItem>> = BTreeMap::new();
+            for (d, b) in birthdays_between(db, first, last)? {
+                birthdays.entry(d).or_default().push(b);
+            }
+            let bridges = if notifications(db)?.leave_suggestions {
+                open_bridges(db, first, last)?.iter().map(|b| (b.leave_day, bridge(b))).collect()
+            } else {
+                BTreeMap::new()
+            };
+            Ok(Self { items, holidays, birthdays, bridges })
         })
     }
 
@@ -1219,10 +1340,48 @@ impl Days {
     fn items_on(&self, day: NaiveDate) -> Vec<EventItem> {
         self.on(day).into_iter().map(|(item, _, _)| item).collect()
     }
+
+    fn holidays_on(&self, day: NaiveDate) -> Vec<Holiday> {
+        self.holidays.get(&day).cloned().unwrap_or_default()
+    }
+
+    fn birthdays_on(&self, day: NaiveDate) -> Vec<BirthdayItem> {
+        self.birthdays.get(&day).cloned().unwrap_or_default()
+    }
+
+    fn bridge_on(&self, day: NaiveDate) -> Option<LeaveBridge> {
+        self.bridges.get(&day).cloned()
+    }
 }
 
-fn sort_by_start(items: &mut [(EventItem, DateTime<FixedOffset>, DateTime<FixedOffset>)]) {
-    items.sort_by(|a, b| (a.1, !a.0.all_day, a.2, &a.0.event_id).cmp(&(b.1, !b.0.all_day, b.2, &b.0.event_id)));
+/// The leave bridges whose leave day is in [first, last] and still open. An all-day event on the leave day named
+/// like a day off ("연차", "휴가"), which the bridge chip itself fills in, means the leave is taken; any other
+/// all-day event (a "약속") does not.
+fn open_bridges(db: &Db<'_>, first: NaiveDate, last: NaiveDate) -> Result<Vec<Bridge>, CoreError> {
+    // A bridge's run of days off can reach past the range, so its holidays are read with a margin.
+    let margin = Duration::days(BRIDGE_MARGIN_DAYS);
+    let off: BTreeSet<NaiveDate> =
+        holidays_between(db, first - margin, last + margin)?.into_iter().map(|h| h.day).collect();
+    let mut open = Vec::new();
+    for b in holidays::bridges(&off, first, last) {
+        let (from, to) = (midnight(b.leave_day), midnight(b.leave_day + Duration::days(1)));
+        let taken = instances(db, from, to, |row| row.all_day)?
+            .iter()
+            .any(|(row, occ)| LEAVE_WORDS.iter().any(|w| occ.title.as_deref().unwrap_or(&row.title).contains(w)));
+        if !taken {
+            open.push(b);
+        }
+    }
+    Ok(open)
+}
+
+fn bridge(b: &Bridge) -> LeaveBridge {
+    LeaveBridge {
+        leave_day: day_text(b.leave_day),
+        first_day: day_text(b.first_day),
+        last_day: day_text(b.last_day),
+        days_off: b.days_off,
+    }
 }
 
 pub(crate) fn new_id() -> String {
@@ -1230,7 +1389,7 @@ pub(crate) fn new_id() -> String {
 }
 
 /// A trimmed name of 1–40 characters.
-fn name(text: &str, what: &str) -> Result<String, CoreError> {
+pub(crate) fn name(text: &str, what: &str) -> Result<String, CoreError> {
     let name = text.trim();
     if name.is_empty() {
         return Err(invalid(format!("a {what} needs a name")));
@@ -1350,7 +1509,8 @@ fn count_use(db: &Db<'_>, row: &EventRow, now: DateTime<Utc>) -> Result<Option<R
 /// Takes back what an add counted when the event goes again right away: the toast's undo.
 fn undo_counts(db: &Db<'_>, row: &EventRow, now: DateTime<Utc>) -> Result<(), CoreError> {
     let Some(created) = row.created_at.as_deref().and_then(|c| parse_stored(c).ok()) else { return Ok(()) };
-    if now.signed_duration_since(created.to_utc()) > Duration::seconds(UNDO_SECONDS) {
+    // The store keeps whole seconds, so the two instants are compared in whole seconds too.
+    if now.timestamp() - created.timestamp() > UNDO_SECONDS {
         return Ok(());
     }
     let origin = row.origin.as_deref();
@@ -1455,4 +1615,124 @@ fn stamped(template: &ShiftTemplateRow, day: NaiveDate, now: DateTime<Utc>) -> R
         created_at: Some(stored_utc(now)),
         origin: Some("shift".to_owned()),
     })
+}
+
+/// What the quick entry could offer for `day`: the dictionary, this device's history on that weekday, birthdays and
+/// long weekends close by, and the shift templates. `rank` then picks the five chips.
+fn suggestion_candidates(
+    db: &Db<'_>,
+    days: &Days,
+    day: NaiveDate,
+    now: DateTime<Utc>,
+) -> Result<Vec<Candidate>, CoreError> {
+    let weekday = weekday_index(day);
+    let day_off =
+        matches!(day.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun) || !days.holidays_on(day).is_empty();
+    let own: HashSet<String> = db.calendars()?.into_iter().filter(|c| c.kind == OWN).map(|c| c.id).collect();
+    let history: Vec<SuggestionStatRow> = db.suggestion_stats()?.into_iter().filter(|s| s.weekday == weekday).collect();
+    let most = history.iter().map(|s| s.uses).max().unwrap_or(0).max(1) as f64;
+    let recent = |s: &SuggestionStatRow| {
+        parse_stored(&s.last_used_at)
+            .is_ok_and(|at| now.signed_duration_since(at.to_utc()) <= Duration::days(suggest::RECENT_DAYS))
+    };
+    let mut out = Vec::new();
+    for s in &history {
+        out.push(Candidate {
+            title: s.title.clone(),
+            source: suggest::Source::History,
+            all_day: s.all_day,
+            start_minute: parse_hm(&s.start_hm)?,
+            end_minute: s.end_hm.as_deref().map(parse_hm).transpose()?.unwrap_or(0),
+            calendar_id: s.calendar_id.clone().filter(|c| own.contains(c)),
+            context_fit: 1.0,
+            personal_freq: s.uses as f64 / most,
+            upcoming: 0.0,
+            recency: if recent(s) { 1.0 } else { 0.0 },
+        });
+    }
+    for e in suggest::DICTIONARY {
+        let used = history.iter().find(|s| s.title == e.title);
+        out.push(Candidate {
+            title: e.title.to_owned(),
+            source: suggest::Source::Dictionary,
+            all_day: e.all_day,
+            start_minute: e.start_minute,
+            end_minute: e.end_minute,
+            calendar_id: None,
+            context_fit: if day_off { e.day_off_fit } else { e.workday_fit },
+            personal_freq: used.map(|s| s.uses as f64 / most).unwrap_or(0.0),
+            upcoming: 0.0,
+            recency: if used.is_some_and(recent) { 1.0 } else { 0.0 },
+        });
+    }
+    for row in db.people()?.into_iter().filter(|p| p.suggest) {
+        let Some(next) = person_birthdays(&row, day, day + Duration::days(suggest::UPCOMING_DAYS)).into_iter().next()
+        else {
+            continue;
+        };
+        out.push(Candidate {
+            title: format!("{} 생일 약속", row.name),
+            source: suggest::Source::Birthday { person_id: row.id.clone() },
+            all_day: false,
+            start_minute: 19 * 60,
+            end_minute: 21 * 60,
+            calendar_id: None,
+            context_fit: 0.8,
+            personal_freq: 0.0,
+            upcoming: suggest::upcoming((next - day).num_days()),
+            recency: 0.0,
+        });
+    }
+    let margin = Duration::days(suggest::UPCOMING_DAYS + BRIDGE_MARGIN_DAYS);
+    let around = holidays_between(db, day - margin, day + margin)?;
+    let off: BTreeSet<NaiveDate> = around.iter().map(|h| h.day).collect();
+    if let Some((first, _)) =
+        holidays::long_weekends(&off, day, day + Duration::days(suggest::UPCOMING_DAYS)).into_iter().next()
+    {
+        let inside = first <= day;
+        out.push(Candidate {
+            title: "연휴 여행".to_owned(),
+            source: suggest::Source::Holiday,
+            all_day: true,
+            start_minute: 0,
+            end_minute: 0,
+            calendar_id: None,
+            // The day before a long weekend puts the trip first ("연휴 앞이면 '연휴 여행'이 먼저", kickoff §5.2).
+            context_fit: if inside { 1.0 } else { 0.8 },
+            personal_freq: 0.0,
+            upcoming: if inside { 1.0 } else { suggest::upcoming((first - day).num_days()) },
+            recency: 0.0,
+        });
+    }
+    if around.iter().any(|h| h.day == day && h.substitute) {
+        out.push(Candidate {
+            title: "대체공휴일 나들이".to_owned(),
+            source: suggest::Source::Holiday,
+            all_day: true,
+            start_minute: 0,
+            end_minute: 0,
+            calendar_id: None,
+            context_fit: 1.0,
+            personal_freq: 0.0,
+            upcoming: 1.0,
+            recency: 0.0,
+        });
+    }
+    for t in db.shift_templates()? {
+        out.push(Candidate {
+            title: t.name.clone(),
+            source: suggest::Source::Shift { template_id: t.id.clone() },
+            all_day: false,
+            start_minute: parse_hm(&t.start_hm)?,
+            end_minute: parse_hm(&t.end_hm)?,
+            calendar_id: t.calendar_id.clone().filter(|c| own.contains(c)),
+            // A template the user made fits any day they might work, so it ranks with the dictionary's good fits
+            // instead of falling below all eight of them.
+            context_fit: 0.8,
+            personal_freq: 0.0,
+            upcoming: 0.0,
+            recency: 0.0,
+        });
+    }
+    Ok(out)
 }

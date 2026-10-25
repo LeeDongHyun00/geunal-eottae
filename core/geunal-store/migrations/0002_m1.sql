@@ -26,6 +26,7 @@ ALTER TABLE people ADD COLUMN leap_month INTEGER NOT NULL DEFAULT 0;      -- a l
 ALTER TABLE people ADD COLUMN alert TEXT;
 ALTER TABLE people ADD COLUMN suggest INTEGER NOT NULL DEFAULT 1;         -- "OO 생일 약속" chips
 ALTER TABLE people ADD COLUMN contact_id TEXT;                            -- importing a contact again updates it
+ALTER TABLE people ADD COLUMN group_id TEXT;                              -- with group_user_id: where it was made public
 
 -- The last time and calendar a title was used on a weekday, so a chip can put it back as it was.
 ALTER TABLE suggestion_stats ADD COLUMN end_hm TEXT;

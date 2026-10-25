@@ -7,9 +7,12 @@ pub mod appointments;
 pub mod availability;
 pub mod calendar;
 pub mod entry;
+pub mod holidays;
 pub mod ics;
 pub mod layout;
+pub mod lunar;
 pub mod recurrence;
+pub mod suggest;
 pub mod time;
 
 pub use time::{KST, Kst};

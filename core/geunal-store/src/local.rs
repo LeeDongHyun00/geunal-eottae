@@ -99,6 +99,8 @@ pub struct PersonRow {
     /// `manual`, `contacts` or `group`.
     pub source: String,
     pub group_user_id: Option<String>,
+    /// The group the member made the birthday public in, when `source` is `group`.
+    pub group_id: Option<String>,
     pub alert: Option<String>,
     pub suggest: bool,
     pub contact_id: Option<String>,
@@ -150,8 +152,7 @@ const CALENDAR_COLUMNS: &str =
 const EVENT_COLUMNS: &str = "id, calendar_id, title, starts_at, ends_at, all_day, tz, rrule, exdates, note, \
      device_event_id, group_ref, tentative, updated_at, alert, shift_template_id, created_at, origin";
 const TEMPLATE_COLUMNS: &str = "id, name, start_hm, end_hm, color, calendar_id, alert, tint, position";
-const PERSON_COLUMNS: &str =
-    "id, name, birthday_md, is_lunar, leap_month, birth_year, source, group_user_id, alert, suggest, contact_id";
+const PERSON_COLUMNS: &str = "id, name, birthday_md, is_lunar, leap_month, birth_year, source, group_user_id, alert, suggest, contact_id, group_id";
 const STAT_COLUMNS: &str = "title, weekday, start_hm, end_hm, calendar_id, all_day, uses, last_used_at, hint_offered";
 
 impl Db<'_> {
@@ -396,12 +397,12 @@ impl Db<'_> {
     pub fn put_person(&self, row: &PersonRow) -> Result<()> {
         self.conn.execute(
             "INSERT INTO people (id, name, birthday_md, is_lunar, leap_month, birth_year, source, group_user_id, alert,
-               suggest, contact_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+               suggest, contact_id, group_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
              ON CONFLICT (id) DO UPDATE SET name = excluded.name, birthday_md = excluded.birthday_md,
                is_lunar = excluded.is_lunar, leap_month = excluded.leap_month, birth_year = excluded.birth_year,
                source = excluded.source, group_user_id = excluded.group_user_id, alert = excluded.alert,
-               suggest = excluded.suggest, contact_id = excluded.contact_id",
+               suggest = excluded.suggest, contact_id = excluded.contact_id, group_id = excluded.group_id",
             params![
                 row.id,
                 row.name,
@@ -413,7 +414,8 @@ impl Db<'_> {
                 row.group_user_id,
                 row.alert,
                 row.suggest,
-                row.contact_id
+                row.contact_id,
+                row.group_id
             ],
         )?;
         Ok(())
@@ -669,6 +671,7 @@ fn person_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<PersonRow> {
         alert: r.get(8)?,
         suggest: r.get(9)?,
         contact_id: r.get(10)?,
+        group_id: r.get(11)?,
     })
 }
 
