@@ -1,11 +1,11 @@
 # Packages the boot jar from `./gradlew bootJar` (make image-api). Building the jar outside the image reuses the Gradle
 # cache, and the image build downloads nothing but the base image and Ubuntu's updates.
-FROM eclipse-temurin:21.0.12_8-jre-noble AS layers
+FROM eclipse-temurin:21.0.12.1_1-jre-noble AS layers
 WORKDIR /layers
 COPY build/libs/api.jar api.jar
 RUN java -Djarmode=tools -jar api.jar extract --layers --launcher --destination extracted
 
-FROM eclipse-temurin:21.0.12_8-jre-noble
+FROM eclipse-temurin:21.0.12.1_1-jre-noble
 # Ubuntu security fixes released after the base image was built come in here, so the Trivy gate (make scan-api) fails
 # only on findings that have no fix yet. The archives are read over HTTPS because a cloud session's proxy carries
 # nothing else; there scripts/docker-build.sh also passes the proxy's CA as the secret `ca`, readable by apt's
