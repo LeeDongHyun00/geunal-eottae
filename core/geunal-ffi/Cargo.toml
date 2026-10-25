@@ -12,13 +12,19 @@ publish.workspace = true
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]
+geunal-domain.workspace = true
+geunal-mls.workspace = true
 geunal-store.workspace = true
 geunal-sync.workspace = true
 rand_core.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 uniffi.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
+geunal-mls.workspace = true
 pollster.workspace = true
 tempfile.workspace = true
 

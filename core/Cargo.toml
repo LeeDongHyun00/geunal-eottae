@@ -33,20 +33,36 @@ geunal-sync = { path = "geunal-sync" }
 geunal-ffi = { path = "geunal-ffi" }
 
 argon2 = "0.5"
-chacha20poly1305 = "0.10"
+base64 = "0.23"
+chacha20poly1305 = { version = "0.10", features = ["stream"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
 ciborium = "0.2"
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
+hex = "0.4"
 mls-rs = "0.56"
 mls-rs-crypto-rustcrypto = "0.22"
 mls-rs-provider-sqlite = "0.23"
 pollster = "0.4"
 proptest = "1"
 rand_core = { version = "0.6", features = ["getrandom"] }
+# No default features: the default TLS backend is aws-lc-rs with the OS trust store, which needs cmake on Android and a
+# JNI handshake before the first request. The core installs its own rustls config instead (docs/adr/0002).
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "http2"] }
 rrule = "0.14"
 rusqlite = "0.37"
+rustix = { version = "1", features = ["fs"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 tempfile = "3"
 thiserror = "2"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "sync", "time", "net"] }
+# `__rustls-tls` alone: the roots features would pull a second webpki-roots release, and the connector takes the same
+# rustls config the HTTP client uses.
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "__rustls-tls"] }
 uniffi = "0.31"
+uuid = { version = "1", features = ["v7", "v4"] }
+webpki-roots = "1"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
