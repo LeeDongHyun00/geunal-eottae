@@ -48,6 +48,11 @@
 | `make test-core` | Rust 코어: 단위·스모크 테스트 |
 | `make build-android` | 안드로이드 3개 ABI 라이브러리와 Kotlin 바인딩(`core/out/android`), ABI별 크기 기록 |
 | `make build-ios` | XCFramework와 Swift 바인딩(`core/out/ios`). macOS에서만 되고, 이 환경에서는 CI가 확인합니다 |
+| `make lint-ios` | iOS: swift-format, 디자인 토큰의 Swift가 `docs/design/tokens.json`과 같은지. macOS에서만 |
+| `make project-ios` | iOS: 코어 산출물을 `apps/ios/Packages/GeunalCore`로 복사하고 XcodeGen으로 `GeunalApp.xcodeproj`를 생성. macOS에서만 |
+| `make app-ios` | iOS: 시뮬레이터용 앱 빌드. macOS에서만 |
+| `make test-ios` | iOS: 시뮬레이터 단위 테스트. macOS에서만 |
+| `make uitest-ios` | iOS: 시뮬레이터 UI 테스트. macOS에서만 |
 | `make lint-android` | 안드로이드: ktlint와 Android Lint. 먼저 `build-android`를 돌림 |
 | `make test-android` | 안드로이드: 디버그·R8 릴리스·계측 테스트 조립과 단위 테스트. 먼저 `build-android`를 돌림 |
 | `make connected-android` | 안드로이드: adb에 보이는 에뮬레이터·기기에서 계측 테스트 |
