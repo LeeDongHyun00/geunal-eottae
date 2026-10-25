@@ -41,7 +41,7 @@ fn leaves_no_plaintext_on_disk() {
     let store = Store::open(&path, &KEY).unwrap();
     store
         .connection()
-        .execute_batch("CREATE TABLE events (title TEXT); INSERT INTO events VALUES ('민수 생일 약속');")
+        .execute_batch("CREATE TABLE scratch (title TEXT); INSERT INTO scratch VALUES ('민수 생일 약속');")
         .unwrap();
     drop(store);
 
@@ -59,8 +59,7 @@ fn finds_a_korean_word_inside_a_longer_word_with_the_trigram_tokenizer() {
     let store = Store::open(&dir.path().join("geunal.db"), &KEY).unwrap();
     let conn = store.connection();
     conn.execute_batch(
-        "CREATE VIRTUAL TABLE chat_fts USING fts5(body, tokenize = 'trigram');
-         INSERT INTO chat_fts (body) VALUES ('토요일에 볼까?'), ('일요일은 어때?');",
+        "INSERT INTO chat_fts (body, group_id, seq) VALUES ('토요일에 볼까?', 'g', 1), ('일요일은 어때?', 'g', 2);",
     )
     .unwrap();
 
