@@ -48,7 +48,6 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 # No default features: the default TLS backend is aws-lc-rs with the OS trust store, which needs cmake on Android and a
 # JNI handshake before the first request. The core installs its own rustls config instead (docs/adr/0002).
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "http2"] }
-rrule = "0.14"
 rusqlite = "0.37"
 rustix = { version = "1", features = ["fs"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
@@ -72,3 +71,4 @@ all = { level = "warn", priority = -1 }
 [profile.release]
 lto = true
 codegen-units = 1
+

@@ -22,7 +22,7 @@ core/
   geunal-crypto/      # AEAD, STREAM chunks, Argon2id, AMK, recovery words (BIP39)
   geunal-mls/         # mls-rs wrapper: client, key packages, commits, exporter state keys, external join
   geunal-store/       # SQLCipher via rusqlite, migrations, cross-process lock
-  geunal-domain/      # entry, calendar (rrule), availability, appointments, suggestions, holidays, chat
+  geunal-domain/      # entry, calendar and repeat rules, availability, appointments, suggestions, holidays, lunar, chat
   geunal-sync/        # HTTPS (reqwest + rustls), Phoenix channel client (tokio-tungstenite), outbox, cursors
   geunal-ffi/         # UniFFI facade: Core object, decrypt_push, listener and secret-store callbacks
   vectors/            # test vectors other parts read (protocol §12)
@@ -35,7 +35,6 @@ core/
 | chacha20poly1305, argon2 | 0.10, 0.5 | 상태 블롭·미디어·백업 AEAD, 복구 키 |
 | ciborium | 0.2 | 엔트리·상태 블롭 CBOR |
 | rusqlite | mls-rs-provider-sqlite와 같은 버전 | 로컬 저장소. libsqlite3-sys가 하나만 들어가야 함 |
-| rrule | 0.14 | 반복 일정 전개 |
 | reqwest(rustls), tokio-tungstenite, tokio | 최신 안정판, 0.30 | API, 게이트웨이 |
 | uniffi | 0.31 | Swift·Kotlin 바인딩 |
 
@@ -345,7 +344,7 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
 
 규칙은 [개요](../kickoff.md) 5장, 형식은 [공통 계약](protocol.md) 4·5장을 따릅니다.
 
-- **캘린더:** `rrule`로 반복을 전개하고, `exdates`와 `event_overrides`로 예외를 적용합니다. 30분 슬롯(한국 시간) 비트맵을 만들고, 18:10–19:20 일정은 18:00–19:30으로 올림합니다.
+- **캘린더:** 편집기가 쓴 RFC 5545 반복 규칙을 한국 시간으로 전개하고(`recurrence.rs`), `exdates`와 `event_overrides`로 예외를 적용합니다. 저장된 규칙은 모두 편집기가 쓴 것이라 그 규칙만 읽고, `Asia/Seoul`이 아닌 시간대의 규칙은 거부합니다. 범용 RRULE 크레이트는 시간대 데이터베이스와 정규식을 함께 들여와 안드로이드 라이브러리를 ABI마다 약 2MB 키웠습니다(7장). 30분 슬롯(한국 시간) 비트맵을 만들고, 18:10–19:20 일정은 18:00–19:30으로 올림합니다.
 - **입력 추천:** `suggestScore`, 겹치는 칩 제외, 같은 요일 세 번이면 반복 제안. 아래 "입력 추천"에 후보와 점수를 적습니다.
 - **그룹 캘린더:** 아래 코드 그대로입니다.
 - **날짜 잡기 상태:**
