@@ -6,7 +6,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-tool="${1:?usage: scripts/tool.sh actionlint|shellcheck|cargo-deny|trivy|cargo-ndk|android-ndk}"
+tool="${1:?usage: scripts/tool.sh actionlint|shellcheck|cargo-deny|trivy|cargo-ndk|android-ndk|android-sdk|xcodegen}"
 
 case "$(uname -sm)" in
   "Linux x86_64") platform=linux-x86_64 ;;
@@ -136,6 +136,107 @@ case "$tool" in
       settle "$tmp/android-ndk-r28c" "$dir"
     fi
     echo "$dir"
+    ;;
+  android-sdk)
+    # The SDK packages the Android app builds with (docs/parts/android.md §1, §6), as Google's own zips pinned by
+    # SHA-256 (the SDK index publishes matching SHA-1s). sdkmanager would install the newest revision of each package
+    # instead, and AGP's own download does the same, so gradle.properties turns that off. When ANDROID_HOME or
+    # ANDROID_SDK_ROOT points at an SDK (GitHub's runners, a developer's machine), the missing packages go there, so the
+    # emulator's adb and the build's adb are the same binary; otherwise the SDK lives in .tools/android-sdk.
+    # AGP strips the core's native libraries with the NDK in ndk/<revision>, so the pinned NDK is linked in too.
+    # Android 17 ships only as minor-versioned platforms (37.0, 37.1, ...); 37.0 is the base of API 37.
+    platform_api=37.0
+    build_tools=36.0.0
+    platform_tools=37.0.1
+    ndk_revision=28.2.13676358
+    case "$platform" in
+      linux-x86_64)
+        build_tools_asset=linux build_tools_sha256=5d9ac77fb6ff43d9da518a337b4fcf8f9097113df531d99ccefe80ef7ce8250b
+        platform_tools_asset=linux platform_tools_sha256=d230f13842f60f782a8645f9c813f8f845bf36089ea7289f28c48f17979313f1
+        ;;
+      darwin-x86_64 | darwin-aarch64)
+        build_tools_asset=macosx build_tools_sha256=04e7f3a72044de4926fa038fa0e251a37bba1e1c3fb8beab6f8401bfd9eb4bf3
+        platform_tools_asset=darwin platform_tools_sha256=ee39ad5967e95c2a07f04dbcbde96b1a0c916ba376096db5d2f498b7727a5d1d
+        ;;
+      *)
+        echo "install platform $platform_api, build-tools $build_tools and the NDK with the Android SDK manager and set ANDROID_HOME" >&2
+        exit 1
+        ;;
+    esac
+    sdk=""
+    for candidate in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}"; do
+      if [ -n "$candidate" ] && [ -d "$candidate" ]; then
+        sdk="$candidate"
+        break
+      fi
+    done
+    [ -n "$sdk" ] || sdk="$repo_root/.tools/android-sdk"
+    # Install the zip $1 (SHA-256 $2), whose single top-level directory is named $3, as $4.
+    install_sdk_package() {
+      if [ ! -f "$4/source.properties" ]; then
+        echo "Downloading $(basename "$1")" >&2
+        fetch "https://dl.google.com/android/repository/$1" "$2" "$tmp/package.zip"
+        unzip -q "$tmp/package.zip" -d "$tmp/package"
+        settle "$tmp/package/$3" "$4"
+        rm -rf "$tmp/package"
+      fi
+    }
+    install_sdk_package "platform-${platform_api}_r02.zip" \
+      840b23e827f96e64aea4c89a1194aac3dc5f6bad37edb231c5c795d890330e8d "android-$platform_api" \
+      "$sdk/platforms/android-$platform_api"
+    # The zip carries only legacy source.properties, whose "37.0" API level AGP's loader cannot read, so the platform
+    # gets the package.xml that sdkmanager would have written (the index entry minus the download details).
+    platform_dir="$sdk/platforms/android-$platform_api"
+    if [ ! -f "$platform_dir/package.xml" ]; then
+      cat >"$platform_dir/package.xml" <<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ns2:repository xmlns:ns2="http://schemas.android.com/repository/android/common/02" xmlns:ns3="http://schemas.android.com/sdk/android/repo/repository2/03">
+  <localPackage path="platforms;android-$platform_api" obsolete="false">
+    <type-details xsi:type="ns3:platformDetailsType" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <api-level>$platform_api</api-level>
+      <codename></codename>
+      <extension-level>22</extension-level>
+      <base-extension>true</base-extension>
+      <layoutlib api="15"/>
+    </type-details>
+    <revision>
+      <major>2</major>
+    </revision>
+    <display-name>Android SDK Platform $platform_api</display-name>
+  </localPackage>
+</ns2:repository>
+XML
+    fi
+    # Google names the build-tools directory inside the zip after the Android release (16), not the API level.
+    install_sdk_package "build-tools_r${build_tools%.0.0}_$build_tools_asset.zip" "$build_tools_sha256" android-16 \
+      "$sdk/build-tools/$build_tools"
+    install_sdk_package "platform-tools_r$platform_tools-$platform_tools_asset.zip" "$platform_tools_sha256" \
+      platform-tools "$sdk/platform-tools"
+    if [ ! -f "$sdk/ndk/$ndk_revision/source.properties" ]; then
+      ndk="$(ANDROID_HOME="$sdk" "$repo_root/scripts/tool.sh" android-ndk)"
+      mkdir -p "$sdk/ndk"
+      ln -sfn "$ndk" "$sdk/ndk/$ndk_revision"
+    fi
+    echo "$sdk"
+    ;;
+  xcodegen)
+    # Generates apps/ios/GeunalApp.xcodeproj from apps/ios/project.yml. One universal macOS binary that finds its
+    # SettingPresets next to bin/, so the whole release directory is kept.
+    version=2.46.0
+    case "$platform" in
+      darwin-*) sha256=4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806 ;;
+      *)
+        echo "xcodegen runs only on macOS" >&2
+        exit 1
+        ;;
+    esac
+    root="$repo_root/.tools/xcodegen-$version"
+    if [ ! -x "$root/bin/xcodegen" ]; then
+      fetch "https://github.com/yonaskolb/XcodeGen/releases/download/$version/xcodegen.zip" "$sha256" "$tmp/xcodegen.zip"
+      unzip -q "$tmp/xcodegen.zip" -d "$tmp"
+      settle "$tmp/xcodegen" "$root"
+    fi
+    echo "$root/bin/xcodegen"
     ;;
   *)
     echo "unknown tool: $tool" >&2

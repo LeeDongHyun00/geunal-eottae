@@ -1,6 +1,6 @@
 # 화면 시안
 
-시안 캔버스에서 2026-10-25에 내보낸 화면입니다. 휴대폰 화면은 `@2x` PNG(780×1688, 390×844pt), 기초 보드는 1배 PNG입니다. 캔버스에서는 화면을 눌러 다음 화면으로 넘어가 볼 수 있고, 여기에는 주요 상태를 따로 내보냈습니다. 색·글꼴·간격 값은 [README](README.md)와 [`tokens.json`](tokens.json)을, 정확한 간격과 문구는 [보드 원본](boards/)을 봅니다.
+시안 캔버스에서 내보낸 화면입니다(마지막 2026-10-25). 화면별 구성과 상태는 [M1 화면](m1.md)에 있습니다. 휴대폰 화면은 `@2x` PNG(780×1688, 390×844pt), 기초 보드는 1배 PNG입니다. 캔버스에서는 화면을 눌러 다음 화면으로 넘어가 볼 수 있고, 여기에는 주요 상태를 따로 내보냈습니다. 색·글꼴·간격 값은 [README](README.md)와 [`tokens.json`](tokens.json)을, 정확한 간격과 문구는 [보드 원본](boards/)을 봅니다.
 
 ## 디자인 기초
 
@@ -46,6 +46,30 @@
 | --- | --- |
 | <img src="screens/m1/13-recovery@2x.png" width="240" alt="복구 코드"> | <img src="screens/m1/14-widgets@2x.png" width="240" alt="위젯"> |
 | 12단어 복구 코드. 종이에 적어 두라고 안내합니다. | 작은·중간 위젯, 밝은·어두운 모드. |
+
+### 설정: 캘린더 관리 · 사람 추가 · 템플릿 편집
+
+| 캘린더 관리 | 캘린더 편집 | 사람 추가 | 사람 추가 · 음력 |
+| --- | --- | --- | --- |
+| <img src="screens/m1/15-calendars@2x.png" width="200" alt="캘린더 관리"> | <img src="screens/m1/16-calendar-edit@2x.png" width="200" alt="캘린더 편집"> | <img src="screens/m1/17-person-edit@2x.png" width="200" alt="사람 추가"> | <img src="screens/m1/17-person-edit--lunar@2x.png" width="200" alt="사람 추가, 음력"> |
+| 내 캘린더의 색·표시와 기기 캘린더 가져오기(읽기만, 캘린더별 선택). | 이름, 12색, 소프트 캘린더, 기본 알림. 삭제는 지워질 일정 수와 함께. | 이름, 양력·음력, 생일, 알림, 날짜 잡기 추천에 쓸지. | 음력을 고르면 올해의 양력 날짜를 보여 줍니다. |
+
+| 교대 템플릿 편집 | 알림 설정 |
+| --- | --- |
+| <img src="screens/m1/18-template-edit@2x.png" width="240" alt="교대 템플릿 편집"> | <img src="screens/m1/19-notifications@2x.png" width="240" alt="알림 설정"> |
+| 미리보기, 시작·끝, 캘린더, 알림. 자정을 넘는 근무 안내와 플러스의 근무 집계. | 기본 알림, 종일 일정, 다음 할 일 막대, 생일·연휴 제안. 그룹 알림은 M2. |
+
+### 백업 · 기기 바꾸기 · 계정 삭제
+
+| 암호화 백업 | 백업하는 중 | 기기 바꾸기 | 12단어를 넣은 뒤 |
+| --- | --- | --- | --- |
+| <img src="screens/m1/20-backup@2x.png" width="200" alt="암호화 백업"> | <img src="screens/m1/20-backup--running@2x.png" width="200" alt="백업하는 중"> | <img src="screens/m1/21-restore@2x.png" width="200" alt="기기 바꾸기"> | <img src="screens/m1/21-restore--ready@2x.png" width="200" alt="12단어 입력 완료"> |
+| 마지막 백업, 자동 백업, 최근 3개, 들어가는 것과 안 들어가는 것. | 버튼이 꺼지고 상태 카드가 진행을 보여 줍니다. | 새 기기에서 로그인하면 뜹니다. 12단어 격자와 붙여넣기. | 다 넣으면 "백업 가져오기"가 켜집니다. |
+
+| 돌아왔어요 | 복구 코드가 없을 때 | 계정 삭제 | 삭제 확인 |
+| --- | --- | --- | --- |
+| <img src="screens/m1/21-restore--done@2x.png" width="200" alt="복원 완료"> | <img src="screens/m1/21-restore--no-code@2x.png" width="200" alt="복구 코드 없음"> | <img src="screens/m1/22-delete-account@2x.png" width="200" alt="계정 삭제"> | <img src="screens/m1/22-delete-account--confirm@2x.png" width="200" alt="계정 삭제 확인"> |
+| 가져온 수와 이전 기기 로그아웃, 그룹 재참여 안내. | 되찾을 수 없음을 설명하고 새로 시작을 빨간 글자로. | 서버에서 지워지는 것과 이 기기에 남는 것을 먼저 보여 줍니다. | 되돌릴 수 없는 유일한 동작이라 '삭제'를 적게 합니다. |
 
 ## M2 그룹·날짜 잡기
 

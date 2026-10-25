@@ -1,0 +1,51 @@
+# iOS app: the core's XCFramework (cached by the core's sources), then the app build, the unit tests and the UI tests
+# on the simulator, in the order docs/parts/ios.md §8 gives. Called from ci.yml. macOS is the only place Swift builds,
+# so this workflow is the app's only verification (docs/kickoff.md §9).
+name: ios
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: app
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select the pinned Xcode
+        run: apps/ios/scripts/xcode-env.sh >>"$GITHUB_ENV"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .tools
+          key: tools-${{ runner.os }}-${{ hashFiles('scripts/tool.sh') }}
+      # The XCFramework depends only on the core and the Xcode that builds it, so an unchanged core skips the Rust
+      # build (about ten minutes) entirely.
+      - id: core
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: core/out/ios
+          key: core-ios-${{ runner.os }}-${{ hashFiles('core/**', 'apps/ios/.xcode-version') }}
+      - if: steps.core.outputs.cache-hit != 'true'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: core
+          key: ios-app
+      - if: steps.core.outputs.cache-hit != 'true'
+        run: make build-ios
+      - run: make lint-ios
+      - run: make app-ios
+      - run: make test-ios
+      - run: make uitest-ios
+      - name: Keep the test results on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-test-results
+          path: apps/ios/*.xcresult
+          if-no-files-found: ignore

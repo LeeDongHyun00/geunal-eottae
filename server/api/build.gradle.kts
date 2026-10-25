@@ -33,6 +33,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
+    // Boot's BOM does not manage Nimbus; it signs the access JWT (ES256) and serves the JWKS (api-server.md §4).
+    implementation("com.nimbusds:nimbus-jose-jwt:10.10")
     implementation("tools.jackson.module:jackson-module-kotlin")
     runtimeOnly("org.postgresql:postgresql")
 

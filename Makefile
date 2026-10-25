@@ -5,7 +5,9 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 .PHONY: help setup lint test lint-repo lint-core test-core build-android build-ios lint-api test-api image-api scan-api \
-	lint-gateway test-gateway image-gateway scan-gateway up down e2e
+	lint-gateway test-gateway image-gateway scan-gateway lint-android test-android connected-android up down e2e \
+	audit audit-core \
+	lint-ios project-ios app-ios test-ios uitest-ios
 
 help: ## List the targets
 	@grep -hE '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{ printf "  %-14s %s\n", $$1, $$2 }'
@@ -13,9 +15,16 @@ help: ## List the targets
 setup: ## Install the toolchain (safe to rerun)
 	./scripts/dev-setup.sh
 
-lint: lint-repo lint-core lint-api lint-gateway ## Run every linter
+lint: lint-repo lint-core lint-api lint-gateway lint-android ## Run every linter
 
-test: test-core test-api test-gateway ## Run every part's tests
+test: test-core test-api test-gateway test-android ## Run every part's tests
+
+# PR CI runs these gates only for the parts a change touches, so .github/workflows/audit.yml runs them on main weekly:
+# an advisory published against code nobody is editing would otherwise go unnoticed (docs/security/dependencies.md).
+audit: audit-core scan-api scan-gateway ## Dependency vulnerability gates of every part, as the weekly audit runs them
+
+audit-core: ## Rust core: cargo-deny advisories only (lint-core runs the whole policy)
+	"$$(scripts/tool.sh cargo-deny)" --manifest-path core/Cargo.toml --locked check advisories
 
 lint-repo: ## Lint workflows (actionlint) and every tracked shell script (shellcheck)
 	shellcheck="$$(scripts/tool.sh shellcheck)"; \
@@ -35,6 +44,24 @@ build-android: ## Rust core: Android libraries and Kotlin bindings in core/out/a
 
 build-ios: ## Rust core: XCFramework and Swift bindings in core/out/ios (macOS only)
 	core/scripts/build-ios.sh
+
+# The iOS targets need macOS with the Xcode apps/ios/.xcode-version pins, so they stay out of `lint` and `test`; the ios
+# workflow runs them in the order docs/parts/ios.md §8 gives.
+lint-ios: ## iOS: swift-format on the app and packages, and the design tokens' Swift against docs/design/tokens.json
+	apps/ios/scripts/lint.sh
+
+project-ios: ## iOS: copy the core's XCFramework and Swift (make build-ios) into the GeunalCore package and generate the Xcode project
+	apps/ios/scripts/import-core.sh
+	apps/ios/scripts/generate.sh
+
+app-ios: project-ios ## iOS: build the app for the simulator
+	apps/ios/scripts/xcodebuild.sh build
+
+test-ios: project-ios ## iOS: unit tests on the simulator
+	apps/ios/scripts/xcodebuild.sh test
+
+uitest-ios: project-ios ## iOS: UI tests on the simulator
+	apps/ios/scripts/xcodebuild.sh uitest
 
 lint-api: ## API: ktlint
 	cd server/api && ./gradlew ktlintCheck
@@ -74,6 +101,17 @@ scan-gateway: image-gateway ## Gateway: Trivy on the image and mix.lock; fails o
 	trivy="$$(scripts/tool.sh trivy)"; \
 	"$$trivy" image --quiet --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed geunal/gateway:local; \
 	"$$trivy" fs --quiet --scanners vuln --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed server/gateway/mix.lock
+
+# The Android app consumes the core's libraries and generated Kotlin from core/out/android, so its targets build them
+# first (docs/parts/android.md §6: cargo-ndk, then Gradle). The pinned SDK comes from scripts/tool.sh android-sdk.
+lint-android: build-android ## Android: ktlint and Android Lint
+	cd apps/android && ANDROID_HOME="$$(../../scripts/tool.sh android-sdk)" ./gradlew ktlintCheck lint
+
+test-android: build-android ## Android: assemble (debug, R8 release, instrumented tests) and run the unit tests
+	cd apps/android && ANDROID_HOME="$$(../../scripts/tool.sh android-sdk)" ./gradlew assembleDebug assembleRelease assembleDebugAndroidTest testDebugUnitTest
+
+connected-android: build-android ## Android: instrumented tests on the emulator or device adb sees
+	cd apps/android && ANDROID_HOME="$$(../../scripts/tool.sh android-sdk)" ./gradlew connectedDebugAndroidTest
 
 up: image-api image-gateway ## Local stack in Docker: PostgreSQL, Redis, S3, API, gateway (infra/docker-compose.yml)
 	docker compose -f infra/docker-compose.yml up --detach --wait --wait-timeout 180
