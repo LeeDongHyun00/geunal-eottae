@@ -19,6 +19,12 @@ data class LogEntry(
 data class Accepted(
     val seq: Long,
     val epoch: Long,
+    val receivedAt: Instant,
+)
+
+data class Appended(
+    val seq: Long,
+    val receivedAt: Instant,
 )
 
 data class StateRow(
@@ -37,6 +43,7 @@ data class GroupInfoRow(
 
 data class WelcomeRow(
     val groupId: UUID,
+    val seq: Long,
     val data: ByteArray,
 )
 
@@ -63,14 +70,14 @@ class DeliveryRepository(
                 )
                 INSERT INTO group_log (group_id, seq, epoch, kind, author_id, ciphertext)
                 SELECT :group_id, seq, epoch, 'commit', :author_id, :ciphertext FROM moved
-                RETURNING seq, epoch
+                RETURNING seq, epoch, received_at
                 """,
             ).param("group_id", groupId)
             .param("epoch", epoch)
             .param("author_id", authorId)
             .param("ciphertext", ciphertext)
             .param("group_info", groupInfo)
-            .query { rs, _ -> Accepted(rs.getLong("seq"), rs.getLong("epoch")) }
+            .query { rs, _ -> Accepted(rs.getLong("seq"), rs.getLong("epoch"), rs.instant("received_at")) }
             .optional()
             .orElse(null)
 
@@ -80,7 +87,7 @@ class DeliveryRepository(
         epoch: Long,
         authorId: UUID,
         ciphertext: ByteArray,
-    ): Long? =
+    ): Appended? =
         jdbc
             .sql(
                 """
@@ -91,13 +98,13 @@ class DeliveryRepository(
                 )
                 INSERT INTO group_log (group_id, seq, epoch, kind, author_id, ciphertext)
                 SELECT :group_id, seq, :epoch, 'app', :author_id, :ciphertext FROM s
-                RETURNING seq
+                RETURNING seq, received_at
                 """,
             ).param("group_id", groupId)
             .param("epoch", epoch)
             .param("author_id", authorId)
             .param("ciphertext", ciphertext)
-            .query(Long::class.java)
+            .query { rs, _ -> Appended(rs.getLong("seq"), rs.instant("received_at")) }
             .optional()
             .orElse(null)
 
@@ -148,15 +155,18 @@ class DeliveryRepository(
             .param("info", groupInfo)
             .update() == 1
 
+    /** Files the Welcome for a device with the seq of the Add commit it belongs to, where the device starts reading the log. */
     fun addWelcome(
         deviceId: UUID,
         groupId: UUID,
+        seq: Long,
         data: ByteArray,
     ) {
         jdbc
-            .sql("INSERT INTO welcomes (device_id, group_id, data) VALUES (:device, :group, :data)")
+            .sql("INSERT INTO welcomes (device_id, group_id, seq, data) VALUES (:device, :group, :seq, :data)")
             .param("device", deviceId)
             .param("group", groupId)
+            .param("seq", seq)
             .param("data", data)
             .update()
     }
@@ -164,9 +174,9 @@ class DeliveryRepository(
     /** Hands over and deletes the device's Welcomes: a Welcome is read once (protocol §3). */
     fun takeWelcomes(deviceId: UUID): List<WelcomeRow> =
         jdbc
-            .sql("DELETE FROM welcomes WHERE device_id = :device RETURNING group_id, data")
+            .sql("DELETE FROM welcomes WHERE device_id = :device RETURNING group_id, seq, data")
             .param("device", deviceId)
-            .query { rs, _ -> WelcomeRow(rs.uuid("group_id"), rs.getBytes("data")) }
+            .query { rs, _ -> WelcomeRow(rs.uuid("group_id"), rs.getLong("seq"), rs.getBytes("data")) }
             .list()
 
     /** Overwrites the owner's blob unless it is sealed for an older epoch; returns the new version or null. */

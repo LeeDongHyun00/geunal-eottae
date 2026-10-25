@@ -6,6 +6,7 @@ import app.geunal.api.support.Client
 import app.geunal.api.support.Mls
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import java.time.Instant
 import java.util.UUID
 
 class DeliveryTests : ApiTest() {
@@ -20,6 +21,8 @@ class DeliveryTests : ApiTest() {
             val accepted = owner.addMember(groupId, 1, joiner)
             assertThat(accepted.long("seq")).isEqualTo(2)
             assertThat(accepted.long("epoch")).isEqualTo(1)
+            val receivedAt = accepted.string("received_at")
+            assertThat(Instant.parse(receivedAt)).isBetween(Instant.now().minusSeconds(60), Instant.now().plusSeconds(60))
 
             val heard = signals.drain().associateBy { it.channel }
             assertThat(heard.keys).containsExactlyInAnyOrder("d:${joiner.deviceId}", "d:${watcher.deviceId}")
@@ -29,12 +32,16 @@ class DeliveryTests : ApiTest() {
             assertThat(entry.path("g").stringValue()).isEqualTo(groupId.toString())
             assertThat(entry.path("s").longValue()).isEqualTo(2)
             assertThat(entry.path("kind").stringValue()).isEqualTo("commit")
+            assertThat(entry.path("at").stringValue()).describedAs("the event carries the server time of the entry").isEqualTo(receivedAt)
             assertThat(entry.path("c").binaryValue()).isEqualTo(Mls.commit(groupId, 1))
         }
 
         val welcomes = joiner.get("/me/welcomes").expect(200)["welcomes"]
         assertThat(welcomes.size()).isEqualTo(1)
         assertThat(welcomes[0].path("group_id").stringValue()).isEqualTo(groupId.toString())
+        assertThat(
+            welcomes[0].path("seq").longValue(),
+        ).describedAs("the Add commit's seq, where the new member starts reading").isEqualTo(2)
         assertThat(welcomes[0].path("data").binaryValue()).isEqualTo(Mls.welcome())
         assertThat(joiner.get("/me/welcomes").expect(200)["welcomes"].size()).describedAs("a Welcome is read once").isZero()
 
@@ -65,7 +72,8 @@ class DeliveryTests : ApiTest() {
         val groupId = groupWith(owner, member)
 
         inbox(owner.deviceId, member.deviceId).use { signals ->
-            assertThat(owner.message(groupId, 1).expect(201).long("seq")).isEqualTo(2)
+            val first = owner.message(groupId, 1).expect(201)
+            assertThat(first.long("seq")).isEqualTo(2)
             assertThat(member.message(groupId, 1, size = 5000).expect(201).long("seq")).isEqualTo(3)
             owner.message(groupId, 0).expectError(409, "stale_epoch")
             owner.message(groupId, 2).expectError(409, "stale_epoch")
@@ -73,6 +81,11 @@ class DeliveryTests : ApiTest() {
             val heard = signals.drain()
             assertThat(heard.map { it.channel }).containsExactly("d:${member.deviceId}", "d:${owner.deviceId}")
             assertThat(heard[0].event.path("c").binaryValue()).isEqualTo(Mls.privateMessage(groupId, 1))
+            assertThat(heard[0].event.path("at").stringValue()).isEqualTo(first.string("received_at"))
+            val logged = member.get("/groups/$groupId/log?after=1&limit=1").expect(200)["entries"][0]
+            assertThat(
+                logged.path("received_at").stringValue(),
+            ).describedAs("201, event and log agree on the server time").isEqualTo(first.string("received_at"))
             assertThat(heard[1].event.has("c")).describedAs("ciphertext over 4 KB is fetched, not pushed").isFalse()
             assertThat(heard[1].event.path("kind").stringValue()).isEqualTo("app")
         }
@@ -206,7 +219,9 @@ class DeliveryTests : ApiTest() {
         owner.addMember(groupId, 1, member)
 
         member.message(groupId, 2).expect(201)
-        assertThat(member.get("/me/welcomes").expect(200)["welcomes"].size()).isEqualTo(1)
+        val welcomes = member.get("/me/welcomes").expect(200)["welcomes"]
+        assertThat(welcomes.size()).isEqualTo(1)
+        assertThat(welcomes[0].path("seq").longValue()).isEqualTo(2)
         val roles =
             owner.get("/groups/$groupId/members").expect(200)["members"].associate {
                 it.path("user_id").stringValue() to

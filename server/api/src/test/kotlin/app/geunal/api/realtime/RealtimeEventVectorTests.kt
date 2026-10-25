@@ -11,6 +11,7 @@ import tools.jackson.databind.json.JsonMapper
 import tools.jackson.databind.node.ObjectNode
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -24,6 +25,7 @@ class RealtimeEventVectorTests {
     private val group = UUID.fromString("6d1f5c44-cfcd-4fbf-a7e4-ddba702b6f27")
     private val owner = UUID.fromString("a3b2c1d0-1111-4222-8333-444455556666")
     private val device = UUID.fromString("0f3b1c9e-5a2d-4e7f-9b1a-2c3d4e5f6a7b")
+    private val at = Instant.parse("2026-10-25T08:25:07.763555Z")
 
     private data class Case(
         val name: String,
@@ -33,10 +35,10 @@ class RealtimeEventVectorTests {
 
     private val published =
         listOf(
-            Case("application message small enough to carry its ciphertext", EntryEvent.of(group, 42, "app", bytes(16)), bytes(16)),
-            Case("commit small enough to carry its ciphertext", EntryEvent.of(group, 43, "commit", bytes(254)), bytes(254)),
-            Case("commit too large for the signal, fetched from the log", EntryEvent.of(group, 44, "commit", ByteArray(4097))),
-            Case("sequence numbers past 32 bits stay integers", EntryEvent.of(group, 4294967297, "app", ByteArray(4097))),
+            Case("application message small enough to carry its ciphertext", EntryEvent.of(group, 42, "app", at, bytes(16)), bytes(16)),
+            Case("commit small enough to carry its ciphertext", EntryEvent.of(group, 43, "commit", at, bytes(254)), bytes(254)),
+            Case("commit too large for the signal, fetched from the log", EntryEvent.of(group, 44, "commit", at, ByteArray(4097))),
+            Case("sequence numbers past 32 bits stay integers", EntryEvent.of(group, 4294967297, "app", at, ByteArray(4097))),
             Case("state blob rewritten", StateEvent(group, "availability", owner, 7)),
             Case("group meta rewritten", StateEvent(group, "group_meta", owner, 7)),
             Case("membership changed", MembershipEvent(group)),
@@ -83,8 +85,8 @@ class RealtimeEventVectorTests {
 
     @Test
     fun `puts the ciphertext inline only up to 4 KB`() {
-        assertThat(EntryEvent.of(group, 1, "app", ByteArray(4096)).c).isNotNull()
-        assertThat(EntryEvent.of(group, 1, "app", ByteArray(4097)).c).isNull()
+        assertThat(EntryEvent.of(group, 1, "app", at, ByteArray(4096)).c).isNotNull()
+        assertThat(EntryEvent.of(group, 1, "app", at, ByteArray(4097)).c).isNull()
     }
 
     private fun generate(mapper: JsonMapper): ObjectNode {
@@ -96,7 +98,8 @@ class RealtimeEventVectorTests {
             "description",
             "What the API publishes on Redis channel d:{device_id} (`redis_message`, the exact UTF-8 string) and what the gateway " +
                 "then pushes on the device's Phoenix channel (`event`, `payload`), or `dropped` when the gateway forwards nothing. " +
-                "`c` is the MLS ciphertext in base64, as in the push payload; `ciphertext_hex` is the same bytes for checking the decode.",
+                "`c` is the MLS ciphertext in base64, as in the push payload; `ciphertext_hex` is the same bytes for checking " +
+                "the decode. `at` is the server's received_at of the entry (RFC 3339 UTC).",
         )
         root.put("device_id", device.toString())
         root.put("channel", signals.channel(device))

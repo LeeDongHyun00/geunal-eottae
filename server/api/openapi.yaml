@@ -159,9 +159,10 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [group_id, data]
+                      required: [group_id, seq, data]
                       properties:
                         group_id: { $ref: "#/components/schemas/Uuid" }
+                        seq: { type: integer, format: int64, description: the Add commit that brought this device in; read the log from here }
                         data: { $ref: "#/components/schemas/Bytes", description: the MLS Welcome message }
 
   /me/groups:
@@ -268,10 +269,11 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [seq, epoch]
+                required: [seq, epoch, received_at]
                 properties:
                   seq: { type: integer, format: int64, description: the commit's place in the log }
                   epoch: { type: integer, format: int64, description: the epoch the commit was made in (same as the request) }
+                  received_at: { type: string, format: date-time, description: the server time stored with the entry (protocol §4) }
         "400": { description: invalid_request (header mismatch, not a commit, welcome without added or the reverse) }
         "403": { description: not_member }
         "404": { description: not_found (group, or a device in `added`) }
@@ -296,7 +298,15 @@ paths:
                   oneOf: [{ type: string, enum: [all, none] }, { type: array, items: { $ref: "#/components/schemas/Uuid" } }]
                 cat: { type: string, enum: [chat, plan], description: required unless alert is "none" }
       responses:
-        "201": { content: { application/json: { schema: { type: object, required: [seq], properties: { seq: { type: integer, format: int64 } } } } } }
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [seq, received_at]
+                properties:
+                  seq: { type: integer, format: int64 }
+                  received_at: { type: string, format: date-time, description: the server time stored with the entry (protocol §4) }
         "403": { description: not_member }
         "409": { description: stale_epoch }
 
