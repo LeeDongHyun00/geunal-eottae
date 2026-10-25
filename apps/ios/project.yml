@@ -1,0 +1,90 @@
+# XcodeGen spec for the iOS app (docs/parts/ios.md §2-3). `make project-ios` turns it into GeunalApp.xcodeproj, which
+# git ignores: a project file edited by hand drifts from the directory layout, while this spec and the layout are the
+# whole truth. The pinned XcodeGen comes from scripts/tool.sh.
+name: GeunalApp
+
+options:
+  minimumXcodeGenVersion: 2.46.0
+  xcodeVersion: "26.6"
+  projectFormat: xcode16_3
+  # Korean is the base language; English is a later step (docs/parts/ios.md §7).
+  developmentLanguage: ko
+  bundleIdPrefix: app.geunal
+  deploymentTarget:
+    iOS: "17.0"
+  defaultConfig: Debug
+  groupSortPosition: top
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    GENERATE_INFOPLIST_FILE: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+    SWIFT_EMIT_LOC_STRINGS: YES
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    # iPhone only, like the 390x844 boards in docs/design.
+    TARGETED_DEVICE_FAMILY: "1"
+
+packages:
+  GeunalCore:
+    path: Packages/GeunalCore
+  CoreBridge:
+    path: Packages/CoreBridge
+  DesignSystem:
+    path: Packages/DesignSystem
+
+targets:
+  GeunalApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: GeunalApp
+    dependencies:
+      - package: GeunalCore
+      - package: CoreBridge
+      - package: DesignSystem
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.geunal.ios
+        INFOPLIST_KEY_CFBundleDisplayName: 그날어때
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    scheme:
+      testTargets:
+        - GeunalAppTests
+        - GeunalAppUITests
+      # Korean UI strings are what the UI test looks for.
+      language: ko
+      region: KR
+
+  GeunalAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: GeunalAppTests
+    dependencies:
+      - target: GeunalApp
+      - package: GeunalCore
+      - package: CoreBridge
+      - package: DesignSystem
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.geunal.ios.tests
+
+  GeunalAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: GeunalAppUITests
+    dependencies:
+      - target: GeunalApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.geunal.ios.uitests

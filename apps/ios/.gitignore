@@ -1,0 +1,11 @@
+# The Xcode project is generated from project.yml by `make project-ios`; the spec is the source of truth.
+GeunalApp.xcodeproj/
+# Build outputs and the simulator result bundles the CI uploads.
+DerivedData/
+*.xcresult
+# The Rust core's outputs, copied in by apps/ios/scripts/import-core.sh from core/out/ios (make build-ios).
+Packages/GeunalCore/GeunalCoreFFI.xcframework/
+Packages/GeunalCore/Sources/GeunalCore/GeunalCore.swift
+# Xcode writes the extracted strings back into the catalog while building; only hand edits belong in git.
+*.xcuserdatad/
+.swiftpm/

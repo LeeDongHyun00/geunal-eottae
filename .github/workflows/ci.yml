@@ -67,10 +67,15 @@ jobs:
     if: needs.changes.outputs.e2e == 'true'
     uses: ./.github/workflows/e2e.yml
 
+  ios:
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    uses: ./.github/workflows/ios.yml
+
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [changes, lint, core, api, gateway, e2e]
+    needs: [changes, lint, core, api, gateway, e2e, ios]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

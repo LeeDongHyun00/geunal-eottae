@@ -5,7 +5,8 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 .PHONY: help setup lint test lint-repo lint-core test-core build-android build-ios lint-api test-api image-api scan-api \
-	lint-gateway test-gateway image-gateway scan-gateway up down e2e
+	lint-gateway test-gateway image-gateway scan-gateway up down e2e \
+	lint-ios project-ios app-ios test-ios uitest-ios
 
 help: ## List the targets
 	@grep -hE '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{ printf "  %-14s %s\n", $$1, $$2 }'
@@ -35,6 +36,24 @@ build-android: ## Rust core: Android libraries and Kotlin bindings in core/out/a
 
 build-ios: ## Rust core: XCFramework and Swift bindings in core/out/ios (macOS only)
 	core/scripts/build-ios.sh
+
+# The iOS targets need macOS with the Xcode apps/ios/.xcode-version pins, so they stay out of `lint` and `test`; the ios
+# workflow runs them in the order docs/parts/ios.md §8 gives.
+lint-ios: ## iOS: swift-format on the app and packages, and the design tokens' Swift against docs/design/tokens.json
+	apps/ios/scripts/lint.sh
+
+project-ios: ## iOS: copy the core's XCFramework and Swift (make build-ios) into the GeunalCore package and generate the Xcode project
+	apps/ios/scripts/import-core.sh
+	apps/ios/scripts/generate.sh
+
+app-ios: project-ios ## iOS: build the app for the simulator
+	apps/ios/scripts/xcodebuild.sh build
+
+test-ios: project-ios ## iOS: unit tests on the simulator
+	apps/ios/scripts/xcodebuild.sh test
+
+uitest-ios: project-ios ## iOS: UI tests on the simulator
+	apps/ios/scripts/xcodebuild.sh uitest
 
 lint-api: ## API: ktlint
 	cd server/api && ./gradlew ktlintCheck

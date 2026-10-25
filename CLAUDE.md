@@ -47,6 +47,11 @@
 | `make test-core` | Rust 코어: 단위·스모크 테스트 |
 | `make build-android` | 안드로이드 3개 ABI 라이브러리와 Kotlin 바인딩(`core/out/android`), ABI별 크기 기록 |
 | `make build-ios` | XCFramework와 Swift 바인딩(`core/out/ios`). macOS에서만 되고, 이 환경에서는 CI가 확인합니다 |
+| `make lint-ios` | iOS: swift-format, 디자인 토큰의 Swift가 `docs/design/tokens.json`과 같은지. macOS에서만 |
+| `make project-ios` | iOS: 코어 산출물을 `apps/ios/Packages/GeunalCore`로 복사하고 XcodeGen으로 `GeunalApp.xcodeproj`를 생성. macOS에서만 |
+| `make app-ios` | iOS: 시뮬레이터용 앱 빌드. macOS에서만 |
+| `make test-ios` | iOS: 시뮬레이터 단위 테스트. macOS에서만 |
+| `make uitest-ios` | iOS: 시뮬레이터 UI 테스트. macOS에서만 |
 | `make lint-api` | API: ktlint |
 | `make test-api` | API: Testcontainers의 PostgreSQL·Redis에 붙는 테스트 |
 | `make image-api` | API: boot jar와 이미지 `geunal/api:local` |
