@@ -84,13 +84,16 @@ install_beam() {
 
   bin="$(link_dir)"
   for tool in erl erlc escript; do ln -sf "$otp_dir/bin/$tool" "$bin/$tool"; done
-  # Wrappers rather than links: cloud sessions have no UTF-8 locale, and Elixir wants UTF-8 file name encoding (+fnu).
-  # rm first, because writing through an old link would overwrite Elixir's own script.
+  # Wrappers rather than links. Elixir's own scripts find `elixir` and `erl` through PATH, so each wrapper puts the
+  # pinned installs first whatever the caller's PATH holds. Cloud sessions have no UTF-8 locale, so it also defaults
+  # Elixir to UTF-8 file name encoding (+fnu). rm first, because writing through an old link would overwrite Elixir's
+  # own script.
   for tool in elixir elixirc iex mix; do
     rm -f "$bin/$tool"
     cat >"$bin/$tool" <<EOF
 #!/bin/sh
 export ELIXIR_ERL_OPTIONS="\${ELIXIR_ERL_OPTIONS:-+fnu}"
+export PATH="$elixir_dir/bin:$otp_dir/bin:\$PATH"
 exec "$elixir_dir/bin/$tool" "\$@"
 EOF
     chmod +x "$bin/$tool"
