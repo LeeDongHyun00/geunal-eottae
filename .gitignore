@@ -1,0 +1,18 @@
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local settings and secrets never belong in git (docs/parts/infra.md §10)
+.env
+.env.*
+!.env.example
+
+# Pinned tools downloaded by scripts/tool.sh
+.tools/
+
+# Written wherever an Erlang VM crashes, e.g. when a mix command's output pipe closes early
+erl_crash.dump
+
+# Each part ignores its own build output in its directory (core/target, server/api/build, server/gateway/_build, ...).

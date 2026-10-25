@@ -1,0 +1,60 @@
+# The one CI entry point. It works out which parts a change touches and calls only their workflows; `ci-ok` collects
+# the results and is the only required check, because a required check whose workflow was path-filtered away would
+# stay pending and block the merge. CLAUDE.md describes how a part plugs its workflow in.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      core: ${{ steps.parts.outputs.core }}
+      api: ${{ steps.parts.outputs.api }}
+      gateway: ${{ steps.parts.outputs.gateway }}
+      e2e: ${{ steps.parts.outputs.e2e }}
+      ios: ${{ steps.parts.outputs.ios }}
+      android: ${{ steps.parts.outputs.android }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The pull request's merge commit and its parents: enough to diff against the base branch tip.
+          fetch-depth: 2
+          persist-credentials: false
+      - id: parts
+        run: scripts/ci/changed-parts.sh | tee -a "$GITHUB_OUTPUT"
+
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: make lint-repo
+
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [changes, lint]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fail when a needed job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - run: echo "Every needed job passed or was skipped."
