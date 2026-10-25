@@ -33,6 +33,7 @@ scripts/            # toolchain setup and CI helpers
 
 - **Rust 코어:** rustup. 툴체인 버전은 `core/rust-toolchain.toml`이 고정하고, 안드로이드 빌드에 쓰는 NDK와 cargo-ndk는 `make build-android`가 받아 둡니다. iOS 빌드(`make build-ios`)는 macOS와 Xcode에서만 됩니다.
 - **API 서버:** JDK 21과 Docker. Gradle은 `server/api/gradlew`가 고정한 버전을 받아 쓰고, 테스트는 Testcontainers로 PostgreSQL과 Redis를 띄웁니다.
+- **게이트웨이:** `.tool-versions`의 Erlang/OTP와 Elixir(`make setup`이 설치)와 Docker. `make test-gateway`는 `REDIS_URL`이 없으면 쓰고 버릴 Redis 컨테이너를 띄웁니다.
 
 ```sh
 make setup   # install the toolchain; safe to rerun

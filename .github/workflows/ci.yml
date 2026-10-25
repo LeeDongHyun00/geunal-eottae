@@ -57,10 +57,15 @@ jobs:
     if: needs.changes.outputs.api == 'true'
     uses: ./.github/workflows/api.yml
 
+  gateway:
+    needs: changes
+    if: needs.changes.outputs.gateway == 'true'
+    uses: ./.github/workflows/gateway.yml
+
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [changes, lint, core, api]
+    needs: [changes, lint, core, api, gateway]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

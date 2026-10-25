@@ -30,7 +30,7 @@
 - 클라우드 세션의 바깥 연결은 프록시를 거칩니다.
   - Docker Hub는 세션들이 함께 쓰는 주소에 익명 내려받기 한도(429)를 걸어서, `ensure-docker.sh`가 데몬을 Google 미러(`mirror.gcr.io`)를 거치게 띄웁니다.
   - Maven Central은 같은 파일에도 404·429를 섞어 돌려줍니다. 그래서 `make setup`이 `~/.gradle/init.d`에 초기화 스크립트를 넣어 Gradle이 Google의 Maven Central 미러를 쓰게 합니다. 빌드 파일에는 `mavenCentral()`을 그대로 씁니다.
-  - 컨테이너 안의 프로세스는 프록시에 닿지 못하고 프록시 인증서도 믿지 않습니다. 그래서 이미지는 `scripts/docker-build.sh`로 빌드합니다. 클라우드 세션에서는 이 스크립트가 빌드를 호스트 네트워크에 붙이고 프록시 주소(`https_proxy`)와 인증서(빌드 비밀값 `ca`)를 넘깁니다. 무언가를 내려받는 Dockerfile은 HTTPS로 받고, `ca`가 있으면 그 인증서를 믿게 합니다.
+  - 컨테이너 안의 프로세스는 프록시에 닿지 못하고 프록시 인증서도 믿지 않습니다. 그래서 이미지는 `scripts/docker-build.sh`로 빌드합니다. 클라우드 세션에서는 이 스크립트가 빌드를 호스트 네트워크에 붙이고 프록시 주소(`https_proxy`)와 인증서(빌드 비밀값 `ca`)를 넘깁니다. 이 프록시는 HTTPS만 통과시키므로, 무언가를 내려받는 Dockerfile은 `ca`가 있을 때 HTTPS로 받고 그 인증서를 믿게 합니다(`server/api/Dockerfile`, `server/gateway/Dockerfile` 참고).
   - 세션에 붙지 않은 GitHub 저장소는 웹 페이지와 API가 막혀 있습니다. 릴리스 파일 직접 다운로드와 `git ls-remote`는 됩니다.
 
 ## 명령
@@ -51,6 +51,10 @@
 | `make test-api` | API: Testcontainers의 PostgreSQL·Redis에 붙는 테스트 |
 | `make image-api` | API: boot jar와 이미지 `geunal/api:local` |
 | `make scan-api` | API: 이미지 Trivy 검사. 고칠 수 있는 높음·심각 항목이 있으면 실패 |
+| `make lint-gateway` | 게이트웨이: 잠긴 의존성, format, 컴파일 경고, credo, 이미지의 Elixir·OTP 버전 |
+| `make test-gateway` | 게이트웨이: Redis에 붙는 테스트. `REDIS_URL`이 없으면 쓰고 버릴 컨테이너를 띄움 |
+| `make image-gateway` | 게이트웨이: 릴리스 이미지 `geunal/gateway:local` |
+| `make scan-gateway` | 게이트웨이: 이미지와 `mix.lock`의 Trivy 검사 |
 
 ## 규칙
 
