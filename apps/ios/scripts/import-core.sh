@@ -16,5 +16,7 @@ fi
 
 rm -rf "$package/GeunalCoreFFI.xcframework"
 cp -R "$out/GeunalCoreFFI.xcframework" "$package/GeunalCoreFFI.xcframework"
+# Git keeps no empty directories, so the sources directory only exists once something was copied into it.
+mkdir -p "$package/Sources/GeunalCore"
 cp "$out/swift/GeunalCore.swift" "$package/Sources/GeunalCore/GeunalCore.swift"
 echo "imported the core into $package"
