@@ -22,7 +22,7 @@ apps/android/
   settings.gradle.kts
   core/                  # Android library: jniLibs from cargo-ndk + UniFFI-generated Kotlin (JNA)
   bridge/                # SecretStore backed by Android Keystore, CoreListener -> Flow, file paths
-  designsystem/          # colors (incl. the free-count scale), typography, components
+  designsystem/          # 12 group colors with five tints each (the free-count scale), typography, components
   feature-calendar/
   feature-group/
   feature-appointment/

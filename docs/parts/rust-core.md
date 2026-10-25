@@ -60,9 +60,9 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 | `CoreListener.on_change(change)` | `onChange(change:)` | `onChange(change)` | 앱이 구현. 캘린더·그룹·채팅 변경 알림 | M0 |
 
 나머지 함수는 같은 규칙으로 단계마다 추가합니다.
-- **캘린더:** 일정 조회·삭제, 교대 템플릿, 사람·생일, 기기 일정 넘기기
-- **그룹:** 생성, 초대 코드, 공유 설정, 알림 끄기
-- **약속:** 주도자 이전, 투표, 선택지 추가, 취소
+- **캘린더:** 일정 조회·삭제, 교대 템플릿, 사람·생일, 기기 일정 넘기기, 일정 첨부
+- **그룹:** 생성, 초대 코드, 그룹 설정(공통·나만), 그룹 프로필, 커버, 알림 종류별 끄기
+- **약속:** 주도자 이전, 투표, 선택지 추가, 취소, 약속 첨부
 - **채팅:** 미디어 보내기·받기, 검색, 신고, 차단
 - **계정:** 로그인, 복구 코드, 백업, 탈퇴
 
@@ -159,8 +159,13 @@ CREATE TABLE groups (
   id           TEXT PRIMARY KEY,
   kind         TEXT NOT NULL CHECK (kind IN ('circle', 'dm')),
   name         TEXT,                         -- from the group_meta state blob
+  meta         BLOB,                         -- decrypted group_meta: color, cover, date-setting defaults
   cursor       INTEGER NOT NULL DEFAULT 0,   -- last seq applied
-  muted_until  TEXT
+  muted_until  TEXT,
+  notify_chat  INTEGER NOT NULL DEFAULT 1,   -- mirrored to the server, which filters pushes by category
+  notify_plan  INTEGER NOT NULL DEFAULT 1,
+  event_color  TEXT,                         -- my color for this group's appointments; NULL means the group color
+  pinned       INTEGER NOT NULL DEFAULT 0
 );
 
 -- What I share with each group: a rolling window and which calendars count. Never titles.
@@ -222,6 +227,20 @@ CREATE TABLE media_cache (
   group_id    TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
   path        TEXT NOT NULL,                 -- decrypted file inside the app container
   size        INTEGER NOT NULL
+);
+
+-- Files on my own events. The ciphertext sits in object storage so a restored device can fetch it again;
+-- the keys exist only here and in my backup. Deleting an event first queues DELETE /media/{object} in the outbox.
+CREATE TABLE event_attachments (
+  id          TEXT PRIMARY KEY,
+  event_id    TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  object_key  TEXT NOT NULL UNIQUE,
+  key         BLOB NOT NULL CHECK (length(key) = 32),
+  name        TEXT NOT NULL,
+  mime        TEXT NOT NULL,
+  size        INTEGER NOT NULL CHECK (size <= 104857600),
+  sha256      BLOB NOT NULL,
+  path        TEXT                           -- decrypted copy; NULL until downloaded again after a restore
 );
 ```
 
@@ -436,6 +455,7 @@ pub fn open(key: &[u8; 32], aad: &str, blob: &[u8]) -> Option<Vec<u8>> {
 - `picks the first recommendation when every vote is "any"`
 - `resolves a tie by list order: recommendations first, then added options in log order`
 - `resets votes when the leader reopens a poll`
+- `ignores options added by non-leaders when the request copied leader_options`
 - `ranks a disliked activity below a neutral one through the least-misery term`
 - `derives the same state from the same log on two independent runs`
 
@@ -447,10 +467,16 @@ MLS와 동기화
 - `fetches the gap when a pushed seq skips ahead`
 - `never decrypts the same application message twice across the app and the extension`
 
-채팅
+그룹 설정
+- `reads group_meta only from the current owner`
+- `keeps a member's group nickname and avatar inside that group only`
+
+채팅과 첨부
 - `finds "토요일" inside "토요일에" and falls back to LIKE for two-letter queries`
 - `rejects media whose ciphertext hash does not match the entry`
 - `hides group messages from a blocked member on this device only`
+- `ignores a media_remove written by someone other than the uploader`
+- `restores a personal event attachment from the keys in the backup`
 
 ## 10. 완료 조건
 
@@ -458,6 +484,6 @@ MLS와 동기화
 | --- | --- |
 | M0 | 위 목록 중 캘린더 반복·그룹 캘린더·투표·MLS 항목 통과. iOS·안드로이드 타깃 빌드와 SQLCipher 동작. 헤드리스 종단 시험(클라이언트 3개, 로컬 API·게이트웨이) 통과. 테스트 벡터 게시. mls-rs와 OpenMLS 비교 메모를 `docs/adr/`에 기록 |
 | M1 | 캘린더·추천·백업·복원 항목 통과. 크기 예산 충족 |
-| M2 | 날짜 잡기·투표·외부 가입·상태 재봉인 항목 통과. 성능 예산 충족 |
-| M3 | 채팅·미디어·`decrypt_push` 항목 통과. 실기기에서 알림 확장 메모리 예산 확인 |
+| M2 | 날짜 잡기·투표·그룹 설정·외부 가입·상태 재봉인 항목 통과. 성능 예산 충족 |
+| M3 | 채팅·첨부·`decrypt_push` 항목 통과. 실기기에서 알림 확장 메모리 예산 확인 |
 | M4 | 외부 리뷰 지적 반영. 퍼징 24시간 무중단 |

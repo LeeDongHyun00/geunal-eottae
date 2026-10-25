@@ -5,13 +5,13 @@
 ## 1. 맡는 일
 
 - **계정과 기기:** 카카오·애플·게스트 로그인, 세션, 기기 등록(계정당 활성 1대), 키 패키지 보관
-- **그룹:** 생성, 초대 코드, 멤버 상태, 1:1 생성 규칙, 차단, 알림 끄기, 방장 승계
+- **그룹:** 생성, 초대 코드, 멤버 상태, 1:1 생성 규칙, 차단, 알림 설정(전체 끄기, 채팅·약속별), 방장 승계, 커버·프로필 사진 자리
 - **전달 서비스:**
   - 커밋 선점(epoch당 하나), 메시지 순번 부여, 오래된 epoch 거절
   - Welcome, GroupInfo, 외부 가입 허가
   - 30일 우편함
 - **상태 블롭:** 덮어쓰기 저장(epoch가 뒤로 가지 않게)
-- **미디어·백업:** 오브젝트 스토리지의 서명된 업로드·다운로드 URL과 30일 정리
+- **미디어·백업:** 범위별(채팅·약속·개인 일정·커버·프로필 사진) 서명된 업로드·다운로드 URL, 보관 기간 정리, 개인 첨부 한도(계정당 1GB)
 - **알림:** 게이트웨이 신호(Redis), APNs·FCM 직접 발송
 - **그 밖:** 신고 접수, 퍼널 마커, 공휴일 동기화, 계정 삭제
 
@@ -78,6 +78,7 @@ server/api/src/main/kotlin/app/geunal/api/
 - **푸시 대상:**
   - 요청의 `alert`(`all`, 사용자 목록, `none`)를 따릅니다.
   - 보낸 사람 자신과 `muted_until`이 지나지 않은 멤버는 뺍니다.
+  - 요청의 `cat`이 `chat`이면 `notify_chat`, `plan`이면 `notify_plan`이 꺼진 멤버를 뺍니다.
   - 무효 토큰 응답을 받으면 토큰을 지웁니다.
 
 ```sql
@@ -196,6 +197,8 @@ CREATE TABLE group_members (
   role         member_role NOT NULL DEFAULT 'member',
   status       member_status NOT NULL DEFAULT 'pending',
   muted_until  timestamptz,                   -- 알림 끄기: the server skips alert pushes until then
+  notify_chat  boolean NOT NULL DEFAULT true, -- per-category switches; messages carry cat = chat | plan
+  notify_plan  boolean NOT NULL DEFAULT true,
   joined_at    timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (group_id, user_id)
 );
@@ -263,14 +266,24 @@ CREATE TABLE group_state (
   PRIMARY KEY (group_id, kind, owner_id)
 );
 
--- Encrypted media in object storage; a bucket lifecycle rule and a nightly job remove both after 30 days.
+-- Encrypted files in object storage, one bucket per scope. A nightly job removes rows past expires_at and queues
+-- their objects; bucket lifecycle rules (chat 31 days, appt 366 days) catch anything the job missed.
+CREATE TYPE media_scope AS ENUM ('chat', 'appt', 'personal', 'cover', 'avatar');
 CREATE TABLE media_objects (
   object_key   text PRIMARY KEY,
-  group_id     uuid NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  scope        media_scope NOT NULL,
+  group_id     uuid REFERENCES groups(id) ON DELETE CASCADE,   -- NULL only for personal attachments
   uploader_id  uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  size_bytes   bigint NOT NULL CHECK (size_bytes <= 100 * 1024 * 1024),
-  created_at   timestamptz NOT NULL DEFAULT now()
+  size_bytes   bigint NOT NULL,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  expires_at   timestamptz,                                     -- NULL: kept until deleted (personal, current cover or avatar)
+  CHECK ((scope = 'personal') = (group_id IS NULL)),
+  CHECK (size_bytes <= CASE scope WHEN 'cover' THEN 1024 * 1024 WHEN 'avatar' THEN 256 * 1024 ELSE 100 * 1024 * 1024 END)
 );
+-- One current cover per group and one current avatar per member; a replaced one gets expires_at = now() + 7 days.
+CREATE UNIQUE INDEX one_current_cover ON media_objects (group_id) WHERE scope = 'cover' AND expires_at IS NULL;
+CREATE UNIQUE INDEX one_current_avatar ON media_objects (group_id, uploader_id) WHERE scope = 'avatar' AND expires_at IS NULL;
+CREATE INDEX personal_usage ON media_objects (uploader_id) WHERE scope = 'personal';
 
 -- Blobs to delete from object storage, queued in the same transaction that deletes their rows (account deletion, pruning).
 CREATE TABLE object_deletions (
@@ -334,17 +347,21 @@ CREATE TABLE holidays (
 | POST | `/invites/{code}/join` | 초대 코드로 참여 요청(`pending`) |
 | GET | `/groups/{id}/members` | 멤버, 역할, 상태 |
 | DELETE | `/groups/{id}/members/{userId}` | 탈퇴·강퇴 |
-| PATCH | `/groups/{id}/members/me` | 알림 끄기(`muted_until`) |
+| PATCH | `/groups/{id}/members/me` | 알림 설정(`muted_until`, `notify_chat`, `notify_plan`) |
+| PUT | `/groups/{id}/cover` | 커버 업로드 URL(방장만). 이전 커버는 7일 뒤 삭제 |
+| PUT | `/groups/{id}/members/me/avatar` | 그룹 프로필 사진 업로드 URL. 이전 사진은 7일 뒤 삭제 |
 | POST | `/dms` | 1:1 만들기(같은 그룹 멤버, 차단 아님, 한 쌍에 하나) |
 | POST, DELETE | `/blocks/{userId}` | 차단, 해제 |
 | POST | `/groups/{id}/commits` | 커밋(+ GroupInfo, Welcome, 추가 대상, 외부 여부) |
-| POST | `/groups/{id}/messages` | 애플리케이션 메시지(epoch, 암호문, `alert`) |
+| POST | `/groups/{id}/messages` | 애플리케이션 메시지(epoch, 암호문, `alert`, `cat`) |
 | GET | `/groups/{id}/log` | 순번 이후 항목 |
 | GET | `/groups/{id}/group-info` | 외부 가입용 GroupInfo |
 | PUT | `/groups/{id}/state/{kind}` | 내 상태 블롭 덮어쓰기 |
 | GET | `/groups/{id}/state` | 그룹의 상태 블롭 전부 |
-| POST | `/groups/{id}/media` | 미디어 업로드 URL과 `object` 키 |
-| GET | `/media/{object}` | 미디어 다운로드 URL(멤버만) |
+| POST | `/groups/{id}/media` | 채팅·약속 첨부 업로드 URL과 `object` 키(`scope`: `chat`, `appt`) |
+| POST | `/me/attachments` | 개인 일정 첨부 업로드 URL(계정당 합계 1GB를 넘으면 413) |
+| GET | `/media/{object}` | 다운로드 URL(그룹 범위는 멤버만, 개인 첨부는 본인만) |
+| DELETE | `/media/{object}` | 올린 사람만. 행을 지우고 `object_deletions`에 넣기 |
 | POST | `/reports` | 신고(운영자 검토 키로 봉인한 증거) |
 | POST | `/groups/{id}/funnel` | 퍼널 마커 |
 | GET | `/holidays?from&to` | 공휴일 |
@@ -354,7 +371,7 @@ CREATE TABLE holidays (
 | 작업 | 주기 | 하는 일 |
 | --- | --- | --- |
 | 로그 파티션 | 매일 | 내일 파티션 만들기, 30일 지난 파티션 삭제 |
-| 미디어 정리 | 매일 | 30일 지난 `media_objects`를 지우고 `object_deletions`에 넣기 |
+| 미디어 정리 | 매일 | `expires_at`이 지난 `media_objects`(채팅 30일, 약속 1년, 바뀐 커버·사진 7일)를 지우고 `object_deletions`에 넣기 |
 | 오브젝트 삭제 | 10분 | `object_deletions`를 비우며 스토리지에서 삭제 |
 | 백업 정리 | 업로드 완료 때 | 사람마다 최근 3개만 남기기 |
 | Welcome 정리 | 매일 | 30일 지난 Welcome 삭제 |
@@ -371,6 +388,7 @@ CREATE TABLE holidays (
 | 커밋 | 그룹당 분당 30개 |
 | 키 패키지 가져가기 | 사용자당 분당 30개 |
 | 미디어 업로드 | 사용자당 하루 1GB |
+| 개인 일정 첨부 | 계정당 합계 1GB |
 | 백업 | 사용자당 하루 10회 |
 
 초과하면 429와 `Retry-After`를 줍니다.
@@ -398,7 +416,7 @@ CREATE TABLE holidays (
 | 단계 | 완료 조건 |
 | --- | --- |
 | M0 | 인증 스텁, 기기, 키 패키지, 그룹, 커밋·메시지·로그·Welcome·GroupInfo, 상태 블롭, Redis 신호. 헤드리스 종단 시험 통과 |
-| M1 | 카카오·애플·게스트 로그인, 복구, 백업 URL, 계정 삭제, 스테이징 배포 |
-| M2 | 초대, 멤버 상태, 방장 승계, 푸시(APNs·FCM), 퍼널, 공휴일 |
-| M3 | 1:1, 차단, 미디어, 신고, 알림 끄기, 동시성 테스트 |
+| M1 | 카카오·애플·게스트 로그인, 복구, 백업 URL, 계정 삭제, 알파 서버 배포 |
+| M2 | 초대, 멤버 상태, 방장 승계, 푸시(APNs·FCM)와 종류별 알림 설정, 커버·프로필 사진, 퍼널, 공휴일 |
+| M3 | 1:1, 차단, 범위별 첨부와 개인 첨부 한도, 신고, 동시성 테스트 |
 | M4 | 운영 레이트 리밋 조정, 보존 기간 문서화, 장애 대응 절차 |

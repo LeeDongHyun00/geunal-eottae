@@ -42,7 +42,7 @@
 | Welcome | 새 기기 하나에 보내는 초대 | MLS | 가져가면 삭제 |
 | GroupInfo | 외부 가입용 공개 그룹 정보 | 서명만 | 그룹마다 최신 1개 |
 | 상태 블롭(state blob) | 가용 시간, 그룹 메타, 멤버 프로필, 새 멤버용 번들 | 상태 키 + XChaCha20-Poly1305 | (그룹, 종류, 주인)마다 최신 1개 |
-| 미디어 | 사진·파일 | 파일마다 무작위 키, 청크 AEAD | 30일 |
+| 미디어 | 채팅·약속·개인 일정의 사진·파일, 그룹 커버, 프로필 사진 | 파일마다 무작위 키, 청크 AEAD | 범위마다 다름(9장) |
 | 백업 | 캘린더 + 채팅 텍스트 아카이브 | AMK, 청크 AEAD | 최근 3개 |
 
 ## 4. 엔트리
@@ -70,8 +70,11 @@ pub enum Choice { Opt(String), Any }
 #[serde(tag = "k", rename_all = "snake_case")]
 pub enum Entry {
     Text { id: String, body: String, reply_to: Option<String> },
-    Media { id: String, object: String, key: Vec<u8>, size: u64, mime: String, sha256: Vec<u8>, thumb: Option<Vec<u8>> },
-    Request { appt: String, day: String, mode: Mode, start: Option<u16>, end: Option<u16>, activity: Option<String>, note: Option<String> },
+    // `appt` set: an attachment of that appointment, not a chat message. `name` is the file name shown for files.
+    Media { id: String, object: String, key: Vec<u8>, size: u64, mime: String, sha256: Vec<u8>, thumb: Option<Vec<u8>>, name: Option<String>, appt: Option<String> },
+    MediaRemove { id: String },
+    // `leader_options` copies the group setting at request time so every device applies the same rule to this appointment.
+    Request { appt: String, day: String, mode: Mode, start: Option<u16>, end: Option<u16>, activity: Option<String>, note: Option<String>, #[serde(default)] leader_options: bool },
     RequestUpdate { appt: String, mode: Option<Mode>, start: Option<u16>, end: Option<u16>, activity: Option<String>, note: Option<String> },
     LeadTransfer { appt: String, to: String },
     Response { appt: String, accept: bool },
@@ -99,6 +102,8 @@ pub fn decode(bytes: &[u8]) -> Result<Entry, ciborium::de::Error<std::io::Error>
 규칙:
 - **작성자:** MLS가 확인한 발신자 leaf의 자격 증명에서 `user_id`를 읽습니다. 엔트리 안에는 넣지 않으므로 위조할 수 없습니다.
 - **주도자 전용:** `RequestUpdate`, `LeadTransfer`, `Poll`, `PollClose`, `Cancel`은 현재 주도자가 쓴 것만 유효합니다. 상태 함수가 검사하고, 아니면 무시합니다.
+- **첨부 빼기:** `MediaRemove`는 그 `Media`를 쓴 사람이 쓴 것만, 그리고 `appt`가 있는 첨부에만 유효합니다. 채팅 메시지 삭제는 아직 없습니다.
+- **그룹 설정은 신청에 담습니다:** 상태 블롭은 로그 밖에 있어서 기기마다 받은 시점이 다를 수 있습니다. 그래서 상태 함수는 `group_meta`를 읽지 않습니다. 선택지 추가 권한은 신청할 때 `Request.leader_options`로 복사하고, 참이면 `PollOption`은 주도자가 쓴 것만 유효합니다. 기본 결정 방식과 시간 추천 범위는 신청하는 기기의 화면 기본값일 뿐이고, 결과는 `Request.mode`와 `Poll.options`에 이미 들어 있습니다.
 - **시각:** 모든 시각 판정(투표 마감, 약속 날 00:00)은 서버가 엔트리를 받은 시각(`received_at`)으로 합니다. 기기 시계는 화면 표시에만 씁니다.
 - **모르는 종류:** 새 버전의 엔트리는 원문 그대로 저장하고 "업데이트가 필요한 메시지"로 보여 줍니다.
 - **크기:** "토요일 7시 어때?" 엔트리는 CBOR로 62바이트이고, MLS 메시지로는 254바이트입니다. 엔트리 하나는 64KB를 넘지 않고, 큰 내용은 미디어로 보냅니다.
@@ -114,8 +119,8 @@ pub fn decode(bytes: &[u8]) -> Result<Entry, ciborium::de::Error<std::io::Error>
 | 종류(`kind`) | 주인 | 평문(CBOR) | 언제 씀 |
 | --- | --- | --- | --- |
 | `availability` | 멤버 | `{window_start, days, bits}`: 30분마다 1비트, 1은 일정 없음, MSB부터 | 캘린더가 바뀔 때, epoch가 바뀔 때 |
-| `group_meta` | 방장 | `{name}` | 이름을 바꿀 때, epoch가 바뀔 때 |
-| `member_profile` | 멤버 | `{birthday_md?, lunar?, tags?}` | 공개 설정을 바꿀 때, epoch가 바뀔 때 |
+| `group_meta` | 방장 | `{name, color, cover?, plan}`. `cover`는 `{object, key, sha256}`, `plan`은 날짜 잡기 기본값 `{mode: Mode, window: [from, to], options_by}`(`window`는 30분 칸 번호, `options_by`는 `anyone` 또는 `leader`) | 공통 설정을 바꿀 때, epoch가 바뀔 때 |
+| `member_profile` | 멤버 | `{nickname?, avatar?, birthday_md?, lunar?, tags?}`. `avatar`는 `{object, key, sha256}` | 그룹 프로필이나 공개 설정을 바꿀 때, epoch가 바뀔 때 |
 | `newcomer_bundle` | 추가 커밋을 한 기기의 주인 | 날이 지나지 않은 약속의 엔트리 목록 `[(author_id, received_at, Entry)]` | 멤버를 추가한 직후 |
 
 epoch 규칙:
@@ -181,10 +186,11 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
   | `alert` | 쓰는 엔트리 |
   | --- | --- |
   | `"all"` | 채팅, 날짜 잡기 신청, 투표 열기·닫기, 취소 |
-  | `["user_id", ...]` | 수락·다음에(주도자에게), 시간·활동 변경(참가자에게) |
-  | `"none"` | 투표, 선택지 추가 |
+  | `["user_id", ...]` | 수락·다음에(주도자에게), 시간·활동 변경과 약속 첨부(참가자에게) |
+  | `"none"` | 투표, 선택지 추가, 첨부 빼기 |
 
-- **빼는 대상:** 서버는 보낸 사람 자신과 알림을 끈(`muted_until`) 멤버를 뺍니다.
+- **종류(`cat`):** `alert`가 `none`이 아니면 기기가 `chat`(텍스트, 사진·파일) 또는 `plan`(날짜 잡기 신청·응답·변경·취소, 투표 열기·닫기, 약속 첨부)을 함께 보냅니다. 종류별 알림 끄기를 위해 서버가 아는 유일한 내용 정보입니다.
+- **빼는 대상:** 서버는 보낸 사람 자신, 전체 알림을 끈(`muted_until`) 멤버, 그 종류를 끈(`notify_chat`, `notify_plan`) 멤버를 뺍니다.
 - **페이로드:** `{"g": group_id, "s": seq, "c": base64 암호문}`. `c`는 암호문이 3KB 이하일 때만 넣습니다.
 - **iOS:** `aps.alert`에 "새 메시지" 같은 자리표시 문구와 `mutable-content: 1`을 넣습니다. 알림 확장이 복호화해서 문구를 바꿉니다.
 - **안드로이드:** 우선순위 높은 데이터 전용 메시지로 보내고, 앱의 핸들러가 알림을 만듭니다.
@@ -193,14 +199,24 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
 ## 9. 미디어
 
 1. 보내는 기기가 파일마다 무작위 32바이트 키를 만들고, 64KiB 청크로 나눠 STREAM 구성(RustCrypto `aead::stream`, XChaCha20-Poly1305, BE32)으로 암호화합니다.
-2. `POST /groups/{id}/media`로 업로드 URL과 `object` 키를 받아 암호문을 올립니다. 서버는 파일 형식을 모르고 크기만 압니다(100MB 이하).
-3. `Media` 엔트리에 `object`, 키, 크기, MIME, 암호문 SHA-256, 썸네일(8KB 이하)을 넣어 보냅니다.
+2. 범위에 맞는 엔드포인트에서 업로드 URL과 `object` 키를 받아 암호문을 올립니다. 서버는 파일 형식을 모르고 크기와 범위만 압니다.
+3. 키는 아래 표의 자리에 둡니다. `Media` 엔트리에는 `object`, 키, 크기, MIME, 암호문 SHA-256, 썸네일(8KB 이하), 파일 이름을 넣습니다.
 4. 받는 기기는 `GET /media/{object}`로 다운로드 URL을 받아 내려받고, SHA-256을 확인한 뒤 복호화합니다.
-5. 오브젝트 스토리지 수명 규칙이 30일 뒤에 지웁니다.
+5. 지우기는 올린 사람만 합니다(`DELETE /media/{object}`). 보관 기간이 지나면 서버가 지우고, 버킷 수명 규칙이 한 번 더 지웁니다.
+
+| 범위(`scope`) | 올리기 | 키가 있는 곳 | 크기 | 서버 보관 |
+| --- | --- | --- | --- | --- |
+| `chat` | `POST /groups/{id}/media` | `Media` 엔트리 | 100MB 이하 | 30일 |
+| `appt` | `POST /groups/{id}/media` | `Media` 엔트리(`appt` 있음) | 100MB 이하 | 1년 |
+| `personal` | `POST /me/attachments` | 내 로컬 저장소와 백업 | 100MB 이하, 계정당 합계 1GB | 지울 때까지 |
+| `cover` | `PUT /groups/{id}/cover`(방장) | `group_meta` | 1MB 이하 | 새 커버를 올리면 이전 것은 7일 뒤 |
+| `avatar` | `PUT /groups/{id}/members/me/avatar` | `member_profile` | 256KB 이하 | 새 사진을 올리면 이전 것은 7일 뒤 |
+
+커버와 프로필 사진은 자리마다 하나만 남깁니다. 이전 것을 7일 남기는 이유는, 방장이나 멤버가 새 블롭을 올리기 전까지 다른 기기가 이전 블롭을 읽기 때문입니다.
 
 ## 10. 백업
 
-- **내용:** 캘린더 테이블, 사람·생일, 설정, 채팅 텍스트 기록을 CBOR 아카이브로 묶습니다. 사진·파일과 MLS 상태는 넣지 않습니다.
+- **내용:** 캘린더 테이블, 사람·생일, 설정, 채팅 텍스트 기록을 CBOR 아카이브로 묶습니다. 사진·파일 자체와 MLS 상태는 넣지 않습니다. 개인 일정 첨부의 키와 `object` 키는 넣어서, 복원한 기기가 서버 보관본을 다시 받습니다.
 - **암호화:** AMK로, 미디어와 같은 청크 방식을 씁니다.
 - **올리기:** `POST /me/backups`로 업로드 URL을 받아 올리고 완료를 알립니다. 서버는 최근 3개만 남깁니다.
 - **복원:** 로그인 → 복구 코드 → `GET /me/recovery`(salt, 래핑된 AMK) → Argon2id → AMK → `GET /me/backups/latest` → 복호화 → 로컬 저장소 채우기 → 그룹마다 외부 가입.

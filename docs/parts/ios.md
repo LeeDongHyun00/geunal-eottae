@@ -31,11 +31,11 @@ apps/ios/
   Packages/
     GeunalCore/          # binary target (XCFramework) + generated Swift, built by the core workflow
     CoreBridge/          # Keychain SecretStore, CoreListener -> AsyncStream, App Group paths
-    DesignSystem/        # colors (incl. the free-count scale), typography, components
-    FeatureCalendar/     # month/week/list, quick entry with suggestion chips, event editor, shift templates, people
-    FeatureGroup/        # group list, group calendar (hour strip), day table (30-min, drag), share settings, invites
-    FeatureAppointment/  # date-setting sheet, appointment detail, vote screen, leader transfer
-    FeatureChat/         # timeline with appointment cards, composer, media, search, report/block
+    DesignSystem/        # 12 group colors with five tints each (the free-count scale), typography, components
+    FeatureCalendar/     # month/week/list, quick entry with suggestion chips, event editor with attachments, shift templates, people
+    FeatureGroup/        # group list, group calendar (hour strip, cover header), day table (30-min, drag), group settings, invites
+    FeatureAppointment/  # date-setting sheet, appointment detail with attachments, vote screen, leader transfer
+    FeatureChat/         # timeline with appointment cards, composer, media, gallery, search, report/block
     FeatureAccount/      # onboarding, sign-in, recovery code, backup, device change, account deletion
   NotificationService/   # Notification Service Extension target
   Widget/                # WidgetKit extension target
@@ -50,10 +50,12 @@ apps/ios/
 | 단계 | 화면 |
 | --- | --- |
 | M1 | 온보딩(로그인, 만 14세 확인, 기기 캘린더 권한, 알림 권한), 월·주·목록 뷰, 빠른 입력 시트(추천 칩 5개), 일정 편집(반복, 알림, 캘린더), 교대 템플릿, 사람·생일, 설정(복구 코드, 백업, 기기 변경, 계정 삭제), 위젯 |
-| M2 | 그룹 목록(미응답 배지), 그룹 만들기, 초대(카카오톡 공유·링크·코드), 초대 코드 입력, 그룹 캘린더(월 + 날짜 칸의 1시간 띠), 날 테이블(30분, 합친 줄 + 멤버 줄, 드래그), 날짜 잡기 시트(결정 방식, 독재면 시간·활동), 약속 상세(응답, 참가자, 주도자 이전, 취소), 투표(추천 3개 + 추가 + 아무거나), 공유 설정 |
-| M3 | 채팅방(타임라인 + 날짜 잡기 카드), 1:1 시작(같은 그룹 멤버), 사진·파일 보내기와 보기, 기기 안 검색, 신고·차단, 방 알림 끄기 |
+| M2 | 그룹 목록(미응답 배지), 그룹 만들기, 초대(카카오톡 공유·링크·코드), 초대 코드 입력, 그룹 캘린더(월 + 날짜 칸의 1시간 띠), 날 테이블(30분, 합친 줄 + 멤버 줄, 드래그), 날짜 잡기 시트(결정 방식, 독재면 시간·활동), 약속 상세(응답, 참가자, 주도자 이전, 취소), 투표(추천 3개 + 추가 + 아무거나), 그룹 설정(공통: 이름·커버·색·날짜 잡기 기본값 / 나에게만: 그룹 프로필·공유·알림·표시 / 멤버·초대·나가기) |
+| M3 | 채팅방(타임라인 + 날짜 잡기 카드), 1:1 시작(같은 그룹 멤버), 사진·파일 보내기와 보기, 일정·약속 첨부, 그룹 사진·파일 모아보기, 기기 안 검색, 신고·차단 |
 
-**색:** 비어 있는 인원수 하나의 색상 단계로 칠합니다. 0명은 비워 두고, 1명은 가장 연하게, 전원은 가장 진하게 칠합니다. 색만으로 구분하지 않도록, 칸을 누르면 숫자와 이름이 나옵니다.
+**색:** 그룹 색의 명도 5단계로 비어 있는 인원수를 칠합니다. 0명은 비워 두고, 1명은 가장 연하게, 전원은 가장 진하게 칠합니다. 색만으로 구분하지 않도록, 칸을 누르면 숫자와 이름이 나옵니다.
+
+**그룹 색:** 팔레트 12색은 밝은·어두운 모드에서 다섯 단계가 서로 구분되고, 가장 진한 단계 위의 흰 글자가 WCAG AA 대비(4.5:1)를 넘도록 고릅니다. 그룹 머리글, 강조색, 내 캘린더의 그 그룹 약속 색이 같은 색을 씁니다. 커버 이미지는 그룹 캘린더 위에 3:1 머리글로 두고 스크롤하면 접습니다.
 
 ## 5. OS 연동
 
@@ -111,7 +113,7 @@ apps/ios/
   - 투표 열기, 표, 닫기
   - 채팅 보내기, 받기, 날짜 잡기 카드(M3)
 - **알림 확장:** 고정된 저장소와 페이로드로 문구 생성을 검사합니다.
-- **스냅샷 테스트:** 띠의 색 단계(0명, 1명, 전원)를 확인합니다.
+- **스냅샷 테스트:** 그룹 색 12개 각각에서 띠의 색 단계(0명, 1명, 전원)를 밝은·어두운 모드로 확인합니다.
 
 ## 10. 완료 조건
 
