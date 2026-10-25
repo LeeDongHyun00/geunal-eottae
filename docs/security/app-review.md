@@ -14,7 +14,7 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 | 백업에서 빠짐 | ThisDeviceOnly 항목은 백업으로 다른 기기에 넘어가지 않음 | `noBackupFilesDir`는 자동 백업과 기기 간 이전에서 빠짐. 백업 규칙 파일은 `sharedpref`만 넣음 |
 | 함께 쓰는 곳 | 키체인 접근 그룹은 앱과 알림 확장만 | 해당 없음 |
 | 다시 설치 | 첫 실행 때(UserDefaults에 실행 표시가 없을 때) 이 앱의 키체인 항목을 모두 지움. 앱을 지워도 키체인 항목은 남기 때문 | 앱을 지우면 Keystore 키와 파일이 함께 지워짐 |
-| 해제와 계정 삭제 | 403 `device_revoked`·`revoke` 이벤트를 받거나 계정을 지우면 세션, 기기 서명 키, `E`, AMK, 그룹 상태를 지우고 일정과 DB 키만 남김. 도난 기기에 남은 `E`로 게스트 계정을 다시 가져가지 못하게 하려는 것(PR #26 리뷰) | 같음 |
+| 해제와 계정 삭제 | 403 `device_revoked`·`revoke` 이벤트를 받거나 계정을 지우면 세션, 기기 서명 키, `E`, AMK, 그룹 상태를 지우고 일정과 DB 키만 남김. 도난 기기에 남은 `E`로 게스트 계정을 다시 가져가지 못하게 하려는 것([공통 계약](../parts/protocol.md) 13장) | 같음 |
 
 - SharedPreferences와 UserDefaults는 기기 백업에 들어갑니다. 비밀과 개인정보를 두지 않습니다. "종이에 적었어요" 같은 표시는 괜찮습니다.
 - 2026-10-25 `main` 기준으로 두 `SecretStore`는 위 설정과 맞습니다(`apps/ios/Packages/CoreBridge/Sources/CoreBridge/KeychainSecretStore.swift`, `apps/android/bridge/src/main/kotlin/app/geunal/bridge/KeystoreSecretStore.kt`, `AppStorage.kt`). `E`와 AMK도 이 콜백으로만 다니면 같은 보호를 받습니다. 첫 실행 키체인 정리만 아직 없습니다.
@@ -36,7 +36,15 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 | 캡처 | 안드로이드는 복구 코드 화면과 기기 바꾸기 입력 화면에 `FLAG_SECURE`. iOS는 막을 수 없어 캡처를 감지하면 토스트([M1 화면](../design/m1.md) 13번) |
 | 12칸 입력 | 자동 고침, 맞춤법, 키보드 학습을 끔(iOS `.autocorrectionDisabled()`, 안드로이드 `TYPE_TEXT_FLAG_NO_SUGGESTIONS`와 `IME_FLAG_NO_PERSONALIZED_LEARNING`). 단어가 키보드 사전이나 추천에 남지 않게 하려는 것 |
 
-## 4. 로그와 크래시
+## 4. 로그인과 계정 삭제
+
+| 항목 | 기준 |
+| --- | --- |
+| 제공자에게 넘기는 nonce | 카카오·Apple 로그인에는 `GET /auth/nonce`의 값을 그대로 넘기지 않고, 코어가 계산한 묶기 값(`hex(SHA-256("geunal login v1" ‖ nonce ‖ signature_key))`)을 넘김([공통 계약](../parts/protocol.md) 13장). 벡터 `login_nonce.json`과 같아야 함 |
+| 서명 | 교체(`POST /auth/replace`), 게스트 복귀(`POST /auth/recover`), 복구 자료 덮어쓰기의 서명은 코어가 만듦. 앱은 키를 직접 다루지 않음 |
+| Apple 계정 삭제 | 삭제 직전에 Sign in with Apple을 다시 받아 `apple_authorization_code`를 `DELETE /me`에 넣음. 코드를 저장하거나 로그에 남기지 않음. 안드로이드는 웹 로그인 콜백이 `code`를 넘겨야 함(PR #26 재검토) |
+
+## 5. 로그와 크래시
 
 | 항목 | 기준 |
 | --- | --- |
@@ -48,7 +56,7 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 | 코어 오류 | `CoreError`·`CoreException`의 메시지를 그대로 화면과 로그에 쓰지 않고, 코드로 분기 |
 | 카카오 SDK | SDK 로그 출력을 릴리스에서 끔 |
 
-## 5. 점검 방법
+## 6. 점검 방법
 
 PR의 앱 변경에서 아래 줄을 찾아 하나씩 봅니다.
 
