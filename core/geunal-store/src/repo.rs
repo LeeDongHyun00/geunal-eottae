@@ -195,6 +195,15 @@ impl Store {
         Ok(inserted == 1)
     }
 
+    /// Replaces the provisional `received_at` of an entry this device sent with the server's, once the log echoes it.
+    pub fn set_entry_received_at(&self, group_id: &str, seq: i64, received_at: &str) -> Result<()> {
+        self.conn().execute(
+            "UPDATE entries SET received_at = ?3 WHERE group_id = ?1 AND seq = ?2",
+            params![group_id, seq, received_at],
+        )?;
+        Ok(())
+    }
+
     pub fn has_entry(&self, group_id: &str, seq: i64) -> Result<bool> {
         Ok(self
             .conn()

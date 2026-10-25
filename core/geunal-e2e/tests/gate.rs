@@ -2,8 +2,8 @@
 //! one is kicked and rejoins, and every client derives the same appointment state. The clients are the same `Core`
 //! the apps call.
 //!
-//! The API shapes the core assumes are the ones in geunal-sync/src/api.rs. Until the API serves guest sign-in, this
-//! test reports itself as skipped; `GEUNAL_E2E_REQUIRE=1` (set once the backend M0 lands) turns that into a failure.
+//! The API shapes are server/api/openapi.yaml. When the API runs without the auth stub (`POST /auth/stub` is 404)
+//! this test reports itself as skipped; `GEUNAL_E2E_REQUIRE=1`, which the e2e workflow sets, turns that into a failure.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -50,7 +50,7 @@ impl Client {
     }
 }
 
-/// Signs a fresh device in as a guest. `None` when the API has no guest sign-in yet.
+/// Signs a fresh device in through the auth stub. `None` when the API runs without the stub.
 fn client(name: &str) -> Option<Client> {
     let dir = tempfile::tempdir().unwrap();
     let core = Core::open(
@@ -60,14 +60,22 @@ fn client(name: &str) -> Option<Client> {
         Arc::new(MemorySecrets::default()),
     )
     .unwrap();
-    match block_on(core.clone().sign_in_guest(name.to_owned(), "android".to_owned())) {
+    // A fresh subject per run: the same subject is the same account, and a second device would revoke the first.
+    let subject = format!("e2e-{name}-{}", run_tag());
+    match block_on(core.clone().sign_in_stub(subject, name.to_owned(), "android".to_owned())) {
         Ok(session) => Some(Client { core, session, _dir: dir }),
-        Err(CoreError::Api { status, code, .. }) if status == 401 || status == 404 || status == 405 => {
-            skip(&format!("the API answered {status} {code} to POST /auth/guest: no M0 auth stub yet"));
+        Err(CoreError::Api { status, code, .. }) if status == 404 => {
+            skip(&format!("the API answered {status} {code} to POST /auth/stub: GEUNAL_AUTH_STUB is off"));
             None
         }
         Err(e) => panic!("sign-in failed: {e}"),
     }
+}
+
+/// Enough uniqueness for a stub subject without another dependency.
+fn run_tag() -> String {
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    format!("{nanos:x}-{:x}", std::process::id())
 }
 
 fn skip(reason: &str) {
@@ -83,12 +91,9 @@ fn three_clients_make_a_group_trade_entries_survive_a_kick_and_a_rejoin_and_agre
     let b = client("b").expect("the API signed one guest in, so it signs the others in too");
     let c = client("c").expect("the API signed one guest in, so it signs the others in too");
 
-    // Group: A creates, B and C ask to join, A adds them, B and C pick up their Welcomes.
+    // Group: A creates and adds B and C by user id; B and C pick up their Welcomes.
     let group = block_on(a.core.clone().create_group(Some("셋".into()))).unwrap();
-    let code = block_on(a.core.clone().create_invite(group.clone())).unwrap();
-    block_on(b.core.clone().join_invite(code.clone())).unwrap();
-    block_on(c.core.clone().join_invite(code.clone())).unwrap();
-    a.sync();
+    block_on(a.core.clone().add_members(group.clone(), vec![b.user().to_owned(), c.user().to_owned()])).unwrap();
     b.sync();
     c.sync();
     let mut users = vec![a.user().to_owned(), b.user().to_owned(), c.user().to_owned()];
@@ -141,9 +146,8 @@ fn three_clients_make_a_group_trade_entries_survive_a_kick_and_a_rejoin_and_agre
     c.sync();
     assert!(!c.texts(&group).iter().any(|t| t == "C 없이 한 말"));
 
-    // Rejoin: C asks again, A adds it and files the newcomer bundle, C derives the live appointment from it.
-    block_on(c.core.clone().join_invite(code)).unwrap();
-    a.sync();
+    // Rejoin: A adds C again and files the newcomer bundle; C derives the live appointment from it.
+    block_on(a.core.clone().add_members(group.clone(), vec![c.user().to_owned()])).unwrap();
     c.sync();
     assert!(c.core.groups().unwrap().into_iter().find(|g| g.group_id == group).unwrap().epoch.is_some());
     block_on(a.core.clone().vote(group.clone(), appt.clone(), Stage::Time, Some("13:00-15:00".into()))).unwrap();
@@ -162,6 +166,10 @@ fn three_clients_make_a_group_trade_entries_survive_a_kick_and_a_rejoin_and_agre
     assert!(poll.closed, "every participant voted");
     assert_eq!(poll.result.as_deref(), Some("13:00-15:00"));
     assert_eq!((view.start, view.end), (Some(13 * 60), Some(15 * 60)));
-    assert_eq!(c.texts(&group), vec!["C의 채팅"], "chat from before the kick stays, chat during it is gone");
+    assert_eq!(
+        c.texts(&group),
+        vec!["실시간으로 가나요?", "C의 채팅"],
+        "chat from before the kick stays, chat during it is gone"
+    );
     assert_eq!(a.texts(&group), vec!["실시간으로 가나요?", "C의 채팅", "C 없이 한 말"]);
 }

@@ -1,9 +1,9 @@
 //! The HTTP side of [`Transport`]: reqwest over the core's own rustls configuration, a bearer token once signed in,
-//! and protocol §11 error bodies turned into [`ApiError::Api`].
+//! and protocol §11 error bodies turned into [`ApiError::Api`]. Paths and shapes follow `server/api/openapi.yaml`.
 
 use std::sync::Mutex;
 
-use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
+use reqwest::{Client, Method, RequestBuilder, Response};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
@@ -89,25 +89,8 @@ struct Groups {
     groups: Vec<GroupSummary>,
 }
 #[derive(Deserialize)]
-struct Invite {
-    code: String,
-}
-#[derive(Deserialize)]
-struct Joined {
-    group_id: String,
-}
-#[derive(Deserialize)]
 struct Members {
     members: Vec<MemberInfo>,
-}
-#[derive(Deserialize)]
-struct Log {
-    items: Vec<LogItem>,
-}
-#[derive(Deserialize)]
-struct GroupInfo {
-    #[serde(with = "b64")]
-    group_info: Vec<u8>,
 }
 #[derive(Deserialize)]
 struct Welcomes {
@@ -118,8 +101,8 @@ struct Version {
     version: i64,
 }
 #[derive(Deserialize)]
-struct Blobs {
-    blobs: Vec<StateBlob>,
+struct States {
+    states: Vec<StateBlob>,
 }
 
 impl Transport for HttpTransport {
@@ -127,8 +110,8 @@ impl Transport for HttpTransport {
         Ok(Self::send::<Nonce>(self.request(Method::GET, "/auth/nonce")).await?.nonce)
     }
 
-    async fn sign_in_guest(&self, req: GuestSignIn) -> Result<SessionInfo, ApiError> {
-        let session: SessionInfo = Self::send(self.request(Method::POST, "/auth/guest").json(&req)).await?;
+    async fn sign_in(&self, req: StubSignIn) -> Result<SessionInfo, ApiError> {
+        let session: SessionInfo = Self::send(self.request(Method::POST, "/auth/stub").json(&req)).await?;
         self.restore_session(&session.access_token);
         Ok(session)
     }
@@ -157,18 +140,12 @@ impl Transport for HttpTransport {
         Ok(Self::send::<Groups>(self.request(Method::GET, "/me/groups")).await?.groups)
     }
 
-    async fn create_group(&self, group_id: &str, group_info: Vec<u8>) -> Result<(), ApiError> {
-        let body =
-            serde_json::json!({ "group_id": group_id, "kind": "circle", "group_info": b64::encode(&group_info) });
-        Self::send_empty(self.request(Method::POST, "/groups").json(&body)).await
+    async fn create_group(&self) -> Result<GroupSummary, ApiError> {
+        Self::send(self.request(Method::POST, "/groups")).await
     }
 
-    async fn create_invite(&self, group_id: &str) -> Result<String, ApiError> {
-        Ok(Self::send::<Invite>(self.request(Method::POST, &format!("/groups/{group_id}/invites"))).await?.code)
-    }
-
-    async fn join_invite(&self, code: &str) -> Result<String, ApiError> {
-        Ok(Self::send::<Joined>(self.request(Method::POST, &format!("/invites/{code}/join"))).await?.group_id)
+    async fn put_group_info(&self, group_id: &str, info: GroupInfo) -> Result<(), ApiError> {
+        Self::send_empty(self.request(Method::PUT, &format!("/groups/{group_id}/group-info")).json(&info)).await
     }
 
     async fn members(&self, group_id: &str) -> Result<Vec<MemberInfo>, ApiError> {
@@ -179,22 +156,21 @@ impl Transport for HttpTransport {
         Self::send_empty(self.request(Method::DELETE, &format!("/groups/{group_id}/members/{user_id}"))).await
     }
 
-    async fn post_commit(&self, group_id: &str, req: CommitRequest) -> Result<Accepted, ApiError> {
+    async fn post_commit(&self, group_id: &str, req: CommitRequest) -> Result<CommitAccepted, ApiError> {
         Self::send(self.request(Method::POST, &format!("/groups/{group_id}/commits")).json(&req)).await
     }
 
-    async fn post_message(&self, group_id: &str, req: MessageRequest) -> Result<Accepted, ApiError> {
+    async fn post_message(&self, group_id: &str, req: MessageRequest) -> Result<MessageAccepted, ApiError> {
         Self::send(self.request(Method::POST, &format!("/groups/{group_id}/messages")).json(&req)).await
     }
 
-    async fn log(&self, group_id: &str, after: i64, limit: u32) -> Result<Vec<LogItem>, ApiError> {
+    async fn log(&self, group_id: &str, after: i64, limit: u32) -> Result<LogPage, ApiError> {
         let path = format!("/groups/{group_id}/log?after={after}&limit={limit}");
-        Ok(Self::send::<Log>(self.request(Method::GET, &path)).await?.items)
+        Self::send(self.request(Method::GET, &path)).await
     }
 
-    async fn group_info(&self, group_id: &str) -> Result<Vec<u8>, ApiError> {
-        let path = format!("/groups/{group_id}/group-info");
-        Ok(Self::send::<GroupInfo>(self.request(Method::GET, &path)).await?.group_info)
+    async fn group_info(&self, group_id: &str) -> Result<GroupInfo, ApiError> {
+        Self::send(self.request(Method::GET, &format!("/groups/{group_id}/group-info"))).await
     }
 
     async fn welcomes(&self) -> Result<Vec<WelcomeItem>, ApiError> {
@@ -207,9 +183,6 @@ impl Transport for HttpTransport {
     }
 
     async fn state(&self, group_id: &str) -> Result<Vec<StateBlob>, ApiError> {
-        Ok(Self::send::<Blobs>(self.request(Method::GET, &format!("/groups/{group_id}/state"))).await?.blobs)
+        Ok(Self::send::<States>(self.request(Method::GET, &format!("/groups/{group_id}/state"))).await?.states)
     }
 }
-
-/// Keeps `StatusCode` in scope for callers matching on raw statuses.
-pub type Status = StatusCode;

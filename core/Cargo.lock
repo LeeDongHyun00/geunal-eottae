@@ -1067,6 +1067,7 @@ dependencies = [
  "geunal-domain",
  "geunal-mls",
  "geunal-store",
+ "hex",
  "reqwest",
  "rustls",
  "serde",

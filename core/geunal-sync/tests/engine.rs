@@ -11,7 +11,7 @@ use geunal_mls::{Identity, MlsClient};
 use geunal_store::Store;
 use geunal_sync::fake::{FakeClient, FakeServer};
 use geunal_sync::realtime::Event;
-use geunal_sync::{Alert, Change, Engine, Listener, Session, sign_in_guest};
+use geunal_sync::{Alert, Change, Engine, Listener, Session, sign_in};
 
 #[derive(Default)]
 struct Changes(Mutex<Vec<Change>>);
@@ -62,7 +62,7 @@ async fn device(server: &FakeServer, name: &str, n: u8) -> Device {
     let store = Store::open(&db, &key).unwrap();
     let (secret, _) = MlsClient::generate_signing_key().unwrap();
     let api = server.client();
-    let session = sign_in_guest(&api, name, "android", &secret).await.unwrap();
+    let session = sign_in(&api, name, name, "android", &secret).await.unwrap();
     let identity = Identity::new(session.user_id.clone(), session.device_id.clone());
     let mls = MlsClient::open(&db, &key, identity, &secret).unwrap();
     let changes = Arc::new(Changes::default());
@@ -78,14 +78,12 @@ fn server() -> FakeServer {
     server
 }
 
-/// A creates the group, B joins by invite, A adds B, B picks up the Welcome.
+/// A creates the group and adds B by user id; B picks up the Welcome.
 async fn pair(server: &FakeServer) -> (Device, Device, String) {
     let mut a = device(server, "a", 1).await;
     let mut b = device(server, "b", 2).await;
     let group = a.engine.create_group(Some("동네 친구")).await.unwrap();
-    let code = a.engine.create_invite(&group).await.unwrap();
-    b.engine.join_invite(&code).await.unwrap();
-    a.engine.sync().await.unwrap();
+    a.engine.add_members(&group, &[b.user().to_owned()]).await.unwrap();
     b.engine.sync().await.unwrap();
     (a, b, group)
 }
@@ -162,9 +160,7 @@ async fn re_seals_own_availability_after_every_epoch_change() {
     let blob = &server.state_blobs(&group)[0];
     assert_eq!((blob.kind.as_str(), blob.epoch), ("availability", 0));
 
-    let code = a.engine.create_invite(&group).await.unwrap();
-    b.engine.join_invite(&code).await.unwrap();
-    a.engine.sync().await.unwrap();
+    a.engine.add_members(&group, &[b.user().to_owned()]).await.unwrap();
     let blobs = server.state_blobs(&group);
     let mine = blobs.iter().find(|b| b.kind == "availability").unwrap();
     assert_eq!(mine.epoch, 1, "sealed again under the new epoch's key");
@@ -282,10 +278,7 @@ async fn three_devices_derive_the_same_state_after_a_kick_and_a_rejoin() {
     let mut b = device(&server, "b", 2).await;
     let mut c = device(&server, "c", 3).await;
     let group = a.engine.create_group(Some("셋")).await.unwrap();
-    let code = a.engine.create_invite(&group).await.unwrap();
-    b.engine.join_invite(&code).await.unwrap();
-    c.engine.join_invite(&code).await.unwrap();
-    a.engine.sync().await.unwrap();
+    a.engine.add_members(&group, &[b.user().to_owned(), c.user().to_owned()]).await.unwrap();
     b.engine.sync().await.unwrap();
     c.engine.sync().await.unwrap();
     assert_eq!(a.engine.roster(&group).unwrap().len(), 3);
@@ -360,9 +353,8 @@ async fn three_devices_derive_the_same_state_after_a_kick_and_a_rejoin() {
     c.engine.sync().await.unwrap();
     assert!(!texts(&c, &group).contains(&"C 없이 한 말".to_owned()));
 
-    // C rejoins by invite; A adds it again and files a newcomer bundle with the live appointment's entries.
-    c.engine.join_invite(&code).await.unwrap();
-    a.engine.sync().await.unwrap();
+    // A adds C again and files a newcomer bundle with the live appointment's entries.
+    a.engine.add_members(&group, &[c.user().to_owned()]).await.unwrap();
     c.engine.sync().await.unwrap();
     assert!(c.engine.epoch(&group).unwrap().is_some());
     a.engine

@@ -48,10 +48,10 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 | Rust | Swift | Kotlin | 용도 | 단계 |
 | --- | --- | --- | --- | --- |
 | `Core::open(store_dir, api_base, listener, secrets)` | `Core.open(storeDir:apiBase:listener:secrets:)` | `Core.open(storeDir, apiBase, listener, secrets)` | 저장소 열기. 데이터베이스 키를 `secrets`에서 꺼내야 파일을 열 수 있어서 `SecretStore`를 여기서 받습니다. 저장된 세션이 있으면 복원 | M0 |
-| `sign_in_guest(display_name, platform)` | `signInGuest(displayName:platform:) async throws` | `suspend fun signInGuest(displayName, platform)` | 게스트 계정과 기기 등록(M0 인증 스텁). 세션과 기기 서명 키는 `SecretStore`에 둠 | M0 |
+| `sign_in_stub(subject, display_name, platform)` | `signInStub(subject:displayName:platform:) async throws` | `suspend fun signInStub(subject, displayName, platform)` | 인증 스텁(`POST /auth/stub`, 로컬·CI만)으로 로그인과 기기 등록. 세션과 기기 서명 키는 `SecretStore`에 둠 | M0 |
 | `sync()` | `sync() async throws` | `suspend fun sync()` | 모든 그룹 따라잡기, 대기 중 쓰기 보내기 | M0 |
 | `cipher_version()` | `cipherVersion()` | `cipherVersion()` | M0 화면용 SQLCipher 버전. 화면이 없어지면 지움 | M0 |
-| `create_group(name)`, `create_invite(group_id)`, `join_invite(code)`, `remove_member(group_id, user_id)` | `createGroup(name:) async throws` 등 | `suspend fun createGroup(name)` 등 | 그룹 만들기, 초대, 참여 요청, 탈퇴·강퇴. 헤드리스 종단 시험이 쓰는 M0 표면 | M0 |
+| `create_group(name)`, `add_members(group_id, user_ids)`, `remove_member(group_id, user_id)` | `createGroup(name:) async throws` 등 | `suspend fun createGroup(name)` 등 | 그룹 만들기, 사용자 ID로 멤버 추가(초대 코드는 M2), 탈퇴·강퇴. 헤드리스 종단 시험이 쓰는 M0 표면 | M0 |
 | `send_text`, `request_date`, `respond`, `open_poll`, `vote`, `close_poll`, `cancel` | 같은 이름, `async throws` | 같은 이름, `suspend fun` | 엔트리 보내기(protocol.md 4장). M2·M3 화면이 그대로 씀 | M0 |
 | `group_state(group_id)`, `messages(group_id)`, `members(group_id)`, `groups()`, `group_availability(group_id)` | 같은 이름 | 같은 이름 | 저장된 로그에서 계산한 약속 상태, 채팅, 로스터, 그룹, 가용 시간 | M0 |
 | `connect_realtime(gateway_base)`, `next_realtime_event(timeout_ms)` | `connectRealtime(gatewayBase:) async throws` 등 | `suspend fun connectRealtime(gatewayBase)` 등 | 게이트웨이 채널에 붙고 이벤트를 받아 처리 | M0 |

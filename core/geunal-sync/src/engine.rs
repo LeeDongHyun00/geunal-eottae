@@ -93,8 +93,6 @@ pub const DEFAULT_WINDOW_DAYS: u16 = 56;
 const STATE_KEY_DAYS: i64 = 30;
 /// How many times one outbox row is retried within a single flush before the flush moves on.
 const FLUSH_RETRIES: usize = 3;
-/// A push or gateway event this far ahead of the cursor is fetched from the API instead of waited for.
-const GAP_FETCH_LIMIT: i64 = 20;
 
 pub struct Engine<T: Transport> {
     store: Store,
@@ -105,10 +103,12 @@ pub struct Engine<T: Transport> {
     clock: Box<dyn Fn() -> DateTime<Utc> + Send + Sync>,
 }
 
-/// Registers a new device as a guest (M0 auth stub): nonce → Ed25519 proof → session. Done before an engine exists,
-/// because the MLS client needs the identity the server hands back.
-pub async fn sign_in_guest<T: Transport>(
+/// Registers this device (M0 auth stub, `POST /auth/stub`): nonce → Ed25519 proof → session. `subject` stands for
+/// the identity a provider would assert. Done before an engine exists, because the MLS client needs the identity the
+/// server hands back.
+pub async fn sign_in<T: Transport>(
     api: &T,
+    subject: &str,
     display_name: &str,
     platform: &str,
     signing_secret: &[u8],
@@ -116,7 +116,8 @@ pub async fn sign_in_guest<T: Transport>(
     let nonce = api.nonce().await?;
     let signature = MlsClient::sign_with(signing_secret, nonce.as_bytes())?;
     let info = api
-        .sign_in_guest(GuestSignIn {
+        .sign_in(StubSignIn {
+            subject: subject.to_owned(),
             display_name: display_name.to_owned(),
             platform: platform.to_owned(),
             signature_key: MlsClient::public_key_of(signing_secret)?,
@@ -178,13 +179,13 @@ impl<T: Transport> Engine<T> {
 
     // ----- groups -----
 
-    /// Creates a group: the device picks the UUID, creates the MLS group under its 16 bytes and registers both with
-    /// the first GroupInfo (protocol §2).
+    /// Creates a group: the API mints the UUID, the device creates the MLS group under its 16 bytes and publishes the
+    /// epoch-0 GroupInfo (protocol §2).
     pub async fn create_group(&mut self, name: Option<&str>) -> Result<String, SyncError> {
-        let id = uuid::Uuid::new_v4();
-        let (mut group, info) = self.mls.create_group(id.as_bytes())?;
-        let group_id = id.to_string();
-        self.api.create_group(&group_id, info).await?;
+        let summary = self.api.create_group().await?;
+        let group_id = summary.id;
+        let (mut group, info) = self.mls.create_group(&mls_group_id(&group_id)?)?;
+        self.api.put_group_info(&group_id, GroupInfo { epoch: 0, group_info: info }).await?;
         self.store.upsert_group(&group_id, GroupKind::Circle, name)?;
         self.remember_state_key(&group_id, &group)?;
         group.save()?;
@@ -192,14 +193,12 @@ impl<T: Transport> Engine<T> {
         Ok(group_id)
     }
 
-    pub async fn create_invite(&self, group_id: &str) -> Result<String, SyncError> {
-        Ok(self.api.create_invite(group_id).await?)
-    }
-
-    /// Asks to join; the server lists this user as pending until an active member's device adds it and the Welcome
-    /// arrives through `sync`.
-    pub async fn join_invite(&self, code: &str) -> Result<String, SyncError> {
-        Ok(self.api.join_invite(code).await?)
+    /// Adds members by user id: their devices' key packages are claimed and checked against the server's device list
+    /// (protocol §2), and the Add commit goes out with the Welcome. At M0 members are added by id; invites come at M2.
+    pub async fn add_members(&mut self, group_id: &str, user_ids: &[String]) -> Result<(), SyncError> {
+        let intent = CommitIntent::Add { user_ids: user_ids.to_vec() };
+        self.store.enqueue(group_id, OutboxKind::Commit, &Outgoing::Commit(intent).encode(), &self.now_text())?;
+        self.flush_group(group_id).await
     }
 
     /// Removes a member (leave or kick) and, as the device that saw the change first, queues the Remove commit.
@@ -281,48 +280,48 @@ impl<T: Transport> Engine<T> {
         self.pull_welcomes().await?;
         for summary in self.api.my_groups().await? {
             let kind = if summary.kind == "dm" { GroupKind::Dm } else { GroupKind::Circle };
-            if self.store.group(&summary.group_id)?.is_some() {
-                self.store.upsert_group(&summary.group_id, kind, None)?;
+            if self.store.group(&summary.id)?.is_some() {
+                self.store.upsert_group(&summary.id, kind, None)?;
             }
         }
         let groups: Vec<String> = self.store.groups()?.into_iter().map(|g| g.id).collect();
         for group_id in &groups {
-            self.catch_up(group_id).await?;
-            if self.load_group(group_id)?.is_some() {
-                self.reconcile_members(group_id).await?;
-                self.pull_state(group_id).await?;
+            match self.sync_group(group_id).await {
+                Ok(()) => {}
+                Err(SyncError::Api(e)) if e.is(403, "not_member") => self.left_group(group_id)?,
+                Err(e) => return Err(e),
             }
         }
         self.flush_outbox().await
     }
 
+    async fn sync_group(&mut self, group_id: &str) -> Result<(), SyncError> {
+        self.catch_up(group_id).await?;
+        if self.load_group(group_id)?.is_some() {
+            self.reconcile_members(group_id).await?;
+            self.pull_state(group_id).await?;
+        }
+        Ok(())
+    }
+
     /// Reacts to a gateway or push event (protocol §7): fetch what it names, or process the item it carries.
     pub async fn handle_event(&mut self, event: Event) -> Result<(), SyncError> {
         match event {
-            Event::Entry { g, s, c: Some(ciphertext), kind } if s == self.store.cursor(&g)? + 1 => {
-                let item = LogItem {
-                    seq: s,
-                    epoch: 0,
-                    kind,
-                    author_id: String::new(),
-                    ciphertext,
-                    received_at: self.now_text(),
-                };
-                self.apply_item(&g, &item).await?;
-                self.flush_group(&g).await
-            }
+            // The event may carry the ciphertext, but not the server's received_at that every time rule needs
+            // (protocol §4), so the item is read from the log; a gap behind it comes along in the same page.
             Event::Entry { g, s, .. } => {
-                if s - self.store.cursor(&g)? > GAP_FETCH_LIMIT {
-                    // Far behind: a full catch-up, the same path the app takes when it comes to the foreground.
-                    self.catch_up(&g).await?;
-                } else {
+                if s > self.store.cursor(&g)? {
                     self.catch_up(&g).await?;
                 }
                 self.flush_group(&g).await
             }
             Event::State { g, .. } => self.pull_state(&g).await,
             Event::Membership { g } => {
-                self.reconcile_members(&g).await?;
+                match self.reconcile_members(&g).await {
+                    Ok(()) => {}
+                    Err(SyncError::Api(e)) if e.is(403, "not_member") => self.left_group(&g)?,
+                    Err(e) => return Err(e),
+                }
                 self.flush_group(&g).await
             }
             Event::Welcome {} => {
@@ -333,13 +332,25 @@ impl<T: Transport> Engine<T> {
         }
     }
 
+    /// The server no longer counts this device as a member (removed, or its account left). The Remove commit is not
+    /// readable from outside, so the MLS state is dropped here; local plaintext history stays, and a later Welcome
+    /// starts the group again (protocol §2).
+    fn left_group(&self, group_id: &str) -> Result<(), SyncError> {
+        if self.load_group(group_id)?.is_some() {
+            self.mls.forget_group(&mls_group_id(group_id)?)?;
+            self.store.drop_outbox_commits(group_id)?;
+            self.notify(Change::Group { group_id: group_id.to_owned() });
+        }
+        Ok(())
+    }
+
     fn load_group(&self, group_id: &str) -> Result<Option<MlsGroup>, SyncError> {
         Ok(self.mls.load_group(mls_group_id(group_id)?.as_slice())?)
     }
 
     async fn pull_welcomes(&mut self) -> Result<(), SyncError> {
         for welcome in self.api.welcomes().await? {
-            let mut group = match self.mls.join_welcome(&welcome.welcome) {
+            let mut group = match self.mls.join_welcome(&welcome.data) {
                 Ok(group) => group,
                 // A Welcome for a suite or group we cannot use is dropped; the server deletes it once fetched.
                 Err(_) => continue,
@@ -347,9 +358,10 @@ impl<T: Transport> Engine<T> {
             if group.group_id() != mls_group_id(&welcome.group_id)?.as_slice() {
                 continue;
             }
-            // Local history before a removal stays; the cursor restarts at the Add commit (protocol §6).
+            // Local history before a removal stays. The cursor restarts at 0: items from before the epoch this device
+            // joined in are skipped by epoch without decryption, so the catch-up costs a read of the mailbox, not keys.
             self.store.upsert_group(&welcome.group_id, GroupKind::Circle, None)?;
-            self.store.set_cursor(&welcome.group_id, welcome.seq)?;
+            self.store.set_cursor(&welcome.group_id, 0)?;
             self.remember_state_key(&welcome.group_id, &group)?;
             group.save()?;
             self.pull_state(&welcome.group_id).await?;
@@ -364,8 +376,8 @@ impl<T: Transport> Engine<T> {
         let mut rejoined = false;
         loop {
             let cursor = self.store.cursor(group_id)?;
-            let items = match self.api.log(group_id, cursor, LOG_PAGE).await {
-                Ok(items) => items,
+            let page = match self.api.log(group_id, cursor, LOG_PAGE).await {
+                Ok(page) => page,
                 // Once: a second 410 right after rejoining is a server fault, not something to loop on.
                 Err(e) if e.is(410, "cursor_expired") && !rejoined => {
                     rejoined = true;
@@ -374,11 +386,12 @@ impl<T: Transport> Engine<T> {
                 }
                 Err(e) => return Err(e.into()),
             };
-            let count = items.len();
-            for item in &items {
+            let caught_up = page.entries.len() < LOG_PAGE as usize
+                || page.entries.last().is_some_and(|last| last.seq >= page.last_seq);
+            for item in &page.entries {
                 self.apply_item(group_id, item).await?;
             }
-            if count < LOG_PAGE as usize {
+            if caught_up {
                 return Ok(());
             }
         }
@@ -395,33 +408,38 @@ impl<T: Transport> Engine<T> {
             // Removed from the group: nothing here is readable until a Welcome restarts the cursor.
             return Ok(self.store.set_cursor(group_id, item.seq)?);
         };
+        // An item from an epoch behind ours is either this device's own commit, already applied, or older than the
+        // epoch it joined in and so unreadable by design; neither touches MLS.
+        if item.epoch < group.epoch() {
+            if self.store.has_entry(group_id, item.seq)? && item.author_id == self.me.user_id {
+                self.store.set_entry_received_at(group_id, item.seq, &item.received_at)?;
+            }
+            self.store.set_cursor(group_id, item.seq)?;
+            return Ok(());
+        }
         match item.kind.as_str() {
-            "commit" => {
-                // The echo of a commit this device already applied: its epoch is behind ours.
-                if item.epoch < group.epoch() && item.epoch != 0 || self.is_own_echo(&group, item) {
+            "commit" => match group.process(&item.ciphertext) {
+                Ok(Received::Commit { epoch, removed_me: true }) => {
+                    let _ = epoch;
+                    self.mls.forget_group(group.group_id())?;
                     self.store.set_cursor(group_id, item.seq)?;
+                    self.notify(Change::Group { group_id: group_id.to_owned() });
                     return Ok(());
                 }
-                match group.process(&item.ciphertext) {
-                    Ok(Received::Commit { epoch, removed_me: true }) => {
-                        let _ = epoch;
-                        self.mls.forget_group(group.group_id())?;
-                        self.store.set_cursor(group_id, item.seq)?;
-                        self.notify(Change::Group { group_id: group_id.to_owned() });
-                        return Ok(());
-                    }
-                    Ok(Received::Commit { .. }) => {
-                        self.store.set_cursor(group_id, item.seq)?;
-                        self.after_epoch_change(group_id, &mut group).await?;
-                    }
-                    Ok(_) | Err(_) => {
-                        self.store.set_cursor(group_id, item.seq)?;
-                    }
+                Ok(Received::Commit { .. }) => {
+                    self.store.set_cursor(group_id, item.seq)?;
+                    self.after_epoch_change(group_id, &mut group).await?;
                 }
-            }
+                Ok(_) | Err(_) => {
+                    self.store.set_cursor(group_id, item.seq)?;
+                }
+            },
             _ => {
                 if self.store.has_entry(group_id, item.seq)? {
-                    // Our own message, stored when the server accepted it.
+                    // Our own message, stored when the server accepted it; the server's clock replaces the local one.
+                    if item.author_id == self.me.user_id {
+                        self.store.set_entry_received_at(group_id, item.seq, &item.received_at)?;
+                    }
                     self.store.set_cursor(group_id, item.seq)?;
                     return Ok(());
                 }
@@ -432,12 +450,6 @@ impl<T: Transport> Engine<T> {
             }
         }
         Ok(())
-    }
-
-    /// A commit echo is ours when the pending epoch moved past the item's epoch; a gateway item without an epoch
-    /// (0) is checked by trying to process it instead.
-    fn is_own_echo(&self, group: &MlsGroup, item: &LogItem) -> bool {
-        item.epoch != 0 && item.epoch + 1 == group.epoch() && item.author_id == self.me.user_id
     }
 
     fn store_entry(
@@ -568,20 +580,33 @@ impl<T: Transport> Engine<T> {
     }
 
     /// Entries of live appointments from before this device joined, taken on trust from the member who added it
-    /// (protocol §5). They take negative seqs in bundle order; ones already in the log are skipped.
+    /// (protocol §5). An item that names its seq lands at that seq, so it sorts exactly as the server ordered it and a
+    /// copy this device already has is a no-op; one without a seq (an older bundle) takes a negative seq in bundle
+    /// order, ahead of the log, unless a matching entry exists.
     fn absorb_bundle(&self, group_id: &str, bundle: &[u8]) -> Result<(), SyncError> {
         let items: Vec<BundleItem> =
             ciborium::from_reader(bundle).map_err(|e| SyncError::Malformed(format!("newcomer bundle: {e}")))?;
         let existing = self.store.entries(group_id)?;
-        let fresh: Vec<&BundleItem> = items
-            .iter()
+        let same_instant = |a: &str, b: &str| {
+            a == b
+                || matches!(
+                    (DateTime::parse_from_rfc3339(a), DateTime::parse_from_rfc3339(b)),
+                    (Ok(x), Ok(y)) if x == y
+                )
+        };
+        let (placed, unplaced): (Vec<&BundleItem>, Vec<&BundleItem>) = items.iter().partition(|i| i.seq.is_some());
+        for item in placed {
+            let seq = item.seq.expect("partitioned");
+            self.store_entry(group_id, seq, &item.author_id, &item.entry, &item.received_at)?;
+        }
+        let fresh: Vec<&BundleItem> = unplaced
+            .into_iter()
             .filter(|i| {
-                !existing
-                    .iter()
-                    .any(|e| e.author_id == i.author_id && e.received_at == i.received_at && e.body == i.entry)
+                !existing.iter().any(|e| {
+                    e.author_id == i.author_id && e.body == i.entry && same_instant(&e.received_at, &i.received_at)
+                })
             })
             .collect();
-        // Bundle order must survive `ORDER BY seq`, so the first fresh item gets the lowest number.
         let first = self.store.lowest_entry_seq(group_id)? - fresh.len() as i64;
         for (seq, item) in (first..).zip(fresh) {
             self.store_entry(group_id, seq, &item.author_id, &item.entry, &item.received_at)?;
@@ -603,7 +628,12 @@ impl<T: Transport> Engine<T> {
                     .and_then(|e| appointment_of(&e).map(|a| live.contains(a)))
                     .unwrap_or(false)
             })
-            .map(|row| BundleItem { author_id: row.author_id, received_at: row.received_at, entry: row.body })
+            .map(|row| BundleItem {
+                seq: (row.seq > 0).then_some(row.seq),
+                author_id: row.author_id,
+                received_at: row.received_at,
+                entry: row.body,
+            })
             .collect();
         let mut plaintext = Vec::new();
         ciborium::into_writer(&items, &mut plaintext).expect("in-memory write");
@@ -663,16 +693,18 @@ impl<T: Transport> Engine<T> {
     /// history stays (protocol §6).
     async fn rejoin(&mut self, group_id: &str) -> Result<(), SyncError> {
         let previous = self.load_group(group_id)?.map(|g| g.my_index());
+        // The old state is dropped first (protocol §6): mls-rs keeps prior epochs contiguous per group, and a state
+        // that fell behind cannot be continued by an external commit several epochs later.
+        self.mls.forget_group(&mls_group_id(group_id)?)?;
         for _ in 0..FLUSH_RETRIES {
             let info = self.api.group_info(group_id).await?;
-            let (mut group, commit) = self.mls.external_join(&info, previous)?;
+            let (mut group, commit) = self.mls.external_join(&info.group_info, previous)?;
             let req = CommitRequest {
                 epoch: group.epoch() - 1,
                 commit,
                 group_info: group.group_info()?,
                 welcome: None,
-                added_user_ids: Vec::new(),
-                external: true,
+                added: Vec::new(),
             };
             match self.api.post_commit(group_id, req).await {
                 Ok(accepted) => {
@@ -732,14 +764,15 @@ impl<T: Transport> Engine<T> {
         };
         match Outgoing::decode(payload)? {
             Outgoing::App { entry: bytes, alert, cat } => {
-                let ciphertext = group.encrypt(&bytes)?;
-                let req = MessageRequest { epoch: group.epoch(), ciphertext, alert, cat };
+                let message = group.encrypt(&bytes)?;
+                let req = MessageRequest { epoch: group.epoch(), message, alert, cat };
                 match self.api.post_message(group_id, req).await {
                     Ok(accepted) => {
-                        self.store_entry(group_id, accepted.seq, &self.me.user_id, &bytes, &accepted.received_at)?;
-                        if self.store.cursor(group_id)? + 1 == accepted.seq {
-                            self.store.set_cursor(group_id, accepted.seq)?;
-                        }
+                        // Stored under the local clock for now; the log echo brings the server's received_at.
+                        // The cursor stays behind so the next catch-up reads the echo and replaces the provisional
+                        // time with the server's received_at.
+                        let provisional = self.now_text();
+                        self.store_entry(group_id, accepted.seq, &self.me.user_id, &bytes, &provisional)?;
                         Ok(SendOutcome::Sent)
                     }
                     Err(e) if e.is(409, "stale_epoch") => {
@@ -782,9 +815,9 @@ impl<T: Transport> Engine<T> {
                     // Protocol §2: the key package must belong to a device the server lists for this user.
                     let devices = self.api.devices(user_id).await?;
                     for device in devices {
-                        let package = self.api.claim_key_package(&device.device_id).await?;
+                        let package = self.api.claim_key_package(&device.id).await?;
                         let info = MlsClient::inspect_key_package(&package)?;
-                        if info.identity != Identity::new(user_id.clone(), device.device_id.clone())
+                        if info.identity != Identity::new(user_id.clone(), device.id.clone())
                             || info.signature_key != device.signature_key
                         {
                             return Err(SyncError::Malformed(format!(
@@ -792,8 +825,9 @@ impl<T: Transport> Engine<T> {
                             )));
                         }
                         packages.push(package);
+                        // The server wants device ids here, and it marks their users active (openapi.yaml).
+                        added.push(device.id.clone());
                     }
-                    added.push(user_id.clone());
                 }
                 if packages.is_empty() {
                     return Ok(SendOutcome::Dropped);
@@ -815,8 +849,7 @@ impl<T: Transport> Engine<T> {
             commit: bundle.commit,
             group_info: bundle.group_info,
             welcome: bundle.welcome,
-            added_user_ids: added.clone(),
-            external: false,
+            added: added.clone(),
         };
         match self.api.post_commit(group_id, req).await {
             Ok(accepted) => {
@@ -869,6 +902,9 @@ fn is_transient(e: &ApiError) -> bool {
 /// One entry in a newcomer bundle: `(author_id, received_at, Entry)` (protocol §5), with the entry as its envelope.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct BundleItem {
+    /// The server seq when the sender had it, so the receiver files the entry where the log order puts it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    seq: Option<i64>,
     author_id: String,
     received_at: String,
     #[serde(with = "geunal_domain::entry::cbor_bytes")]

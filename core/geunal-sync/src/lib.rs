@@ -13,7 +13,7 @@ pub mod realtime;
 pub mod tls;
 
 pub use api::{ApiError, Transport};
-pub use engine::{Alert, Change, CommitIntent, Engine, Listener, Session, sign_in_guest};
+pub use engine::{Alert, Change, CommitIntent, Engine, Listener, Session, sign_in};
 pub use http::HttpTransport;
 
 #[derive(Debug, thiserror::Error)]

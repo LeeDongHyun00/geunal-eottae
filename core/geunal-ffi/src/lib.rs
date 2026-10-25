@@ -292,13 +292,19 @@ impl Core {
         saved_session(self.secrets.as_ref()).map(|s| Session { user_id: s.user_id, device_id: s.device_id })
     }
 
-    /// Registers this device as a guest account (M0 auth stub, api-server.md §4): the device key is made and kept in
-    /// the secret store, the session too, and the first key packages go up.
-    pub async fn sign_in_guest(self: Arc<Self>, display_name: String, platform: String) -> Result<Session, CoreError> {
+    /// Signs in through the M0 auth stub (`POST /auth/stub`, only on local and CI servers): `subject` stands for the
+    /// identity Kakao or Apple would assert. The device key is made and kept in the secret store, the session too, and
+    /// the first key packages go up.
+    pub async fn sign_in_stub(
+        self: Arc<Self>,
+        subject: String,
+        display_name: String,
+        platform: String,
+    ) -> Result<Session, CoreError> {
         let this = self.clone();
         self.run(async move {
             let secret = signing_secret(this.secrets.as_ref())?;
-            let session = geunal_sync::sign_in_guest(&this.api, &display_name, &platform, &secret).await?;
+            let session = geunal_sync::sign_in(&this.api, &subject, &display_name, &platform, &secret).await?;
             let json = serde_json::to_vec(&session).map_err(|e| CoreError::Sync { reason: e.to_string() })?;
             this.secrets.put(SESSION.to_owned(), json);
             let engine = build_engine(
@@ -330,19 +336,13 @@ impl Core {
         .await
     }
 
-    pub async fn create_invite(self: Arc<Self>, group_id: String) -> Result<String, CoreError> {
+    /// Adds members by user id (M0; invites come at M2). Their devices get a Welcome and join on their next `sync`.
+    pub async fn add_members(self: Arc<Self>, group_id: String, user_ids: Vec<String>) -> Result<(), CoreError> {
         let this = self.clone();
-        self.run(
-            async move { this.engine(Box::new(|e| Box::pin(async move { e.create_invite(&group_id).await }))).await },
-        )
+        self.run(async move {
+            this.engine(Box::new(|e| Box::pin(async move { e.add_members(&group_id, &user_ids).await }))).await
+        })
         .await
-    }
-
-    /// Asks to join; membership arrives through `sync` once a member's device adds this one.
-    pub async fn join_invite(self: Arc<Self>, code: String) -> Result<String, CoreError> {
-        let this = self.clone();
-        self.run(async move { this.engine(Box::new(|e| Box::pin(async move { e.join_invite(&code).await }))).await })
-            .await
     }
 
     pub async fn remove_member(self: Arc<Self>, group_id: String, user_id: String) -> Result<(), CoreError> {
