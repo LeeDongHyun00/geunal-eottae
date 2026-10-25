@@ -5,7 +5,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 .PHONY: help setup lint test lint-repo lint-core test-core build-android build-ios lint-api test-api image-api scan-api \
-	lint-gateway test-gateway image-gateway scan-gateway
+	lint-gateway test-gateway image-gateway scan-gateway up down e2e
 
 help: ## List the targets
 	@grep -hE '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{ printf "  %-14s %s\n", $$1, $$2 }'
@@ -74,3 +74,12 @@ scan-gateway: image-gateway ## Gateway: Trivy on the image and mix.lock; fails o
 	trivy="$$(scripts/tool.sh trivy)"; \
 	"$$trivy" image --quiet --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed geunal/gateway:local; \
 	"$$trivy" fs --quiet --scanners vuln --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed server/gateway/mix.lock
+
+up: image-api image-gateway ## Local stack in Docker: PostgreSQL, Redis, S3, API, gateway (infra/docker-compose.yml)
+	docker compose -f infra/docker-compose.yml up --detach --wait --wait-timeout 180
+
+down: ## Stop the local stack and drop its data
+	docker compose -f infra/docker-compose.yml down --volumes
+
+e2e: up ## Headless end-to-end tests against the local stack, which stays up afterwards (make down)
+	cd core && cargo test --locked -p geunal-e2e

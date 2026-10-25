@@ -7,9 +7,11 @@ members = [
   "geunal-mls",
   "geunal-sync",
   "geunal-ffi",
+  "geunal-e2e",
   "uniffi-bindgen",
 ]
-# Plain `cargo test` covers the product crates; tool crates build only when a script needs them.
+# Plain `cargo test` covers the product crates. Tool crates build only when a script needs them, and the end-to-end
+# tests only under `make e2e`, which starts the stack they talk to.
 default-members = ["geunal-crypto", "geunal-domain", "geunal-store", "geunal-mls", "geunal-sync", "geunal-ffi"]
 
 [workspace.package]
@@ -28,6 +30,7 @@ geunal-domain = { path = "geunal-domain" }
 geunal-store = { path = "geunal-store" }
 geunal-mls = { path = "geunal-mls" }
 geunal-sync = { path = "geunal-sync" }
+geunal-ffi = { path = "geunal-ffi" }
 
 argon2 = "0.5"
 chacha20poly1305 = "0.10"

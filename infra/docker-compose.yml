@@ -1,0 +1,64 @@
+# infra/docker-compose.yml — everything the apps and the core's end-to-end test need on one machine.
+# `make up` builds the api and gateway images and starts this file; `make down` stops it and drops its data. Ports are
+# published on loopback only, because the credentials here are fixed.
+name: geunal
+
+services:
+  postgres:
+    image: postgres:16.15
+    environment:
+      POSTGRES_DB: geunal
+      POSTGRES_USER: geunal
+      POSTGRES_PASSWORD: geunal-local
+    ports: ["127.0.0.1:5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geunal -d geunal"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7.4.11
+    ports: ["127.0.0.1:6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  # MinIO stopped publishing community images in 2025; SeaweedFS serves the S3 API locally.
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    command: server -s3 -dir=/data
+    ports: ["127.0.0.1:8333:8333"]
+
+  # These two images come from make image-api and make image-gateway rather than a compose build: the API image
+  # packages a boot jar built outside it, and cloud sessions need scripts/docker-build.sh to reach package archives.
+  api:
+    image: geunal/api:local
+    pull_policy: never
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/geunal
+      SPRING_DATASOURCE_USERNAME: geunal
+      SPRING_DATASOURCE_PASSWORD: geunal-local
+      SPRING_DATA_REDIS_HOST: redis
+      GEUNAL_S3_ENDPOINT: http://s3:8333
+      GEUNAL_AUTH_STUB: "true" # M0: sign in without Kakao or Apple
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      s3: { condition: service_started }
+
+  gateway:
+    image: geunal/gateway:local
+    pull_policy: never
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      JWKS_URL: http://api:8080/.well-known/jwks.json
+      REDIS_URL: redis://redis:6379
+    ports: ["127.0.0.1:4000:4000"]
+    depends_on:
+      api: { condition: service_started }
+      redis: { condition: service_healthy }
