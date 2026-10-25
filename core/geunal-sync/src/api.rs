@@ -116,12 +116,20 @@ pub struct CommitRequest {
 pub struct CommitAccepted {
     pub seq: i64,
     pub epoch: u64,
+    /// The server time stored with the entry. Optional on the wire so a server from before the field existed still
+    /// parses; the log echo carries the same value either way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub received_at: Option<String>,
 }
 
-/// `201` from a message. The server's `received_at` for it arrives with the log echo.
+/// `201` from a message.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MessageAccepted {
     pub seq: i64,
+    /// The server time stored with the entry (protocol §4): the sender keeps its own entry under this clock. Optional
+    /// for the same reason as in [`CommitAccepted`]; without it the log echo supplies the time later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub received_at: Option<String>,
 }
 
 /// Who the server should notify (protocol §8).
@@ -185,6 +193,10 @@ pub struct GroupInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WelcomeItem {
     pub group_id: String,
+    /// The seq of the Add commit that brought this device in: the Welcome stands for that commit, so the log is read
+    /// from the item after it. Absent from a server before the field existed, when the read starts at 0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq: Option<i64>,
     #[serde(with = "b64")]
     pub data: Vec<u8>,
 }
@@ -381,5 +393,18 @@ mod tests {
         )
         .unwrap();
         assert_eq!(tokens.expires_in, 900);
+    }
+
+    #[test]
+    fn reads_the_server_time_and_welcome_seq_when_present_and_copes_without_them() {
+        let accepted: MessageAccepted =
+            serde_json::from_str(r#"{"seq":7,"received_at":"2026-11-01T00:00:00.123456Z"}"#).unwrap();
+        assert_eq!(accepted.received_at.as_deref(), Some("2026-11-01T00:00:00.123456Z"));
+        let accepted: CommitAccepted = serde_json::from_str(r#"{"seq":2,"epoch":1}"#).unwrap();
+        assert_eq!(accepted.received_at, None);
+        let welcome: WelcomeItem = serde_json::from_str(r#"{"group_id":"g","seq":2,"data":"AQ=="}"#).unwrap();
+        assert_eq!(welcome.seq, Some(2));
+        let welcome: WelcomeItem = serde_json::from_str(r#"{"group_id":"g","data":"AQ=="}"#).unwrap();
+        assert_eq!(welcome.seq, None);
     }
 }

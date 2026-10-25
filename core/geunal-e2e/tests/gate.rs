@@ -109,6 +109,11 @@ fn three_clients_make_a_group_trade_entries_survive_a_kick_and_a_rejoin_and_agre
     let event = b.wait_for_event(Duration::from_secs(10), |e| matches!(e, RealtimeEvent::Entry { .. }));
     assert!(matches!(&event, Some(RealtimeEvent::Entry { group_id, .. }) if *group_id == group), "{event:?}");
     assert_eq!(b.texts(&group), vec!["실시간으로 가나요?"]);
+    // Both keep the entry under the server's clock: B from the event's `at` (or the log), A from the 201 (or, with an
+    // API from before the 201 carried received_at, from the echo this sync reads).
+    a.sync();
+    let received_at = |c: &Client| c.core.messages(group.clone()).unwrap().pop().unwrap().received_at;
+    assert_eq!(received_at(&a), received_at(&b), "sender and receiver agree on received_at");
 
     // Entries: a request, two accepts, a time poll, two votes, a chat line.
     let appt = block_on(a.core.clone().request_date(

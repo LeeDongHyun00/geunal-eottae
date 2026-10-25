@@ -307,11 +307,19 @@ impl<T: Transport> Engine<T> {
     /// Reacts to a gateway or push event (protocol §7): fetch what it names, or process the item it carries.
     pub async fn handle_event(&mut self, event: Event) -> Result<(), SyncError> {
         match event {
-            // The event may carry the ciphertext, but not the server's received_at that every time rule needs
-            // (protocol §4), so the item is read from the log; a gap behind it comes along in the same page.
-            Event::Entry { g, s, .. } => {
-                if s > self.store.cursor(&g)? {
-                    self.catch_up(&g).await?;
+            // The next item, with its ciphertext and the server's received_at, is applied in place; anything else
+            // (a gap, a large item, an event without `at`) is read from the log, which brings the gap along.
+            Event::Entry { g, s, kind, at, c } => {
+                let cursor = self.store.cursor(&g)?;
+                if s > cursor {
+                    let inline = match (at, c) {
+                        (Some(at), Some(c)) if s == cursor + 1 => self.pushed_item(&g, s, &kind, c, at),
+                        _ => None,
+                    };
+                    match inline {
+                        Some(item) => self.apply_item(&g, &item).await?,
+                        None => self.catch_up(&g).await?,
+                    }
                 }
                 self.flush_group(&g).await
             }
@@ -330,6 +338,32 @@ impl<T: Transport> Engine<T> {
             }
             Event::Revoke {} | Event::Joined | Event::Closed(_) => Ok(()),
         }
+    }
+
+    /// The log item a pushed `entry` event stands for, when the event carries enough to apply it without a round trip
+    /// (protocol §7). The epoch comes from the MLS header, as the server reads it; a ciphertext that does not name
+    /// this group is left to the log, where the server vouches for it. The event names no author: the sender comes out
+    /// of MLS, and an entry already stored at this seq (our own, or one the extension decrypted) is left as it is.
+    fn pushed_item(
+        &self,
+        group_id: &str,
+        seq: i64,
+        kind: &str,
+        ciphertext: Vec<u8>,
+        received_at: String,
+    ) -> Option<LogItem> {
+        let header = geunal_mls::header::parse(&ciphertext).ok()?;
+        if header.group_id != mls_group_id(group_id).ok()?.as_slice() {
+            return None;
+        }
+        Some(LogItem {
+            seq,
+            epoch: header.epoch,
+            kind: kind.to_owned(),
+            author_id: String::new(),
+            ciphertext,
+            received_at,
+        })
     }
 
     /// The server no longer counts this device as a member (removed, or its account left). The Remove commit is not
@@ -358,10 +392,12 @@ impl<T: Transport> Engine<T> {
             if group.group_id() != mls_group_id(&welcome.group_id)?.as_slice() {
                 continue;
             }
-            // Local history before a removal stays. The cursor restarts at 0: items from before the epoch this device
-            // joined in are skipped by epoch without decryption, so the catch-up costs a read of the mailbox, not keys.
+            // Local history before a removal stays. The Welcome stands for the Add commit at `seq`, so the log is
+            // read from the item after it; items before it belong to epochs this device was not in and are unreadable
+            // by design. A server that names no seq restarts the read at 0, and those items are skipped by epoch
+            // without decryption: a read of the mailbox, not of keys.
             self.store.upsert_group(&welcome.group_id, GroupKind::Circle, None)?;
-            self.store.set_cursor(&welcome.group_id, 0)?;
+            self.store.set_cursor(&welcome.group_id, welcome.seq.unwrap_or(0))?;
             self.remember_state_key(&welcome.group_id, &group)?;
             group.save()?;
             self.pull_state(&welcome.group_id).await?;
@@ -767,14 +803,24 @@ impl<T: Transport> Engine<T> {
                 let message = group.encrypt(&bytes)?;
                 let req = MessageRequest { epoch: group.epoch(), message, alert, cat };
                 match self.api.post_message(group_id, req).await {
-                    Ok(accepted) => {
-                        // Stored under the local clock for now; the log echo brings the server's received_at.
-                        // The cursor stays behind so the next catch-up reads the echo and replaces the provisional
-                        // time with the server's received_at.
-                        let provisional = self.now_text();
-                        self.store_entry(group_id, accepted.seq, &self.me.user_id, &bytes, &provisional)?;
-                        Ok(SendOutcome::Sent)
-                    }
+                    Ok(accepted) => match accepted.received_at {
+                        // Stored under the server's clock (protocol §4). The cursor moves past our own item when it
+                        // is the next one, so the next pushed seq can be applied in place.
+                        Some(received_at) => {
+                            self.store_entry(group_id, accepted.seq, &self.me.user_id, &bytes, &received_at)?;
+                            if self.store.cursor(group_id)? + 1 == accepted.seq {
+                                self.store.set_cursor(group_id, accepted.seq)?;
+                            }
+                            Ok(SendOutcome::Sent)
+                        }
+                        // A server from before the 201 carried received_at: stored under the local clock for now,
+                        // and the cursor stays behind so the next catch-up reads the echo and replaces the time.
+                        None => {
+                            let provisional = self.now_text();
+                            self.store_entry(group_id, accepted.seq, &self.me.user_id, &bytes, &provisional)?;
+                            Ok(SendOutcome::Sent)
+                        }
+                    },
                     Err(e) if e.is(409, "stale_epoch") => {
                         // Process the commit that moved the epoch, then encrypt again (protocol §11).
                         self.catch_up(group_id).await?;

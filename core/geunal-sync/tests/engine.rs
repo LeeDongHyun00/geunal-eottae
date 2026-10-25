@@ -116,6 +116,8 @@ async fn adds_a_device_with_a_welcome_and_rejects_a_commit_for_an_epoch_the_serv
     expected.sort();
     assert_eq!(roster, expected);
     assert!(b.changes().contains(&Change::Group { group_id: group.clone() }));
+    // The Welcome names the Add commit's seq, and B reads the log from the item after it instead of from 0.
+    assert_eq!(b.engine.store().cursor(&group).unwrap(), server.log_len(&group) as i64);
 
     // Both queue a self-update on epoch 1. A's goes first; B's is built on an epoch the server has passed, gets 409,
     // and is rebuilt on epoch 2.
@@ -238,13 +240,24 @@ async fn fetches_the_gap_when_a_pushed_seq_skips_ahead() {
     b.engine.handle_event(last).await.unwrap();
     assert_eq!(texts(&b, &group), vec!["메시지 1", "메시지 2", "메시지 3"]);
 
-    // The next event is contiguous and carries the ciphertext: processed without a fetch.
+    // The next event is contiguous and carries the ciphertext and the server time: applied without a fetch, and
+    // stored under the same received_at the log would give.
     a.engine.send(&group, &text("t4", "메시지 4"), Alert::All, Some("chat")).await.unwrap();
     let next = b.events(&server).into_iter().find(|e| matches!(e, Event::Entry { .. })).unwrap();
-    assert!(matches!(&next, Event::Entry { c: Some(_), .. }));
+    let Event::Entry { at: Some(at), c: Some(_), .. } = &next else { panic!("{next:?}") };
+    let at = at.clone();
+    let reads = server.log_reads();
     b.engine.handle_event(next).await.unwrap();
+    assert_eq!(server.log_reads(), reads, "the pushed item was applied in place");
     assert_eq!(texts(&b, &group).len(), 4);
+    let stored = b.engine.log(&group).unwrap().pop().unwrap();
+    assert_eq!(stored.received_at, chrono::DateTime::parse_from_rfc3339(&at).unwrap());
     assert!(b.changes().contains(&Change::Chat { group_id: group.clone() }));
+
+    // The sender kept its own entry under the server's clock from the 201, so both sides agree without a log echo.
+    let sent = a.engine.log(&group).unwrap().pop().unwrap();
+    assert_eq!(sent.received_at, stored.received_at);
+    assert_eq!(a.engine.store().cursor(&group).unwrap(), sent.seq, "the cursor moved past the sender's own item");
 }
 
 #[tokio::test]
