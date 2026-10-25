@@ -393,11 +393,16 @@ paths:
 
   /holidays:
     get:
-      summary: "M1: Public holidays between two dates, at most two years apart (protocol §14)"
+      summary: "M1: Public holidays of whole years, at most two at a time (protocol §14)"
+      description: |
+        Requests are by whole years because a device replaces each year it receives, and replacing a year from part of
+        it would drop the rest. `years` lists the requested years whose holidays the server knows completely, and
+        `holidays` holds every holiday of those years and nothing else. A requested year missing from `years` (next
+        year before it is announced) stays as the device has it.
       security: []
       parameters:
-        - { name: from, in: query, required: true, schema: { type: string, format: date } }
-        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: from_year, in: query, required: true, schema: { type: integer, minimum: 2000 } }
+        - { name: to_year, in: query, required: true, schema: { type: integer }, description: "from_year or from_year + 1" }
       responses:
         "200":
           description: carries Cache-Control and ETag
@@ -407,7 +412,7 @@ paths:
                 type: object
                 required: [years, holidays]
                 properties:
-                  years: { type: array, items: { type: integer }, description: years in the range the server knows completely; a device replaces those years }
+                  years: { type: array, items: { type: integer }, description: the requested years whose holidays the server knows completely }
                   holidays:
                     type: array
                     items:
@@ -418,7 +423,7 @@ paths:
                         name: { type: string }
                         substitute: { type: boolean, description: 대체공휴일 }
         "304": { description: not modified (If-None-Match) }
-        "400": { description: "invalid_request (bad dates, to before from, more than two years)" }
+        "400": { description: "invalid_request (to_year before from_year, or more than two years)" }
 
   /me/push-token:
     put:

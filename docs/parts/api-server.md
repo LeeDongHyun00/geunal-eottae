@@ -422,7 +422,7 @@ CREATE TABLE holidays (
 | POST | `/reports` | 신고(운영자 검토 키로 봉인한 증거) |
 | POST | `/groups/{id}/funnel` | 퍼널 마커 |
 | POST | `/me/alpha-stats` | 알파 빌드 전용. 동의한 테스터 기기가 하루 한 번 숫자(전체 일정 수, 추천으로 만든 일정 수)만 보냄. 공개 빌드에서는 404 |
-| GET | `/holidays?from&to` | 공휴일 |
+| GET | `/holidays?from_year&to_year` | 공휴일(해 단위, 한 번에 두 해까지, 로그인 없이) |
 
 ## 8. 정기 작업
 
