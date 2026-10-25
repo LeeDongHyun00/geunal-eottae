@@ -1,0 +1,6 @@
+# The image builds from the sources and the lock file; local build output and fetched deps stay out.
+*
+!mix.exs
+!mix.lock
+!config
+!lib

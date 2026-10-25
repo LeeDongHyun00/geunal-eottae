@@ -1,0 +1,44 @@
+# Realtime gateway: formatting, compiler warnings, credo and the tests against a Redis service, then the release image
+# and the Trivy scans. Called from ci.yml.
+name: gateway
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      # The image infra/docker-compose.yml runs.
+      redis:
+        image: redis:7.4.11
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The same builds.hex.pm releases that make setup installs, at the versions in .tool-versions.
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            server/gateway/deps
+            server/gateway/_build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions', 'server/gateway/mix.lock') }}
+      - run: make lint-gateway test-gateway
+        env:
+          REDIS_URL: redis://localhost:6379
+      - run: make scan-gateway

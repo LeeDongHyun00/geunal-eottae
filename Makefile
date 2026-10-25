@@ -4,7 +4,8 @@ SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := help
 
-.PHONY: help setup lint test lint-repo lint-core test-core build-android build-ios lint-api test-api image-api scan-api
+.PHONY: help setup lint test lint-repo lint-core test-core build-android build-ios lint-api test-api image-api scan-api \
+	lint-gateway test-gateway image-gateway scan-gateway
 
 help: ## List the targets
 	@grep -hE '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{ printf "  %-14s %s\n", $$1, $$2 }'
@@ -12,9 +13,9 @@ help: ## List the targets
 setup: ## Install the toolchain (safe to rerun)
 	./scripts/dev-setup.sh
 
-lint: lint-repo lint-core lint-api ## Run every linter
+lint: lint-repo lint-core lint-api lint-gateway ## Run every linter
 
-test: test-core test-api ## Run every part's tests
+test: test-core test-api test-gateway ## Run every part's tests
 
 lint-repo: ## Lint workflows (actionlint) and every tracked shell script (shellcheck)
 	shellcheck="$$(scripts/tool.sh shellcheck)"; \
@@ -49,3 +50,27 @@ image-api: ## API: boot jar and the container image geunal/api:local
 
 scan-api: image-api ## API: Trivy on the image; fails on HIGH or CRITICAL findings that have a fix
 	"$$(scripts/tool.sh trivy)" image --quiet --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed geunal/api:local
+
+lint-gateway: ## Gateway: locked deps, format, compiler warnings, credo, and the image's Elixir and OTP
+	cd server/gateway && mix deps.get --check-locked && mix deps.unlock --check-unused
+	cd server/gateway && mix format --check-formatted
+	cd server/gateway && mix compile --warnings-as-errors
+	cd server/gateway && mix credo --strict
+	elixir="$$(awk '$$1 == "elixir" { sub(/-otp-.*/, "", $$2); print $$2 }' .tool-versions)"; \
+	otp="$$(awk '$$1 == "erlang" { print $$2 }' .tool-versions)"; \
+	grep -q "^FROM hexpm/elixir:$$elixir-erlang-$$otp-" server/gateway/Dockerfile || \
+	  { echo "server/gateway/Dockerfile must build with Elixir $$elixir and OTP $$otp (.tool-versions)" >&2; exit 1; }
+
+test-gateway: ## Gateway: tests against Redis; a throwaway container unless REDIS_URL is set
+	cd server/gateway && mix deps.get --check-locked
+	cd server/gateway && scripts/with-redis.sh mix test
+
+image-gateway: ## Gateway: the release image geunal/gateway:local
+	scripts/ensure-docker.sh
+	scripts/docker-build.sh -t geunal/gateway:local server/gateway
+
+# Trivy finds no Hex packages inside a release, so mix.lock is scanned on its own.
+scan-gateway: image-gateway ## Gateway: Trivy on the image and mix.lock; fails on HIGH or CRITICAL findings that have a fix
+	trivy="$$(scripts/tool.sh trivy)"; \
+	"$$trivy" image --quiet --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed geunal/gateway:local; \
+	"$$trivy" fs --quiet --scanners vuln --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed server/gateway/mix.lock

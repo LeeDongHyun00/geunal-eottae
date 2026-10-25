@@ -59,3 +59,28 @@ updates:
     commit-message:
       prefix: build
       include: scope
+
+  - package-ecosystem: mix
+    directory: /server/gateway
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      mix:
+        patterns: ["*"]
+    commit-message:
+      prefix: build
+      include: scope
+
+  # The builder's Elixir and OTP follow .tool-versions (make lint-gateway checks), so they move by hand with it.
+  - package-ecosystem: docker
+    directory: /server/gateway
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: hexpm/elixir
+    commit-message:
+      prefix: build
+      include: scope
