@@ -71,11 +71,15 @@ jobs:
     needs: changes
     if: needs.changes.outputs.ios == 'true'
     uses: ./.github/workflows/ios.yml
+  android:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    uses: ./.github/workflows/android.yml
 
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [changes, lint, core, api, gateway, e2e, ios]
+    needs: [changes, lint, core, api, gateway, e2e, android, ios]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

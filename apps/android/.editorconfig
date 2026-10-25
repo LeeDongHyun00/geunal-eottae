@@ -1,0 +1,9 @@
+# ktlint settings for the Android project; the repository's .editorconfig sets indentation.
+[*.{kt,kts}]
+ktlint_code_style = ktlint_official
+# Composable functions are capitalized by convention.
+ktlint_function_naming_ignore_when_annotated_with = Composable
+
+[*.kts]
+# `libs.versions.x.get().toInt()` is four chained calls; splitting it over four lines hides the one value it reads.
+ktlint_chain_method_rule_force_multiline_when_chain_operator_count_greater_or_equal_than = 5

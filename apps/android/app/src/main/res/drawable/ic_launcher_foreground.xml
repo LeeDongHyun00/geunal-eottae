@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- docs/design/icon/android-foreground.svg: a white calendar card with the five grape tints of the free-count strip,
+     scaled to 80% so it stays inside the 66dp safe zone of the 108dp canvas. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <group
+        android:scaleX="0.8"
+        android:scaleY="0.8"
+        android:pivotX="512"
+        android:pivotY="512">
+        <!-- Card -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M332,272 H692 A120,120 0 0 1 812,392 V672 A120,120 0 0 1 692,792 H332 A120,120 0 0 1 212,672 V392 A120,120 0 0 1 332,272 Z" />
+        <!-- Header band -->
+        <path
+            android:fillColor="#E4DEF9"
+            android:pathData="M332,272 H692 A120,120 0 0 1 812,392 V412 H212 V392 A120,120 0 0 1 332,272 Z" />
+        <!-- Rings -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M388,216 A20,20 0 0 1 408,236 V308 A20,20 0 0 1 388,328 A20,20 0 0 1 368,308 V236 A20,20 0 0 1 388,216 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M636,216 A20,20 0 0 1 656,236 V308 A20,20 0 0 1 636,328 A20,20 0 0 1 616,308 V236 A20,20 0 0 1 636,216 Z" />
+        <!-- Strip: five tints inside a rounded clip -->
+        <group>
+            <clip-path android:pathData="M326,494 H698 A44,44 0 0 1 742,538 V650 A44,44 0 0 1 698,694 H326 A44,44 0 0 1 282,650 V538 A44,44 0 0 1 326,494 Z" />
+            <path android:fillColor="#D9D4F8" android:pathData="M282,494 H374.5 V694 H282 Z" />
+            <path android:fillColor="#C1B6F6" android:pathData="M374,494 H466.5 V694 H374 Z" />
+            <path android:fillColor="#AA98F0" android:pathData="M466,494 H558.5 V694 H466 Z" />
+            <path android:fillColor="#937CE3" android:pathData="M558,494 H650.5 V694 H558 Z" />
+            <path android:fillColor="#7D63CB" android:pathData="M650,494 H742.5 V694 H650 Z" />
+        </group>
+    </group>
+</vector>
