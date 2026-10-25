@@ -135,7 +135,11 @@ class GroupRepository(
             .optional()
             .orElse(null)
 
-    /** Makes the user an active member: a first add, a pending joiner, or someone removed earlier and added again. */
+    /**
+     * Makes the user an active member: a first add, a pending joiner, or someone removed earlier and added again. An
+     * account that is already active (its replacement device being added) keeps its role and join time, so an Add
+     * commit can never cost the group its owner.
+     */
     fun activate(
         groupId: UUID,
         userId: UUID,
@@ -144,7 +148,10 @@ class GroupRepository(
             .sql(
                 """
                 INSERT INTO group_members (group_id, user_id, status) VALUES (:group, :user, 'active')
-                ON CONFLICT (group_id, user_id) DO UPDATE SET status = 'active', role = 'member', joined_at = now()
+                ON CONFLICT (group_id, user_id) DO UPDATE SET
+                  status = 'active',
+                  role = CASE WHEN group_members.status = 'active' THEN group_members.role ELSE 'member' END,
+                  joined_at = CASE WHEN group_members.status = 'active' THEN group_members.joined_at ELSE now() END
                 """,
             ).param("group", groupId)
             .param("user", userId)

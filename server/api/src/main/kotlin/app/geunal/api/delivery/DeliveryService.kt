@@ -101,9 +101,9 @@ class DeliveryService(
         caller: Caller,
         groupId: UUID,
     ): GroupInfoResponse {
-        val group = groups.requireActive(groupId, caller.userId)
+        groups.requireActive(groupId, caller.userId)
         val info = repository.groupInfo(groupId) ?: throw ApiException.notFound("group info")
-        return GroupInfoResponse(group.epoch, info)
+        return GroupInfoResponse(info.epoch, info.groupInfo)
     }
 
     /** The creator's device publishes the epoch-0 GroupInfo here, since the group ID exists only after `POST /groups`. */

@@ -30,6 +30,11 @@ data class StateRow(
     val updatedAt: Instant,
 )
 
+data class GroupInfoRow(
+    val epoch: Long,
+    val groupInfo: ByteArray,
+)
+
 data class WelcomeRow(
     val groupId: UUID,
     val data: ByteArray,
@@ -121,11 +126,12 @@ class DeliveryRepository(
                 )
             }.list()
 
-    fun groupInfo(groupId: UUID): ByteArray? =
+    /** The GroupInfo with the epoch it describes, read in one statement so a concurrent commit cannot pair them wrongly. */
+    fun groupInfo(groupId: UUID): GroupInfoRow? =
         jdbc
-            .sql("SELECT group_info FROM groups WHERE id = :id")
+            .sql("SELECT epoch, group_info FROM groups WHERE id = :id AND group_info IS NOT NULL")
             .param("id", groupId)
-            .query { rs, _ -> rs.getBytes("group_info") }
+            .query { rs, _ -> GroupInfoRow(rs.getLong("epoch"), rs.getBytes("group_info")) }
             .optional()
             .orElse(null)
 

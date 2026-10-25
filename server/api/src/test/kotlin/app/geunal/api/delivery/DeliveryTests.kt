@@ -2,6 +2,7 @@ package app.geunal.api.delivery
 
 import app.geunal.api.mls.MlsHeader
 import app.geunal.api.support.ApiTest
+import app.geunal.api.support.Client
 import app.geunal.api.support.Mls
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -212,6 +213,31 @@ class DeliveryTests : ApiTest() {
                     it.path("role").stringValue()
             }
         assertThat(roles[member.userId.toString()]).isEqualTo("member")
+    }
+
+    @Test
+    fun `adding an already-active account's device keeps its role and join time`() {
+        val owner = signIn("owner-with-new-phone")
+        val member = signIn()
+        val groupId = groupWith(owner, member)
+
+        fun ownerRow() =
+            member.get("/groups/$groupId/members").expect(200)["members"].first {
+                it.path("user_id").stringValue() ==
+                    owner.userId.toString()
+            }
+        val joinedBefore = ownerRow().path("joined_at").stringValue()
+        // The owner switches phones; the member adds the new device by an Add commit.
+        val replacement = Client(api, "owner-with-new-phone").also { it.login() }
+
+        member.addMember(groupId, 1, replacement)
+
+        val ownerRow = ownerRow()
+        assertThat(ownerRow.path("role").stringValue()).isEqualTo("owner")
+        assertThat(ownerRow.path("status").stringValue()).isEqualTo("active")
+        assertThat(ownerRow.path("joined_at").stringValue()).isEqualTo(joinedBefore)
+        assertThat(ownerRow.path("device_id").stringValue()).isEqualTo(replacement.deviceId.toString())
+        replacement.delete("/groups/$groupId/members/${member.userId}").expect(204)
     }
 
     @Test
