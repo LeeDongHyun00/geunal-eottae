@@ -107,7 +107,7 @@ pub fn decode(bytes: &[u8]) -> Result<Entry, ciborium::de::Error<std::io::Error>
 - **그룹 설정은 신청에 담습니다:** 상태 블롭은 로그 밖에 있어서 기기마다 받은 시점이 다를 수 있습니다. 그래서 상태 함수는 `group_meta`를 읽지 않습니다. 선택지 추가 권한은 신청할 때 `Request.leader_options`로 복사하고, 참이면 `PollOption`은 주도자가 쓴 것만 유효합니다. 기본 결정 방식과 시간 추천 범위는 신청하는 기기의 화면 기본값일 뿐이고, 결과는 `Request.mode`와 `Poll.options`에 이미 들어 있습니다.
 - **시각:** 모든 시각 판정(투표 마감, 약속 날 00:00)은 서버가 엔트리를 받은 시각(`received_at`)으로 합니다. 기기 시계는 화면 표시에만 씁니다.
 - **모르는 종류:** 새 버전의 엔트리는 원문 그대로 저장하고 "업데이트가 필요한 메시지"로 보여 줍니다.
-- **크기:** "토요일 7시 어때?" 엔트리는 CBOR로 62바이트이고, MLS 메시지로는 254바이트입니다. 엔트리 하나는 64KB를 넘지 않고, 큰 내용은 미디어로 보냅니다.
+- **크기:** "토요일 7시 어때?" 엔트리는 UUIDv7 `id`를 넣으면 CBOR로 97바이트입니다(`core/vectors/entries.json`의 `text` 항목). 엔트리 하나는 64KB를 넘지 않고, 큰 내용은 미디어로 보냅니다.
 
 ## 5. 상태 블롭
 
@@ -122,7 +122,7 @@ pub fn decode(bytes: &[u8]) -> Result<Entry, ciborium::de::Error<std::io::Error>
 | `availability` | 멤버 | `{window_start, days, bits}`: 30분마다 1비트, 1은 일정 없음, MSB부터 | 캘린더가 바뀔 때, epoch가 바뀔 때 |
 | `group_meta` | 그룹당 하나. 마지막으로 봉인한 멤버 | `{name, color, cover?, plan, changed_by, changed_at}`. `cover`는 `{object, key, sha256}`, `plan`은 날짜 잡기 기본값 `{mode: Mode, window: [from, to], options_by}`(`window`는 30분 칸 번호, `options_by`는 `anyone` 또는 `leader`) | 멤버 누구나 공통 설정을 바꿀 때. epoch를 바꾼 커밋을 한 기기가 다시 봉인 |
 | `member_profile` | 멤버 | `{nickname?, avatar?, birthday_md?, lunar?, tags?}`. `avatar`는 `{object, key, sha256}` | 그룹 프로필이나 공개 설정을 바꿀 때, epoch가 바뀔 때 |
-| `newcomer_bundle` | 추가 커밋을 한 기기의 주인 | 날이 지나지 않은 약속의 엔트리 목록 `[(author_id, received_at, Entry)]` | 멤버를 추가한 직후 |
+| `newcomer_bundle` | 추가 커밋을 한 기기의 주인 | 날이 지나지 않은 약속의 엔트리 목록 `[(seq?, author_id, received_at, Entry)]`. `seq`는 보낸 기기가 아는 서버 순번이고, 받는 기기는 그 자리에 항목을 끼워 자기 로그와 순서를 맞춤. 없으면 로그 앞에 둠 | 멤버를 추가한 직후 |
 
 **그룹 메타는 공용 자리입니다.** 멤버 누구나 바꿀 수 있어서 서버는 그룹마다 한 줄만 두고 버전을 셉니다.
 - 쓰는 기기는 읽었던 버전(`base_version`)을 함께 보냅니다. 그사이 다른 멤버가 바꿨으면 409 `state_conflict`를 받고, 최신 블롭을 읽어 자기가 바꾼 항목만 다시 얹은 뒤 재시도합니다.
