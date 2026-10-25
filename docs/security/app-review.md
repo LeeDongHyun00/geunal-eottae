@@ -41,8 +41,10 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 | 항목 | 기준 |
 | --- | --- |
 | 제공자에게 넘기는 nonce | 카카오·Apple 로그인에는 `GET /auth/nonce`의 값을 그대로 넘기지 않고, 코어가 계산한 묶기 값(`hex(SHA-256("geunal login v1" ‖ nonce ‖ signature_key))`)을 넘김([공통 계약](../parts/protocol.md) 13장). 벡터 `login_nonce.json`과 같아야 함 |
-| 서명 | 교체(`POST /auth/replace`), 게스트 복귀(`POST /auth/recover`), 복구 자료 덮어쓰기의 서명은 코어가 만듦. 앱은 키를 직접 다루지 않음 |
-| Apple 계정 삭제 | 삭제 직전에 Sign in with Apple을 다시 받아 `apple_authorization_code`를 `DELETE /me`에 넣음. 코드를 저장하거나 로그에 남기지 않음. 안드로이드는 웹 로그인 콜백이 넘긴 `code`를 로그인에는 버리고 삭제 때만 씀([공통 계약](../parts/protocol.md) 13장) |
+| 서명 | 교체(`POST /auth/replace`), 게스트 복귀(`POST /auth/recover`), 복구 자료 덮어쓰기, 게스트 계정 삭제의 서명은 코어가 만듦. 앱은 키를 직접 다루지 않음 |
+| 계정 삭제 전 재인증 | 삭제 직전에 다시 증명함([공통 계약](../parts/protocol.md) 13장). 카카오는 카카오 로그인을 한 번 더 받아 ID 토큰을, Apple은 Sign in with Apple을 한 번 더 받아 인가 코드를 넣음. 안드로이드는 웹 로그인 콜백이 넘긴 `code`를 로그인에는 버리고 삭제 때만 씀. 게스트는 코어가 복구 서명을 조용히 만들므로 앱이 따로 묻지 않음("삭제" 입력 확인은 그대로) |
+| 재인증 실패 | 403 `reauth_required`는 세션이 유효하다는 뜻이라, 로그아웃하지 않고 증명만 다시 받음. 409 `recovery_missing`이면 복구 자료를 먼저 올린 뒤 다시 지움 |
+| 받은 토큰과 코드 | 삭제에 쓴 ID 토큰과 인가 코드는 저장하거나 로그에 남기지 않음 |
 
 ## 5. 로그와 크래시
 
