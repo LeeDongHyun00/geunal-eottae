@@ -56,6 +56,9 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 <div style="border-radius: 16px; background: #ffffff; display: flex; flex-direction: column">
 <a href="NotifySettings.dc.html" style="min-height: 48px; padding: 0 16px; display: flex; align-items: center; border-bottom: 1px solid #ebebef"><span style="font-size: 17px">알림</span></a>
 <div style="min-height: 48px; padding: 0 16px; display: flex; align-items: center; border-bottom: 1px solid #ebebef"><span style="font-size: 17px">서버가 아는 것 · 보안 안내</span></div>
+<sc-if value="{{alpha}}" hint-placeholder-val="{{true}}">
+<div style="min-height: 52px; padding: 0 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #ebebef"><span style="flex: 1 1 0; display: flex; flex-direction: column; gap: 2px; padding: 8px 0"><span style="font-size: 17px">테스트 통계 보내기</span><span style="font-size: 13px; color: #5c5c66">알파 빌드 · 하루 한 번 숫자 두 개만</span></span><button type="button" role="switch" aria-checked="{{statsOn}}" aria-label="테스트 통계 보내기" onClick="{{toggleStats}}" style="flex: none; width: 51px; height: 31px; padding: 2px; border: none; border-radius: 16px; background: {{statsTrack}}; display: flex; justify-content: {{statsSide}}; cursor: pointer"><span style="width: 27px; height: 27px; border-radius: 14px; background: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.18)"></span></button></div>
+</sc-if>
 <a href="DeleteAccount.dc.html" style="min-height: 48px; padding: 0 16px; display: flex; align-items: center"><span style="font-size: 17px; color: #c92f26">계정 삭제</span></a>
 </div>
 </div>
@@ -99,11 +102,11 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+<script type="text/x-dc" data-dc-script data-props='{"build":{"editor":"enum","options":["알파 빌드","공개 빌드"],"default":"알파 빌드"},"$preview":{"width":390,"height":844}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { ni: 1 };
+    this.state = { ni: 1, stats: true };
   }
   renderVals() {
     const soft = 'repeating-linear-gradient(135deg, #d3dfbb 0 4px, #e4ecd5 4px 8px)';
@@ -122,7 +125,11 @@ class Component extends DCLogic {
       isGroup: cur.kind === 'group', isEvent: cur.kind === 'event', isBday: cur.kind === 'bday',
       ring: cur.kind === 'bday' ? 'inset 0 0 0 1px #e1e1e6' : 'none',
     });
+    const stats = this.state.stats;
     return {
+      alpha: (this.props.build ?? '알파 빌드') === '알파 빌드',
+      statsOn: stats ? 'true' : 'false', statsTrack: stats ? '#1b1b1f' : '#e1e1e6', statsSide: stats ? 'flex-end' : 'flex-start',
+      toggleStats: () => this.setState({ stats: !stats }),
       nx,
       atStart: ni === 0, atEnd: ni === NEXT.length - 1,
       prevOp: ni === 0 ? 0.3 : 1, nextOp: ni === NEXT.length - 1 ? 0.3 : 1,

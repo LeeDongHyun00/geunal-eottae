@@ -19,7 +19,7 @@
 | 시작 | 로그인 | 권한 |
 | --- | --- | --- |
 | <img src="screens/m1/01-welcome@2x.png" width="240" alt="시작"> | <img src="screens/m1/02-sign-in@2x.png" width="240" alt="로그인"> | <img src="screens/m1/03-permissions@2x.png" width="240" alt="권한"> |
-| 그룹의 비어 있는 시간 띠를 미리 보여 줍니다. 초대 코드로 바로 들어갈 수도 있습니다. | 만 14세 확인을 체크해야 카카오·Apple 로그인이 켜집니다. | 기기 캘린더 가져오기(읽기만)와 알림. 둘 다 나중에 바꿀 수 있습니다. |
+| 그룹의 비어 있는 시간 띠를 미리 보여 줍니다. 초대 코드로 바로 들어갈 수도 있습니다. | 만 14세 확인을 체크해야 카카오·Apple 로그인이 켜집니다. 게스트는 "복구 코드로 돌아오기"로 다른 기기에서 돌아옵니다. | 기기 캘린더 가져오기(읽기만)와 알림. 알파 빌드는 테스트 통계 동의 카드가 하나 더 있고([동의한 뒤](screens/m1/03-permissions--stats-on@2x.png)), 모두 나중에 바꿀 수 있습니다. |
 
 ### 빠른 입력: 날짜 탭 → 추천 칩 → 바로 저장
 
@@ -45,7 +45,7 @@
 | 복구 코드 | 위젯 |
 | --- | --- |
 | <img src="screens/m1/13-recovery@2x.png" width="240" alt="복구 코드"> | <img src="screens/m1/14-widgets@2x.png" width="240" alt="위젯"> |
-| 12단어 복구 코드. 종이에 적어 두라고 안내합니다. | 작은·중간 위젯, 밝은·어두운 모드. |
+| 12단어 복구 코드(BIP39 한국어 목록). 종이에 적어 두라고 안내합니다. | 작은·중간 위젯, 밝은·어두운 모드. |
 
 ### 설정: 캘린더 관리 · 사람 추가 · 템플릿 편집
 
@@ -64,12 +64,27 @@
 | 암호화 백업 | 백업하는 중 | 기기 바꾸기 | 12단어를 넣은 뒤 |
 | --- | --- | --- | --- |
 | <img src="screens/m1/20-backup@2x.png" width="200" alt="암호화 백업"> | <img src="screens/m1/20-backup--running@2x.png" width="200" alt="백업하는 중"> | <img src="screens/m1/21-restore@2x.png" width="200" alt="기기 바꾸기"> | <img src="screens/m1/21-restore--ready@2x.png" width="200" alt="12단어 입력 완료"> |
-| 마지막 백업, 자동 백업, 최근 3개, 들어가는 것과 안 들어가는 것. | 버튼이 꺼지고 상태 카드가 진행을 보여 줍니다. | 새 기기에서 로그인하면 뜹니다. 12단어 격자와 붙여넣기. | 다 넣으면 "백업 가져오기"가 켜집니다. |
+| 마지막 백업, 자동 백업, 최근 3개, 들어가는 것과 안 들어가는 것. | 버튼이 꺼지고 상태 카드가 진행을 보여 줍니다. | 두 번째 기기에서 카카오·Apple로 로그인하면 뜹니다. 12단어 격자(BIP39 한국어 목록)와 붙여넣기. | 다 넣으면 "백업 가져오기"가 켜집니다. |
+
+| 복구 코드로 돌아오기(게스트) | 단어가 목록에 없음 | 체크섬이 틀림 | 백업이 안 풀림 |
+| --- | --- | --- | --- |
+| <img src="screens/m1/21-restore--guest@2x.png" width="200" alt="게스트 복귀"> | <img src="screens/m1/21-restore--error-word@2x.png" width="200" alt="단어 없음 오류"> | <img src="screens/m1/21-restore--error-checksum@2x.png" width="200" alt="체크섬 오류"> | <img src="screens/m1/21-restore--error-locked@2x.png" width="200" alt="백업이 열리지 않음"> |
+| 로그인 화면의 "복구 코드로 돌아오기"에서. 제목·설명·버튼만 다릅니다. | 그 칸이 빨갛게, 버튼은 "8번째 단어를 고쳐 주세요". | 기기에서 판정. 버튼 "코드를 다시 확인해 주세요". | 서버의 래핑된 키가 안 풀림. "다시 시도". |
+
+| 게스트: 계정을 못 찾음 | 가져올 백업 없음 | 게스트: 백업 없음 | 게스트: 코드 없음 |
+| --- | --- | --- | --- |
+| <img src="screens/m1/21-restore--guest-error-not-found@2x.png" width="200" alt="게스트 계정 못 찾음"> | <img src="screens/m1/21-restore--no-backup@2x.png" width="200" alt="백업 없음"> | <img src="screens/m1/21-restore--guest-no-backup@2x.png" width="200" alt="게스트 백업 없음"> | <img src="screens/m1/21-restore--guest-no-code@2x.png" width="200" alt="게스트 코드 없음"> |
+| 401 `recovery_invalid`. 연결된 계정도 같은 문구. | 오류가 아니라 "돌아왔어요"의 변형. | 계정은 찾았고 일정은 새로 시작. | 새 게스트 계정으로 시작을 빨간 글자로. |
 
 | 돌아왔어요 | 복구 코드가 없을 때 | 계정 삭제 | 삭제 확인 |
 | --- | --- | --- | --- |
 | <img src="screens/m1/21-restore--done@2x.png" width="200" alt="복원 완료"> | <img src="screens/m1/21-restore--no-code@2x.png" width="200" alt="복구 코드 없음"> | <img src="screens/m1/22-delete-account@2x.png" width="200" alt="계정 삭제"> | <img src="screens/m1/22-delete-account--confirm@2x.png" width="200" alt="계정 삭제 확인"> |
 | 가져온 수와 이전 기기 로그아웃, 그룹 재참여 안내. | 되찾을 수 없음을 설명하고 새로 시작을 빨간 글자로. | 서버에서 지워지는 것과 이 기기에 남는 것을 먼저 보여 줍니다. | 되돌릴 수 없는 유일한 동작이라 '삭제'를 적게 합니다. |
+
+| 기기 로그아웃됨 |
+| --- |
+| <img src="screens/m1/23-revoked@2x.png" width="240" alt="기기 로그아웃됨"> |
+| 다른 기기에서 로그인한 뒤 이전 기기가 받는 시트. 남는 것과 꺼지는 것을 나란히 보여 주고, 캘린더는 계속 쓰게 둡니다. |
 
 ## M2 그룹·날짜 잡기
 
