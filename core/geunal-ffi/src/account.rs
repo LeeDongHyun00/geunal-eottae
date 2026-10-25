@@ -17,13 +17,14 @@ pub enum Provider {
     Apple,
 }
 
-/// The value a provider sign-in is bound to (protocol §13): Kakao gets `nonce` as it is, Apple gets `nonce_sha256`
-/// (lowercase hex). The same `nonce` then goes to `sign_in_kakao`, `sign_in_apple` or `link_*`, which sign it with
-/// the device key.
+/// A one-time nonce and the value a provider sign-in is bound to (protocol §13 "nonce 묶기"). `provider_nonce` is
+/// `hex(SHA-256("geunal login v1" ‖ nonce ‖ this device's signature key))`; the app hands it to the Kakao or Apple
+/// SDK as the nonce, for both providers alike, and passes `nonce` back to `sign_in_kakao`, `sign_in_apple`, `link_*`
+/// or `DeletionProof::Kakao`. A provider token is then good only together with this device's key.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SignInNonce {
     pub nonce: String,
-    pub nonce_sha256: String,
+    pub provider_nonce: String,
 }
 
 /// What an account is made with. The server reads it only when the sign-in creates the account.
@@ -70,7 +71,8 @@ pub struct MeSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct RecoveryStatus {
-    /// The code exists on this device (made at the first sign-in, or entered when restoring).
+    /// The code exists on this device: made at the sign-in that found no recovery material on the server, or entered
+    /// when restoring.
     pub created: bool,
     /// The user pressed "종이에 적었어요". Kept on the device only (protocol §10).
     pub saved: bool,
@@ -115,6 +117,54 @@ pub struct RestoreSummary {
     pub groups: u32,
 }
 
+/// Own events and people on this device that may not be the restored account's (protocol §10 "복원" 4).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct LocalData {
+    pub events: u32,
+    pub people: u32,
+}
+
+/// What a restore does with [`LocalData`] when the store turns out not to be the restored account's. When it is the
+/// same account, the restore merges whatever the choice: the backup wins for the same ids and local-only items stay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum LocalDataChoice {
+    /// "가져오기": keep it, now under the restored account. (Not `Import`: that is a keyword in Swift.)
+    Keep,
+    /// "지우기": delete it before the backup is opened.
+    Discard,
+}
+
+/// The proof `DELETE /me` asks for, by account kind (protocol §13 "계정 삭제"). Deleting is the one thing that cannot
+/// be undone, so a stolen session alone must not do it.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum DeletionProof {
+    /// A guest, or an account whose provider link was cut: the core signs with the recovery key derived from this
+    /// device's code, without asking the user.
+    Guest,
+    /// An ID token from a Kakao sign-in made just now with the `provider_nonce` of `nonce` (`sign_in_nonce`).
+    Kakao { nonce: String, id_token: String },
+    /// A fresh Sign in with Apple authorization code. On Android it is the `code` of the web sign-in callback.
+    Apple { authorization_code: String },
+}
+
+/// How this device came to be signed out by another one (protocol §13 "기기 해제"), for the "기기 로그아웃됨"
+/// screen: when, on which platform, and by what. `Recovery` tells a guest that their recovery code was used.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Revocation {
+    pub at: SystemTime,
+    /// "ios" or "android".
+    pub by_platform: String,
+    pub via: RevokedVia,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum RevokedVia {
+    /// A Kakao or Apple sign-in.
+    Provider,
+    /// A guest comeback with the recovery code.
+    Recovery,
+}
+
 /// Progress of a backup or a restore, in bytes. Called on a core thread; the app hops to its main thread itself.
 #[uniffi::export(with_foreign)]
 pub trait ProgressListener: Send + Sync {
@@ -141,16 +191,15 @@ impl Core {
         Err(not_yet("sign_in_kakao"))
     }
 
-    /// Signs in with an Apple identity token issued for SHA-256(`nonce`). `authorization_code` lets the server revoke
-    /// the Apple tokens when the account is deleted (App Store Review Guideline 5.1.1(v)).
+    /// Signs in with an Apple identity token issued for the `provider_nonce` of `nonce`. The server keeps no Apple
+    /// token; deleting the account brings a fresh authorization code instead (`DeletionProof::Apple`).
     pub async fn sign_in_apple(
         self: Arc<Self>,
         nonce: String,
         id_token: String,
-        authorization_code: String,
         account: NewAccount,
     ) -> Result<AuthResult, CoreError> {
-        let _ = (nonce, id_token, authorization_code, account);
+        let _ = (nonce, id_token, account);
         Err(not_yet("sign_in_apple"))
     }
 
@@ -160,17 +209,27 @@ impl Core {
         Err(not_yet("sign_in_guest"))
     }
 
+    /// Own events and people on this device that may belong to someone else, so the app can ask before a restore
+    /// whether to bring them along (`LocalDataChoice`): the store was another account's, no sign-in has claimed it
+    /// yet, or the account is not known before the code is checked (a guest coming back). `None` when there is
+    /// nothing to ask, such as a store that is the signing-in account's own.
+    pub fn local_data_of_other_account(&self) -> Result<Option<LocalData>, CoreError> {
+        Err(not_yet("local_data_of_other_account"))
+    }
+
     /// Restores with the recovery code: unwraps the account master key, downloads and opens the newest backup and
     /// fills this device, then makes it the active device. It covers the three ways a device gets here: a
     /// `ReplaceRequired` sign-in (with its ticket), a `Registered` sign-in with `recovery`, and a guest coming back
-    /// without any sign-in (`POST /auth/recover`, protocol §13). Fails with `WrongRecoveryCode` when the words are not
-    /// this account's code.
+    /// without any sign-in (`POST /auth/recover`, protocol §13). The store is marked as the account's own; local data
+    /// of another account is kept or deleted as `local_data` says, and the store of the same account merges. Fails
+    /// with `WrongRecoveryCode` when the words are not this account's code.
     pub async fn restore_from_code(
         self: Arc<Self>,
         words: Vec<String>,
+        local_data: LocalDataChoice,
         progress: Option<Arc<dyn ProgressListener>>,
     ) -> Result<RestoreSummary, CoreError> {
-        let _ = (words, progress);
+        let _ = (words, local_data, progress);
         Err(not_yet("restore_from_code"))
     }
 
@@ -186,13 +245,8 @@ impl Core {
         Err(not_yet("link_kakao"))
     }
 
-    pub async fn link_apple(
-        self: Arc<Self>,
-        nonce: String,
-        id_token: String,
-        authorization_code: String,
-    ) -> Result<Vec<Provider>, CoreError> {
-        let _ = (nonce, id_token, authorization_code);
+    pub async fn link_apple(self: Arc<Self>, nonce: String, id_token: String) -> Result<Vec<Provider>, CoreError> {
+        let _ = (nonce, id_token);
         Err(not_yet("link_apple"))
     }
 
@@ -205,16 +259,28 @@ impl Core {
         Err(not_yet("me_summary"))
     }
 
-    /// Deletes the account on the server (`DELETE /me`), then the session, keys and group state on this device.
-    /// Events, calendars and people stay, and the app keeps working as a calendar without groups (m1.md 2.5).
-    pub async fn delete_account(self: Arc<Self>) -> Result<(), CoreError> {
+    /// Deletes the account on the server (`DELETE /me` with `proof`), then the session, the device signing key, the
+    /// master key and the code's entropy, and the group state on this device. Events, calendars and people stay, and
+    /// the app keeps working as a calendar without groups (m1.md 2.5). `ReauthRequired` leaves everything as it was
+    /// and the session valid: ask for the proof again. `RecoveryMissing` means a guest's recovery material is not on
+    /// the server yet; the core uploads it on the next `sync()`, and then the deletion can be tried again.
+    pub async fn delete_account(self: Arc<Self>, proof: DeletionProof) -> Result<(), CoreError> {
+        let _ = proof;
         Err(not_yet("delete_account"))
+    }
+
+    /// Set when another device's sign-in signed this one out (403 `device_revoked` with `replaced_at`, protocol §13),
+    /// until the next sign-in. The core then keeps events, people and the database key and wipes the rest: the
+    /// session, the device signing key, the code's entropy, the master key and the group state.
+    pub fn revocation(&self) -> Result<Option<Revocation>, CoreError> {
+        Err(not_yet("revocation"))
     }
 
     // ----- recovery code (screens 13, 21; protocol §10) -----
 
-    /// The twelve words of this account's recovery code, in Hangul (NFC). Made on the first call and the same from
-    /// then on.
+    /// The twelve words of this account's recovery code, in Hangul (NFC). This only reads the code: it is made and
+    /// uploaded at the sign-in that finds no recovery material on the server, before any backup (protocol §10
+    /// "올리는 때"). `NotFound` before that.
     pub fn recovery_words(&self) -> Result<Vec<String>, CoreError> {
         Err(not_yet("recovery_words"))
     }
@@ -290,5 +356,20 @@ impl Core {
     pub fn set_alpha_stats(&self, enabled: bool) -> Result<(), CoreError> {
         let _ = enabled;
         Err(not_yet("set_alpha_stats"))
+    }
+
+    /// The app came to the foreground: one more of the day's `sessions`, the count the calendar-activity and
+    /// crash-free-session gates use (protocol §14). Kept only while the alpha statistics are on.
+    pub fn record_app_foreground(&self) -> Result<(), CoreError> {
+        Err(not_yet("record_app_foreground"))
+    }
+
+    /// Crashes the OS reported for a Korean `day`, learned on a later launch: iOS MetricKit `MXCrashDiagnostic`,
+    /// Android `ApplicationExitInfo` with `REASON_CRASH` or `REASON_CRASH_NATIVE` only. They add to that day, and the
+    /// day goes to the server again, which keeps the newest copy. The app reports each crash once (Android remembers
+    /// the newest exit it has counted).
+    pub fn record_crashes(&self, day: String, count: u32) -> Result<(), CoreError> {
+        let _ = (day, count);
+        Err(not_yet("record_crashes"))
     }
 }

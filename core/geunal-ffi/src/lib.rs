@@ -66,6 +66,14 @@ pub enum CoreError {
     /// match, or a code that does not unwrap the account master key (protocol §10).
     #[error("wrong recovery code")]
     WrongRecoveryCode,
+    /// The server wants the account proven again before deleting it (403 `reauth_required`, protocol §13). Nothing
+    /// was deleted and the session is still valid: get a fresh `DeletionProof` and try again.
+    #[error("the account has to be proven again")]
+    ReauthRequired,
+    /// The server has no recovery material for this account yet (409 `recovery_missing`), so a guest cannot prove the
+    /// account and no backup can be made. The core uploads it first; try again after the next `sync()`.
+    #[error("recovery material not uploaded yet")]
+    RecoveryMissing,
     /// A function of the M1 surface whose body has not landed yet. Gone by the end of M1.
     #[error("not implemented yet: {what}")]
     NotImplemented { what: String },
@@ -124,7 +132,7 @@ pub enum Change {
         group_id: String,
     },
     /// The account changed: signed in, linked, revoked by another device's sign-in, or deleted. The app reads
-    /// `session()` and `account()` again.
+    /// `session()` and `account()` again, and `revocation()` for the "기기 로그아웃됨" screen.
     Account,
 }
 
