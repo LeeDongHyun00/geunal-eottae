@@ -73,7 +73,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: scripts/ci/audit-issue.sh "$NEEDS" "$RUN_URL"
+      # The issue reports the state of main. A manual run on another ref still audits that ref, but must neither close
+      # the issue while main is still vulnerable nor open one that blames main for a branch's failure.
+      - if: github.ref == 'refs/heads/main'
+        run: scripts/ci/audit-issue.sh "$NEEDS" "$RUN_URL"
         env:
           GH_TOKEN: ${{ github.token }}
           NEEDS: ${{ toJSON(needs) }}
