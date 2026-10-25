@@ -280,18 +280,28 @@ paths:
         is dropped, so other members' devices keep one group state; the account row stays as a placeholder for their
         author_id. After the transaction the server unlinks Kakao (retried until it succeeds) and, for an account
         linked to Apple, exchanges `apple_authorization_code` and revokes the Apple tokens at once.
+
+        The only irreversible call proves the account again, so a stolen session cannot delete it:
+        - guest (or an account whose provider link was cut): `nonce` and `recovery_signature`, the recovery signing
+          key's signature over the ASCII bytes "geunal delete v1" followed by the ASCII bytes of `nonce`;
+        - Kakao: `kakao_id_token` and `nonce` from a Kakao sign-in made for this deletion, bound to this device's
+          registered key as for sign-in;
+        - Apple: `apple_authorization_code` from a Sign in with Apple made for this deletion; the identity token the
+          exchange returns must carry this account's `sub`.
       requestBody:
-        required: false
         content:
           application/json:
             schema:
               type: object
               properties:
-                apple_authorization_code: { type: string, description: "required for an account linked to Apple: from a Sign in with Apple made for this deletion" }
+                nonce: { type: string, description: from GET /auth/nonce; with recovery_signature or kakao_id_token }
+                recovery_signature: { $ref: "#/components/schemas/Bytes", description: 64-byte Ed25519 signature; guests }
+                kakao_id_token: { type: string, description: Kakao accounts }
+                apple_authorization_code: { type: string, description: Apple accounts }
       responses:
         "204": { description: deleted; this device's tokens stop working }
-        "400": { description: "invalid_request (an account linked to Apple without apple_authorization_code)" }
-        "403": { description: replace_required (called with a replacement ticket) }
+        "401": { description: "provider_token_invalid (the Kakao token or Apple code does not verify or names another account)" }
+        "403": { description: "reauth_required (no proof, or the wrong kind for this account); replace_required (called with a replacement ticket)" }
 
   /me/recovery:
     put:

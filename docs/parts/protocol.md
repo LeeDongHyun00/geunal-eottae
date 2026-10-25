@@ -299,6 +299,7 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
 | 403 | `not_member`, `not_owner`, `blocked`, `device_revoked` | 화면에 알리고 중단. `device_revoked`면 로그아웃. 기기 교체로 해제됐으면 본문에 `replaced_at`, `replaced_by`, `replaced_via`가 더 있음(13장) |
 | 403 | `replace_required` | 교체 티켓으로는 할 수 없는 요청. 기기 교체를 마친 뒤 다시 |
 | 403 | `recovery_proof_required` | 복구 자료를 덮어쓰려면 지금 코드의 증명이 필요함(10장). 증명을 붙여 다시 |
+| 403 | `reauth_required` | 계정 삭제에 다시 증명이 필요함(13장). 제공자 로그인이나 복구 서명을 붙여 다시 |
 | 404 | `not_found` | 중단 |
 | 409 | `epoch_conflict` | 동기화 후 커밋을 다시 만들어 재시도 |
 | 409 | `stale_epoch` | 대기 커밋 처리 후 다시 암호화해 재시도 |
@@ -397,7 +398,15 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
 
 ### 계정 삭제
 
-- `DELETE /me` → 204. 활성 기기만 부를 수 있습니다. Apple에 연결된 계정은 본문에 방금 받은 `apple_authorization_code`를 넣습니다.
+- `DELETE /me` → 204. 활성 기기만 부를 수 있고, 계정 종류에 따라 다시 증명합니다. 되돌릴 수 없는 유일한 동작이라, 세션만 훔친 사람이 지우지 못하게 하려는 것입니다.
+
+| 계정 | 본문에 넣는 증명 |
+| --- | --- |
+| 게스트(제공자 연결이 끊긴 계정 포함) | `nonce`(`GET /auth/nonce`)와 복구 서명 키로 `"geunal delete v1" ‖ nonce`에 한 서명. 코어가 기기의 `E`로 사용자 입력 없이 만듭니다 |
+| 카카오 | 삭제 직전에 받은 `kakao_id_token`과 `nonce`. nonce 묶기는 로그인과 같고, `signature_key` 자리에는 이 기기의 등록된 키를 씁니다 |
+| Apple | 삭제 직전에 받은 `apple_authorization_code`. 서버가 교환해 받은 아이덴티티 토큰의 `sub`가 이 계정의 것인지 확인합니다 |
+
+- 증명이 없거나 맞지 않으면 403 `reauth_required`이고 아무것도 지우지 않습니다.
 - 서버는 한 트랜잭션에서 계정의 식별 정보, 기기, 세션, 키 패키지, 복구 자료, 백업, 그룹 멤버십, 상태 블롭, 올린 미디어, 알파 통계를 지웁니다. 오브젝트는 `object_deletions`에 넣고, 남은 멤버의 기기에는 `membership`을 보냅니다.
 - **로그 항목은 지우지 않습니다.** 그 사람이 쓴 커밋과 메시지(MLS 암호문)는 우편함 보관 기간 30일이 지나면 파티션과 함께 사라집니다.
   - 지우면, 이미 처리한 기기와 아직 따라잡지 않은 기기의 그룹 상태가 갈라집니다. 지운 커밋 뒤의 epoch는 처리할 수도 없습니다.

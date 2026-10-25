@@ -390,7 +390,7 @@ CREATE TABLE holidays (
 | POST | `/auth/link` | 게스트를 카카오·애플에 연결 |
 | GET | `/.well-known/jwks.json` | 게이트웨이가 쓰는 공개키 |
 | GET | `/me` | 계정, 현재 기기, 남은 키 패키지 수, 연결한 로그인(`providers`), 복구 자료가 있는지 |
-| DELETE | `/me` | 계정 삭제. Apple에 연결된 계정은 새로 받은 `apple_authorization_code`로 그 자리에서 Apple 토큰 철회 |
+| DELETE | `/me` | 계정 삭제. 다시 증명이 필요함(게스트는 복구 서명, 카카오는 새 ID 토큰, Apple은 새 `authorization_code`로 그 자리에서 토큰 철회) |
 | PUT | `/me/push-token` | 현재 기기 푸시 토큰 |
 | POST | `/me/key-packages` | 키 패키지 묶음 올리기 |
 | GET | `/users/{id}/devices` | 활성 기기 ID와 서명 공개키(추가 전 확인용) |
