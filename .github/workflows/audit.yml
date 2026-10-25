@@ -1,0 +1,83 @@
+# Weekly dependency audit of main. Pull request CI runs the same gates (cargo-deny advisories, Trivy on the images and
+# lock files) only for the parts a change touches, so an advisory published against code nobody is editing would stay
+# unseen until the next unrelated PR. This runs `make audit` on a schedule and keeps one issue open while it fails.
+# docs/security/dependencies.md describes what is scanned and how to respond.
+name: audit
+
+on:
+  schedule:
+    # Monday 06:17 KST, before the day's work. Off the full hour, which GitHub schedules late when it is busy.
+    - cron: "17 21 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit
+  cancel-in-progress: false
+
+jobs:
+  core:
+    name: core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .tools
+          key: tools-${{ runner.os }}-${{ hashFiles('scripts/tool.sh') }}
+      - run: make audit-core
+
+  api:
+    name: api
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
+      - run: make scan-api
+
+  gateway:
+    name: gateway
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The release image builds inside Docker, so the runner needs no Erlang or Elixir of its own.
+      - run: make scan-gateway
+
+  report:
+    name: report
+    if: always()
+    needs: [core, api, gateway]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/ci/audit-issue.sh "$NEEDS" "$RUN_URL"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEEDS: ${{ toJSON(needs) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      - name: Fail when an audit job failed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
