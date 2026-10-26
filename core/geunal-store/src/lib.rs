@@ -119,6 +119,15 @@ impl Store {
         Ok(self.conn().query_row("PRAGMA cipher_version", [], |row| row.get(0))?)
     }
 
+    /// The crypto library SQLCipher runs on and the version it reports at run time. The version comes from the library
+    /// that is actually linked, not from the headers it was compiled against.
+    pub fn cipher_provider(&self) -> Result<(String, String), StoreError> {
+        let conn = self.conn();
+        let name = conn.query_row("PRAGMA cipher_provider", [], |row| row.get(0))?;
+        let version = conn.query_row("PRAGMA cipher_provider_version", [], |row| row.get(0))?;
+        Ok((name, version))
+    }
+
     /// The store's schema version on disk, 0 before the first migration.
     pub fn schema_version(&self) -> Result<i64, StoreError> {
         Ok(self.conn().query_row("SELECT coalesce(max(version), 0) FROM schema_migrations", [], |row| row.get(0))?)
