@@ -120,13 +120,16 @@ defmodule GatewayWeb.DeviceChannelTest do
     :sys.resume(socket.channel_pid)
   end
 
-  test "closes a connection that has lived its maximum age", %{socket: socket, device_id: device_id} do
+  test "closes a connection once it has lived its maximum age, not before", %{socket: socket, device_id: device_id} do
     max_age = Application.fetch_env!(:gateway, :max_connection_age)
-    socket = Phoenix.Socket.assign(socket, :connected_at, System.monotonic_time(:millisecond) - max_age + 100)
+    # A connection whose limit is 100 ms away.
+    connected_at = System.monotonic_time(:millisecond) - max_age + 100
+    socket = Phoenix.Socket.assign(socket, :connected_at, connected_at)
 
     {:ok, _reply, _socket} = subscribe_and_join(socket, "device:" <> device_id)
 
-    refute_receive %Phoenix.Socket.Broadcast{event: "disconnect"}, 50
-    assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}, 1_000
+    assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}, 2_000
+    # Checked against the deadline rather than a quiet window after the join, which a slow join would eat into.
+    assert System.monotonic_time(:millisecond) >= connected_at + max_age
   end
 end
