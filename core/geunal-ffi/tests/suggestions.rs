@@ -129,7 +129,7 @@ fn offers_shift_templates_and_ends_a_night_shift_the_next_day() {
             start_minute: 22 * 60,
             end_minute: 2 * 60,
             calendar_id: None,
-            alert: AlertRule::Inherit,
+            alert: AlertRule::Before { minutes: 60 },
         })
         .unwrap();
     let found = chips(&d.core, "2026-10-27");
@@ -139,6 +139,8 @@ fn offers_shift_templates_and_ends_a_night_shift_the_next_day() {
     );
     let night = found.iter().find(|s| s.event.title == "마감").unwrap();
     assert_eq!(night.source, SuggestionSource::Shift { template_id: template });
+    // The chip saves what stamping the template would, its own alert included.
+    assert_eq!(night.event.alert, AlertRule::Before { minutes: 60 });
     assert_eq!(
         (night.event.start.clone(), night.event.end.clone()),
         (at("2026-10-27", 22 * 60), at("2026-10-28", 2 * 60))

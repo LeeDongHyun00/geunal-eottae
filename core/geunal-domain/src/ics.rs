@@ -4,7 +4,7 @@
 
 use std::fmt::Write as _;
 
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDateTime, Utc};
 
 /// One event as the file needs it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,7 +53,8 @@ pub fn calendar(events: &[IcsEvent], now: DateTime<Utc>) -> String {
         }
         lines.push(format!("SUMMARY:{}", text(&event.title)));
         if let Some(rule) = &event.rrule {
-            lines.push(format!("RRULE:{}", rule.trim().trim_start_matches("RRULE:")));
+            let rule = rule.trim().trim_start_matches("RRULE:");
+            lines.push(format!("RRULE:{}", if event.all_day { all_day_rule(rule) } else { rule.to_owned() }));
         }
         for exdate in &event.exdates {
             lines.push(if event.all_day {
@@ -73,6 +74,20 @@ pub fn calendar(events: &[IcsEvent], now: DateTime<Utc>) -> String {
         out.push_str("\r\n");
         out
     })
+}
+
+/// The rule as an all-day event carries it: RFC 5545 §3.3.10 wants UNTIL in DTSTART's value type, a DATE here, so the
+/// stored UTC instant (23:59:59 in Korea of the last day) becomes that Korean day.
+fn all_day_rule(rule: &str) -> String {
+    rule.split(';')
+        .map(|part| {
+            part.strip_prefix("UNTIL=")
+                .and_then(|v| NaiveDateTime::parse_from_str(v, "%Y%m%dT%H%M%SZ").ok())
+                .map(|at| format!("UNTIL={}", at.and_utc().with_timezone(&crate::time::KST).format("%Y%m%d")))
+                .unwrap_or_else(|| part.to_owned())
+        })
+        .collect::<Vec<_>>()
+        .join(";")
 }
 
 fn local(at: DateTime<FixedOffset>) -> String {
@@ -158,6 +173,24 @@ mod tests {
             assert!(ics.contains(&format!("{line}\r\n")), "missing {line:?} in\n{ics}");
         }
         assert!(ics.starts_with("BEGIN:VCALENDAR\r\n") && ics.ends_with("END:VCALENDAR\r\n"));
+    }
+
+    #[test]
+    fn writes_the_end_of_an_all_day_series_as_a_date_like_its_start() {
+        let event = IcsEvent {
+            uid: "e3@geunal".into(),
+            title: "야간 근무".into(),
+            all_day: true,
+            starts_at: KST.with_ymd_and_hms(2026, 11, 2, 0, 0, 0).single().unwrap(),
+            ends_at: KST.with_ymd_and_hms(2026, 11, 3, 0, 0, 0).single().unwrap(),
+            // Stored as the end of 31 December in Korea, in UTC.
+            rrule: Some("FREQ=WEEKLY;BYDAY=MO;UNTIL=20261231T145959Z".into()),
+            exdates: vec![],
+            note: None,
+        };
+        let ics = calendar(&[event], Utc.with_ymd_and_hms(2026, 10, 25, 0, 0, 0).unwrap());
+        assert!(ics.contains("RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20261231\r\n"), "{ics}");
+        assert!(ics.contains("DTSTART;VALUE=DATE:20261102\r\n"));
     }
 
     #[test]

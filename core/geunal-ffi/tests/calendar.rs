@@ -191,6 +191,87 @@ fn edits_one_occurrence_of_a_weekly_event_without_touching_the_others() {
 }
 
 #[test]
+fn keeps_a_deleted_occurrence_deleted_when_the_whole_series_moves() {
+    let d = device();
+    let cal = personal(&d.core);
+    let mut class = timed(&cal, "요가", "2026-10-28", 600, 660);
+    class.recurrence = Some(weekly(vec![Weekday::Wednesday]));
+    let series = d.core.add_event(class.clone(), false).unwrap().event_id;
+    d.core.delete_event(series.clone(), Some("2026-11-04T10:00".into()), EditScope::ThisOnly).unwrap();
+    let starts = || {
+        d.core
+            .calendar_agenda("2026-10-25".into(), 28)
+            .unwrap()
+            .into_iter()
+            .flat_map(|a| a.events)
+            .map(|e| (e.start.day, e.start.minute))
+            .collect::<Vec<_>>()
+    };
+    // The editor opened on the series moves it to 11:00; 4 November stays deleted.
+    let mut later = class.clone();
+    later.start = at("2026-10-28", 660);
+    later.end = at("2026-10-28", 720);
+    d.core.update_event(series.clone(), None, EditScope::ThisAndFollowing, later.clone()).unwrap();
+    let expected =
+        |minute: u16| ["2026-10-28", "2026-11-11", "2026-11-18"].map(|day| (day.to_owned(), minute)).to_vec();
+    assert_eq!(starts(), expected(660));
+    // So does "이후 모두" from the first occurrence, moving it to 12:00.
+    later.start = at("2026-10-28", 720);
+    later.end = at("2026-10-28", 780);
+    d.core.update_event(series, Some("2026-10-28T11:00".into()), EditScope::ThisAndFollowing, later).unwrap();
+    assert_eq!(starts(), expected(720));
+}
+
+#[test]
+fn keeps_the_total_of_a_counted_series_when_it_is_split() {
+    let d = device();
+    let cal = personal(&d.core);
+    let mut class = timed(&cal, "토익 수업", "2026-10-26", 540, 600);
+    class.recurrence = Some(Recurrence { count: Some(5), ..weekly(vec![Weekday::Monday]) });
+    let series = d.core.add_event(class.clone(), false).unwrap().event_id;
+    // A removed occurrence still counts toward COUNT (RFC 5545): 26 Oct, 9, 16 and 23 Nov remain.
+    d.core.delete_event(series.clone(), Some("2026-11-02T09:00".into()), EditScope::ThisOnly).unwrap();
+    // "이후 모두" from 16 November with the repeat left as it was: the new part has what was left of the five.
+    let mut renamed = class.clone();
+    renamed.title = "토익 실전".into();
+    renamed.start = at("2026-11-16", 540);
+    renamed.end = at("2026-11-16", 600);
+    d.core.update_event(series, Some("2026-11-16T09:00".into()), EditScope::ThisAndFollowing, renamed).unwrap();
+    let found: Vec<(String, String)> = d
+        .core
+        .calendar_agenda("2026-10-25".into(), 70)
+        .unwrap()
+        .into_iter()
+        .flat_map(|a| a.events)
+        .map(|e| (e.start.day, e.title))
+        .collect();
+    let pair = |day: &str, title: &str| (day.to_owned(), title.to_owned());
+    assert_eq!(
+        found,
+        vec![
+            pair("2026-10-26", "토익 수업"),
+            pair("2026-11-09", "토익 수업"),
+            pair("2026-11-16", "토익 실전"),
+            pair("2026-11-23", "토익 실전"),
+        ]
+    );
+}
+
+#[test]
+fn takes_back_what_an_undone_repeating_add_counted() {
+    let d = device();
+    let cal = personal(&d.core);
+    let remembered = || d.core.suggestions("2026-11-04".into()).unwrap().iter().any(|s| s.event.title == "요가");
+    let mut yoga = timed(&cal, "요가", "2026-10-28", 420, 480);
+    yoga.recurrence = Some(weekly(vec![Weekday::Wednesday]));
+    let added = d.core.add_event(yoga, true).unwrap();
+    d.core.set_clock(Some(Utc.with_ymd_and_hms(2026, 10, 25, 0, 0, 3).unwrap()));
+    // The toast's undo deletes the whole series.
+    d.core.delete_event(added.event_id, None, EditScope::ThisAndFollowing).unwrap();
+    assert!(!remembered());
+}
+
+#[test]
 fn splits_a_weekly_series_when_this_and_following_changes() {
     let d = device();
     let cal = personal(&d.core);

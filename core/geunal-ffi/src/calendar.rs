@@ -605,7 +605,7 @@ impl Core {
             };
             let Some(key) = occurrence else {
                 // No occurrence named: the editor opened the series itself.
-                db.put_event(&EventRow { exdates: row.exdates.clone(), ..edited(row.id.clone(), "typed")? })?;
+                db.put_event(&whole_series(&row, edited(row.id.clone(), "typed")?)?)?;
                 return Ok(row.id.clone());
             };
             let at = occurrence_at(&key)?;
@@ -628,7 +628,7 @@ impl Core {
                     Ok(own.id)
                 }
                 EditScope::ThisAndFollowing if at <= first => {
-                    db.put_event(&EventRow { exdates: row.exdates.clone(), ..edited(row.id.clone(), "typed")? })?;
+                    db.put_event(&whole_series(&row, edited(row.id.clone(), "typed")?)?)?;
                     Ok(row.id.clone())
                 }
                 EditScope::ThisAndFollowing => {
@@ -646,6 +646,17 @@ impl Core {
                     let shift = parse_stored(&following.starts_at)? - at;
                     if following.rrule.is_some() {
                         following.exdates = exdates_text(&after.iter().map(|d| *d + shift).collect::<Vec<_>>());
+                    }
+                    // A count the edit left as it was is the series' total, so the following part keeps only what
+                    // was left of it. A count the user changed counts from the split.
+                    if let Some(total) = old.count.filter(|_| following.rrule == row.rrule) {
+                        // COUNT counts the occurrences the rule makes, removed ones too (RFC 5545), so the removed
+                        // ones are put back before counting.
+                        let all = EventSpec { exdates: Vec::new(), ..spec(&row)? };
+                        let done = occurrences(&all, first, at).map_err(malformed)?;
+                        let done = done.iter().filter(|o| o.occurrence_at < at).count();
+                        let left = total.saturating_sub(u32::try_from(done).unwrap_or(u32::MAX)).max(1);
+                        following.rrule = Some(Rule { count: Some(left), ..old.clone() }.to_rrule());
                     }
                     following.created_at = Some(stored_utc(now));
                     db.put_event(&following)?;
@@ -672,7 +683,10 @@ impl Core {
                     undo_counts(db, &row, now)?;
                     db.delete_event(&row.id)?;
                 }
-                (Some(_), None) => db.delete_event(&row.id)?,
+                (Some(_), None) => {
+                    undo_counts(db, &row, now)?;
+                    db.delete_event(&row.id)?;
+                }
                 (Some(rule_text), Some(key)) => {
                     let at = occurrence_at(&key)?;
                     let first = parse_stored(&row.starts_at)?;
@@ -686,7 +700,10 @@ impl Core {
                                 ..row.clone()
                             })?;
                         }
-                        EditScope::ThisAndFollowing if at <= first => db.delete_event(&row.id)?,
+                        EditScope::ThisAndFollowing if at <= first => {
+                            undo_counts(db, &row, now)?;
+                            db.delete_event(&row.id)?;
+                        }
                         EditScope::ThisAndFollowing => {
                             let old =
                                 Rule::parse(rule_text).ok_or_else(|| invalid("this repeat rule cannot be split"))?;
@@ -883,6 +900,12 @@ impl Core {
             .collect();
         let titles: HashSet<String> = days.items_on(target).into_iter().map(|i| i.title).collect();
         let default = self.store.read(default_calendar)?;
+        // A shift chip saves what stamping its template would, alert included.
+        let template_alerts: HashMap<String, AlertRule> = self.store.read(|db| {
+            Ok::<_, CoreError>(
+                db.shift_templates()?.into_iter().map(|t| (t.id, alert_rule(t.alert.as_deref()))).collect(),
+            )
+        })?;
         Ok(suggest::rank(ranked, &busy, &titles)
             .into_iter()
             .map(|c| {
@@ -896,7 +919,12 @@ impl Core {
                         start: DayTime { day: day_text(target), minute: if c.all_day { 0 } else { c.start_minute } },
                         end: DayTime { day: day_text(end_day), minute: if c.all_day { 0 } else { c.end_minute } },
                         recurrence: None,
-                        alert: AlertRule::Inherit,
+                        alert: match &c.source {
+                            suggest::Source::Shift { template_id } => {
+                                template_alerts.get(template_id).cloned().unwrap_or(AlertRule::Inherit)
+                            }
+                            _ => AlertRule::Inherit,
+                        },
                         note: None,
                     },
                     source: match c.source {
@@ -1373,6 +1401,18 @@ fn open_bridges(db: &Db<'_>, first: NaiveDate, last: NaiveDate) -> Result<Vec<Br
         }
     }
     Ok(open)
+}
+
+/// `edited` as the whole series: the removed occurrences move by as much as the edit moved its first start, so a
+/// deleted occurrence stays deleted, and they go when the edit stops it repeating.
+fn whole_series(row: &EventRow, mut edited: EventRow) -> Result<EventRow, CoreError> {
+    let shift = parse_stored(&edited.starts_at)? - parse_stored(&row.starts_at)?;
+    edited.exdates = if edited.rrule.is_some() {
+        exdates_text(&exdates(row)?.into_iter().map(|d| d + shift).collect::<Vec<_>>())
+    } else {
+        None
+    };
+    Ok(edited)
 }
 
 fn bridge(b: &Bridge) -> LeaveBridge {
