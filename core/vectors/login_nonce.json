@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "provider_nonce": "154ab0d601d2a3fa4c474ad028723c78125a333f4f645efed78f3702105366f0",
+      "signature_key": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+    },
+    {
+      "nonce": "nonce-1",
+      "provider_nonce": "5750c90a17f03f8d765440f1d91773d7347b311a66568ee490c42fec679d9e43",
+      "signature_key": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
+    },
+    {
+      "nonce": "w8tH0GHl3q4nY2r5wq0dqvXbN3wVfR5iJ9yQ7KcVQ2M",
+      "provider_nonce": "15d71eb93a04517eae11b936a36cd81fdfe16e279c58a029ae577b197f423e4f",
+      "signature_key": "ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1"
+    }
+  ],
+  "formula": "lowercase hex of SHA-256(\"geunal login v1\" ‖ nonce (ASCII) ‖ signature_key (32 bytes))",
+  "generated_by": "cd core && GEUNAL_WRITE_VECTORS=1 cargo test -p geunal-crypto --locked --test vectors",
+  "version": 1
+}

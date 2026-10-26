@@ -21,7 +21,7 @@ M1 벡터는 [공통 계약](../../docs/parts/protocol.md) 10·13장을 따라 �
 - `auth_results.json`: `registered`와 `replace_required` 응답 본문.
 
 - 파일 이름은 처음 쓰는 파트가 이대로 만듭니다. 바꾸려면 이 표와 함께 바꿉니다.
-- Rust 코어의 벡터는 테스트가 만들고 검사합니다. `cd core && GEUNAL_WRITE_VECTORS=1 cargo test --locked -p geunal-domain -p geunal-mls --test vectors`가 세 파일을 다시 쓰고, 보통의 `make test-core`는 커밋된 파일이 지금 빌드와 맞는지만 확인합니다.
+- Rust 코어의 벡터는 테스트가 만들고 검사합니다. `cd core && GEUNAL_WRITE_VECTORS=1 cargo test --locked -p geunal-domain -p geunal-mls -p geunal-crypto --test vectors`가 코어의 벡터 파일을 모두 다시 쓰고, 보통의 `make test-core`는 커밋된 파일이 지금 빌드와 맞는지만 확인합니다.
   - `entries.json`: 엔트리 종류마다 JSON 형태와 CBOR(16진수). 바이트 필드는 CBOR 바이트 문자열입니다.
   - `mls_headers.json`: mls-rs가 만든 커밋(wire_format 1)과 메시지(2)의 바이트, 그 안의 그룹 ID와 epoch. Welcome·GroupInfo·키 패키지는 헤더가 없다는 뜻으로 `has_header: false`입니다.
   - `state_blobs.json`: 상태 블롭의 AAD 문자열과 `nonce ‖ 암호문 ‖ 태그` 형식. 재현을 위해 고정 논스를 쓴 것이고, 실제 코드는 늘 무작위 논스를 씁니다.
