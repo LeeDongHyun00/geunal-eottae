@@ -7,6 +7,7 @@
 //! signs in again.
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant, SystemTime};
 
 use chrono::{DateTime, Utc};
@@ -48,6 +49,9 @@ const STORE_OWNER: &str = "store_owner";
 const AUTO_BACKUP: &str = "auto_backup";
 /// The change count the last backup of this device carried, against `changes` for the automatic backup.
 const BACKED_UP_CHANGES: &str = "backed_up_changes";
+/// Key packages a sign-in has yet to put up. Set before the upload, so an app closed in the middle puts them up on its
+/// next `sync()`.
+const KEY_PACKAGES_DUE: &str = "key_packages_due";
 /// The platform a sign-in names.
 const PLATFORM: &str = if cfg!(target_os = "ios") { "ios" } else { "android" };
 const KAKAO: &str = "kakao";
@@ -432,13 +436,26 @@ impl Core {
     /// `reauth_required`, which comes back as `ReauthRequired`: the app gets a fresh Kakao or Apple proof, the same as
     /// for deleting the account (`DeletionProof::Kakao` with a `sign_in_nonce`, or `DeletionProof::Apple`), and calls
     /// this again with it. A guest has no such way back; it starts a new guest account instead.
+    ///
+    /// A device that holds the account's code gets `Invalid`: nothing is lost, and a new key would only make the
+    /// backups unreadable. A new code an earlier try left waiting goes up again instead of another one.
     pub async fn start_fresh(self: Arc<Self>, proof: Option<DeletionProof>) -> Result<Session, CoreError> {
         if proof == Some(DeletionProof::Guest) {
             return Err(CoreError::Invalid { reason: "a guest starts over with a new guest account".into() });
         }
         let this = self.clone();
         self.run(async move {
-            let session = match this.pending_ticket()? {
+            let pending = this.pending_ticket()?;
+            let user_id = match (&pending, this.session()) {
+                (Some(pending), _) => pending.user_id.clone(),
+                (None, Some(session)) => session.user_id,
+                (None, None) => return Err(CoreError::NotSignedIn),
+            };
+            let waiting = this.store.read(|db| db.setting(RECOVERY_NEW_KEY))?.is_some();
+            if !waiting && this.recovery_secrets_of(&user_id)?.is_some() {
+                return Err(CoreError::Invalid { reason: "this device holds the account's recovery code".into() });
+            }
+            let session = match pending {
                 Some(pending) => this.replace_device(pending).await?,
                 None => this.session().ok_or(CoreError::NotSignedIn)?,
             };
@@ -975,6 +992,8 @@ impl Core {
     }
 
     /// Keeps the session, starts the engine with fresh key packages, and remembers the account.
+    /// Keeps the session, starts the engine with fresh key packages, and remembers the account. Key packages that do
+    /// not go up do not undo the sign-in, as the device is registered by then: `sync()` puts them up.
     async fn register_session(
         &self,
         tokens: &geunal_sync::api::SessionInfo,
@@ -991,8 +1010,15 @@ impl Core {
             self.api.clone(),
             self.listener.clone(),
         )?;
-        engine.publish_key_packages(KEY_PACKAGES).await?;
         *self.state.lock().await = State::SignedIn(Box::new(engine));
+        // A new session asks the server again what a stopped sign-in left undone (`upload_pending_recovery`).
+        self.recovery_checked.store(false, Ordering::Relaxed);
+        self.store.write(|db| Ok::<_, CoreError>(db.set_setting(KEY_PACKAGES_DUE, "1")?))?;
+        if let Err(e) = self.publish_due_key_packages().await
+            && is_revoked(&e)
+        {
+            return Err(e);
+        }
         // An M0 server has no providers on /me; the name the sign-in sent stands in.
         let account = match self.api.me().await {
             Ok(me) => StoredAccount { user_id: me.user_id, display_name: me.display_name, providers: me.providers },
@@ -1030,8 +1056,13 @@ impl Core {
     /// The code's entropy and the master key, when this device holds them for the signed-in account.
     pub(crate) fn recovery_secrets(&self) -> Result<Option<(Entropy, geunal_crypto::Key)>, CoreError> {
         let Some(session) = self.session() else { return Ok(None) };
+        self.recovery_secrets_of(&session.user_id)
+    }
+
+    /// The code's entropy and the master key, when this device holds them for `user_id`.
+    fn recovery_secrets_of(&self, user_id: &str) -> Result<Option<(Entropy, geunal_crypto::Key)>, CoreError> {
         let owner = self.store.read(|db| db.setting(RECOVERY_OWNER))?;
-        if owner.as_deref() != Some(session.user_id.as_str()) {
+        if owner.as_deref() != Some(user_id) {
             return Ok(None);
         }
         let entropy = self.secrets.get(ENTROPY.to_owned()).and_then(|e| Entropy::try_from(e.as_slice()).ok());
@@ -1083,18 +1114,19 @@ impl Core {
         Ok(())
     }
 
-    /// Makes the recovery code and the master key when this device has none for the account, or always with
-    /// `new_key` ("백업 없이 새로 시작"), and uploads the material. A failed upload stays pending for `sync()`, which
-    /// sends `new_key` again. After a sign-in the failure does not undo the sign-in: the device is registered by then,
-    /// and `sync()` reports what keeps failing. "백업 없이 새로 시작" reports it at once, as the server takes `new_key`
-    /// only within 30 minutes of the provider sign-in.
+    /// Makes the recovery code and the master key when this device has none for the account, and uploads the
+    /// material, with `new_key` for "백업 없이 새로 시작". A code this device holds already is one that an earlier try
+    /// left waiting (`start_fresh` refuses any other), and it goes up again: that try may have gone through with its
+    /// answer lost. A failed upload stays pending for `sync()`, which sends `new_key` again. After a sign-in the failure
+    /// does not undo the sign-in: the device is registered by then, and `sync()` reports what keeps failing. "백업 없이
+    /// 새로 시작" reports it at once, as the server takes `new_key` only within 30 minutes of the provider sign-in.
     async fn make_recovery(
         &self,
         user_id: &str,
         new_key: bool,
         proof: Option<&DeletionProof>,
     ) -> Result<(), CoreError> {
-        if new_key || self.recovery_secrets()?.is_none() {
+        if self.recovery_secrets()?.is_none() {
             self.keep_recovery(user_id, &recovery::new_entropy(), &geunal_crypto::random_key(), false, new_key)?;
         }
         match self.upload_recovery(new_key, proof).await {
@@ -1107,11 +1139,29 @@ impl Core {
     /// `sync()`, and so does a 404: an M0 server has no `/me/recovery` yet, and the M1 one never answers it with 404.
     /// A new code the server no longer takes without a provider proof is dropped quietly: `recovery_status()` shows
     /// the device has no code, and "백업 없이 새로 시작" asks for the proof. Anything else is reported.
+    ///
+    /// A device without a code asks `GET /me` once a run whether the account has recovery material, and makes the
+    /// code when it has none: a sign-in that stopped before making it, as when the app was closed, ends here.
     pub(crate) async fn upload_pending_recovery(&self) -> Result<(), CoreError> {
+        let Some(session) = self.session() else { return Ok(()) };
+        if self.recovery_secrets()?.is_none() {
+            if self.recovery_checked.load(Ordering::Relaxed) {
+                return Ok(());
+            }
+            let me = match self.checked(self.api.me().await).await {
+                Err(CoreError::Network { .. }) => return Ok(()),
+                other => other?,
+            };
+            self.recovery_checked.store(true, Ordering::Relaxed);
+            if !me.recovery {
+                self.make_recovery(&session.user_id, false, None).await?;
+            }
+            return Ok(());
+        }
         let (uploaded, new_key) = self.store.read(|db| {
             Ok::<_, CoreError>((db.setting(RECOVERY_UPLOADED)?.is_some(), db.setting(RECOVERY_NEW_KEY)?.is_some()))
         })?;
-        if uploaded || self.recovery_secrets()?.is_none() {
+        if uploaded {
             return Ok(());
         }
         match self.upload_recovery(new_key, None).await {
@@ -1148,10 +1198,26 @@ impl Core {
                 _ => upload,
             };
             let result = match self.api.put_recovery(upload.clone()).await {
-                Err(e) if !new_key && e.is(403, "recovery_proof_required") => {
+                // The server may hold this code already, from a try whose answer was lost: the code then proves
+                // itself. Past the 30 minutes that is how a waiting `new_key` upload goes through without a provider
+                // proof.
+                Err(first)
+                    if first.is(403, "recovery_proof_required") || (new_key && first.is(403, "reauth_required")) =>
+                {
                     let nonce = self.api.nonce().await?;
-                    let proof = keys.sign_rotation(&nonce).to_vec();
-                    self.api.put_recovery(RecoveryUpload { nonce: Some(nonce), proof: Some(proof), ..upload }).await
+                    let retry = RecoveryUpload {
+                        new_key: false,
+                        proof: Some(keys.sign_rotation(&nonce).to_vec()),
+                        nonce: Some(nonce),
+                        kakao_id_token: None,
+                        apple_authorization_code: None,
+                        ..upload
+                    };
+                    match self.api.put_recovery(retry).await {
+                        // Another code is on the server: the first answer stands.
+                        Err(e) if e.is(403, "recovery_proof_required") => Err(first),
+                        other => other,
+                    }
                 }
                 other => other,
             };
@@ -1201,14 +1267,28 @@ impl Core {
         }
     }
 
-    /// After a realtime `revoke`: asks the server, whose 403 says when, where and how.
+    /// After a realtime `revoke`, which signs this device out by itself (protocol §13 "기기 해제"). The server's 403
+    /// says when, where and how; when the server cannot be asked, the device goes without those. Only an answer to
+    /// `GET /me` keeps the session: the server still counts this device as active.
     pub(crate) async fn confirm_revocation(&self) -> Result<(), CoreError> {
-        match self.api.me().await {
-            Err(ApiError::Revoked { replaced }) => {
-                *self.state.lock().await = State::SignedOut;
-                self.signed_out_by_another(replaced).await
-            }
-            _ => Ok(()),
+        let replaced = match self.api.me().await {
+            Ok(_) => return Ok(()),
+            Err(ApiError::Revoked { replaced }) => replaced,
+            Err(_) => None,
+        };
+        *self.state.lock().await = State::SignedOut;
+        self.signed_out_by_another(replaced).await
+    }
+
+    /// Puts up the key packages a sign-in could not (`KEY_PACKAGES_DUE`). A network error waits for the next `sync()`.
+    pub(crate) async fn publish_due_key_packages(&self) -> Result<(), CoreError> {
+        if self.store.read(|db| db.setting(KEY_PACKAGES_DUE))?.is_none() {
+            return Ok(());
+        }
+        match self.engine(Box::new(|e| Box::pin(async move { e.publish_key_packages(KEY_PACKAGES).await }))).await {
+            Ok(()) => Ok(self.store.write(|db| Ok::<_, CoreError>(db.delete_setting(KEY_PACKAGES_DUE)?))?),
+            Err(CoreError::Network { .. }) => Ok(()),
+            Err(e) => Err(e),
         }
     }
 

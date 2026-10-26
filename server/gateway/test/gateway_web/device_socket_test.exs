@@ -54,8 +54,8 @@ defmodule GatewayWeb.DeviceSocketTest do
   end
 
   test "limits connection attempts per address, counting the refused ones too" do
-    address = {10, 99, :rand.uniform(255), :rand.uniform(255)}
-    connect_info = %{peer_data: %{address: address, port: 50_000, ssl_cert: nil}}
+    wait_out_window_end()
+    connect_info = %{peer_data: %{address: fresh_address(), port: 50_000, ssl_cert: nil}}
 
     for _ <- 1..15,
         do: assert({:ok, _} = connect(DeviceSocket, %{"token" => Keys.token(Keys.main())}, connect_info: connect_info))
@@ -66,8 +66,22 @@ defmodule GatewayWeb.DeviceSocketTest do
              {:error, :rate_limited}
 
     # Another address is not affected.
-    other = %{peer_data: %{address: {10, 98, 0, 1}, port: 50_000, ssl_cert: nil}}
+    other = %{peer_data: %{address: fresh_address(), port: 50_000, ssl_cert: nil}}
     assert {:ok, _} = connect(DeviceSocket, %{"token" => Keys.token(Keys.main())}, connect_info: other)
+  end
+
+  # The limiter counts in fixed one-minute windows of the wall clock (gateway.md §7). Attempts that straddle the end of
+  # one would be counted in two, so start with the end of the current window well away.
+  defp wait_out_window_end do
+    left = :timer.minutes(1) - rem(System.system_time(:millisecond), :timer.minutes(1))
+    if left < :timer.seconds(2), do: Process.sleep(left)
+  end
+
+  # Unused by any earlier attempt in this VM, so other tests and repeated runs (--repeat-until-failure) do not count
+  # against it.
+  defp fresh_address do
+    <<a, b, c>> = <<System.unique_integer([:positive, :monotonic])::24>>
+    {10, a, b, c}
   end
 
   test "answers a limited address with 429 and a Retry-After" do

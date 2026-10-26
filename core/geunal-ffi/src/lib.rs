@@ -312,6 +312,9 @@ pub struct Core {
     /// takes it, and Argon2id at 64 MiB is the expensive part.
     recovery_keys:
         std::sync::Mutex<Option<(geunal_crypto::recovery::Entropy, Arc<geunal_crypto::recovery::RecoveryKeys>)>>,
+    /// `sync()` asked the server this run whether the account still needs a recovery code: a device without one asks
+    /// once, not at every sync.
+    recovery_checked: std::sync::atomic::AtomicBool,
 }
 
 #[uniffi::export]
@@ -365,8 +368,8 @@ impl Core {
 
     /// Catches every group up from its cursor and sends what is waiting in the outbox. Before a sign-in there is
     /// nothing to catch up, so this returns at once: the apps' first screen opens the core and syncs without an account.
-    /// Then recovery material that could not go up at the sign-in goes up (protocol §10 "올리는 때"); a refusal from the
-    /// server comes back as this call's error.
+    /// Then what could not go up at the sign-in goes up: key packages, and recovery material (protocol §10 "올리는
+    /// 때"); a refusal from the server comes back as this call's error.
     pub async fn sync(self: Arc<Self>) -> Result<(), CoreError> {
         if saved_session(self.secrets.as_ref()).is_none() {
             return Ok(());
@@ -374,7 +377,8 @@ impl Core {
         let this = self.clone();
         self.run(async move {
             this.engine(Box::new(|e| Box::pin(async move { e.sync().await }))).await?;
-            // After the groups, so a recovery upload the server keeps refusing does not hold up the calendar.
+            // After the groups, so an upload the server keeps refusing does not hold up the calendar.
+            this.publish_due_key_packages().await?;
             this.upload_pending_recovery().await
         })
         .await
@@ -581,22 +585,7 @@ impl Core {
                 realtime.next_within(Duration::from_millis(timeout_ms)).await
             };
             let Some(event) = event else { return Ok(None) };
-            let view = match &event {
-                Event::Entry { g, s, .. } => RealtimeEvent::Entry { group_id: g.clone(), seq: *s },
-                Event::State { g, .. } => RealtimeEvent::State { group_id: g.clone() },
-                Event::Membership { g } => RealtimeEvent::Membership { group_id: g.clone() },
-                Event::Welcome {} => RealtimeEvent::Welcome,
-                Event::Revoke {} => RealtimeEvent::Revoke,
-                Event::Joined => RealtimeEvent::Joined,
-                Event::Closed(reason) => RealtimeEvent::Closed { reason: reason.clone() },
-            };
-            let revoke = matches!(event, Event::Revoke {});
-            this.engine(Box::new(|e| Box::pin(async move { e.handle_event(event).await }))).await?;
-            if revoke {
-                // The event names nothing more; the next request learns when, where and how (protocol §13).
-                this.confirm_revocation().await?;
-            }
-            Ok(Some(view))
+            this.apply_event(event).await.map(Some)
         })
         .await
     }
@@ -662,6 +651,7 @@ impl Core {
             clock: std::sync::Mutex::new(None),
             ticket: std::sync::Mutex::new(None),
             recovery_keys: std::sync::Mutex::new(None),
+            recovery_checked: std::sync::atomic::AtomicBool::new(false),
         }))
     }
 
@@ -675,6 +665,35 @@ impl Core {
         secrets: Arc<dyn SecretStore>,
     ) -> Result<Arc<Self>, CoreError> {
         Self::open_with(store_dir, Api::Fake(api), listener, secrets)
+    }
+
+    /// Applies an event as the gateway would forward it, from the fake server's queue (`FakeServer::take_events`): the
+    /// fake has no gateway. For this crate's tests; not part of the FFI.
+    #[cfg(feature = "fake-server")]
+    #[doc(hidden)]
+    pub async fn deliver_fake_event(self: Arc<Self>, event: serde_json::Value) -> Result<RealtimeEvent, CoreError> {
+        let event: Event = serde_json::from_value(event).map_err(|e| CoreError::Realtime { reason: e.to_string() })?;
+        let this = self.clone();
+        self.run(async move { this.apply_event(event).await }).await
+    }
+
+    async fn apply_event(&self, event: Event) -> Result<RealtimeEvent, CoreError> {
+        let view = match &event {
+            Event::Entry { g, s, .. } => RealtimeEvent::Entry { group_id: g.clone(), seq: *s },
+            Event::State { g, .. } => RealtimeEvent::State { group_id: g.clone() },
+            Event::Membership { g } => RealtimeEvent::Membership { group_id: g.clone() },
+            Event::Welcome {} => RealtimeEvent::Welcome,
+            Event::Revoke {} => RealtimeEvent::Revoke,
+            Event::Joined => RealtimeEvent::Joined,
+            Event::Closed(reason) => RealtimeEvent::Closed { reason: reason.clone() },
+        };
+        let revoke = matches!(event, Event::Revoke {});
+        self.engine(Box::new(|e| Box::pin(async move { e.handle_event(event).await }))).await?;
+        if revoke {
+            // The event names nothing more; the next request learns when, where and how (protocol §13).
+            self.confirm_revocation().await?;
+        }
+        Ok(view)
     }
 
     /// Fixes the clock the calendar reads ("today", the next-up bar, alerts) for tests. Not part of the FFI.

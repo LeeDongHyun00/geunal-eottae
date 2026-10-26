@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use geunal_ffi::{
     AlertRule, AuthResult, Core, CoreError, LocalData, LocalDataChoice, PersonInput, ProgressListener, RevokedVia,
+    SecretStore,
 };
 use geunal_sync::fake::FakeServer;
 use phones::{Phone, kakao, new_account, phone, user_id};
@@ -213,6 +214,10 @@ fn starting_over_forgets_the_deleted_backups() {
         let server = FakeServer::new();
         let (a, user, words) = backed_up(&server, "olive").await;
         assert!(a.core.backup_status().unwrap().last.is_some());
+        // Starting over is for a lost code: the code is gone from this phone, and the server keeps the material.
+        for secret in ["recovery_entropy", "account_master_key"] {
+            a.secrets.delete(secret.to_owned());
+        }
         a.core.clone().start_fresh(None).await.unwrap();
         assert!(server.backups_of(&user).is_empty());
         assert!(a.core.backup_status().unwrap().last.is_none());

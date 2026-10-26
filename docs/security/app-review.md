@@ -33,7 +33,9 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 
 | 항목 | 기준 |
 | --- | --- |
-| 보여 주기 전 기기 인증 | 검토할 결정(디자인·앱). 제안: iOS `LAContext`의 `.deviceOwnerAuthentication`, 안드로이드 `BiometricPrompt`(`BIOMETRIC_STRONG or DEVICE_CREDENTIAL`). 기기 잠금이 없으면 그대로 보여 줌. 잠금이 풀린 채 잃은 기기에서 12단어를 읽어 게스트 계정과 백업을 가져가는 것을 막으려는 것 |
+| 기기 인증 | 2026-10-26 사용자 결정. 세 곳에서 기기 주인을 확인함: 복구 코드 12단어를 보여 주기 전(13번), "백업 없이 새로 시작"이 백업을 지우기 직전(21번), 계정 삭제의 마지막 단계(22번, 제공자 재인증·게스트 서명 전). 앱이 그리는 화면 없이 OS 확인 창만 띄우고 이유 문구는 [M1 화면](../design/m1.md) 4장 "기기 인증"을 따름. 취소하면 아무것도 하지 않음. 잠금이 풀린 채 잃은 기기에서 12단어를 읽거나, 카카오톡 확인 한 번으로 받은 새 제공자 증명으로 백업과 계정을 지우는 것을 막으려는 것([위협 모델](threat-model.md) 3.6) |
+| 기기 인증 방법 | iOS는 `LAContext`의 `.deviceOwnerAuthentication`(생체 인증이 안 되면 기기 암호). `Info.plist`에 `NSFaceIDUsageDescription`이 있어야 함(없으면 Face ID 인증이 실패할 수 있음). 안드로이드는 `BiometricPrompt`에 `BIOMETRIC_STRONG or DEVICE_CREDENTIAL`. 이 조합은 API 28·29에서 지원되지 않아 `build()`가 실패하므로, API 28·29(안드로이드 9·10)에서는 `BIOMETRIC_WEAK or DEVICE_CREDENTIAL`을 씀. API 30 미만을 모두 이 조합으로 해도 됨. 키를 여는 것이 아니라 화면을 여는 확인이라 그래도 됨 |
+| 화면 잠금이 없을 때 | 묻지 않고 진행하고, 화면 잠금을 권하는 문구를 보여 줌. iOS는 `canEvaluatePolicy`가 `LAError.passcodeNotSet`일 때, 안드로이드는 `KeyguardManager.isDeviceSecure`가 거짓일 때. 확인할 것이 없고, 계정 삭제는 스토어 규정상 늘 할 수 있어야 하기 때문 |
 | 캡처 | 안드로이드는 복구 코드 화면과 기기 바꾸기 입력 화면에 `FLAG_SECURE`. iOS는 막을 수 없어 캡처를 감지하면 토스트([M1 화면](../design/m1.md) 13번) |
 | 12칸 입력 | 자동 고침, 맞춤법, 키보드 학습을 끔(iOS `.autocorrectionDisabled()`, 안드로이드 `TYPE_TEXT_FLAG_NO_SUGGESTIONS`와 `IME_FLAG_NO_PERSONALIZED_LEARNING`). 단어가 키보드 사전이나 추천에 남지 않게 하려는 것 |
 
@@ -43,7 +45,8 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 | --- | --- |
 | 제공자에게 넘기는 nonce | 카카오·Apple 로그인에는 `GET /auth/nonce`의 값을 그대로 넘기지 않고, 코어가 계산한 묶기 값(`hex(SHA-256("geunal login v1" ‖ nonce ‖ signature_key))`)을 넘김([공통 계약](../parts/protocol.md) 13장). 벡터 `login_nonce.json`과 같아야 함 |
 | 서명 | 교체(`POST /auth/replace`), 게스트 복귀(`POST /auth/recover`), 복구 자료 덮어쓰기, 게스트 계정 삭제의 서명은 코어가 만듦. 앱은 키를 직접 다루지 않음 |
-| 계정 삭제 전 재인증 | 삭제 직전에 다시 증명함([공통 계약](../parts/protocol.md) 13장). 카카오는 카카오 로그인을 한 번 더 받아 ID 토큰을, Apple은 Sign in with Apple을 한 번 더 받아 인가 코드를 넣음. 안드로이드는 웹 로그인 콜백이 넘긴 `code`를 로그인에는 버리고 삭제 때만 씀. 게스트는 코어가 복구 서명을 조용히 만들므로 앱이 따로 묻지 않음("삭제" 입력 확인은 그대로) |
+| 계정 삭제 전 재인증 | 기기 인증(3장)을 받은 뒤, 삭제 직전에 다시 증명함([공통 계약](../parts/protocol.md) 13장). 카카오는 카카오 로그인을 한 번 더 받아 ID 토큰을, Apple은 Sign in with Apple을 한 번 더 받아 인가 코드를 넣음. 안드로이드는 웹 로그인 콜백이 넘긴 `code`를 로그인에는 버리고 삭제 때만 씀. 게스트는 코어가 복구 서명을 조용히 만들므로 앱이 따로 묻지 않음("삭제" 입력 확인은 그대로) |
+| 백업 없이 새로 시작 | 기기 인증(3장)을 받은 뒤 지움. 제공자 로그인으로 세션을 받은 지 30분이 지났으면, 계정 삭제와 같은 새 제공자 증명을 `PUT /me/recovery`에 붙임([공통 계약](../parts/protocol.md) 10장). 다시 로그인하지 않음. 다른 카카오 계정으로 로그인하면 이 기기가 그 계정에 등록되기 때문 |
 | 재인증 실패 | 403 `reauth_required`는 세션이 유효하다는 뜻이라, 로그아웃하지 않고 증명만 다시 받음. 409 `recovery_missing`이면 복구 자료를 먼저 올린 뒤 다시 지움 |
 | 받은 토큰과 코드 | 삭제에 쓴 ID 토큰과 인가 코드는 저장하거나 로그에 남기지 않음 |
 
