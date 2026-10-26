@@ -24,18 +24,23 @@ platform=26
 
 # SQLCipher links a libcrypto trimmed to what it calls (core/scripts/build-openssl.sh). libsqlite3-sys reads the
 # OpenSSL location per target, so each ABI gets its own. It does not rerun its build script when that OpenSSL changes,
-# so a rebuilt one cleans it for the target; otherwise SQLCipher would keep the previous headers and library.
+# but its build output names the directory it linked, and every OpenSSL build has its own directory. Output naming
+# another one is stale, whether an earlier run, a standalone build-openssl.sh or a restored cache left it, so the
+# target's libsqlite3-sys is cleaned; otherwise SQLCipher would keep the previous headers and library. Should a
+# libsqlite3-sys release word its output differently, nothing matches and it is rebuilt every time, slower but right.
 for abi in "${abis[@]}"; do
   case "$abi" in
     arm64-v8a) triple=aarch64-linux-android ;;
     armeabi-v7a) triple=armv7-linux-androideabi ;;
     x86_64) triple=x86_64-linux-android ;;
   esac
-  before="$(cat "$repo/.tools/openssl/$abi/key" 2>/dev/null || true)"
   dir="$("$core/scripts/build-openssl.sh" "$abi" "$platform")"
-  if [ "$(cat "$dir/key")" != "$before" ]; then
-    cargo clean --release --target "$triple" -p libsqlite3-sys
-  fi
+  for output in "${CARGO_TARGET_DIR:-$core/target}/$triple/release/build/"libsqlite3-sys-*/output; do
+    if [ -f "$output" ] && ! grep -qxF "cargo:rustc-link-search=$dir/lib" "$output"; then
+      cargo clean --release --target "$triple" -p libsqlite3-sys
+      break
+    fi
+  done
   var="$(echo "$triple" | tr '[:lower:]-' '[:upper:]_')_OPENSSL_DIR"
   export "$var=$dir"
 done

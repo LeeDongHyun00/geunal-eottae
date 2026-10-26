@@ -6,9 +6,10 @@
 #   core/scripts/build-openssl.sh <arm64-v8a|armeabi-v7a|x86_64> <android api>   build (once) and print the directory
 #   core/scripts/build-openssl.sh --check                                          fail when a newer patch release exists
 #
-# The source is checked against the SHA-256 published with the release. Each ABI's build lands in .tools/openssl/<abi>
-# with a key of everything that shaped it (key file); a change here rebuilds it. libsqlite3-sys does not notice a new
-# OpenSSL by itself, so build-android.sh compares the key around this call. Progress goes to stderr.
+# The source is checked against the SHA-256 published with the release. Each build lands in .tools/openssl/<abi>-<key>,
+# where the key covers everything that shaped it, so a change here builds into a new directory and the old one goes.
+# libsqlite3-sys does not notice a new OpenSSL by itself; build-android.sh tells by the directory. Progress goes to
+# stderr.
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -76,8 +77,8 @@ digest() {
 
 ndk="$("$repo/scripts/tool.sh" android-ndk)"
 key="$(printf '%s\n' "$version" "$sha256" "$api" "$ndk" "${options[@]}" "${cflags[@]}" | digest | cut -c1-12)"
-out="$repo/.tools/openssl/$abi"
-if [ -f "$out/lib/libcrypto.a" ] && [ "$(cat "$out/key" 2>/dev/null)" = "$key" ]; then
+out="$repo/.tools/openssl/$abi-$key"
+if [ -f "$out/lib/libcrypto.a" ]; then
   echo "$out"
   exit 0
 fi
@@ -125,7 +126,10 @@ rm -rf "$out.partial"
 mkdir -p "$out.partial/include" "$out.partial/lib"
 cp -R "$work/include/openssl" "$out.partial/include/"
 cp "$work/libcrypto.a" "$out.partial/lib/"
-echo "$key" >"$out.partial/key"
 rm -rf "$out"
 mv "$out.partial" "$out"
+# Earlier builds for this ABI are of no further use.
+for old in "$repo/.tools/openssl/$abi" "$repo/.tools/openssl/$abi"-*; do
+  if [ "$old" != "$out" ]; then rm -rf "$old"; fi
+done
 echo "$out"
