@@ -29,6 +29,24 @@ class GeunalUITestCase: XCTestCase {
         wait(for: [done], timeout: timeout)
     }
 
+    /// Today in Korean time as the core writes days, for the identifiers of day cells ("month.day.2026-10-26").
+    var koreanToday: String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Seoul") ?? .current
+        let parts = calendar.dateComponents([.year, .month, .day], from: Date())
+        return String(format: "%04ld-%02ld-%02ld", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    /// The first element of `query` whose label is `label`, or starts with it.
+    func labeled(_ query: XCUIElementQuery, _ label: String, prefix: Bool = false) -> XCUIElement {
+        query.matching(NSPredicate(format: prefix ? "label BEGINSWITH %@" : "label == %@", label)).firstMatch
+    }
+
+    /// Taps a month cell on its date, above the event bars that open the editor.
+    func tapDate(_ cell: XCUIElement) {
+        cell.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
+    }
+
     /// Welcome → sign-in.
     func openSignIn(_ app: XCUIApplication) {
         let start = app.buttons["welcome.start"]
