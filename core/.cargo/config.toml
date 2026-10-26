@@ -1,0 +1,11 @@
+# Android's loader reads APS2-packed relocations from API 23, below the apps' minSdk 26 (docs/parts/android.md §1).
+# Packing shrinks the library's relocation table from about 1.5 MB to 0.2 MB per 64-bit ABI (docs/parts/rust-core.md
+# §7, size budget). RELR would pack more but needs API 28.
+[target.aarch64-linux-android]
+rustflags = ["-C", "link-arg=-Wl,--pack-dyn-relocs=android"]
+
+[target.armv7-linux-androideabi]
+rustflags = ["-C", "link-arg=-Wl,--pack-dyn-relocs=android"]
+
+[target.x86_64-linux-android]
+rustflags = ["-C", "link-arg=-Wl,--pack-dyn-relocs=android"]

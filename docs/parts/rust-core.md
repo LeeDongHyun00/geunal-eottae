@@ -22,7 +22,7 @@ core/
   geunal-crypto/      # AEAD, STREAM chunks, Argon2id, AMK, recovery words (BIP39)
   geunal-mls/         # mls-rs wrapper: client, key packages, commits, exporter state keys, external join
   geunal-store/       # SQLCipher via rusqlite, migrations, cross-process lock
-  geunal-domain/      # entry, calendar (rrule), availability, appointments, suggestions, holidays, chat
+  geunal-domain/      # entry, calendar and repeat rules, availability, appointments, suggestions, holidays, lunar, chat
   geunal-sync/        # HTTPS (reqwest + rustls), Phoenix channel client (tokio-tungstenite), outbox, cursors
   geunal-ffi/         # UniFFI facade: Core object, decrypt_push, listener and secret-store callbacks
   vectors/            # test vectors other parts read (protocol §12)
@@ -35,7 +35,6 @@ core/
 | chacha20poly1305, argon2 | 0.10, 0.5 | 상태 블롭·미디어·백업 AEAD, 복구 키 |
 | ciborium | 0.2 | 엔트리·상태 블롭 CBOR |
 | rusqlite | mls-rs-provider-sqlite와 같은 버전 | 로컬 저장소. libsqlite3-sys가 하나만 들어가야 함 |
-| rrule | 0.14 | 반복 일정 전개 |
 | reqwest(rustls), tokio-tungstenite, tokio | 최신 안정판, 0.30 | API, 게이트웨이 |
 | uniffi | 0.31 | Swift·Kotlin 바인딩 |
 
@@ -345,7 +344,7 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
 
 규칙은 [개요](../kickoff.md) 5장, 형식은 [공통 계약](protocol.md) 4·5장을 따릅니다.
 
-- **캘린더:** `rrule`로 반복을 전개하고, `exdates`와 `event_overrides`로 예외를 적용합니다. 30분 슬롯(한국 시간) 비트맵을 만들고, 18:10–19:20 일정은 18:00–19:30으로 올림합니다.
+- **캘린더:** 편집기가 쓴 RFC 5545 반복 규칙을 한국 시간으로 전개하고(`recurrence.rs`), `exdates`와 `event_overrides`로 예외를 적용합니다. 저장된 규칙은 모두 편집기가 쓴 것이라 그 규칙만 읽고, `Asia/Seoul`이 아닌 시간대의 규칙은 거부합니다. 범용 RRULE 크레이트는 시간대 데이터베이스와 정규식을 함께 들여와 안드로이드 라이브러리를 ABI마다 약 2MB 키웠습니다(7장). 30분 슬롯(한국 시간) 비트맵을 만들고, 18:10–19:20 일정은 18:00–19:30으로 올림합니다.
 - **입력 추천:** `suggestScore`, 겹치는 칩 제외, 같은 요일 세 번이면 반복 제안. 아래 "입력 추천"에 후보와 점수를 적습니다.
 - **그룹 캘린더:** 아래 코드 그대로입니다.
 - **날짜 잡기 상태:**
@@ -530,7 +529,11 @@ pub fn open(key: &[u8; 32], aad: &str, blob: &[u8]) -> Option<Vec<u8>> {
 | 호스트 | `x86_64-unknown-linux-gnu` | 테스트, 헤드리스 종단 시험 클라이언트, 테스트 벡터 | 리눅스 |
 
 - **SQLCipher 빌드:** 안드로이드는 OpenSSL을 함께 빌드하는 rusqlite 기능을 쓰고, iOS는 CommonCrypto를 씁니다. M0에서 두 플랫폼 빌드를 먼저 통과시킵니다.
-- **크기 예산:** 릴리스·심볼 제거 기준 ABI당 8MB 이하. 크기를 CI에서 기록하고 늘어나면 알립니다.
+- **크기 예산:** 릴리스·심볼 제거 기준 ABI당 8MB 이하. `make build-android`가 `core/out/android/sizes.md`에 기록하고, 넘으면 경고합니다. 지금 줄이는 방법은 넷입니다.
+  - **압축 재배치:** `core/.cargo/config.toml`이 안드로이드 타깃에 APS2 압축 재배치를 켭니다. 64비트 ABI에서 재배치 표가 1.5MB에서 0.1MB로 줄고, 안드로이드는 API 23부터 읽으므로 minSdk 26에서 문제없습니다.
+  - **SQLite는 `-Oz`:** C 코드는 LTO 밖이라 패키지별 최적화 수준이 그대로 듣습니다. ABI마다 0.75MB가 줄어듭니다. 같이 빌드되는 OpenSSL은 자기 빌드 플래그를 써서 이 설정을 따르지 않습니다.
+  - **Rust는 `opt-level = 3`:** `"z"`로 하면 0.6MB가 더 줄지만 Argon2id(64MiB)가 약 50% 느려지고, LTO가 크레이트별 수준을 덮어써서 암호 크레이트만 빠르게 둘 수도 없습니다.
+  - **의존성:** 반복 규칙은 직접 전개하고(6장), reqwest의 HTTP/2는 끕니다([ADR 0002](../adr/0002-http-tls-stack.md)). 범용 RRULE 크레이트는 시간대 데이터베이스와 정규식을 함께 들여와 약 2MB였고, HTTP/2 클라이언트는 약 0.5MB였습니다.
 - **버전:** 코어 버전은 앱 빌드 번호와 함께 올립니다. 앱과 코어를 따로 배포하지 않습니다.
 
 ## 8. 성능·메모리 예산
