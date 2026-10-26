@@ -28,8 +28,9 @@ test: test-core test-api test-gateway test-android ## Run every part's tests
 # an advisory published against code nobody is editing would otherwise go unnoticed (docs/security/dependencies.md).
 audit: audit-core scan-api scan-gateway ## Dependency vulnerability gates of every part, as the weekly audit runs them
 
-audit-core: ## Rust core: cargo-deny advisories only (lint-core runs the whole policy)
+audit-core: ## Rust core: cargo-deny advisories, and whether the Android OpenSSL has a newer patch (lint-core runs the whole policy)
 	"$$(scripts/tool.sh cargo-deny)" --manifest-path core/Cargo.toml --locked check advisories
+	core/scripts/build-openssl.sh --check
 
 lint-repo: ## Lint workflows (actionlint) and every tracked shell script (shellcheck)
 	shellcheck="$$(scripts/tool.sh shellcheck)"; \

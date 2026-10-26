@@ -35,7 +35,7 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .tools
-          key: tools-${{ runner.os }}-${{ hashFiles('scripts/tool.sh') }}
+          key: tools-${{ runner.os }}-${{ hashFiles('scripts/tool.sh', 'core/scripts/build-openssl.sh') }}
       - run: make build-android
       - run: make lint-android test-android
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -70,7 +70,7 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .tools
-          key: tools-${{ runner.os }}-${{ hashFiles('scripts/tool.sh') }}
+          key: tools-${{ runner.os }}-${{ hashFiles('scripts/tool.sh', 'core/scripts/build-openssl.sh') }}
       - run: make build-android
       # The runner's user needs the KVM device for a hardware-accelerated emulator.
       - name: Enable KVM
