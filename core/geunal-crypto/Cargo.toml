@@ -16,7 +16,13 @@ rand_core.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 
+[features]
+# The fixed-nonce functions behind core/vectors/: reproducible test vectors only. Reusing a nonce under a key breaks
+# both ciphers, so nothing else may reach them, and only the vector tests turn this on.
+test-vectors = []
+
 [dev-dependencies]
+geunal-crypto = { workspace = true, features = ["test-vectors"] }
 serde_json.workspace = true
 
 [lints]

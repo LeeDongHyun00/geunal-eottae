@@ -52,6 +52,24 @@ impl Transport for Api {
     async fn get_recovery(&self, ticket: Option<&str>) -> Result<StoredRecovery, ApiError> {
         each!(self, t => t.get_recovery(ticket).await)
     }
+    async fn start_backup(&self, size: u64) -> Result<BackupUpload, ApiError> {
+        each!(self, t => t.start_backup(size).await)
+    }
+    async fn put_object(&self, url: &str, body: Vec<u8>) -> Result<(), ApiError> {
+        each!(self, t => t.put_object(url, body).await)
+    }
+    async fn complete_backup(&self, id: i64) -> Result<BackupInfo, ApiError> {
+        each!(self, t => t.complete_backup(id).await)
+    }
+    async fn backups(&self, ticket: Option<&str>) -> Result<Vec<BackupInfo>, ApiError> {
+        each!(self, t => t.backups(ticket).await)
+    }
+    async fn latest_backup(&self, ticket: Option<&str>) -> Result<Option<BackupDownload>, ApiError> {
+        each!(self, t => t.latest_backup(ticket).await)
+    }
+    async fn get_object(&self, url: &str, progress: Progress<'_>) -> Result<Vec<u8>, ApiError> {
+        each!(self, t => t.get_object(url, progress).await)
+    }
     fn restore_session(&self, access_token: &str, refresh_token: &str) {
         each!(self, t => t.restore_session(access_token, refresh_token))
     }

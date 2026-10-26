@@ -259,6 +259,37 @@ pub struct StoredRecovery {
     pub updated_at: String,
 }
 
+/// `POST /me/backups`: where to put a sealed object of `size` bytes. The URL is signed with that length.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BackupUpload {
+    pub id: i64,
+    pub upload_url: String,
+    #[serde(default)]
+    pub expires_in: i64,
+}
+
+/// A completed backup as the server knows it: id, size and time only (protocol §10 "목록").
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BackupInfo {
+    pub id: i64,
+    pub size: u64,
+    /// RFC 3339: when the upload was completed.
+    pub created_at: String,
+}
+
+/// `GET /me/backups/latest`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BackupDownload {
+    #[serde(flatten)]
+    pub backup: BackupInfo,
+    pub download_url: String,
+    #[serde(default)]
+    pub expires_in: i64,
+}
+
+/// Bytes moved so far and in all, for a progress bar.
+pub type Progress<'a> = &'a (dyn Fn(u64, u64) + Send + Sync);
+
 /// One row of `GET /users/{id}/devices`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeviceInfo {
@@ -458,6 +489,21 @@ pub trait Transport: Send + Sync {
     fn put_recovery(&self, req: RecoveryUpload) -> impl Future<Output = Result<(), ApiError>> + Send;
     /// With `ticket`, as the bearer of a replacement in progress; otherwise with the session.
     fn get_recovery(&self, ticket: Option<&str>) -> impl Future<Output = Result<StoredRecovery, ApiError>> + Send;
+    /// `POST /me/backups`.
+    fn start_backup(&self, size: u64) -> impl Future<Output = Result<BackupUpload, ApiError>> + Send;
+    /// `PUT` to a presigned URL, which carries its own authorization: the session's token never goes there.
+    fn put_object(&self, url: &str, body: Vec<u8>) -> impl Future<Output = Result<(), ApiError>> + Send;
+    /// `POST /me/backups/{id}/complete`.
+    fn complete_backup(&self, id: i64) -> impl Future<Output = Result<BackupInfo, ApiError>> + Send;
+    /// `GET /me/backups`, newest first; with `ticket` as for `get_recovery`.
+    fn backups(&self, ticket: Option<&str>) -> impl Future<Output = Result<Vec<BackupInfo>, ApiError>> + Send;
+    /// `GET /me/backups/latest`; `None` when the account has no completed backup.
+    fn latest_backup(
+        &self,
+        ticket: Option<&str>,
+    ) -> impl Future<Output = Result<Option<BackupDownload>, ApiError>> + Send;
+    /// `GET` from a presigned URL, reporting the bytes as they arrive.
+    fn get_object(&self, url: &str, progress: Progress<'_>) -> impl Future<Output = Result<Vec<u8>, ApiError>> + Send;
     /// Reuses a session from a previous run.
     fn restore_session(&self, access_token: &str, refresh_token: &str);
     /// Forgets the session: signed out by another device, or the account is gone.
@@ -526,6 +572,24 @@ impl<T: Transport> Transport for std::sync::Arc<T> {
     }
     async fn get_recovery(&self, ticket: Option<&str>) -> Result<StoredRecovery, ApiError> {
         (**self).get_recovery(ticket).await
+    }
+    async fn start_backup(&self, size: u64) -> Result<BackupUpload, ApiError> {
+        (**self).start_backup(size).await
+    }
+    async fn put_object(&self, url: &str, body: Vec<u8>) -> Result<(), ApiError> {
+        (**self).put_object(url, body).await
+    }
+    async fn complete_backup(&self, id: i64) -> Result<BackupInfo, ApiError> {
+        (**self).complete_backup(id).await
+    }
+    async fn backups(&self, ticket: Option<&str>) -> Result<Vec<BackupInfo>, ApiError> {
+        (**self).backups(ticket).await
+    }
+    async fn latest_backup(&self, ticket: Option<&str>) -> Result<Option<BackupDownload>, ApiError> {
+        (**self).latest_backup(ticket).await
+    }
+    async fn get_object(&self, url: &str, progress: Progress<'_>) -> Result<Vec<u8>, ApiError> {
+        (**self).get_object(url, progress).await
     }
     fn restore_session(&self, access_token: &str, refresh_token: &str) {
         (**self).restore_session(access_token, refresh_token)

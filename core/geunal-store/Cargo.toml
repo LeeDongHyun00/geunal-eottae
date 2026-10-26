@@ -19,7 +19,7 @@ thiserror.workspace = true
 rusqlite = { workspace = true, features = ["bundled-sqlcipher-vendored-openssl"] }
 
 [dev-dependencies]
-geunal-crypto.workspace = true
+geunal-crypto = { workspace = true, features = ["test-vectors"] }
 hex.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

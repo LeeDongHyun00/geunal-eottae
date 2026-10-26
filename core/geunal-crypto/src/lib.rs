@@ -11,4 +11,6 @@ pub mod login;
 pub mod recovery;
 pub mod stream;
 
-pub use aead::{Key, open, random_key, seal, seal_with_nonce};
+#[cfg(feature = "test-vectors")]
+pub use aead::seal_with_nonce;
+pub use aead::{Key, open, random_key, seal};

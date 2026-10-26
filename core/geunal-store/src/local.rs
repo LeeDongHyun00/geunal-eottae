@@ -557,6 +557,15 @@ impl Db<'_> {
 
     // ----- backup notes -----
 
+    /// Keeps the notes of `ids` only: the backups the server still has. An empty list clears them, as when "새로
+    /// 시작" deletes every backup or the store changes hands.
+    pub fn retain_backup_records(&self, ids: &[i64]) -> Result<()> {
+        // Integers only, so they go into the statement as they are; SQLite takes an empty list.
+        let keep: Vec<String> = ids.iter().map(i64::to_string).collect();
+        self.conn.execute(&format!("DELETE FROM backup_records WHERE id NOT IN ({})", keep.join(",")), [])?;
+        Ok(())
+    }
+
     pub fn put_backup_record(&self, row: &BackupRecordRow) -> Result<()> {
         self.conn.execute(
             "INSERT OR REPLACE INTO backup_records (id, created_at, size, automatic, events, people)
