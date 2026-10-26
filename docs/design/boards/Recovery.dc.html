@@ -52,8 +52,8 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
 class Component extends DCLogic {
   renderVals() {
-    // Placeholder words for the mock; the real code is 12 words from the core's wordlist.
-    const list = ['바다', '연필', '구름', '사과', '기차', '노을', '단추', '마당', '별빛', '소풍', '우산', '하늘'];
+    // Example words from the BIP39 Korean list (shown in NFC); the real code is 12 words from the core.
+    const list = ['바람', '연필', '구름', '달력', '열쇠', '우산', '단추', '마당', '편지', '소풍', '거울', '하늘'];
     return { words: list.map((t, i) => ({ n: String(i + 1), t })) };
   }
 }
