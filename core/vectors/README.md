@@ -9,6 +9,16 @@
 | `state_blobs.json` | Rust 코어 | Rust 코어 |
 | `realtime_events.json` | API 서버 | 게이트웨이, Rust 코어 |
 | `push_payloads.json` | API 서버 | Rust 코어(`decrypt_push`) |
+| `recovery.json` (M1) | Rust 코어 | Rust 코어, API 서버(복구 서명 확인) |
+| `login_nonce.json` (M1) | Rust 코어 | API 서버(제공자 토큰의 nonce 비교) |
+| `backups.json` (M1) | Rust 코어 | Rust 코어(이전 버전 아카이브 복원) |
+| `auth_results.json` (M1) | API 서버 | Rust 코어 |
+
+M1 벡터는 [공통 계약](../../docs/parts/protocol.md) 10·13장을 따라 만드는 파트가 첫 구현과 함께 커밋합니다.
+- `recovery.json`: 단어 목록 파일의 SHA-256, `E`와 NFC 12단어의 짝(체크섬이 틀린 예 포함), `K`, 래핑 키와 고정 논스로 래핑한 AMK, 복구 ID, 복구 공개키, 게스트 복귀 서명과 덮어쓰기 서명의 예.
+- `login_nonce.json`: `nonce`와 `signature_key`에서 제공자에게 넘기는 값.
+- `backups.json`: 고정 AMK와 고정 논스 접두사로 봉인한 아카이브. 아카이브 버전이 오를 때마다 항목을 더하고 지우지 않습니다.
+- `auth_results.json`: `registered`와 `replace_required` 응답 본문.
 
 - 파일 이름은 처음 쓰는 파트가 이대로 만듭니다. 바꾸려면 이 표와 함께 바꿉니다.
 - Rust 코어의 벡터는 테스트가 만들고 검사합니다. `cd core && GEUNAL_WRITE_VECTORS=1 cargo test --locked -p geunal-domain -p geunal-mls --test vectors`가 세 파일을 다시 쓰고, 보통의 `make test-core`는 커밋된 파일이 지금 빌드와 맞는지만 확인합니다.

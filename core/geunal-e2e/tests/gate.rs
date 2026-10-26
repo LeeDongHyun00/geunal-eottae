@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use geunal_e2e::{MemorySecrets, Quiet, api_url, gateway_url};
-use geunal_ffi::{Core, CoreError, Mode, RealtimeEvent, Session, Stage};
+use geunal_ffi::{AuthResult, Core, CoreError, Mode, RealtimeEvent, Session, Stage};
 use pollster::block_on;
 
 struct Client {
@@ -63,7 +63,9 @@ fn client(name: &str) -> Option<Client> {
     // A fresh subject per run: the same subject is the same account, and a second device would revoke the first.
     let subject = format!("e2e-{name}-{}", run_tag());
     match block_on(core.clone().sign_in_stub(subject, name.to_owned(), "android".to_owned())) {
-        Ok(session) => Some(Client { core, session, _dir: dir }),
+        Ok(AuthResult::Registered { session, .. }) => Some(Client { core, session, _dir: dir }),
+        // A fresh subject is a new account, which has no other device to replace.
+        Ok(other) => panic!("a fresh subject should register at once: {other:?}"),
         Err(CoreError::Api { status, code, .. }) if status == 404 => {
             skip(&format!("the API answered {status} {code} to POST /auth/stub: GEUNAL_AUTH_STUB is off"));
             None

@@ -1,17 +1,11 @@
 package app.geunal.ui.corestatus
 
 import app.geunal.core.Change
-import app.geunal.core.ChatMessage
+import app.geunal.core.Core
 import app.geunal.core.CoreException
-import app.geunal.core.CoreInterface
 import app.geunal.core.CoreListener
-import app.geunal.core.GroupInfo
-import app.geunal.core.GroupStateView
-import app.geunal.core.MemberAvailability
-import app.geunal.core.Mode
-import app.geunal.core.RealtimeEvent
+import app.geunal.core.NoHandle
 import app.geunal.core.Session
-import app.geunal.core.Stage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -93,10 +87,13 @@ class CoreStatusViewModelTest {
             assertEquals(2, viewModel.status.value.changes)
         }
 
-    /** Only the two members the status screen calls are real; the rest of the M0 surface is not reached here. */
+    /**
+     * Subclasses the generated `Core` without a Rust handle, the way UniFFI provides for fakes, and overrides only what
+     * the status screen calls; any other method fails. That keeps this fake unchanged as the core's surface grows.
+     */
     private class FakeCore(
         private val syncError: CoreException? = null,
-    ) : CoreInterface {
+    ) : Core(NoHandle) {
         override fun cipherVersion(): String = "4.7.0 community"
 
         override suspend fun sync() {
@@ -104,95 +101,5 @@ class CoreStatusViewModelTest {
         }
 
         override fun session(): Session? = null
-
-        override suspend fun signInStub(
-            subject: String,
-            displayName: String,
-            platform: String,
-        ): Session = unused()
-
-        override suspend fun createGroup(name: String?): String = unused()
-
-        override suspend fun addMembers(
-            groupId: String,
-            userIds: List<String>,
-        ) = unused()
-
-        override suspend fun removeMember(
-            groupId: String,
-            userId: String,
-        ) = unused()
-
-        override suspend fun sendText(
-            groupId: String,
-            body: String,
-        ): String = unused()
-
-        override suspend fun requestDate(
-            groupId: String,
-            day: String,
-            mode: Mode,
-            start: UShort?,
-            end: UShort?,
-            activity: String?,
-            note: String?,
-            leaderOptions: Boolean,
-        ): String = unused()
-
-        override suspend fun respond(
-            groupId: String,
-            appt: String,
-            accept: Boolean,
-        ) = unused()
-
-        override suspend fun openPoll(
-            groupId: String,
-            appt: String,
-            stage: Stage,
-            options: List<String>,
-        ) = unused()
-
-        override suspend fun vote(
-            groupId: String,
-            appt: String,
-            stage: Stage,
-            option: String?,
-        ) = unused()
-
-        override suspend fun closePoll(
-            groupId: String,
-            appt: String,
-            stage: Stage,
-        ) = unused()
-
-        override suspend fun cancel(
-            groupId: String,
-            appt: String,
-        ) = unused()
-
-        override suspend fun setAvailability(
-            groupId: String,
-            windowStart: String,
-            days: UShort,
-            bits: ByteArray,
-        ) = unused()
-
-        override fun groups(): List<GroupInfo> = unused()
-
-        override fun members(groupId: String): List<String> = unused()
-
-        override fun groupState(groupId: String): GroupStateView = unused()
-
-        override fun messages(groupId: String): List<ChatMessage> = unused()
-
-        override fun groupAvailability(groupId: String): List<MemberAvailability> = unused()
-
-        override suspend fun connectRealtime(gatewayBase: String) = unused()
-
-        override suspend fun nextRealtimeEvent(timeoutMs: ULong): RealtimeEvent? = unused()
-
-        override suspend fun disconnectRealtime() = unused()
-
-        private fun unused(): Nothing = error("the status screen does not call this")
     }
 }
