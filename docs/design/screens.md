@@ -89,7 +89,7 @@
 | 기기 로그아웃됨 | 복구 코드로 들어왔을 때 | 다른 계정의 일정이 남았을 때 | 계정 삭제 · 재인증 실패 |
 | --- | --- | --- | --- |
 | <img src="screens/m1/23-revoked@2x.png" width="200" alt="기기 로그아웃됨"> | <img src="screens/m1/23-revoked--recovery@2x.png" width="200" alt="복구 코드로 들어옴"> | <img src="screens/m1/24-keep-local@2x.png" width="200" alt="다른 계정의 일정"> | <img src="screens/m1/22-delete-account--reauth-failed@2x.png" width="200" alt="삭제 재인증 실패"> |
-| 다른 기기에서 로그인한 뒤 이전 기기가 받는 시트. 남는 것과 지워지는 것을 나란히 보여 주고, 캘린더는 계속 쓰게 둡니다. | `replaced_via`가 복구 코드면 종이가 노출됐을 수 있다고 말하고 카카오·Apple 연결을 권합니다. | 로그인 뒤나 복원 전에 저장소가 다른 계정의 것이면 가져오기와 지우기 중 하나를 고릅니다. | 다른 카카오·Apple 계정으로 로그인하면 403 `reauth_required`. 시트에서 바로 다시 확인합니다. 게스트는 [추가 단계 없이](screens/m1/22-delete-account--guest@2x.png) 지웁니다. |
+| 다른 기기에서 로그인한 뒤 이전 기기가 받는 시트. 남는 것과 지워지는 것을 나란히 보여 주고, 캘린더는 계속 쓰게 둡니다. | `replaced_via`가 복구 코드면 종이가 노출됐을 수 있다고 말하고 카카오·Apple 연결을 권합니다. | 로그인 뒤나 복원 전에 저장소가 다른 계정의 것이면 가져오기와 지우기 중 하나를 고릅니다. | 다른 카카오·Apple 계정으로 로그인하면 403 `reauth_required`. 시트에서 바로 다시 확인합니다. 게스트는 [제공자 확인 없이](screens/m1/22-delete-account--guest@2x.png) 지웁니다. |
 
 ## M2 그룹·날짜 잡기
 
