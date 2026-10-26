@@ -19,7 +19,9 @@ public enum DayText {
     public static func short(_ day: String, today: String) -> String {
         guard let parsed = KoreanCalendar.parse(day) else { return day }
         if let now = KoreanCalendar.parse(today), now.year != parsed.year {
-            return String(localized: "\(parsed.year)년 \(parsed.month)월 \(parsed.day)일", bundle: .module)
+            // A string, not an integer: localized integers get digit grouping ("2,027년").
+            let year = String(parsed.year)
+            return String(localized: "\(year)년 \(parsed.month)월 \(parsed.day)일", bundle: .module)
         }
         let weekday = weekdayName(KoreanCalendar.weekday(of: day) ?? 1)
         return String(localized: "\(parsed.month)월 \(parsed.day)일(\(weekday))", bundle: .module)

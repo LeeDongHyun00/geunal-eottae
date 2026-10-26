@@ -23,20 +23,14 @@ if [ "${1:-}" = --update ]; then
   exit 0
 fi
 
-if [ -f "$committed" ]; then
-  cp "$committed" "$resolved"
-  xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile \
-    -project "$project" -scheme "$scheme" -derivedDataPath "$derived_data" >&2
-else
-  xcodebuild -resolvePackageDependencies -project "$project" -scheme "$scheme" -derivedDataPath "$derived_data" >&2
+if [ ! -f "$committed" ]; then
+  echo "apps/ios/Package.resolved is missing: run make lock-ios on a Mac and commit it" >&2
+  exit 1
 fi
 
-if [ ! -f "$committed" ]; then
-  # Bootstrapping the lockfile: Xcode's first resolution is the one to commit.
-  echo "::warning::apps/ios/Package.resolved is missing; commit the file printed below"
-  cat "$resolved"
-  exit 0
-fi
+cp "$committed" "$resolved"
+xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile \
+  -project "$project" -scheme "$scheme" -derivedDataPath "$derived_data" >&2
 
 if ! python3 -I "$ios_dir/scripts/pins.py" "$committed" "$resolved"; then
   echo "Package.resolved Xcode settled on:" >&2

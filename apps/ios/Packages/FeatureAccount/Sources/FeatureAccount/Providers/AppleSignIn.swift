@@ -44,7 +44,7 @@ final class AppleSignIn: NSObject {
     }
 }
 
-extension AppleSignIn: @preconcurrency ASAuthorizationControllerDelegate {
+extension AppleSignIn: ASAuthorizationControllerDelegate {
     func authorizationController(
         controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization
     ) {
@@ -60,7 +60,7 @@ extension AppleSignIn: @preconcurrency ASAuthorizationControllerDelegate {
     }
 }
 
-extension AppleSignIn: @preconcurrency ASAuthorizationControllerPresentationContextProviding {
+extension AppleSignIn: ASAuthorizationControllerPresentationContextProviding {
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         let window = scenes.flatMap(\.windows).first(where: \.isKeyWindow) ?? scenes.first?.windows.first
