@@ -23,8 +23,18 @@ case "$action" in
     run_xcodebuild -only-testing:GeunalAppTests -resultBundlePath "$ios_dir/unit.xcresult" test
     ;;
   uitest)
-    rm -rf "$ios_dir/ui.xcresult"
-    run_xcodebuild -only-testing:GeunalAppUITests -resultBundlePath "$ios_dir/ui.xcresult" test
+    rm -rf "$ios_dir/ui.xcresult" "$ios_dir/screenshots"
+    status=0
+    run_xcodebuild -only-testing:GeunalAppUITests -resultBundlePath "$ios_dir/ui.xcresult" test || status=$?
+    # The screen-by-screen captures go out whether the tests passed or not: a failing screen is the one to look at.
+    attachments="$(mktemp -d)"
+    if xcrun xcresulttool export attachments --path "$ios_dir/ui.xcresult" --output-path "$attachments" >/dev/null; then
+      python3 -I "$ios_dir/scripts/export-screenshots.py" "$attachments" "$ios_dir/screenshots"
+    else
+      echo "::warning::could not export the UI test screenshots from ui.xcresult"
+    fi
+    rm -rf "$attachments"
+    exit "$status"
     ;;
   *)
     echo "unknown action: $action (build|test|uitest)" >&2

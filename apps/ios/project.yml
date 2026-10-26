@@ -36,6 +36,10 @@ packages:
     path: Packages/CoreBridge
   DesignSystem:
     path: Packages/DesignSystem
+  FeatureAccount:
+    path: Packages/FeatureAccount
+  FeatureCalendar:
+    path: Packages/FeatureCalendar
 
 targets:
   GeunalApp:
@@ -47,12 +51,21 @@ targets:
       - package: GeunalCore
       - package: CoreBridge
       - package: DesignSystem
+      - package: FeatureAccount
+      - package: FeatureCalendar
+    # Account-bound values (Kakao app key, team ID) come from Config/Secrets.xcconfig, which git ignores.
+    configFiles:
+      Debug: Config/App.xcconfig
+      Release: Config/App.xcconfig
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.geunal.ios
+        # Keys the build settings cannot express (the Kakao URL scheme, custom keys, usage descriptions); merged with
+        # the generated Info.plist.
+        INFOPLIST_FILE: GeunalApp/Info.plist
         # Keychain Sharing (docs/parts/ios.md §8): the notification extension reads the same keys from M3, and the
-        # simulator keychain works only for an app signed with entitlements. Automatic signing adds the capability to
-        # the App ID once a team is set (M1).
+        # simulator keychain works only for an app signed with entitlements. Sign in with Apple needs its own
+        # entitlement. Automatic signing adds both capabilities to the App ID once a team is set.
         CODE_SIGN_ENTITLEMENTS: GeunalApp/GeunalApp.entitlements
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
         INFOPLIST_KEY_CFBundleDisplayName: 그날어때
@@ -79,6 +92,8 @@ targets:
       - package: GeunalCore
       - package: CoreBridge
       - package: DesignSystem
+      - package: FeatureAccount
+      - package: FeatureCalendar
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.geunal.ios.tests

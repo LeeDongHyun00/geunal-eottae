@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>kakao</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>kakao$(KAKAO_APP_KEY)</string>
+			</array>
+		</dict>
+	</array>
+	<key>GeunalBuildChannel</key>
+	<string>$(GEUNAL_BUILD_CHANNEL)</string>
+	<key>GeunalPrivacyURL</key>
+	<string>$(GEUNAL_PRIVACY_URL)</string>
+	<key>GeunalTermsURL</key>
+	<string>$(GEUNAL_TERMS_URL)</string>
+	<key>KakaoAppKey</key>
+	<string>$(KAKAO_APP_KEY)</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>kakaokompassauth</string>
+		<string>kakaolink</string>
+	</array>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>기기 캘린더의 일정을 읽어 내 캘린더에 함께 보여 줘요. 제목은 이 기기 밖으로 나가지 않아요.</string>
+</dict>
+</plist>
