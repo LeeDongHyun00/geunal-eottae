@@ -250,6 +250,12 @@ fn starting_over_works_on_a_registered_device_and_needs_a_provider_proof_after_t
         assert_eq!(server.backups_cleared(&user), 1);
         assert_eq!(server.recovery_of(&user).unwrap().1, keys_of(&a.core).id());
         assert!(matches!(a.core.clone().start_fresh(Some(DeletionProof::Guest)).await, Err(CoreError::Invalid { .. })));
+
+        // With the code on this device nothing is lost: a new key would only make the backups unreadable.
+        server.set_now(t0 + chrono::Duration::minutes(32));
+        assert!(matches!(a.core.clone().start_fresh(None).await, Err(CoreError::Invalid { .. })));
+        assert_eq!(server.recovery_of(&user).unwrap().1, keys_of(&a.core).id());
+        assert_eq!(server.backups_cleared(&user), 1);
     });
 }
 
@@ -269,6 +275,123 @@ fn a_replacement_ticket_that_ran_out_needs_a_new_sign_in() {
         assert!(b.core.session().is_none());
         assert_eq!(server.active_device(&user), a.core.session().map(|s| s.device_id));
         a.core.clone().sync().await.unwrap();
+    });
+}
+
+#[test]
+fn a_replacement_that_never_reached_the_server_can_be_tried_again() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let (a, b) = (phone(&server), phone(&server));
+        let user = user_id(&kakao(&a.core, "jay", "제이").await.unwrap());
+        assert!(matches!(kakao(&b.core, "jay", "제이").await.unwrap(), AuthResult::ReplaceRequired { .. }));
+
+        server.fail_next("replace");
+        let err = b.core.clone().start_fresh(None).await.unwrap_err();
+        assert!(matches!(err, CoreError::Network { .. }), "{err:?}");
+        assert_eq!(server.active_device(&user), a.core.session().map(|s| s.device_id));
+
+        // The ticket is still in memory and still good.
+        let session = b.core.clone().start_fresh(None).await.unwrap();
+        assert_eq!(server.active_device(&user), Some(session.device_id));
+    });
+}
+
+#[test]
+fn a_new_code_whose_answer_was_lost_goes_up_after_the_thirty_minutes() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let t0 = chrono::Utc::now();
+        server.set_now(t0);
+        let (a, b) = (phone(&server), phone(&server));
+        let user = user_id(&kakao(&a.core, "ivy", "아이비").await.unwrap());
+        assert!(matches!(kakao(&b.core, "ivy", "아이비").await.unwrap(), AuthResult::ReplaceRequired { .. }));
+
+        // The server stores the new code, and its answer never arrives.
+        server.lose_next("put_recovery");
+        let err = b.core.clone().start_fresh(None).await.unwrap_err();
+        assert!(matches!(err, CoreError::Network { .. }), "{err:?}");
+        assert_eq!(server.recovery_of(&user).unwrap().1, keys_of(&b.core).id());
+        assert!(!b.core.recovery_status().unwrap().uploaded);
+
+        // Past the 30 minutes `new_key` alone is refused; the code on the server is this one, and it proves itself.
+        server.set_now(t0 + chrono::Duration::minutes(31));
+        b.core.clone().sync().await.unwrap();
+        assert!(b.core.recovery_status().unwrap().uploaded);
+        assert_eq!(server.recovery_of(&user).unwrap().1, keys_of(&b.core).id());
+        assert_eq!(server.backups_cleared(&user), 1);
+    });
+}
+
+#[test]
+fn a_revoke_event_signs_the_device_out_even_when_the_server_cannot_say_how() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let (a, b) = (phone(&server), phone(&server));
+        kakao(&a.core, "kim", "킴").await.unwrap();
+        let device = a.core.session().unwrap().device_id;
+
+        // An event the server stands behind is one GET /me no longer answers.
+        a.core.clone().deliver_fake_event(serde_json::json!({ "t": "revoke" })).await.unwrap();
+        assert!(a.core.session().is_some());
+
+        kakao(&b.core, "kim", "킴").await.unwrap();
+        b.core.clone().start_fresh(None).await.unwrap();
+        let revoke = server.take_events(&device).into_iter().find(|e| e["t"] == "revoke").unwrap();
+        server.fail_next("me");
+        a.core.clone().deliver_fake_event(revoke).await.unwrap();
+
+        assert!(a.core.session().is_none() && a.core.account().unwrap().is_none());
+        for secret in ["session", "device_signing_key", "recovery_entropy", "account_master_key"] {
+            assert!(!a.secrets.has(secret), "{secret} is gone");
+        }
+        assert!(a.core.revocation().unwrap().is_none(), "nobody said when or how");
+    });
+}
+
+#[test]
+fn key_packages_that_did_not_go_up_at_the_sign_in_go_up_with_the_next_sync() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let a = phone(&server);
+
+        server.fail_next("upload_key_packages");
+        let session = a.core.clone().sign_in_guest(new_account("게스트")).await.unwrap();
+        // The sign-in stands, and the code went up all the same.
+        assert!(a.core.recovery_status().unwrap().uploaded);
+        assert_eq!(server.key_packages_of(&session.user_id), 0);
+
+        a.core.clone().sync().await.unwrap();
+        assert_eq!(server.key_packages_of(&session.user_id), 10);
+        a.core.clone().sync().await.unwrap();
+        assert_eq!(server.key_packages_of(&session.user_id), 10, "once");
+    });
+}
+
+#[test]
+fn a_device_left_without_a_code_makes_it_on_the_next_run() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = Arc::new(MemorySecrets::default());
+        let open = || {
+            Core::open_fake(dir.path().to_str().unwrap().to_owned(), server.client(), Arc::new(Quiet), secrets.clone())
+        };
+        let core = open().unwrap();
+        server.fail_next("put_recovery");
+        let session = core.clone().sign_in_guest(new_account("게스트")).await.unwrap();
+        // As if the app had been closed before it made the code: the session is kept, and nothing else.
+        for secret in ["recovery_entropy", "account_master_key"] {
+            secrets.delete(secret.to_owned());
+        }
+        assert!(server.recovery_of(&session.user_id).is_none());
+        drop(core);
+
+        let core = open().unwrap();
+        core.clone().sync().await.unwrap();
+        let status = core.recovery_status().unwrap();
+        assert!(status.created && status.uploaded);
+        assert_eq!(server.recovery_of(&session.user_id).unwrap().1, keys_of(&core).id());
     });
 }
 

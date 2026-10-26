@@ -109,9 +109,29 @@ struct State {
     epoch_conflicts: u32,
     stale_epochs: u32,
     log_reads: u32,
+    /// Calls a test made fail, by route (`FakeServer::fail_next`, `FakeServer::lose_next`).
+    faults: BTreeMap<&'static str, Fault>,
+}
+
+/// How a call fails as the network drops it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Fault {
+    /// Before the server sees the request.
+    Fail,
+    /// After the server handled it: only the answer is lost.
+    Lose,
 }
 
 impl State {
+    /// The connection error of a call whose fault a test set for this point of it, once.
+    fn fault(&mut self, route: &str, at: Fault) -> Result<(), ApiError> {
+        if self.faults.get(route) != Some(&at) {
+            return Ok(());
+        }
+        self.faults.remove(route);
+        Err(ApiError::Network(format!("{route}: connection reset")))
+    }
+
     fn now(&mut self) -> DateTime<Utc> {
         // Each call moves the clock one millisecond so received_at stays strictly increasing and deterministic.
         let now = self.now.unwrap_or_else(Utc::now) + Duration::milliseconds(1);
@@ -350,6 +370,24 @@ impl FakeServer {
         self.state.lock().expect("fake server").users.get(user_id).map(|u| u.backups_cleared).unwrap_or(0)
     }
 
+    /// The key packages the account's active device has waiting on the server.
+    pub fn key_packages_of(&self, user_id: &str) -> usize {
+        let state = self.state.lock().expect("fake server");
+        state.users.get(user_id).and_then(|u| u.device.as_ref()).map(|d| d.key_packages.len()).unwrap_or(0)
+    }
+
+    /// The next call of `route` fails with a connection error before the server sees it. Routes: `me`, `replace`,
+    /// `put_recovery`, `upload_key_packages`.
+    pub fn fail_next(&self, route: &'static str) {
+        self.state.lock().expect("fake server").faults.insert(route, Fault::Fail);
+    }
+
+    /// The server handles the next call of `route` and its answer is lost: the client sees a connection error.
+    /// Routes: `put_recovery`.
+    pub fn lose_next(&self, route: &'static str) {
+        self.state.lock().expect("fake server").faults.insert(route, Fault::Lose);
+    }
+
     /// Drops every log item up to `through_seq`, as the daily partition job would after 30 days (api-server.md §8).
     pub fn expire_log(&self, group_id: &str, through_seq: i64) {
         let mut state = self.state.lock().expect("fake server");
@@ -576,6 +614,7 @@ impl Transport for FakeClient {
 
     async fn replace(&self, req: ReplaceRequest) -> Result<AuthOutcome, ApiError> {
         let mut state = self.lock();
+        state.fault("replace", Fault::Fail)?;
         let now = state.now();
         let ticket = state.tickets.remove(&req.ticket).filter(|t| t.expires_at > now);
         let Some(ticket) = ticket else { return Err(err(401, "token_expired")) };
@@ -614,6 +653,7 @@ impl Transport for FakeClient {
     }
 
     async fn me(&self) -> Result<MeInfo, ApiError> {
+        self.lock().fault("me", Fault::Fail)?;
         let (user, _) = self.who()?;
         let state = self.lock();
         let account = state.users.get(&user).ok_or_else(|| err(404, "not_found"))?;
@@ -627,6 +667,7 @@ impl Transport for FakeClient {
     }
 
     async fn put_recovery(&self, req: RecoveryUpload) -> Result<(), ApiError> {
+        self.lock().fault("put_recovery", Fault::Fail)?;
         let (user, _) = self.who()?;
         let mut state = self.lock();
         let now = state.now();
@@ -673,7 +714,7 @@ impl Transport for FakeClient {
             public_key: req.recovery_public_key,
             updated_at,
         });
-        Ok(())
+        state.fault("put_recovery", Fault::Lose)
     }
 
     async fn get_recovery(&self, ticket: Option<&str>) -> Result<StoredRecovery, ApiError> {
@@ -710,6 +751,7 @@ impl Transport for FakeClient {
     }
 
     async fn upload_key_packages(&self, packages: Vec<Vec<u8>>) -> Result<(), ApiError> {
+        self.lock().fault("upload_key_packages", Fault::Fail)?;
         let (user, _) = self.who()?;
         let mut state = self.lock();
         let device =
