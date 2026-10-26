@@ -39,9 +39,11 @@ static LIST: LazyLock<Vec<&'static str>> = LazyLock::new(|| LIST_NFC.lines().col
 const WRAP_INFO: &[u8] = b"geunal amk wrap v1";
 const ID_INFO: &[u8] = b"geunal recovery id v1";
 const SIGN_INFO: &[u8] = b"geunal recovery sign v1";
-const ROTATE: &[u8] = b"geunal recovery rotate v1";
-const RECOVER: &[u8] = b"geunal recover v1";
-const DELETE: &[u8] = b"geunal delete v1";
+/// What the recovery signing key signs, each followed by the server's nonce: overwriting the recovery material,
+/// a guest coming back, and a guest deleting the account. The API server checks the same bytes.
+pub const ROTATE_LABEL: &[u8] = b"geunal recovery rotate v1";
+pub const RECOVER_LABEL: &[u8] = b"geunal recover v1";
+pub const DELETE_LABEL: &[u8] = b"geunal delete v1";
 
 const BITS_PER_WORD: usize = 11;
 
@@ -175,17 +177,17 @@ impl RecoveryKeys {
     /// The proof that overwrites the recovery material on the server (`PUT /me/recovery`): only the current code
     /// can replace itself, so a stolen session cannot lock the owner out.
     pub fn sign_rotation(&self, nonce: &str) -> [u8; 64] {
-        self.sign(ROTATE, nonce)
+        self.sign(ROTATE_LABEL, nonce)
     }
 
     /// A guest coming back on another device (`POST /auth/recover`).
     pub fn sign_recovery(&self, nonce: &str) -> [u8; 64] {
-        self.sign(RECOVER, nonce)
+        self.sign(RECOVER_LABEL, nonce)
     }
 
     /// A guest deleting the account (`DELETE /me`). Made from the `E` on the device, without asking the user.
     pub fn sign_deletion(&self, nonce: &str) -> [u8; 64] {
-        self.sign(DELETE, nonce)
+        self.sign(DELETE_LABEL, nonce)
     }
 
     fn sign(&self, label: &[u8], nonce: &str) -> [u8; 64] {
@@ -293,13 +295,13 @@ mod tests {
         let public = VerifyingKey::from_bytes(&keys.public_key()).unwrap();
         let nonce = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
         let rotation = Signature::from_bytes(&keys.sign_rotation(nonce));
-        assert!(public.verify_strict(&[ROTATE, nonce.as_bytes()].concat(), &rotation).is_ok());
-        assert!(public.verify_strict(&[RECOVER, nonce.as_bytes()].concat(), &rotation).is_err());
+        assert!(public.verify_strict(&[ROTATE_LABEL, nonce.as_bytes()].concat(), &rotation).is_ok());
+        assert!(public.verify_strict(&[RECOVER_LABEL, nonce.as_bytes()].concat(), &rotation).is_err());
         let recovery = Signature::from_bytes(&keys.sign_recovery(nonce));
-        assert!(public.verify_strict(&[RECOVER, nonce.as_bytes()].concat(), &recovery).is_ok());
+        assert!(public.verify_strict(&[RECOVER_LABEL, nonce.as_bytes()].concat(), &recovery).is_ok());
         let deletion = Signature::from_bytes(&keys.sign_deletion(nonce));
-        assert!(public.verify_strict(&[DELETE, nonce.as_bytes()].concat(), &deletion).is_ok());
-        assert!(public.verify_strict(&[DELETE, b"other".as_slice()].concat(), &deletion).is_err());
+        assert!(public.verify_strict(&[DELETE_LABEL, nonce.as_bytes()].concat(), &deletion).is_ok());
+        assert!(public.verify_strict(&[DELETE_LABEL, b"other".as_slice()].concat(), &deletion).is_err());
     }
 
     #[test]

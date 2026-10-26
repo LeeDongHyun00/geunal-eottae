@@ -13,6 +13,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]
 chrono.workspace = true
+geunal-crypto.workspace = true
 geunal-domain.workspace = true
 geunal-mls.workspace = true
 geunal-store.workspace = true
@@ -25,7 +26,14 @@ tokio.workspace = true
 uniffi.workspace = true
 uuid.workspace = true
 
+[features]
+# The in-process fake server of geunal-sync with the M1 account rules, for this crate's tests. The apps' libraries are
+# built without it.
+fake-server = []
+
 [dev-dependencies]
+# Turns the fake server on for the tests only.
+geunal-ffi = { workspace = true, features = ["fake-server"] }
 geunal-mls.workspace = true
 pollster.workspace = true
 tempfile.workspace = true

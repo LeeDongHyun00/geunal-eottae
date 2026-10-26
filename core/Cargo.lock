@@ -997,7 +997,9 @@ name = "geunal-ffi"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "geunal-crypto",
  "geunal-domain",
+ "geunal-ffi",
  "geunal-mls",
  "geunal-store",
  "geunal-sync",

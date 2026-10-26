@@ -49,7 +49,7 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 | --- | --- | --- | --- | --- |
 | `Core::open(store_dir, api_base, listener, secrets)` | `Core.open(storeDir:apiBase:listener:secrets:)` | `Core.open(storeDir, apiBase, listener, secrets)` | 저장소 열기. 데이터베이스 키를 `secrets`에서 꺼내야 파일을 열 수 있어서 `SecretStore`를 여기서 받습니다. 저장된 세션이 있으면 복원 | M0 |
 | `sign_in_stub(subject, display_name, platform)` | `signInStub(subject:displayName:platform:) async throws` | `suspend fun signInStub(subject, displayName, platform)` | 인증 스텁(`POST /auth/stub`, 로컬·CI만)으로 로그인과 기기 등록. 세션과 기기 서명 키는 `SecretStore`에 둠. M1부터 `AuthResult`를 돌려주고, 다른 기기가 쓰는 계정이면 `ReplaceRequired`(protocol.md 13장) | M0 |
-| `sync()` | `sync() async throws` | `suspend fun sync()` | 모든 그룹 따라잡기, 대기 중 쓰기 보내기 | M0 |
+| `sync()` | `sync() async throws` | `suspend fun sync()` | 모든 그룹 따라잡기, 대기 중 쓰기 보내기. M1부터 로그인 때 올리지 못한 복구 자료도 올림(5장 "계정과 세션") | M0 |
 | `cipher_version()` | `cipherVersion()` | `cipherVersion()` | M0 화면용 SQLCipher 버전. 화면이 없어지면 지움 | M0 |
 | `create_group(name)`, `add_members(group_id, user_ids)`, `remove_member(group_id, user_id)` | `createGroup(name:) async throws` 등 | `suspend fun createGroup(name)` 등 | 그룹 만들기, 사용자 ID로 멤버 추가(초대 코드는 M2), 탈퇴·강퇴. 헤드리스 종단 시험이 쓰는 M0 표면 | M0 |
 | `send_text`, `request_date`, `respond`, `open_poll`, `vote`, `close_poll`, `cancel` | 같은 이름, `async throws` | 같은 이름, `suspend fun` | 엔트리 보내기(protocol.md 4장). M2·M3 화면이 그대로 씀 | M0 |
@@ -355,6 +355,27 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
   3. 결과를 저장하고 알림 문구를 돌려줍니다.
   4. Argon2id 같은 무거운 경로는 타지 않습니다.
 
+### 계정과 세션
+
+[공통 계약](protocol.md) 10·13장의 흐름을 코어가 이렇게 따릅니다.
+
+- **로그인 결과:** 카카오·Apple·게스트·스텁 로그인은 모두 같은 곳에서 끝납니다.
+  - `registered`: 세션을 `SecretStore`에 두고, 엔진을 만들고, 키 패키지를 올립니다. `recovery`가 거짓이면 이때 `E`와 AMK를 만들어 `PUT /me/recovery`로 올립니다.
+  - `replace_required`: 아무것도 등록하지 않고 교체 티켓을 메모리에만 둡니다(30분). 앱이 다시 시작되면 로그인부터 다시 합니다. `start_fresh`나 `restore_from_code`가 기기 키로 티켓에 서명해 `POST /auth/replace`를 부릅니다.
+- **복구 자료 올리기:**
+  - 로그인 직후 올리지 못해도 로그인은 그대로 성공합니다. 기기는 이미 등록됐기 때문입니다. `sync()`가 그룹을 따라잡은 뒤 다시 올리고, 네트워크 오류는 다음 `sync()`를 기다리며, 서버가 거절하면 `sync()`의 오류로 돌려줍니다.
+  - 서버에 이미 자료가 있으면(첫 업로드를 재시도하다 저장돼 있던 경우) 같은 코드의 증명을 붙여 다시 보냅니다. 409 `recovery_conflict`면 `E`를 한 번 새로 만듭니다.
+  - "백업 없이 새로 시작"이 만든 코드는 올라갈 때까지 `new_key`로 보냅니다. 서버는 제공자 로그인 뒤 30분 안에만 받으므로, `start_fresh`는 실패를 바로 돌려줍니다.
+- **토큰:** 접근 토큰은 15분입니다. 401 `token_expired`를 받으면 `POST /auth/refresh`로 한 번 바꾸고 같은 요청을 다시 보냅니다.
+  - 갱신은 한 번에 하나만 합니다. 기다리는 동안 다른 요청이 이미 바꿨으면 그 토큰을 씁니다.
+  - 바뀐 쌍은 바로 `SecretStore`의 세션에 씁니다. 리프레시 토큰은 한 번만 쓸 수 있어서, 앱이 다시 시작돼도 새 쌍으로 이어 가야 합니다.
+- **기기 해제:** 403 `device_revoked`나 게이트웨이의 `revoke`를 받으면 로그아웃 상태가 되고 다음을 지웁니다.
+  - `SecretStore`의 세션, 기기 서명 키, `E`, AMK.
+  - 그룹 상태: 그룹과 그 로그·가용 시간·상태 키·미디어 캐시, 보낼 대기열, 채팅 색인, mls-rs-provider-sqlite의 MLS 표, 그룹 캘린더, 그룹에서 공개된 사람. 다시 로그인한 기기는 그룹에 다시 가입하며 이것들을 되찾습니다.
+  - 계정을 따라가는 기기 설정(계정 정보, "종이에 적었어요", 업로드 여부).
+  - 내 캘린더와 일정, 직접 넣거나 연락처에서 가져온 사람, 데이터베이스 키는 남깁니다.
+  - 403 본문의 `replaced_at`·`replaced_by`·`replaced_via`는 다음 로그인이 이 기기를 등록할 때까지 `revocation()`이 돌려줍니다. `revoke` 이벤트는 본문이 비어 있어서, 코어가 `GET /me`를 불러 그 403을 받습니다.
+
 ## 6. 도메인 로직
 
 규칙은 [개요](../kickoff.md) 5장, 형식은 [공통 계약](protocol.md) 4·5장을 따릅니다.
@@ -572,6 +593,7 @@ pub fn open(key: &[u8; 32], aad: &str, blob: &[u8]) -> Option<Vec<u8>> {
 - **속성 테스트(proptest):** 같은 로그는 언제나 같은 상태를 내는지, 집계가 표 순서에 영향을 받지 않는지.
 - **MLS 통합:** 한 프로세스 안의 여러 클라이언트로 추가, 제거, 자기 갱신, 외부 가입, 커밋 충돌을 확인합니다.
 - **동기화 통합:** 테스트 안의 가짜 서버로 409·410·빈틈 처리를 확인하고, M0 게이트에서는 로컬 compose의 진짜 API·게이트웨이와 붙입니다.
+- **계정 흐름:** `geunal-sync`의 가짜 서버가 M1 규칙(nonce 묶기, 교체 티켓, 복구 증명, 리프레시 토큰 재사용, 기기 해제)을 따릅니다. `geunal-ffi`의 `fake-server` 기능이 그 서버를 코어에 붙여 로그인부터 해제까지 FFI로 시험합니다. 시험만 이 기능을 켜서, 앱 라이브러리에는 들어가지 않습니다.
 - **퍼징(cargo-fuzz):** 엔트리 디코드, 푸시 페이로드 파싱, MLS 메시지 입력.
 
 **첫 테스트 목록**
