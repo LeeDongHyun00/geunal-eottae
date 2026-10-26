@@ -623,7 +623,8 @@ impl Core {
                     let mut own = edited(new_id(), "typed")?;
                     own.rrule = None;
                     own.exdates = None;
-                    own.created_at = Some(stored_utc(now));
+                    // An edit made this row, not an add: an undo has nothing of it to take back.
+                    own.created_at = None;
                     db.put_event(&own)?;
                     Ok(own.id)
                 }
@@ -650,15 +651,11 @@ impl Core {
                     // A count the edit left as it was is the series' total, so the following part keeps only what
                     // was left of it. A count the user changed counts from the split.
                     if let Some(total) = old.count.filter(|_| following.rrule == row.rrule) {
-                        // COUNT counts the occurrences the rule makes, removed ones too (RFC 5545), so the removed
-                        // ones are put back before counting.
-                        let all = EventSpec { exdates: Vec::new(), ..spec(&row)? };
-                        let done = occurrences(&all, first, at).map_err(malformed)?;
-                        let done = done.iter().filter(|o| o.occurrence_at < at).count();
-                        let left = total.saturating_sub(u32::try_from(done).unwrap_or(u32::MAX)).max(1);
+                        let left = total.saturating_sub(made_before(&row, first, at, total)?).max(1);
                         following.rrule = Some(Rule { count: Some(left), ..old.clone() }.to_rrule());
                     }
-                    following.created_at = Some(stored_utc(now));
+                    // An edit made this row, not an add: an undo has nothing of it to take back.
+                    following.created_at = None;
                     db.put_event(&following)?;
                     Ok(following.id)
                 }
@@ -1401,6 +1398,27 @@ fn open_bridges(db: &Db<'_>, first: NaiveDate, last: NaiveDate) -> Result<Vec<Br
         }
     }
     Ok(open)
+}
+
+/// How many occurrences the series `row` made from `first` up to `at`, removed ones included as COUNT counts them
+/// (RFC 5545), stopping at `cap`. A year at a time, so a long daily series stays under one view's expansion limit.
+fn made_before(
+    row: &EventRow,
+    first: DateTime<FixedOffset>,
+    at: DateTime<FixedOffset>,
+    cap: u32,
+) -> Result<u32, CoreError> {
+    let all = EventSpec { exdates: Vec::new(), ..spec(row)? };
+    let mut made = 0u32;
+    let mut from = first;
+    while from < at && made < cap {
+        let to = (from + Duration::days(366)).min(at);
+        let found = occurrences(&all, from, to).map_err(malformed)?;
+        let found = found.iter().filter(|o| o.occurrence_at >= from && o.occurrence_at < to).count();
+        made = made.saturating_add(u32::try_from(found).unwrap_or(u32::MAX));
+        from = to;
+    }
+    Ok(made)
 }
 
 /// `edited` as the whole series: the removed occurrences move by as much as the edit moved its first start, so a

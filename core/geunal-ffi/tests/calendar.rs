@@ -272,6 +272,53 @@ fn takes_back_what_an_undone_repeating_add_counted() {
 }
 
 #[test]
+fn takes_nothing_back_when_an_edit_made_the_deleted_part() {
+    let d = device();
+    let cal = personal(&d.core);
+    let remembered = || d.core.suggestions("2026-11-04".into()).unwrap().iter().any(|s| s.event.title == "요가");
+    let mut yoga = timed(&cal, "요가", "2026-10-28", 420, 480);
+    yoga.recurrence = Some(weekly(vec![Weekday::Wednesday]));
+    let series = d.core.add_event(yoga.clone(), false).unwrap().event_id;
+    // Long after the add, "이후 모두" from 11 November and "이 일정만" on 4 November each make a row of their own.
+    d.core.set_clock(Some(Utc.with_ymd_and_hms(2026, 10, 25, 1, 0, 0).unwrap()));
+    let mut later = yoga.clone();
+    later.start = at("2026-11-11", 480);
+    later.end = at("2026-11-11", 540);
+    let following = d
+        .core
+        .update_event(series.clone(), Some("2026-11-11T07:00".into()), EditScope::ThisAndFollowing, later)
+        .unwrap();
+    let mut moved = yoga.clone();
+    moved.start = at("2026-11-04", 480);
+    moved.end = at("2026-11-04", 540);
+    let own = d.core.update_event(series, Some("2026-11-04T07:00".into()), EditScope::ThisOnly, moved).unwrap();
+    // Deleting either at once is not the toast's undo: the use the add counted stays.
+    d.core.set_clock(Some(Utc.with_ymd_and_hms(2026, 10, 25, 1, 0, 2).unwrap()));
+    d.core.delete_event(following, None, EditScope::ThisAndFollowing).unwrap();
+    d.core.delete_event(own, None, EditScope::ThisAndFollowing).unwrap();
+    assert!(remembered());
+}
+
+#[test]
+fn splits_a_counted_series_longer_than_one_view_can_expand() {
+    let d = device();
+    let cal = personal(&d.core);
+    let mut walk = timed(&cal, "산책", "2026-01-01", 420, 450);
+    walk.recurrence =
+        Some(Recurrence { frequency: Frequency::Daily, interval: 1, weekdays: vec![], until: None, count: Some(2000) });
+    let series = d.core.add_event(walk.clone(), false).unwrap().event_id;
+    // The 1,201st day is 15 April 2029; 800 of the 2,000 are left from there.
+    let mut renamed = walk.clone();
+    renamed.title = "아침 산책".into();
+    renamed.start = at("2029-04-15", 420);
+    renamed.end = at("2029-04-15", 450);
+    let following =
+        d.core.update_event(series, Some("2029-04-15T07:00".into()), EditScope::ThisAndFollowing, renamed).unwrap();
+    let detail = d.core.event(following, None).unwrap();
+    assert_eq!(detail.recurrence.and_then(|r| r.count), Some(800));
+}
+
+#[test]
 fn splits_a_weekly_series_when_this_and_following_changes() {
     let d = device();
     let cal = personal(&d.core);
