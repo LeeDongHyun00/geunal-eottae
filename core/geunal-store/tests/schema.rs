@@ -3,7 +3,8 @@
 use std::time::Duration;
 
 use geunal_store::{
-    AvailabilityRow, CalendarRow, EntryRow, EventRow, GroupKind, OutboxKind, SCHEMA_VERSION, Store, StoreError,
+    AvailabilityRow, CalendarRow, EntryRow, EventRow, GroupKind, HolidayRow, OutboxKind, SCHEMA_VERSION, Store,
+    StoreError,
 };
 
 const KEY: [u8; 32] = [7; 32];
@@ -53,6 +54,11 @@ fn applies_the_migrations_once_and_records_the_schema_version() {
         "media_cache",
         "event_attachments",
         "chat_fts",
+        "settings",
+        "holidays",
+        "holiday_years",
+        "alpha_stats",
+        "backup_records",
     ] {
         assert!(tables.iter().any(|t| t == expected), "missing table {expected}: {tables:?}");
     }
@@ -176,16 +182,18 @@ fn stores_availability_per_member_and_overwrites_it() {
 #[test]
 fn keeps_calendars_and_events() {
     let (_dir, store) = open();
-    store
-        .put_calendar(&CalendarRow {
-            id: "c".into(),
-            name: "개인".into(),
-            color: "#ff0000".into(),
-            kind: "personal".into(),
-            blocks_free: true,
-            group_id: None,
-        })
-        .unwrap();
+    let calendar = CalendarRow {
+        id: "c".into(),
+        name: "개인".into(),
+        color: "tangerine".into(),
+        kind: "personal".into(),
+        blocks_free: true,
+        group_id: None,
+        visible: true,
+        default_alert: None,
+        position: 0,
+        device_source_id: None,
+    };
     let event = EventRow {
         id: "e".into(),
         calendar_id: "c".into(),
@@ -201,12 +209,56 @@ fn keeps_calendars_and_events() {
         group_ref: Some("appt-1".into()),
         tentative: true,
         updated_at: "2026-11-01T10:00:00Z".into(),
+        alert: Some("30".into()),
+        shift_template_id: None,
+        created_at: Some("2026-11-01T10:00:00Z".into()),
+        origin: Some("typed".into()),
     };
-    store.put_event(&event).unwrap();
-    assert_eq!(store.events().unwrap(), vec![event.clone()]);
-    assert_eq!(store.events_for_appointment("appt-1").unwrap().len(), 1);
-    store.delete_event("e").unwrap();
-    assert!(store.events().unwrap().is_empty());
+    store
+        .write(|db| -> Result<(), StoreError> {
+            db.put_calendar(&calendar)?;
+            db.put_event(&event)
+        })
+        .unwrap();
+    store
+        .read(|db| -> Result<(), StoreError> {
+            assert_eq!(db.calendars()?, vec![calendar.clone()]);
+            assert_eq!(db.events()?, vec![event.clone()]);
+            assert_eq!(db.events_for_appointment("appt-1")?.len(), 1);
+            assert_eq!(db.events_between("2026-11-07T21:00:00+09:00", "2026-11-08T00:00:00+09:00")?.len(), 1);
+            assert!(db.events_between("2026-11-07T22:00:00+09:00", "2026-11-08T00:00:00+09:00")?.is_empty());
+            Ok(())
+        })
+        .unwrap();
+    // The events go with their calendar.
+    store.write(|db| db.delete_calendar("c")).unwrap();
+    assert!(store.read(|db| db.events()).unwrap().is_empty());
+}
+
+#[test]
+fn rolls_back_a_write_whose_closure_fails() {
+    let (_dir, store) = open();
+    let result: Result<(), StoreError> = store.write(|db| {
+        db.set_setting("k", "v")?;
+        Err(StoreError::Malformed("stop".into()))
+    });
+    assert!(result.is_err());
+    assert_eq!(store.read(|db| db.setting("k")).unwrap(), None);
+}
+
+#[test]
+fn replaces_a_holiday_year_whole_and_keeps_two_holidays_on_one_day() {
+    let (_dir, store) = open();
+    let day = |d: &str, n: &str| HolidayRow { day: d.into(), name: n.into(), substitute: false };
+    store
+        .write(|db| {
+            db.replace_holiday_year(2025, &[day("2025-05-05", "어린이날"), day("2025-05-05", "부처님오신날")], "t1")?;
+            db.replace_holiday_year(2025, &[day("2025-05-05", "어린이날"), day("2025-05-06", "대체공휴일")], "t2")
+        })
+        .unwrap();
+    let rows = store.read(|db| db.holidays_between("2025-01-01", "2025-12-31")).unwrap();
+    assert_eq!(rows, vec![day("2025-05-05", "어린이날"), day("2025-05-06", "대체공휴일")]);
+    assert_eq!(store.read(|db| db.holiday_years()).unwrap(), vec![2025]);
 }
 
 #[test]
