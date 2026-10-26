@@ -307,16 +307,23 @@ impl Core {
     /// "백업 없이 새로 시작" for a Kakao or Apple account whose code is lost: a new code and master key are made, and
     /// the account's backups are deleted on the server because nobody can open them any more (protocol §10). It
     /// finishes a replacement (`ReplaceRequired`, with its ticket), and works as well on a device that is registered
-    /// already but has no code yet (`Registered` with `recovery`, after "나중에 넣을게요"). Either way the server takes
-    /// it only within 30 minutes of the provider sign-in; after that it is `SignInAgain`.
-    pub async fn start_fresh(self: Arc<Self>) -> Result<Session, CoreError> {
+    /// already but has no code yet (`Registered` with `recovery`, after "나중에 넣을게요").
+    ///
+    /// Within 30 minutes of the provider sign-in no `proof` is needed. After that the server answers 403
+    /// `reauth_required`, which comes back as `ReauthRequired`: the app gets a fresh Kakao or Apple proof, the same as
+    /// for deleting the account (`DeletionProof::Kakao` with a `sign_in_nonce`, or `DeletionProof::Apple`), and calls
+    /// this again with it. A guest has no such way back; it starts a new guest account instead.
+    pub async fn start_fresh(self: Arc<Self>, proof: Option<DeletionProof>) -> Result<Session, CoreError> {
+        if proof == Some(DeletionProof::Guest) {
+            return Err(CoreError::Invalid { reason: "a guest starts over with a new guest account".into() });
+        }
         let this = self.clone();
         self.run(async move {
             let session = match this.take_ticket()? {
                 Some(pending) => this.replace_device(pending).await?,
                 None => this.session().ok_or(CoreError::NotSignedIn)?,
             };
-            this.make_recovery(&session.user_id, true).await?;
+            this.make_recovery(&session.user_id, true, proof.as_ref()).await?;
             Ok(session)
         })
         .await
@@ -639,7 +646,7 @@ impl Core {
             AuthOutcome::Registered { tokens, new_account, recovery } => {
                 let session = self.register_session(&tokens, display_name).await?;
                 if !recovery {
-                    self.make_recovery(&session.user_id, false).await?;
+                    self.make_recovery(&session.user_id, false, None).await?;
                 }
                 Ok(AuthResult::Registered { session, new_account, recovery })
             }
@@ -789,11 +796,16 @@ impl Core {
     /// sends `new_key` again. After a sign-in the failure does not undo the sign-in: the device is registered by then,
     /// and `sync()` reports what keeps failing. "백업 없이 새로 시작" reports it at once, as the server takes `new_key`
     /// only within 30 minutes of the provider sign-in.
-    async fn make_recovery(&self, user_id: &str, new_key: bool) -> Result<(), CoreError> {
+    async fn make_recovery(
+        &self,
+        user_id: &str,
+        new_key: bool,
+        proof: Option<&DeletionProof>,
+    ) -> Result<(), CoreError> {
         if new_key || self.recovery_secrets()?.is_none() {
             self.keep_recovery(user_id, &recovery::new_entropy(), &geunal_crypto::random_key(), false, new_key)?;
         }
-        match self.upload_recovery(new_key).await {
+        match self.upload_recovery(new_key, proof).await {
             Err(e) if !new_key && !is_revoked(&e) => Ok(()),
             other => other,
         }
@@ -801,7 +813,8 @@ impl Core {
 
     /// The upload `sync()` retries until it succeeds (protocol §10 "올리는 때"). A network error waits for the next
     /// `sync()`, and so does a 404: an M0 server has no `/me/recovery` yet, and the M1 one never answers it with 404.
-    /// Anything else is reported.
+    /// A new code the server no longer takes without a provider proof is dropped quietly: `recovery_status()` shows
+    /// the device has no code, and "백업 없이 새로 시작" asks for the proof. Anything else is reported.
     pub(crate) async fn upload_pending_recovery(&self) -> Result<(), CoreError> {
         let (uploaded, new_key) = self.store.read(|db| {
             Ok::<_, CoreError>((db.setting(RECOVERY_UPLOADED)?.is_some(), db.setting(RECOVERY_NEW_KEY)?.is_some()))
@@ -809,15 +822,15 @@ impl Core {
         if uploaded || self.recovery_secrets()?.is_none() {
             return Ok(());
         }
-        match self.upload_recovery(new_key).await {
-            Err(CoreError::Network { .. } | CoreError::Api { status: 404, .. }) => Ok(()),
+        match self.upload_recovery(new_key, None).await {
+            Err(CoreError::Network { .. } | CoreError::Api { status: 404, .. } | CoreError::ReauthRequired) => Ok(()),
             other => other,
         }
     }
 
     /// `PUT /me/recovery`. A retry may find its own earlier upload stored, which the same code then proves; an id
     /// another account already uses means a new `E` (409 `recovery_conflict`, protocol §11).
-    async fn upload_recovery(&self, new_key: bool) -> Result<(), CoreError> {
+    async fn upload_recovery(&self, new_key: bool, provider: Option<&DeletionProof>) -> Result<(), CoreError> {
         let session = self.session().ok_or(CoreError::NotSignedIn)?;
         let mut conflicts = 0;
         loop {
@@ -830,6 +843,17 @@ impl Core {
                 new_key,
                 nonce: None,
                 proof: None,
+                kakao_id_token: None,
+                apple_authorization_code: None,
+            };
+            let upload = match provider.filter(|_| new_key) {
+                Some(DeletionProof::Kakao { nonce, id_token }) => {
+                    RecoveryUpload { nonce: Some(nonce.clone()), kakao_id_token: Some(id_token.clone()), ..upload }
+                }
+                Some(DeletionProof::Apple { authorization_code }) => {
+                    RecoveryUpload { apple_authorization_code: Some(authorization_code.clone()), ..upload }
+                }
+                _ => upload,
             };
             let result = match self.api.put_recovery(upload.clone()).await {
                 Err(e) if !new_key && e.is(403, "recovery_proof_required") => {
@@ -845,11 +869,11 @@ impl Core {
                     conflicts += 1;
                     self.keep_recovery(&session.user_id, &recovery::new_entropy(), &amk, false, new_key)?;
                 }
-                // The 30 minutes after the provider sign-in ran out. The new code can never replace the server's
-                // material now, so it goes; the device is back to "no code yet", and a new sign-in starts over.
-                Err(CoreError::Api { status: 403, code, .. }) if new_key && code == "recovery_proof_required" => {
+                // Past the 30 minutes without a provider proof that holds. Nothing changed on the server; the new
+                // code goes, the device is back to having none, and the app comes back with a fresh proof.
+                Err(CoreError::Api { status: 403, code, .. }) if new_key && code == "reauth_required" => {
                     self.forget_recovery()?;
-                    return Err(CoreError::SignInAgain);
+                    return Err(CoreError::ReauthRequired);
                 }
                 Err(e) => return Err(e),
             }

@@ -71,16 +71,17 @@ pub enum CoreError {
     /// match, or a code that does not unwrap the account master key (protocol §10).
     #[error("wrong recovery code")]
     WrongRecoveryCode,
-    /// The server wants the account proven again before deleting it (403 `reauth_required`, protocol §13). Nothing
-    /// was deleted and the session is still valid: get a fresh `DeletionProof` and try again.
+    /// The server wants the account proven again (403 `reauth_required`, protocol §10, §13): before deleting it, or
+    /// before starting over without the code more than 30 minutes after the provider sign-in. Nothing changed and the
+    /// session is still valid: get a fresh `DeletionProof` and try again.
     #[error("the account has to be proven again")]
     ReauthRequired,
     /// The server has no recovery material for this account yet (409 `recovery_missing`), so a guest cannot prove the
     /// account and no backup can be made. The core uploads it first; try again after the next `sync()`.
     #[error("recovery material not uploaded yet")]
     RecoveryMissing,
-    /// The 30 minutes to replace a device, or to start over without the code, ran out (protocol §10, §13): sign in
-    /// with Kakao or Apple again, then try once more.
+    /// The replacement ticket's 30 minutes ran out (401 `token_expired`, protocol §13): sign in with Kakao or Apple
+    /// again, which brings a new ticket.
     #[error("sign in again")]
     SignInAgain,
     /// A function of the M1 surface whose body has not landed yet. Gone by the end of M1.

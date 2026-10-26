@@ -307,6 +307,16 @@ impl FakeServer {
         format!("fake-id-token|{provider}|{subject}|{nonce}")
     }
 
+    /// The authorization code a fresh Sign in with Apple would give for `subject`; the server exchanges it for an
+    /// identity token with that `sub`.
+    pub fn apple_code(subject: &str) -> String {
+        format!("fake-apple-code|{subject}")
+    }
+
+    fn apple_subject(code: &str) -> Option<String> {
+        code.strip_prefix("fake-apple-code|").map(|subject| format!("apple:{subject}"))
+    }
+
     /// Lets every access token handed out so far run out, as fifteen minutes would.
     pub fn expire_access_tokens(&self) {
         let mut state = self.state.lock().expect("fake server");
@@ -475,6 +485,19 @@ impl FakeClient {
         self.state.lock().expect("fake server")
     }
 
+    /// A fresh Kakao ID token bound to a live nonce and the device's registered key, or an Apple authorization code,
+    /// for `user`'s provider account (protocol §13 "계정 삭제").
+    fn provider_proof(state: &mut State, user: &str, key: &[u8], req: &RecoveryUpload) -> bool {
+        let subject = match (&req.kakao_id_token, &req.apple_authorization_code, &req.nonce) {
+            (Some(id_token), None, Some(nonce)) if state.nonces.remove(nonce) => {
+                Self::provider_subject("kakao", id_token, nonce, key).ok()
+            }
+            (None, Some(code), _) => FakeServer::apple_subject(code),
+            _ => None,
+        };
+        subject.is_some_and(|s| state.subjects.get(&s).is_some_and(|u| u == user))
+    }
+
     fn require_active<'a>(state: &'a mut State, group_id: &str, user: &str) -> Result<&'a mut Group, ApiError> {
         let group = state.groups.get_mut(group_id).ok_or_else(|| err(404, "not_found"))?;
         match group.members.get(user) {
@@ -619,13 +642,16 @@ impl Transport for FakeClient {
         }
         let account = state.users.get(&user).expect("the session's account exists");
         if let Some(current) = &account.recovery {
-            let fresh_provider_device = account
-                .device
-                .as_ref()
-                .and_then(|d| d.by_provider_at)
-                .is_some_and(|at| now - at < Duration::minutes(30));
-            let starting_over = req.new_key && fresh_provider_device;
-            if !starting_over {
+            if req.new_key {
+                // Without the code the account proves itself through its provider: a session from a provider
+                // sign-in under 30 minutes old, or a fresh provider proof in the body (protocol §10 "새 키로 시작").
+                let device = account.device.as_ref().ok_or_else(|| err(403, "device_revoked"))?;
+                let fresh = device.by_provider_at.is_some_and(|at| now - at < Duration::minutes(30));
+                let key = device.signature_key.clone();
+                if !fresh && !Self::provider_proof(&mut state, &user, &key, &req) {
+                    return Err(err(403, "reauth_required"));
+                }
+            } else {
                 let Some((nonce, proof)) = req.nonce.as_ref().zip(req.proof.as_ref()) else {
                     return Err(err(403, "recovery_proof_required"));
                 };

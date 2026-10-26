@@ -232,14 +232,22 @@ pub struct RecoveryUpload {
     pub recovery_id: Vec<u8>,
     #[serde(with = "b64")]
     pub recovery_public_key: Vec<u8>,
-    /// "백업 없이 새로 시작" right after a provider sign-in: no proof, and the server deletes the old backups.
+    /// "백업 없이 새로 시작" without the code: within 30 minutes of a provider sign-in, or with a fresh provider proof
+    /// below. The server deletes the old backups.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub new_key: bool,
-    /// With `proof`, to overwrite material already stored.
+    /// From `GET /auth/nonce`, with `proof` or `kakao_id_token`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nonce: Option<String>,
+    /// The current code's signature, to overwrite material already stored.
     #[serde(default, with = "b64::option", skip_serializing_if = "Option::is_none")]
     pub proof: Option<Vec<u8>>,
+    /// `new_key` past the 30 minutes, Kakao: an ID token bound to `nonce` and this device's registered key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kakao_id_token: Option<String>,
+    /// `new_key` past the 30 minutes, Apple: a fresh Sign in with Apple authorization code.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apple_authorization_code: Option<String>,
 }
 
 /// `GET /me/recovery`.
@@ -712,6 +720,8 @@ mod tests {
             new_key: false,
             nonce: None,
             proof: None,
+            kakao_id_token: None,
+            apple_authorization_code: None,
         };
         assert_eq!(
             serde_json::to_value(&first).unwrap(),
@@ -721,6 +731,17 @@ mod tests {
         let rotation = serde_json::to_value(&rotation).unwrap();
         assert_eq!((&rotation["nonce"], &rotation["proof"]), (&serde_json::json!("n"), &serde_json::json!("CQ==")));
         assert!(rotation.get("new_key").is_none());
-        assert_eq!(serde_json::to_value(RecoveryUpload { new_key: true, ..first }).unwrap()["new_key"], true);
+        let start_over = RecoveryUpload {
+            new_key: true,
+            nonce: Some("n".into()),
+            kakao_id_token: Some("tok".into()),
+            ..first.clone()
+        };
+        let start_over = serde_json::to_value(&start_over).unwrap();
+        assert_eq!(
+            (&start_over["new_key"], &start_over["kakao_id_token"]),
+            (&serde_json::json!(true), &serde_json::json!("tok"))
+        );
+        assert!(start_over.get("apple_authorization_code").is_none() && start_over.get("proof").is_none());
     }
 }

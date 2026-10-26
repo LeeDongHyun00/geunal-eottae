@@ -7,8 +7,8 @@ use std::time::SystemTime;
 
 use geunal_crypto::recovery::{self, RecoveryKeys};
 use geunal_ffi::{
-    AlertRule, AuthResult, Change, Core, CoreError, CoreListener, NewAccount, PersonInput, Provider, RecoveryCodeCheck,
-    RevokedVia, SecretStore,
+    AlertRule, AuthResult, Change, Core, CoreError, CoreListener, DeletionProof, NewAccount, PersonInput, Provider,
+    RecoveryCodeCheck, RevokedVia, SecretStore,
 };
 use geunal_sync::fake::FakeServer;
 
@@ -141,7 +141,7 @@ fn a_second_phone_starts_fresh_and_the_first_learns_who_signed_it_out() {
         assert!(recovery);
         assert!(b.core.session().is_none(), "nothing is registered before the replacement");
 
-        let session = b.core.clone().start_fresh().await.unwrap();
+        let session = b.core.clone().start_fresh(None).await.unwrap();
         assert_eq!(server.active_device(&user), Some(session.device_id.clone()));
         assert_eq!(server.backups_cleared(&user), 1, "nobody can open the old backups");
         assert!(b.core.recovery_status().unwrap().uploaded);
@@ -208,7 +208,7 @@ fn a_new_account_without_a_name_takes_the_default_and_a_long_one_is_cut() {
 }
 
 #[test]
-fn starting_over_works_on_a_registered_device_and_needs_a_new_sign_in_after_thirty_minutes() {
+fn starting_over_works_on_a_registered_device_and_needs_a_provider_proof_after_thirty_minutes() {
     pollster::block_on(async {
         let server = FakeServer::new();
         let t0 = chrono::Utc::now();
@@ -224,15 +224,32 @@ fn starting_over_works_on_a_registered_device_and_needs_a_new_sign_in_after_thir
         assert!(!a.core.recovery_status().unwrap().created);
 
         server.set_now(t0 + chrono::Duration::minutes(31));
-        assert!(matches!(a.core.clone().start_fresh().await, Err(CoreError::SignInAgain)));
+        assert!(matches!(a.core.clone().start_fresh(None).await, Err(CoreError::ReauthRequired)));
         assert!(!a.core.recovery_status().unwrap().created, "the code the server refused is dropped");
         a.core.clone().sync().await.unwrap();
         assert_eq!(server.backups_cleared(&user), 0);
 
-        kakao(&a.core, "erin", "에린").await.unwrap();
-        a.core.clone().start_fresh().await.unwrap();
+        // A proof for another provider account changes nothing.
+        let nonce = a.core.clone().sign_in_nonce().await.unwrap();
+        let other = DeletionProof::Kakao {
+            id_token: FakeServer::id_token("kakao", "someone-else", &nonce.provider_nonce),
+            nonce: nonce.nonce,
+        };
+        assert!(matches!(a.core.clone().start_fresh(Some(other)).await, Err(CoreError::ReauthRequired)));
+        let apple = DeletionProof::Apple { authorization_code: FakeServer::apple_code("erin") };
+        assert!(matches!(a.core.clone().start_fresh(Some(apple)).await, Err(CoreError::ReauthRequired)));
+        assert_eq!(server.backups_cleared(&user), 0);
+
+        // A fresh Kakao proof for this account, bound to this device's key, starts over without signing in again.
+        let nonce = a.core.clone().sign_in_nonce().await.unwrap();
+        let proof = DeletionProof::Kakao {
+            id_token: FakeServer::id_token("kakao", "erin", &nonce.provider_nonce),
+            nonce: nonce.nonce,
+        };
+        a.core.clone().start_fresh(Some(proof)).await.unwrap();
         assert_eq!(server.backups_cleared(&user), 1);
         assert_eq!(server.recovery_of(&user).unwrap().1, keys_of(&a.core).id());
+        assert!(matches!(a.core.clone().start_fresh(Some(DeletionProof::Guest)).await, Err(CoreError::Invalid { .. })));
     });
 }
 
@@ -248,7 +265,7 @@ fn a_replacement_ticket_that_ran_out_needs_a_new_sign_in() {
         assert!(matches!(result, AuthResult::ReplaceRequired { .. }), "{result:?}");
 
         server.set_now(t0 + chrono::Duration::minutes(31));
-        assert!(matches!(b.core.clone().start_fresh().await, Err(CoreError::SignInAgain)));
+        assert!(matches!(b.core.clone().start_fresh(None).await, Err(CoreError::SignInAgain)));
         assert!(b.core.session().is_none());
         assert_eq!(server.active_device(&user), a.core.session().map(|s| s.device_id));
         a.core.clone().sync().await.unwrap();
