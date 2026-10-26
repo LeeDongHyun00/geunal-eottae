@@ -53,7 +53,7 @@ struct MainTabView: View {
                 // The event editor opens from here once it exists (m1.md §2.6); until then the bar leads to the calendar.
                 tab = .calendar
             }
-            .toastSlot(model.toasts)
+            .toastSlot(model.toasts, chrome: Self.drawsOwnChrome)
         }
     }
 
