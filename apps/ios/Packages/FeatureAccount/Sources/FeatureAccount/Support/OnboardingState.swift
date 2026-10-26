@@ -17,6 +17,13 @@ public struct OnboardingState: Sendable {
         nonmutating set { defaults.set(newValue, forKey: Self.finishedKey) }
     }
 
+    /// Starts onboarding over: a launch without a store is a new installation, whatever the defaults brought along
+    /// from a backup (`FreshInstall`).
+    public func reset() {
+        isFinished = false
+        pendingGuestAgeConfirmedAt = nil
+    }
+
     /// A guest who started offline: the time they ticked "만 14세 이상이에요", kept until the guest account can be made
     /// on the first connection (m1.md screen 2, decision 16). Only the time is kept, never a birth date.
     public var pendingGuestAgeConfirmedAt: Date? {

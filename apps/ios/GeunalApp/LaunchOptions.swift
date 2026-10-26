@@ -18,20 +18,22 @@
         }
 
         /// `-GeunalResetState` makes the launch look like a first install: defaults, the store and the keychain go.
-        /// `-GeunalOnboardingFinished` skips onboarding for tests that start on the tabs.
-        static func prepare() {
-            let defaults = UserDefaults.standard
-            if arguments.contains("-GeunalResetState") {
-                if let domain = Bundle.main.bundleIdentifier {
-                    defaults.removePersistentDomain(forName: domain)
-                }
-                if let store = try? StoreDirectory.url() {
-                    try? FileManager.default.removeItem(at: store)
-                }
-                KeychainSecretStore().deleteAll()
+        static func resetIfAsked() {
+            guard arguments.contains("-GeunalResetState") else { return }
+            if let domain = Bundle.main.bundleIdentifier {
+                UserDefaults.standard.removePersistentDomain(forName: domain)
             }
+            if let store = try? StoreDirectory.url() {
+                try? FileManager.default.removeItem(at: store)
+            }
+            KeychainSecretStore().deleteAll()
+        }
+
+        /// `-GeunalOnboardingFinished` skips onboarding for tests that start on the tabs. It comes after the check for a
+        /// new installation, which would take it back on the real core: a reset leaves no store.
+        static func skipOnboardingIfAsked(_ state: OnboardingState) {
             if arguments.contains("-GeunalOnboardingFinished") {
-                OnboardingState(defaults: defaults).isFinished = true
+                state.isFinished = true
             }
         }
     }

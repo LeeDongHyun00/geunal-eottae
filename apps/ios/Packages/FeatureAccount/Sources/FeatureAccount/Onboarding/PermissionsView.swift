@@ -4,6 +4,7 @@ import SwiftUI
 /// The permissions screen (m1.md screen 3, boards/Permissions.dc.html). Each card says where the permission is used
 /// and its limit before the system alert appears (docs/design/tone.md "권한 요청").
 public struct PermissionsView: View {
+    @Environment(\.scenePhase) private var scenePhase
     private let model: PermissionsModel
     private let onFinish: () -> Void
 
@@ -103,6 +104,13 @@ public struct PermissionsView: View {
         }
         .toolbarRole(.editor)
         .task { await model.refresh() }
+        // "설정에서 켜기" leaves the app; the screen is still on top when the person comes back, so the appearance
+        // task above does not run again.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await model.refresh() }
+            }
+        }
     }
 
     private var calendarButton: Text {

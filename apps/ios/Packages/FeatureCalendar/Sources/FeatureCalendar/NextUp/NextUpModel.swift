@@ -20,12 +20,17 @@ public final class NextUpModel {
 
     @ObservationIgnored private let core: any CoreProtocol
     @ObservationIgnored private let now: @Sendable () -> Date
+    @ObservationIgnored private let sleep: @Sendable (Duration) async throws -> Void
     @ObservationIgnored private let count: UInt16
 
-    public init(core: any CoreProtocol, count: UInt16 = 12, now: @escaping @Sendable () -> Date = Date.init) {
+    public init(
+        core: any CoreProtocol, count: UInt16 = 12, now: @escaping @Sendable () -> Date = Date.init,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) {
         self.core = core
         self.count = count
         self.now = now
+        self.sleep = sleep
     }
 
     public var current: Item? { items.indices.contains(index) ? items[index] : nil }
@@ -41,6 +46,21 @@ public final class NextUpModel {
         let now = self.now()
         items = upcoming.map { Self.item($0, now: now) }
         index = previous.flatMap { source in items.firstIndex { $0.source == source } } ?? 0
+    }
+
+    /// Reads the core again at every minute while the bar is on screen, until the calling task is cancelled. Nothing
+    /// else refreshes it while the app stays in front without edits, and "5분 뒤" would still be on the bar after the
+    /// event began, ended, or the day turned.
+    public func keepCurrent() async {
+        while true {
+            let intoMinute = now().timeIntervalSince1970.truncatingRemainder(dividingBy: 60)
+            do {
+                try await self.sleep(.seconds(60 - intoMinute))
+            } catch {
+                return
+            }
+            await refresh()
+        }
     }
 
     public func forward() {

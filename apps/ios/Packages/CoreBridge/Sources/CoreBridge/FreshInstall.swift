@@ -1,20 +1,29 @@
 import Foundation
 
-/// iOS keeps keychain items when the app is deleted, but not the app's files or defaults. A reinstalled app would find
-/// the previous install's session, device key, recovery entropy and master key next to an empty store, and anyone who
-/// gets the phone afterwards would inherit them. So the first launch of an install wipes them before the core opens.
+/// iOS keeps keychain items when the app is deleted, but not the app's files. A reinstalled app would find the previous
+/// install's session, device key, recovery entropy and master key next to an empty store, and anyone who gets the phone
+/// afterwards would inherit them. So a launch that finds no store wipes them before the core opens.
+///
+/// The store decides, not a flag in the defaults: the defaults travel with an iCloud backup or Quick Start to a new
+/// phone, while the store is left out of backups (`StoreDirectory`) and goes away with the app. A launch with a store is
+/// the same installation, an upgrade from an earlier build included, and keeps its keys.
 public enum FreshInstall {
-    /// Lives in the standard defaults, which go away with the app; the keychain does not.
-    public static let markerKey = "app.geunal.installed"
+    /// The core's database file (core/geunal-store `DB_FILE`).
+    public static let databaseFile = "geunal.db"
 
-    /// Wipes the keychain items when `defaults` carries no marker from an earlier launch, then sets the marker.
-    /// Returns whether it wiped. A device restored from a backup brings the defaults along but not these items, which
-    /// are this-device-only, so the marker never hides a wipe that was needed.
+    /// Whether `directory` holds the core's database. Readable before the first unlock too, unlike the defaults.
+    public static func hasStore(in directory: URL, fileManager: FileManager = .default) -> Bool {
+        fileManager.fileExists(atPath: directory.appendingPathComponent(databaseFile).path(percentEncoded: false))
+    }
+
+    /// Wipes the keychain items when `storeDirectory` has no database yet, and returns whether it did, so the caller can
+    /// also forget what the defaults brought from another phone.
     @discardableResult
-    public static func wipeLeftovers(defaults: UserDefaults = .standard, keychain: KeychainSecretStore) -> Bool {
-        guard !defaults.bool(forKey: markerKey) else { return false }
+    public static func wipeLeftovers(
+        storeDirectory: URL, keychain: KeychainSecretStore, fileManager: FileManager = .default
+    ) -> Bool {
+        guard !hasStore(in: storeDirectory, fileManager: fileManager) else { return false }
         keychain.deleteAll()
-        defaults.set(true, forKey: markerKey)
         return true
     }
 }

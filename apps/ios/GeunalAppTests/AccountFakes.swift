@@ -34,6 +34,8 @@ final class AccountFakeCore: Core, @unchecked Sendable {
     var guestResult: Result<Session, CoreError> = .success(Session(userId: "g1", deviceId: "d1"))
     var words: [String] = ["바람", "연필", "구름", "달력", "열쇠", "우산", "단추", "마당", "편지", "소풍", "거울", "하늘", "가이드"]
     var otherAccountData: LocalData?
+    /// How long the look for another account's events takes, for taps that land while the core looks.
+    var localDataDelay: TimeInterval = 0
     var restoreResult: Result<RestoreSummary, CoreError> = .success(
         RestoreSummary(
             events: 3, people: 1, calendars: 1, shiftTemplates: 0, backupAt: Date(), replacedDevice: true, groups: 0))
@@ -94,7 +96,12 @@ final class AccountFakeCore: Core, @unchecked Sendable {
         text.split(whereSeparator: { $0.isWhitespace || $0.isNumber || $0 == "." }).map(String.init)
     }
 
-    override func localDataOfOtherAccount() throws -> LocalData? { otherAccountData }
+    override func localDataOfOtherAccount() throws -> LocalData? {
+        if localDataDelay > 0 {
+            Thread.sleep(forTimeInterval: localDataDelay)
+        }
+        return otherAccountData
+    }
 
     override func restoreFromCode(
         words: [String], localData: LocalDataChoice, progress: ProgressListener?

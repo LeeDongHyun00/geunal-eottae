@@ -29,11 +29,13 @@ final class AppModel {
     func start() async {
         guard case .starting = phase else { return }
         #if DEBUG
-            LaunchOptions.prepare()
+            LaunchOptions.resetIfAsked()
         #endif
-        // Before the core reads its database key: a reinstall must not inherit the last install's secrets.
-        FreshInstall.wipeLeftovers(keychain: KeychainSecretStore())
         do {
+            try AppCore.forgetPreviousInstallation(onboarding: onboardingState)
+            #if DEBUG
+                LaunchOptions.skipOnboardingIfAsked(onboardingState)
+            #endif
             let core = try await Task.detached { try AppCore.open() }.value
             self.core = core
             nextUp = NextUpModel(core: core)

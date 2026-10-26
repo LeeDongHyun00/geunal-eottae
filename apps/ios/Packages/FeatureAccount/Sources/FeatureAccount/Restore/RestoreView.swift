@@ -7,6 +7,7 @@ import SwiftUI
 public struct RestoreView: View {
     @Bindable private var model: RestoreModel
     @FocusState private var focus: Int?
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showsNoCode = false
     private let onDone: () -> Void
     private let onStartedFresh: () -> Void
@@ -163,6 +164,13 @@ public struct RestoreView: View {
             .padding(.horizontal, Space.l)
             .padding(.bottom, Space.s)
         }
+        // iOS keeps a picture of the screen for the app switcher once the app leaves the front; for a guest the twelve
+        // words are the account itself (docs/security/threat-model.md 3.6).
+        .overlay {
+            if scenePhase != .active {
+                GeunalColor.groupedBackground.ignoresSafeArea()
+            }
+        }
     }
 
     private var intro: Text {
@@ -280,7 +288,7 @@ private struct WordGrid: View {
                 .textContentType(nil)
                 .submitLabel(index == RestoreModel.wordCount - 1 ? .done : .next)
                 .focused(focus, equals: index)
-                .onSubmit { Task { await model.committed(index) } }
+                .onSubmit { Task { await model.submitted(index) } }
                 .onChange(of: model.cells[index]) { _, _ in
                     Task { await model.edited(index) }
                 }

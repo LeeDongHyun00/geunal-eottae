@@ -24,6 +24,28 @@ enum AppCore {
         return SystemProviderSignIn()
     }
 
+    /// Before the core reads its database key. A launch without a store is a new installation on this phone: a
+    /// reinstall, an iCloud restore or Quick Start. It must not inherit the keychain's secrets, nor the finished
+    /// onboarding and the pending guest's tick that the defaults carried over from the other phone (`FreshInstall`).
+    static func forgetPreviousInstallation(onboarding: OnboardingState) throws {
+        #if DEBUG
+            // The preview core keeps no store, so every launch on it would look new.
+            if LaunchOptions.usesPreviewCore {
+                return
+            }
+        #endif
+        let store = try StoreDirectory.url()
+        forgetPreviousInstallation(storeDirectory: store, keychain: KeychainSecretStore(), onboarding: onboarding)
+    }
+
+    static func forgetPreviousInstallation(
+        storeDirectory: URL, keychain: KeychainSecretStore, onboarding: OnboardingState
+    ) {
+        if FreshInstall.wipeLeftovers(storeDirectory: storeDirectory, keychain: keychain) {
+            onboarding.reset()
+        }
+    }
+
     static func open() throws -> any CoreProtocol {
         #if DEBUG
             if LaunchOptions.usesPreviewCore {

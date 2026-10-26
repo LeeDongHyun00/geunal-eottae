@@ -60,6 +60,7 @@ public struct NextUpBar: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("nextUp")
+        .task { await model.keepCurrent() }
     }
 
     private func content(_ item: NextUpModel.Item) -> some View {

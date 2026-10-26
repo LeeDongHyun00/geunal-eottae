@@ -51,6 +51,23 @@ final class PermissionsModelTests: XCTestCase {
         XCTAssertEqual(f.permissions.openedSettings, 1)
     }
 
+    func testShowsWhatThePersonTurnedOnInTheSettings() async {
+        let f = Fixture()
+        f.permissions.calendar = .denied
+        f.permissions.notifications = .denied
+        let model = f.model()
+        await model.refresh()
+        await model.calendarTapped()
+
+        f.permissions.calendar = .granted
+        f.permissions.notifications = .granted
+        await model.refresh()
+
+        XCTAssertEqual(model.calendar, .granted)
+        XCTAssertEqual(model.calendarCount, 3)
+        XCTAssertEqual(model.notifications, .granted)
+    }
+
     func testTurnsTheStatisticsOnOnlyWhenAsked() async {
         let f = Fixture()
         let model = f.model()

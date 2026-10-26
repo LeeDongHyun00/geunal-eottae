@@ -80,7 +80,8 @@ public final class RestoreModel {
         index != focused && !cells[index].trimmed.isEmpty && accepted[index] == nil
     }
 
-    /// Checks the cell's text against the word list. A full word moves the keyboard on at once. A shorter prefix that
+    /// Checks the cell's text against the word list. A full word moves the keyboard on at once, if the cell still has
+    /// it: a completion taken after the person tapped another cell must not pull them back. A shorter prefix that
     /// leads to one word only becomes a hint: Hangul composition passes through syllables that are prefixes of other
     /// words ("가이" on the way to "가입" leads to "가이드"), so replacing the text while the person types would pick
     /// the wrong word for 20 of the 2048.
@@ -99,21 +100,29 @@ public final class RestoreModel {
         completions[index] = matches.count == 1 ? matches[0] : nil
         if word != nil {
             if problem == .wrongCode { problem = nil }
-            moveFocus(after: index)
+            if focused == index {
+                moveFocus(after: index)
+            }
         }
         refreshProblem()
     }
 
-    /// The person left a cell (return key or another cell): take its single completion, if any.
+    /// The person left a cell, for another one or by putting the keyboard away: take its single completion, if any.
     public func committed(_ index: Int) async {
         if accepted[index] == nil, let completion = completions[index] {
             cells[index] = completion
             await edited(index)
         }
-        if focused == index {
+        refreshProblem()
+    }
+
+    /// The return key ("다음"): leave the cell, then go on to the next empty one. SwiftUI may have dropped the focus
+    /// before this runs, so a focus of `nil` still moves on; a cell the person tapped in the meantime keeps it.
+    public func submitted(_ index: Int) async {
+        await committed(index)
+        if focused == nil || focused == index {
             moveFocus(after: index)
         }
-        refreshProblem()
     }
 
     /// "붙여넣기": a whole code in one go, numbering and line breaks dropped by the core.
@@ -132,9 +141,12 @@ public final class RestoreModel {
         refreshProblem()
     }
 
-    /// The main button: asks about another account's events first when there are any, then restores.
+    /// The main button: asks about another account's events first when there are any, then restores. Busy from the
+    /// first suspension, so a second tap while the core looks cannot start a second restore.
     public func start() async {
         guard isComplete, !isWorking else { return }
+        isWorking = true
+        defer { isWorking = false }
         let core = self.core
         if let local = await Task.detached(operation: { (try? core.localDataOfOtherAccount()) ?? nil }).value {
             phase = .askingLocalData(local)
@@ -143,8 +155,11 @@ public final class RestoreModel {
         await restore(localData: .keep)
     }
 
-    /// The answer on screen 24.
+    /// The answer on screen 24, taken once.
     public func choose(_ choice: LocalDataChoice) async {
+        guard case .askingLocalData = phase, !isWorking else { return }
+        isWorking = true
+        defer { isWorking = false }
         await restore(localData: choice)
     }
 
@@ -172,9 +187,8 @@ public final class RestoreModel {
         return false
     }
 
+    /// Callers hold `isWorking` around it.
     private func restore(localData: LocalDataChoice) async {
-        isWorking = true
-        defer { isWorking = false }
         problem = nil
         phase = .restoring(done: 0, total: 0)
         let words = accepted.compactMap { $0 }

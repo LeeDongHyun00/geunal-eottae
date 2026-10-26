@@ -58,6 +58,32 @@ final class RestoreModelTests: XCTestCase {
         XCTAssertEqual(model.accepted[0], "가이드")
     }
 
+    func testKeepsTheCellThePersonTappedWhenTheLastOneTakesItsHint() async {
+        let f = Fixture()
+        let model = f.model()
+        await type("가이", into: 0, of: model)
+
+        // The view moves the focus first, then commits the cell that was left.
+        model.focused = 5
+        await model.committed(0)
+
+        XCTAssertEqual(model.accepted[0], "가이드")
+        XCTAssertEqual(model.focused, 5)
+    }
+
+    func testGoesOnToTheNextCellOnReturn() async {
+        let f = Fixture()
+        let model = f.model()
+        await type("가이", into: 0, of: model)
+
+        // Return may drop the focus before the model hears about it.
+        model.focused = nil
+        await model.submitted(0)
+
+        XCTAssertEqual(model.accepted[0], "가이드")
+        XCTAssertEqual(model.focused, 1)
+    }
+
     func testMarksAWordOutsideTheListOnceTheCellIsLeft() async {
         let f = Fixture()
         let model = f.model()
@@ -105,6 +131,36 @@ final class RestoreModelTests: XCTestCase {
         await model.choose(.discard)
 
         XCTAssertEqual(f.core.lastLocalData.current, .discard)
+    }
+
+    func testRestoresOnceWhenTheButtonIsTappedTwice() async {
+        let f = Fixture()
+        // The second tap lands while the core still looks for another account's events.
+        f.core.localDataDelay = 0.2
+        let model = f.model()
+        await model.paste(code.joined(separator: " "))
+
+        async let first: Void = model.start()
+        async let second: Void = model.start()
+        _ = await (first, second)
+
+        XCTAssertEqual(f.core.calls.current.filter { $0.hasPrefix("restore") }.count, 1)
+        XCTAssertFalse(model.isWorking)
+    }
+
+    func testTakesTheAnswerAboutTheLocalEventsOnce() async {
+        let f = Fixture()
+        f.core.otherAccountData = LocalData(events: 86, people: 5)
+        let model = f.model()
+        await model.paste(code.joined(separator: " "))
+        await model.start()
+        XCTAssertFalse(model.isWorking)
+
+        async let first: Void = model.choose(.keep)
+        async let second: Void = model.choose(.discard)
+        _ = await (first, second)
+
+        XCTAssertEqual(f.core.calls.current.filter { $0.hasPrefix("restore") }.count, 1)
     }
 
     func testSaysTheCodeDoesNotOpenTheBackup() async {

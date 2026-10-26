@@ -70,6 +70,35 @@ final class NextUpModelTests: XCTestCase {
         XCTAssertEqual(model.current?.title, "지영 생일")
     }
 
+    func testCountsDownAtEveryMinute() async {
+        let core = NextUpFakeCore()
+        core.upcoming.update {
+            $0 = [
+                .event(
+                    item: event("e1", title: "가족 · 저녁", day: "2026-10-26", start: 1080, end: 1200),
+                    startsAt: now.addingTimeInterval(13_200), endsAt: now.addingTimeInterval(20_400))
+            ]
+        }
+        // 15 seconds into 14:20; the clock moves only when the model waits, and the third wait ends the loop.
+        let clock = Locked(now.addingTimeInterval(15))
+        let waits = Locked<[TimeInterval]>([])
+        let model = NextUpModel(
+            core: core, now: { clock.current },
+            sleep: { duration in
+                guard waits.current.count < 2 else { throw CancellationError() }
+                let seconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+                waits.update { $0.append(seconds) }
+                clock.update { $0.addTimeInterval(seconds) }
+            })
+        await model.refresh()
+        XCTAssertEqual(model.current?.detail, "오늘 18:00–20:00 · 3시간 40분 뒤")
+
+        await model.keepCurrent()
+
+        XCTAssertEqual(waits.current, [45, 60])
+        XCTAssertEqual(model.current?.detail, "오늘 18:00–20:00 · 3시간 38분 뒤")
+    }
+
     func testIsEmptyWhenNothingIsComing() async {
         let model = NextUpModel(core: NextUpFakeCore(), now: { [now] in now })
 
