@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kakao's speech bubble symbol for the login button, as Kakao's login design guide asks. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M12,3C6.48,3 2,6.58 2,11c0,2.83 1.86,5.32 4.66,6.74l-0.96,3.52c-0.08,0.3 0.25,0.54 0.51,0.37l4.2,-2.78c0.52,0.06 1.05,0.09 1.59,0.09 5.52,0 10,-3.58 10,-8S17.52,3 12,3z" />
+</vector>

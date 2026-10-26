@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Screen 3: the device's calendars, mirrored read only (docs/parts/android.md §4). -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- Screen 3: Android 13 and later ask before the first notification. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+</manifest>

@@ -21,8 +21,8 @@ import app.geunal.R
 import app.geunal.designsystem.LocalNeutralColors
 
 /**
- * The M0 screen (docs/parts/android.md §8): whether the core opened, which SQLCipher it runs, how sync went, and how
- * many change notifications the listener got. Plain rows on the background, no decoration (docs/design/README.md §1).
+ * The M0 screen (docs/parts/android.md §8), on the calendar tab until the month view: which SQLCipher the core runs, how
+ * sync went, and how many change notifications the listener got. Plain rows on the background (docs/design/README.md §1).
  */
 @Composable
 fun CoreStatusScreen(
@@ -57,7 +57,6 @@ fun CoreStatusScreen(
                 color = neutrals.tertiaryText,
             )
             Spacer(Modifier.height(24.dp))
-            StatusRow(label = stringResource(R.string.core_status_store), step = status.store)
             StatusRow(
                 label = stringResource(R.string.core_status_cipher),
                 value = status.cipherVersion ?: stringResource(R.string.core_status_unknown),
@@ -82,7 +81,7 @@ private fun StatusRow(
             Step.Done -> stringResource(R.string.core_status_done)
             is Step.Failed -> stringResource(R.string.core_status_failed)
         }
-    StatusRow(label = label, value = value, detail = (step as? Step.Failed)?.reason)
+    StatusRow(label = label, value = value, detail = (step as? Step.Failed)?.kind)
 }
 
 @Composable

@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- docs/design/m1.md screens 1–3, 21 and 24, worded as docs/design/tone.md says and as the iOS app shows them. -->
+<resources>
+    <!-- Toasts. -->
+    <string name="account_notice_offline">연결이 없어요. 게스트로 시작하고 나중에 연결할 수 있어요</string>
+    <string name="account_notice_sign_in_failed">로그인이 안 됐어요. 다시 시도해 주세요</string>
+    <string name="account_notice_setting_failed">설정을 바꾸지 못했어요. 다시 시도해 주세요</string>
+    <string name="account_notice_something_failed">지금은 할 수 없어요. 잠시 뒤에 다시 시도해 주세요</string>
+    <string name="account_notice_ticket_expired">시간이 지나 처음부터 다시 로그인해 주세요</string>
+    <string name="account_notice_age_check_needed">만 14세 이상인지 확인하면 게스트로 시작할 수 있어요</string>
+
+    <!-- 1. 시작 -->
+    <string name="welcome_app_name">그날어때</string>
+    <string name="welcome_preview_day">11월 7일 토요일</string>
+    <string name="welcome_preview_hours">0시 — 24시</string>
+    <string name="welcome_preview_group_weekend">주말모임</string>
+    <string name="welcome_preview_group_family">가족</string>
+    <string name="welcome_preview_group_cafe">카페 알바</string>
+    <string name="welcome_preview_description">주말모임, 가족, 카페 알바 세 그룹의 11월 7일 비어 있는 시간</string>
+    <string name="welcome_title">일정은 쉽게,\n약속은 빠르게</string>
+    <string name="welcome_body">멤버들의 일정을 합쳐 비어 있는 시간을 보여 주고, 날짜를 잡으면 수락한 사람의 캘린더에 바로 들어가요.</string>
+    <string name="welcome_reassurance">일정과 대화는 멤버의 기기에서만 열려요</string>
+    <string name="welcome_start">시작하기</string>
+    <string name="welcome_invite_code">초대 코드가 있어요</string>
+
+    <!-- 2. 로그인 -->
+    <string name="sign_in_back">뒤로</string>
+    <string name="sign_in_title">그날어때 시작하기</string>
+    <string name="sign_in_description">계정은 로그인과 멤버 목록에만 써요. 일정과 대화 내용은 운영자도 볼 수 없어요.</string>
+    <string name="sign_in_age_title">만 14세 이상이에요</string>
+    <string name="sign_in_age_detail">확인한 시각만 저장해요</string>
+    <string name="sign_in_kakao">카카오로 시작하기</string>
+    <string name="sign_in_apple">Apple로 계속하기</string>
+    <string name="sign_in_busy">로그인하는 중</string>
+    <string name="sign_in_guest">게스트로 둘러보기</string>
+    <string name="sign_in_guest_return">복구 코드로 돌아오기</string>
+    <string name="sign_in_terms_prefix">시작하면 </string>
+    <string name="sign_in_terms">이용약관</string>
+    <string name="sign_in_terms_and">과 </string>
+    <string name="sign_in_privacy">개인정보 처리방침</string>
+    <string name="sign_in_terms_suffix">에 동의하게 돼요.</string>
+
+    <!-- 3. 권한 -->
+    <string name="permissions_title_two">두 가지만\n허락해 주세요</string>
+    <string name="permissions_title_three">세 가지만\n허락해 주세요</string>
+    <string name="permissions_description">모두 나중에 설정에서 바꿀 수 있어요.</string>
+    <string name="permissions_calendar_title">기기 캘린더 가져오기</string>
+    <string name="permissions_calendar_body">읽기만 해요. 가져온 일정의 제목은 이 기기 밖으로 나가지 않고, 그룹에는 비어 있는지만 보여요.</string>
+    <string name="permissions_calendar_ask">가져오기</string>
+    <string name="permissions_calendar_done">가져왔어요 · 캘린더 %1$d개</string>
+    <string name="permissions_notifications_title">알림 받기</string>
+    <string name="permissions_notifications_body">일정 알림과 친구의 날짜 잡기·투표를 알려 드려요. 그룹마다 따로 끌 수 있어요.</string>
+    <string name="permissions_notifications_ask">허용</string>
+    <string name="permissions_notifications_done">허용했어요</string>
+    <string name="permissions_settings">설정에서 켜기</string>
+    <string name="permissions_stats_title">테스트 통계 보내기</string>
+    <string name="permissions_stats_badge">알파 빌드만</string>
+    <string name="permissions_stats_body">하루 한 번 숫자 네 개만 보내요: 앱을 연 횟수, 만든 일정 수, 그중 추천으로 만든 수, 비정상 종료 수. 제목·시간·이름은 가지 않아요.</string>
+    <string name="permissions_stats_ask">보낼게요</string>
+    <string name="permissions_stats_done">보내요 · 나에서 끌 수 있어요</string>
+    <string name="permissions_open_calendar">캘린더 열기</string>
+    <string name="permissions_later">나중에 할게요</string>
+
+    <!-- 21. 기기 바꾸기 · 백업 가져오기 · 복구 코드로 돌아오기 -->
+    <string name="restore_back">로그인</string>
+    <string name="restore_title_device_change">기기 바꾸기</string>
+    <string name="restore_body_device_change">이 계정은 다른 기기에서 쓰고 있어요. 복구 코드 12단어를 넣으면 암호화 백업을 이 기기로 가져오고, 이전 기기는 로그아웃돼요.</string>
+    <string name="restore_title_offer">백업 가져오기</string>
+    <string name="restore_body_offer">이 계정의 암호화 백업이 서버에 있어요. 복구 코드 12단어를 넣으면 이 기기로 가져와요. 지금 넣지 않아도 캘린더는 쓸 수 있어요.</string>
+    <string name="restore_title_guest">복구 코드로 돌아오기</string>
+    <string name="restore_body_guest">게스트 계정은 복구 코드가 곧 열쇠예요. 12단어를 넣으면 계정을 찾고 암호화 백업을 이 기기로 가져와요. 이전 기기는 로그아웃돼요.</string>
+    <string name="restore_progress">%1$d / 12</string>
+    <string name="restore_paste">붙여넣기</string>
+    <string name="restore_cell">%1$d번째 단어</string>
+    <string name="restore_reassurance">단어는 이 기기에서만 쓰여요. 두 글자를 넣으면 단어가 정해지고, 목록에 없는 단어는 바로 빨갛게 표시돼요. 횟수 제한은 없어요.</string>
+    <string name="restore_more_words">단어 %1$d개 더</string>
+    <string name="restore_fix_word">%1$d번째 단어를 고쳐 주세요</string>
+    <string name="restore_action_device_change">백업 가져오기</string>
+    <string name="restore_action_guest">계정 찾기</string>
+    <string name="restore_retry">다시 시도</string>
+    <string name="restore_no_code">복구 코드가 없어요</string>
+    <string name="restore_error_word">%1$d번째 단어가 목록에 없어요. 종이에 적은 글자를 다시 봐 주세요.</string>
+    <string name="restore_error_locked">이 코드로는 백업이 열리지 않아요. 다른 계정의 코드이거나 단어 하나가 다를 수 있어요.</string>
+    <string name="restore_error_guest_not_found">이 코드로 계정을 찾지 못했어요. 게스트 계정의 코드인지, 카카오·Apple에 연결한 계정은 아닌지 확인해 주세요.</string>
+    <string name="restore_error_offline">연결이 없어요. 연결되면 다시 시도할게요.</string>
+    <string name="restore_error_failed">지금은 가져올 수 없어요. 잠시 뒤에 다시 시도해 주세요.</string>
+    <string name="restore_restoring_title">잠금 풀고 받는 중</string>
+    <string name="restore_restoring_body">기기에서 복구 코드로 백업을 열고 있어요. 앱을 닫지 말아 주세요.</string>
+    <string name="restore_restoring_size">%1$s / %2$s</string>
+    <string name="restore_done_title">돌아왔어요</string>
+    <string name="restore_done_body">일정 %1$d개, 사람 %2$d명, 캘린더 %3$d개를 가져왔어요.</string>
+    <string name="restore_done_replaced">이전 기기는 로그아웃됐어요.</string>
+    <string name="restore_done_no_backup">가져올 백업이 없었어요. 일정은 이 기기에서 새로 시작하고, 이전 기기는 로그아웃됐어요.</string>
+    <string name="restore_done_no_backup_hint">이 기기에서 백업하면 다음부터는 이 복구 코드로 되찾을 수 있어요.</string>
+    <string name="restore_done_no_backup_offer">가져올 백업이 없었어요. 일정은 이 기기에서 새로 시작해요.</string>
+    <string name="restore_done_guest_no_backup">계정을 찾았어요. 가져올 백업은 없어서 일정은 이 기기에서 새로 시작해요.</string>
+    <string name="restore_open_calendar">캘린더 열기</string>
+
+    <!-- 21. 코드 없음 시트와 지우기 확인 -->
+    <string name="no_code_title_device_change">복구 코드 없이는 되찾을 수 없어요</string>
+    <string name="no_code_title_offer">복구 코드 없이는 백업을 열 수 없어요</string>
+    <string name="no_code_title_guest">복구 코드 없이는 게스트 계정을 찾을 수 없어요</string>
+    <string name="no_code_body_backup">백업은 이 코드로만 열리고, 그날어때도 열 수 없어요. 이전 기기가 아직 있다면 그 기기의 나 › 복구 코드에서 볼 수 있어요.</string>
+    <string name="no_code_body_offer">코드를 적은 종이가 집에 있다면 나중에 넣어도 돼요.</string>
+    <string name="no_code_body_device_change">새로 시작하면 이 계정의 백업은 지워지고, 그룹에는 새 기기로 다시 들어가요. 그룹 캘린더와 대화는 지금부터 다시 쌓여요.</string>
+    <string name="no_code_body_guest">게스트 계정은 복구 코드가 계정을 찾는 유일한 방법이에요. 그날어때도 코드를 모르고, 운영자도 찾아 드릴 수 없어요. 이전 기기가 아직 있다면 그 기기의 나 › 복구 코드에서 볼 수 있어요.</string>
+    <string name="no_code_body_guest_new">새 게스트 계정으로 시작하면 이전 계정의 일정, 그룹, 백업은 돌아오지 않아요.</string>
+    <string name="no_code_later">나중에 넣을게요 · 캘린더부터 쓰기</string>
+    <string name="no_code_start_fresh">백업 없이 새로 시작</string>
+    <string name="no_code_new_guest">새 게스트 계정으로 시작</string>
+    <string name="no_code_close">이전 기기에서 찾아볼게요</string>
+    <string name="wipe_title">백업을 지우고 새로 시작할까요?</string>
+    <string name="wipe_body_counted">이 계정의 백업 %1$d개(마지막 %2$s)를 지우고, 새 복구 코드와 새 열쇠를 만들어요.</string>
+    <string name="wipe_body">이 계정의 백업을 지우고, 새 복구 코드와 새 열쇠를 만들어요.</string>
+    <string name="wipe_warning">되돌릴 수 없어요. 지운 백업은 복구 코드를 나중에 찾아도 열 수 없어요.</string>
+    <string name="wipe_confirm_counted">백업 %1$d개 지우고 새로 시작</string>
+    <string name="wipe_confirm">백업 지우고 새로 시작</string>
+    <string name="wipe_keep">지우지 않을게요</string>
+    <string name="wipe_last_at">%1$d월 %2$d일 %3$s</string>
+    <string name="wipe_last_at_other_year">%1$d년 %2$d월 %3$d일 %4$s</string>
+
+    <!-- 24. 다른 계정의 일정이 남았을 때 -->
+    <string name="keep_local_title">이 기기에 다른 계정의 일정이 남아 있어요</string>
+    <string name="keep_local_body">전에 이 기기를 쓰던 계정의 일정 %1$d개, 사람 %2$d명이에요. 내 계정으로 가져오거나 지울 수 있어요. 두 계정의 일정을 섞어 두지는 않아요.</string>
+    <string name="keep_local_note">가져오면 내 일정이 되어 백업에 들어가고, 그룹에는 비어 있는지만 보여요. 지우면 이 기기에서만 사라지고, 그 계정의 백업은 그대로예요.</string>
+    <string name="keep_local_keep">내 계정으로 가져오기</string>
+    <string name="keep_local_discard">지우고 시작하기</string>
+
+    <!-- 본인 확인: the OS prompt's title and reason, and the line for a phone without a screen lock (tone.md). -->
+    <string name="device_auth_title">본인 확인</string>
+    <string name="device_auth_wipe_backups">백업을 지우려면 본인 확인이 필요해요</string>
+    <string name="device_auth_no_lock_wipe">화면 잠금을 켜 두면 다른 사람이 지우지 못해요.</string>
+
+    <string name="busy">하는 중</string>
+</resources>

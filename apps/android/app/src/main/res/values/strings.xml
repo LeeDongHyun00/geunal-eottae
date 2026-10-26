@@ -2,9 +2,31 @@
 <resources>
     <string name="app_name">그날어때</string>
 
-    <!-- The M0 screen: the core opened on this device and what sync returned (docs/parts/android.md §8). -->
+    <!-- The tab bar (m1.md decision 1: 캘린더 · 나 in M1). -->
+    <string name="tab_calendar">캘린더</string>
+    <string name="tab_me">나</string>
+
+    <!-- 나: the account card until screen 12 lands. -->
+    <string name="me_title">나</string>
+    <string name="me_kind_kakao">카카오 계정</string>
+    <string name="me_kind_apple">Apple 계정</string>
+    <string name="me_kind_guest">게스트 · 기기를 잃으면 복구 코드로만 돌아올 수 있어요</string>
+    <string name="me_guest_name">게스트</string>
+    <string name="me_kind_pending_guest">연결되면 계정을 만들어요</string>
+    <string name="me_no_account">계정 없이 쓰는 중이에요</string>
+    <string name="me_no_account_detail">이 기기에서만 일정을 쓰고 있어요</string>
+    <string name="me_profile_description">%1$s, %2$s</string>
+
+    <!-- The core did not open; the kind only, never the core's message. -->
+    <string name="start_failure_title">그날어때를 열 수 없어요</string>
+    <string name="start_failure_body">앱을 다시 열어 주세요. 계속 안 되면 운영자에게 알려 주세요.</string>
+    <string name="start_failure_store">저장소를 열지 못했어요</string>
+    <string name="start_failure_secrets">보관한 열쇠를 읽지 못했어요</string>
+    <string name="start_failure_other">알 수 없는 오류예요</string>
+    <string name="start_failure_retry">다시 시도</string>
+
+    <!-- The M0 screen, on the calendar tab until the month view: what the core runs and what sync returned. -->
     <string name="core_status_title">코어 상태</string>
-    <string name="core_status_store">저장소</string>
     <string name="core_status_cipher">SQLCipher</string>
     <string name="core_status_sync">동기화</string>
     <string name="core_status_changes">변경 알림</string>
