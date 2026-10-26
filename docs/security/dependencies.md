@@ -16,6 +16,11 @@
 
 도구 자체는 `scripts/tool.sh`가 GitHub 릴리스에서 받아 SHA-256을 확인합니다(cargo-deny 0.20.2, Trivy 0.76.1). 버전을 올릴 때 해시도 함께 바꿉니다.
 
+**안드로이드 OpenSSL을 올릴 때:**
+- 고정하는 SHA-256은 같은 릴리스에서 받은 값이라, 릴리스 자체가 바뀌었는지는 PGP 서명만 알려 줍니다. openssl-library.org의 `pubkeys.asc`로 tarball의 `.asc` 서명을 확인하고, 서명 키가 OpenSSL 저장소 `doc/fingerprints.txt`의 키나 그 하위 키인지 본 뒤 `build-openssl.sh`의 버전과 SHA-256을 바꿉니다.
+- 권고는 openssl-library.org의 보안 공지에서 읽습니다.
+- `--check`는 GitHub의 태그 목록을 받지 못해도 실패합니다("could not list the OpenSSL ... releases"). 권고가 아니므로 다시 실행합니다. 주간 검사의 이슈는 다시 통과하면 닫힙니다.
+
 **아직 검사하지 않는 것:**
 - iOS Swift 패키지와 안드로이드 Gradle 의존성. 파트가 들어올 때 `ios.yml`·`android.yml`에 더합니다(Swift는 공개 DB가 없어 Dependabot 버전 올리기로 대신, 안드로이드는 Trivy `fs`로 `gradle.lockfile`).
 - 로컬 compose의 PostgreSQL·Redis·SeaweedFS 이미지. 로컬 전용이고 Dependabot이 버전을 올립니다. 알파 서버의 compose(M1)는 운영 구성이므로 그때 `audit.yml`에 더합니다.
