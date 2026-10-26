@@ -79,6 +79,10 @@ pub enum CoreError {
     /// account and no backup can be made. The core uploads it first; try again after the next `sync()`.
     #[error("recovery material not uploaded yet")]
     RecoveryMissing,
+    /// The 30 minutes to replace a device, or to start over without the code, ran out (protocol §10, §13): sign in
+    /// with Kakao or Apple again, then try once more.
+    #[error("sign in again")]
+    SignInAgain,
     /// A function of the M1 surface whose body has not landed yet. Gone by the end of M1.
     #[error("not implemented yet: {what}")]
     NotImplemented { what: String },
@@ -321,7 +325,10 @@ impl Core {
         listener: Arc<dyn CoreListener>,
         secrets: Arc<dyn SecretStore>,
     ) -> Result<Arc<Self>, CoreError> {
-        let api = HttpTransport::new(&api_base).map_err(|e| CoreError::Network { reason: e.to_string() })?;
+        let api = HttpTransport::new(&api_base).map_err(|e| match e {
+            ApiError::Malformed(reason) => CoreError::Invalid { reason },
+            e => CoreError::Network { reason: e.to_string() },
+        })?;
         Self::open_with(store_dir, Api::Http(api), listener, secrets)
     }
 

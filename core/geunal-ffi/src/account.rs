@@ -11,7 +11,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use chrono::{DateTime, Utc};
 use geunal_crypto::login;
-use geunal_crypto::recovery::{self, Entropy, RecoveryKeys};
+use geunal_crypto::recovery::{self, CodeError, Entropy, RecoveryKeys};
 use geunal_mls::MlsClient;
 use geunal_store::Counted;
 use geunal_sync::api::{
@@ -20,6 +20,7 @@ use geunal_sync::api::{
 };
 use geunal_sync::{ApiError, Transport as _};
 use serde::{Deserialize, Serialize};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::local::{parse_stored, stored_utc, system_time};
 use crate::{
@@ -63,7 +64,8 @@ pub struct SignInNonce {
 /// What an account is made with. The server reads it only when the sign-in creates the account.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct NewAccount {
-    /// 1–40 characters.
+    /// Trimmed. Empty takes the default ("카카오 사용자", "Apple 사용자", "게스트"), and a longer name is cut at a
+    /// character (grapheme) boundary to the server's 40.
     pub display_name: String,
     /// When the user ticked "만 14세 이상이에요". Only the time is kept, never a birth date (kickoff §6).
     pub age_confirmed_at: SystemTime,
@@ -111,6 +113,23 @@ pub struct RecoveryStatus {
     pub saved: bool,
     /// The server holds the recovery material; backups wait for this.
     pub uploaded: bool,
+}
+
+/// What the device can tell about the words without the server (screen 21's error states, protocol §10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum RecoveryCodeCheck {
+    /// Every word is in the list and the checksum matches. Whose code it is shows only when it unwraps the master
+    /// key: one wrong code in sixteen passes the checksum.
+    Valid,
+    WrongWordCount {
+        count: u32,
+    },
+    /// The first word outside the list, counted from 0.
+    UnknownWord {
+        index: u32,
+    },
+    /// All twelve are in the list but the checksum does not match: a word differs or two swapped places.
+    Checksum,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -243,7 +262,7 @@ impl Core {
 
     /// Creates a guest account and registers this device. A guest always gets a new account.
     pub async fn sign_in_guest(self: Arc<Self>, account: NewAccount) -> Result<Session, CoreError> {
-        let display_name = display_name(&account.display_name)?;
+        let display_name = display_name(&account.display_name, GUEST_NAME);
         let this = self.clone();
         self.run(async move {
             let proof = this.proof_for(this.api.nonce().await?)?;
@@ -285,12 +304,15 @@ impl Core {
         Err(not_yet("restore_from_code"))
     }
 
-    /// "백업 없이 새로 시작": finishes a replacement without the code. A new code and master key are made, and the
-    /// account's backups are deleted on the server because nobody can open them any more (protocol §10).
+    /// "백업 없이 새로 시작" for a Kakao or Apple account whose code is lost: a new code and master key are made, and
+    /// the account's backups are deleted on the server because nobody can open them any more (protocol §10). It
+    /// finishes a replacement (`ReplaceRequired`, with its ticket), and works as well on a device that is registered
+    /// already but has no code yet (`Registered` with `recovery`, after "나중에 넣을게요"). Either way the server takes
+    /// it only within 30 minutes of the provider sign-in; after that it is `SignInAgain`.
     pub async fn start_fresh(self: Arc<Self>) -> Result<Session, CoreError> {
         let this = self.clone();
         self.run(async move {
-            let session = match this.take_ticket() {
+            let session = match this.take_ticket()? {
                 Some(pending) => this.replace_device(pending).await?,
                 None => this.session().ok_or(CoreError::NotSignedIn)?,
             };
@@ -402,6 +424,18 @@ impl Core {
         Ok(recovery::word(&text).map(str::to_owned))
     }
 
+    /// Checks twelve words before anything slow or online: the button stays off for a word outside the list or a
+    /// checksum that does not match (screen 21).
+    pub fn check_recovery_code(&self, words: Vec<String>) -> RecoveryCodeCheck {
+        let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+        match recovery::entropy(&words) {
+            Ok(_) => RecoveryCodeCheck::Valid,
+            Err(CodeError::WordCount(n)) => RecoveryCodeCheck::WrongWordCount { count: count(n) },
+            Err(CodeError::UnknownWord(i)) => RecoveryCodeCheck::UnknownWord { index: count(i) },
+            Err(CodeError::Checksum) => RecoveryCodeCheck::Checksum,
+        }
+    }
+
     /// Words of the list that start with `prefix`, for the input cell's completion. Two syllables always single one
     /// out (protocol §10).
     pub fn recovery_completions(&self, prefix: String) -> Result<Vec<String>, CoreError> {
@@ -511,13 +545,31 @@ fn provider_of(name: &str) -> Option<Provider> {
     }
 }
 
-/// 1–40 characters after trimming, as the server takes it.
-fn display_name(text: &str) -> Result<String, CoreError> {
-    let name = text.trim();
-    if name.is_empty() || name.chars().count() > 40 {
-        return Err(CoreError::Invalid { reason: "a display name has 1 to 40 characters".into() });
-    }
-    Ok(name.to_owned())
+/// The names an account starts with when the provider gave none (design decision 22). They go to the server as data,
+/// so they are not screen strings.
+const KAKAO_NAME: &str = "카카오 사용자";
+const APPLE_NAME: &str = "Apple 사용자";
+const GUEST_NAME: &str = "게스트";
+/// The server's limit, which it counts in UTF-16 units: one per Hangul syllable, two for most emoji.
+const NAME_UNITS: usize = 40;
+
+/// The name a new account is made with: trimmed, `default` when nothing is left, and cut after the last whole
+/// character (grapheme) that fits the server's limit, so an emoji is never split.
+fn display_name(text: &str, default: &str) -> String {
+    let fit = |name: &str| {
+        let mut units = 0;
+        let mut end = 0;
+        for grapheme in name.graphemes(true) {
+            units += grapheme.encode_utf16().count();
+            if units > NAME_UNITS {
+                break;
+            }
+            end += grapheme.len();
+        }
+        name[..end].trim_end().to_owned()
+    };
+    let name = fit(text.trim());
+    if name.is_empty() { default.to_owned() } else { name }
 }
 
 impl Core {
@@ -528,7 +580,7 @@ impl Core {
         id_token: String,
         account: NewAccount,
     ) -> Result<AuthResult, CoreError> {
-        let name = display_name(&account.display_name)?;
+        let name = display_name(&account.display_name, if provider == APPLE { APPLE_NAME } else { KAKAO_NAME });
         let this = self.clone();
         self.run(async move {
             let request = ProviderSignIn {
@@ -607,17 +659,22 @@ impl Core {
         }
     }
 
-    /// The ticket of a replacement in progress, if it is still good.
-    pub(crate) fn take_ticket(&self) -> Option<PendingReplace> {
-        let pending = self.ticket.lock().unwrap_or_else(|p| p.into_inner()).take();
-        pending.filter(|p| p.expires_at > Instant::now())
+    /// The ticket of a replacement in progress; one that ran out means signing in again.
+    pub(crate) fn take_ticket(&self) -> Result<Option<PendingReplace>, CoreError> {
+        match self.ticket.lock().unwrap_or_else(|p| p.into_inner()).take() {
+            Some(pending) if pending.expires_at <= Instant::now() => Err(CoreError::SignInAgain),
+            pending => Ok(pending),
+        }
     }
 
     /// `POST /auth/replace`: this device becomes the active one and the other is signed out.
     pub(crate) async fn replace_device(&self, pending: PendingReplace) -> Result<Session, CoreError> {
         let secret = signing_secret(self.secrets.as_ref())?;
         let signature = MlsClient::sign_with(&secret, &login::replace_message(&pending.ticket))?;
-        let outcome = self.api.replace(ReplaceRequest { ticket: pending.ticket, signature }).await?;
+        let outcome = match self.api.replace(ReplaceRequest { ticket: pending.ticket, signature }).await {
+            Err(e) if e.is(401, "token_expired") => return Err(CoreError::SignInAgain),
+            other => other?,
+        };
         let AuthOutcome::Registered { tokens, .. } = outcome else {
             return Err(malformed("a replacement asked for another replacement"));
         };
@@ -712,6 +769,21 @@ impl Core {
         })
     }
 
+    /// Drops this device's code and master key.
+    fn forget_recovery(&self) -> Result<(), CoreError> {
+        self.secrets.delete(ENTROPY.to_owned());
+        self.secrets.delete(AMK.to_owned());
+        *self.recovery_keys.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        self.store.write(|db| {
+            for key in [RECOVERY_SAVED, RECOVERY_UPLOADED, RECOVERY_NEW_KEY, RECOVERY_OWNER] {
+                db.delete_setting(key)?;
+            }
+            Ok::<_, CoreError>(())
+        })?;
+        self.listener.on_change(Change::Account);
+        Ok(())
+    }
+
     /// Makes the recovery code and the master key when this device has none for the account, or always with
     /// `new_key` ("백업 없이 새로 시작"), and uploads the material. A failed upload stays pending for `sync()`, which
     /// sends `new_key` again. After a sign-in the failure does not undo the sign-in: the device is registered by then,
@@ -772,6 +844,12 @@ impl Core {
                 Err(CoreError::Api { status: 409, code, .. }) if code == "recovery_conflict" && conflicts == 0 => {
                     conflicts += 1;
                     self.keep_recovery(&session.user_id, &recovery::new_entropy(), &amk, false, new_key)?;
+                }
+                // The 30 minutes after the provider sign-in ran out. The new code can never replace the server's
+                // material now, so it goes; the device is back to "no code yet", and a new sign-in starts over.
+                Err(CoreError::Api { status: 403, code, .. }) if new_key && code == "recovery_proof_required" => {
+                    self.forget_recovery()?;
+                    return Err(CoreError::SignInAgain);
                 }
                 Err(e) => return Err(e),
             }
@@ -854,4 +932,26 @@ pub(crate) async fn derive(entropy: Entropy) -> Result<RecoveryKeys, CoreError> 
         .await
         .map_err(|e| malformed(format!("derivation task: {e}")))?
         .map_err(malformed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_name_is_trimmed_defaulted_and_cut_after_the_last_whole_character() {
+        assert_eq!(display_name("  하린  ", GUEST_NAME), "하린");
+        assert_eq!(display_name(" \n ", KAKAO_NAME), "카카오 사용자");
+        assert_eq!(display_name(&"가".repeat(41), GUEST_NAME), "가".repeat(40));
+        // A family emoji is seven code points and eleven UTF-16 units; a fourth one would pass 40.
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}";
+        assert_eq!(display_name(&family.repeat(4), GUEST_NAME), family.repeat(3));
+        // A flag is two regional indicators and four units: it goes whole or not at all.
+        let flag = "\u{1F1F0}\u{1F1F7}";
+        let fits = format!("{}{flag}", "가".repeat(36));
+        assert_eq!(display_name(&fits, GUEST_NAME), fits);
+        assert_eq!(display_name(&format!("{}{flag}", "가".repeat(37)), GUEST_NAME), "가".repeat(37));
+        // A cut that leaves a space at the end drops it too.
+        assert_eq!(display_name(&format!("{} 나", "가".repeat(39)), GUEST_NAME), "가".repeat(39));
+    }
 }

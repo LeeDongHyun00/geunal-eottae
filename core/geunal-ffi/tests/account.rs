@@ -7,8 +7,8 @@ use std::time::SystemTime;
 
 use geunal_crypto::recovery::{self, RecoveryKeys};
 use geunal_ffi::{
-    AlertRule, AuthResult, Change, Core, CoreError, CoreListener, NewAccount, PersonInput, Provider, RevokedVia,
-    SecretStore,
+    AlertRule, AuthResult, Change, Core, CoreError, CoreListener, NewAccount, PersonInput, Provider, RecoveryCodeCheck,
+    RevokedVia, SecretStore,
 };
 use geunal_sync::fake::FakeServer;
 
@@ -192,15 +192,66 @@ fn a_guest_gets_a_code_at_once_and_links_kakao_later() {
 }
 
 #[test]
-fn a_display_name_has_one_to_forty_characters() {
+fn a_new_account_without_a_name_takes_the_default_and_a_long_one_is_cut() {
     pollster::block_on(async {
         let server = FakeServer::new();
         let a = phone(&server);
-        for name in ["", "   ", &"가".repeat(41)] {
-            let err = a.core.clone().sign_in_guest(new_account(name)).await.unwrap_err();
-            assert!(matches!(err, CoreError::Invalid { .. }), "{name:?}: {err:?}");
+        a.core.clone().sign_in_guest(new_account("   ")).await.unwrap();
+        assert_eq!(a.core.account().unwrap().unwrap().display_name, "게스트");
+        let b = phone(&server);
+        kakao(&b.core, "gina", "").await.unwrap();
+        assert_eq!(b.core.account().unwrap().unwrap().display_name, "카카오 사용자");
+        let c = phone(&server);
+        kakao(&c.core, "hana", &"가".repeat(41)).await.unwrap();
+        assert_eq!(c.core.account().unwrap().unwrap().display_name, "가".repeat(40));
+    });
+}
+
+#[test]
+fn starting_over_works_on_a_registered_device_and_needs_a_new_sign_in_after_thirty_minutes() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let t0 = chrono::Utc::now();
+        server.set_now(t0);
+        let a = phone(&server);
+        let user = user_id(&kakao(&a.core, "erin", "에린").await.unwrap());
+        // The code is gone from this device while the server keeps the material: the "나중에 넣을게요" state.
+        for secret in ["recovery_entropy", "account_master_key"] {
+            a.secrets.delete(secret.to_owned());
         }
-        assert!(a.core.clone().sign_in_guest(new_account(&"가".repeat(40))).await.is_ok());
+        let again = kakao(&a.core, "erin", "에린").await.unwrap();
+        assert!(matches!(again, AuthResult::Registered { new_account: false, recovery: true, .. }), "{again:?}");
+        assert!(!a.core.recovery_status().unwrap().created);
+
+        server.set_now(t0 + chrono::Duration::minutes(31));
+        assert!(matches!(a.core.clone().start_fresh().await, Err(CoreError::SignInAgain)));
+        assert!(!a.core.recovery_status().unwrap().created, "the code the server refused is dropped");
+        a.core.clone().sync().await.unwrap();
+        assert_eq!(server.backups_cleared(&user), 0);
+
+        kakao(&a.core, "erin", "에린").await.unwrap();
+        a.core.clone().start_fresh().await.unwrap();
+        assert_eq!(server.backups_cleared(&user), 1);
+        assert_eq!(server.recovery_of(&user).unwrap().1, keys_of(&a.core).id());
+    });
+}
+
+#[test]
+fn a_replacement_ticket_that_ran_out_needs_a_new_sign_in() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let t0 = chrono::Utc::now();
+        server.set_now(t0);
+        let (a, b) = (phone(&server), phone(&server));
+        let user = user_id(&kakao(&a.core, "finn", "핀").await.unwrap());
+        let result = kakao(&b.core, "finn", "핀").await.unwrap();
+        assert!(matches!(result, AuthResult::ReplaceRequired { .. }), "{result:?}");
+
+        server.set_now(t0 + chrono::Duration::minutes(31));
+        assert!(matches!(b.core.clone().start_fresh().await, Err(CoreError::SignInAgain)));
+        assert!(b.core.session().is_none());
+        assert_eq!(server.active_device(&user), a.core.session().map(|s| s.device_id));
+        a.core.clone().sync().await.unwrap();
     });
 }
 
@@ -228,6 +279,26 @@ fn an_expired_access_token_is_refreshed_and_the_new_pair_survives_a_restart() {
         core.clone().sync().await.unwrap();
         assert!(core.account().unwrap().is_some());
     });
+}
+
+#[test]
+fn the_code_check_tells_a_missing_word_from_a_wrong_checksum_without_the_server() {
+    let server = FakeServer::new();
+    let a = phone(&server);
+    let words: Vec<String> = recovery::words(&[7; 16]).iter().map(|w| (*w).to_owned()).collect();
+    assert_eq!(a.core.check_recovery_code(words.clone()), RecoveryCodeCheck::Valid);
+
+    // The last word carries the checksum in its low four bits: its neighbour in the list keeps the entropy bits and
+    // breaks the checksum.
+    let last = recovery::list().iter().position(|w| *w == words[11]).unwrap();
+    let mut wrong = words.clone();
+    wrong[11] = recovery::list()[last ^ 1].to_owned();
+    assert_eq!(a.core.check_recovery_code(wrong), RecoveryCodeCheck::Checksum);
+
+    let mut unknown = words.clone();
+    unknown[3] = "없는말".into();
+    assert_eq!(a.core.check_recovery_code(unknown), RecoveryCodeCheck::UnknownWord { index: 3 });
+    assert_eq!(a.core.check_recovery_code(words[..11].to_vec()), RecoveryCodeCheck::WrongWordCount { count: 11 });
 }
 
 #[test]

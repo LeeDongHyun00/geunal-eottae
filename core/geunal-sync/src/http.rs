@@ -41,11 +41,35 @@ struct ErrorBody {
     replaced: Option<Replaced>,
 }
 
+/// Whether `base` may be plain http: only the local stack, on this machine or, from the Android emulator, on the host
+/// at 10.0.2.2. The apps' transport security settings do not reach the core's own sockets, so the rule lives here.
+fn local_stack(base: &reqwest::Url) -> bool {
+    let host = base.host_str().unwrap_or_default();
+    match host.trim_start_matches('[').trim_end_matches(']').parse::<std::net::IpAddr>() {
+        Ok(ip) => ip.is_loopback() || ip == std::net::Ipv4Addr::new(10, 0, 2, 2),
+        Err(_) => host == "localhost",
+    }
+}
+
 impl HttpTransport {
-    /// `base` is the API origin, `https://api.example` or `http://127.0.0.1:8080` for the local stack.
+    /// `base` is the API origin: `https://api.example`, or plain http for the local stack (`http://127.0.0.1:8080`,
+    /// `http://10.0.2.2:8080` from the Android emulator). Tokens never travel in the clear otherwise, not even after a
+    /// redirect. An empty `base` is a build without a server: the calendar works and every call fails.
     pub fn new(base: &str) -> Result<Self, ApiError> {
+        let https_only = match base {
+            "" => false,
+            _ => {
+                let url = reqwest::Url::parse(base).map_err(|e| ApiError::Malformed(format!("api base: {e}")))?;
+                match url.scheme() {
+                    "https" => true,
+                    "http" if local_stack(&url) => false,
+                    _ => return Err(ApiError::Malformed("the api base must be https outside the local stack".into())),
+                }
+            }
+        };
         let client = Client::builder()
             .use_preconfigured_tls((*crate::tls::client_config()).clone())
+            .https_only(https_only)
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| ApiError::Network(e.to_string()))?;
@@ -329,6 +353,29 @@ impl Transport for HttpTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn takes_plain_http_only_for_the_local_stack() {
+        for base in [
+            "https://api.example",
+            "http://127.0.0.1:8080",
+            "http://localhost:8080",
+            "http://[::1]:8080",
+            "http://10.0.2.2:8080",
+            "",
+        ] {
+            assert!(HttpTransport::new(base).is_ok(), "{base}");
+        }
+        for base in [
+            "http://api.example",
+            "http://192.168.0.10:8080",
+            "http://10.0.2.3:8080",
+            "ftp://api.example",
+            "api.example",
+        ] {
+            assert!(matches!(HttpTransport::new(base), Err(ApiError::Malformed(_))), "{base}");
+        }
+    }
 
     #[test]
     fn a_revoked_device_reads_how_it_was_replaced_when_the_body_says() {

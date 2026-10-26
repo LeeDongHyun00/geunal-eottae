@@ -64,6 +64,7 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "sync", 
 # `__rustls-tls` alone: the roots features would pull a second webpki-roots release, and the connector takes the same
 # rustls config the HTTP client uses.
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "__rustls-tls"] }
+unicode-segmentation = "1"
 uniffi = "0.31"
 uuid = { version = "1", features = ["v7", "v4"] }
 webpki-roots = "1"
