@@ -61,6 +61,21 @@ public final class KeychainSecretStore: SecretStore {
         }
     }
 
+    /// Deletes every item of this service: what a fresh install does with a previous install's leftovers.
+    public func deleteAll() {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+        ]
+        if let accessGroup {
+            query[kSecAttrAccessGroup as String] = accessGroup
+        }
+        let status = SecItemDelete(query as CFDictionary)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            log.error("delete all failed: \(status)")
+        }
+    }
+
     private func baseQuery(name: String) -> [String: Any] {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

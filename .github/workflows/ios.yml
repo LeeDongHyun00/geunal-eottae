@@ -42,6 +42,14 @@ jobs:
       - run: make app-ios
       - run: make test-ios
       - run: make uitest-ios
+      # One PNG per screen, named like docs/design/screens, for the design session and the user to compare.
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-screenshots
+          path: apps/ios/screenshots
+          if-no-files-found: ignore
       - name: Keep the test results on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
