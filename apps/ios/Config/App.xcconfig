@@ -1,0 +1,14 @@
+// Build settings every configuration of the app shares. Values that belong to an account stay empty here and come
+// from Secrets.xcconfig next to this file, which git ignores; copy Secrets.example.xcconfig to start one.
+
+// Kakao Developers › 앱 › 플랫폼 키 › 네이티브 앱 키. Without it the Kakao button says the sign-in did not work.
+KAKAO_APP_KEY =
+// The Apple Developer Program team that signs device builds; simulator builds need none.
+DEVELOPMENT_TEAM =
+// `alpha` builds offer the test statistics consent (docs/design/m1.md decision 10); public builds set `public`.
+GEUNAL_BUILD_CHANNEL = alpha
+// The terms and privacy pages once the domain exists. xcconfig reads `//` as a comment, so write https:/$()/….
+GEUNAL_TERMS_URL =
+GEUNAL_PRIVACY_URL =
+
+#include? "Secrets.xcconfig"

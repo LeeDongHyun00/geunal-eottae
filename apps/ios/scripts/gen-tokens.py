@@ -23,6 +23,65 @@ RELATIVE_TO = {
     "micro": "caption2",
 }
 SPACE_NAMES = ["xxs", "xs", "s", "m", "l", "xl", "xxl", "xxxl"]
+# Nested token groups become nested enums; these names would shadow a framework type at the use site.
+TYPE_NAMES = {"calendar": "Grid"}
+
+
+def type_name(key):
+    return TYPE_NAMES.get(key, key[0].upper() + key[1:])
+
+
+def number(value):
+    return ("%g" % value) if isinstance(value, float) else str(value)
+
+
+def has_numbers(group):
+    for value in group.values():
+        if isinstance(value, dict) and has_numbers(value):
+            return True
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return True
+        if isinstance(value, list) and value and all(isinstance(v, (int, float)) for v in value):
+            return True
+    return False
+
+
+def rgba(value):
+    """`#rrggbb` or `rgba(r,g,b,a)` as (hex, alpha)."""
+    if value.startswith("#"):
+        return hex_(value), 1
+    r, g, b, a = [part.strip() for part in value[value.index("(") + 1:value.index(")")].split(",")]
+    return "0x%02x%02x%02x" % (int(r), int(g), int(b)), float(a)
+
+
+def color(light, dark):
+    (lh, la), (dh, da) = rgba(light), rgba(dark)
+    if la == 1 and da == 1:
+        return "Color(light: %s, dark: %s)" % (lh, dh)
+    return "Color(light: %s, dark: %s, lightOpacity: %s, darkOpacity: %s)" % (lh, dh, number(la), number(da))
+
+
+def emit_numbers(w, name, group, indent):
+    """Emit the numeric leaves of a token group as a nested enum. Durations in milliseconds become seconds, so a view
+    passes them to an animation as they are; colors and shadow strings are emitted with the colors instead."""
+    if not has_numbers(group):
+        return
+    pad = "    " * indent
+    w("%spublic enum %s {" % (pad, type_name(name)))
+    for key, value in group.items():
+        if isinstance(value, dict):
+            emit_numbers(w, key, value, indent + 1)
+        elif isinstance(value, bool) or isinstance(value, str):
+            continue
+        elif isinstance(value, list):
+            if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value):
+                w("%s    public static let %s: [CGFloat] = [%s]" % (pad, key, ", ".join(number(v) for v in value)))
+        elif key == "ms" or key.endswith("Ms"):
+            label = "duration" if key in ("ms", "durationMs") else key[:-2] + "Duration"
+            w("%s    public static let %s: TimeInterval = %s" % (pad, label, number(value / 1000)))
+        else:
+            w("%s    public static let %s: CGFloat = %s" % (pad, key, number(value)))
+    w("%s}" % pad)
 
 
 def hex_(value):
@@ -50,6 +109,18 @@ def main():
     w("    public static let grape = Color(light: %s, dark: %s)" % (hex_(brand["grape"]), hex_(brand["grape"])))
     w("    public static let tabText = Color(light: %s, dark: %s)"
       % (hex_(brand["tabText"]["light"]), hex_(brand["tabText"]["dark"])))
+    nav = tokens["nav"]
+    w("")
+    w("    /// Navigation and sheet chrome (docs/design/README.md §5, components.md §6–7).")
+    pill, inactive = nav["tabBar"]["activePill"], nav["tabBar"]["inactive"]
+    w("    public static let tabActivePill = %s" % color(pill["light"], pill["dark"]))
+    w("    public static let tabInactive = %s" % color(inactive["light"], inactive["dark"]))
+    badge = nav["badge"]
+    for part in ("fill", "text", "ring"):
+        w("    public static let badge%s = %s" % (part.capitalize(), color(badge["light"][part], badge["dark"][part])))
+    sheet = tokens["sheet"]
+    w("    public static let grabber = %s" % color(sheet["grabber"]["color"], sheet["grabber"]["color"]))
+    w("    public static let scrim = %s" % color(sheet["scrim"], sheet["scrim"]))
     w("}")
     w("")
     w("/// The twelve group colors (docs/design/README.md §2.2). Each has five tints: the free-count scale in the group")
@@ -97,21 +168,22 @@ def main():
     w("")
     w("extension Color {")
     w("    /// A color from two sRGB hex values, picked by the current appearance.")
-    w("    public init(light: UInt32, dark: UInt32) {")
+    w("    public init(light: UInt32, dark: UInt32, lightOpacity: CGFloat = 1, darkOpacity: CGFloat = 1) {")
     w("        self.init(")
     w("            uiColor: UIColor { traits in")
-    w("                UIColor(rgb: traits.userInterfaceStyle == .dark ? dark : light)")
+    w("                traits.userInterfaceStyle == .dark")
+    w("                    ? UIColor(rgb: dark, alpha: darkOpacity) : UIColor(rgb: light, alpha: lightOpacity)")
     w("            })")
     w("    }")
     w("}")
     w("")
     w("extension UIColor {")
-    w("    fileprivate convenience init(rgb: UInt32) {")
+    w("    fileprivate convenience init(rgb: UInt32, alpha: CGFloat) {")
     w("        self.init(")
     w("            red: CGFloat((rgb >> 16) & 0xFF) / 255,")
     w("            green: CGFloat((rgb >> 8) & 0xFF) / 255,")
     w("            blue: CGFloat(rgb & 0xFF) / 255,")
-    w("            alpha: 1)")
+    w("            alpha: alpha)")
     w("    }")
     w("}")
     w("")
@@ -164,6 +236,23 @@ def main():
     w("public enum Radius {")
     for key, value in tokens["radius"].items():
         w("    public static let %s: CGFloat = %d" % (key, value))
+    w("}")
+    w("")
+    w("/// Component sizes (docs/design/components.md), navigation and sheet metrics (docs/design/README.md §5).")
+    w("public enum Metrics {")
+    for key, value in tokens["component"].items():
+        emit_numbers(w, key, value, 1)
+    emit_numbers(w, "tabBar", tokens["nav"]["tabBar"], 1)
+    emit_numbers(w, "nextUpBar", tokens["nav"]["nextUpBar"], 1)
+    emit_numbers(w, "badge", tokens["nav"]["badge"], 1)
+    w("    public static let minHitTarget: CGFloat = %s" % number(tokens["a11y"]["minHitTarget"]))
+    w("}")
+    w("")
+    w("/// Motion (docs/design/components.md §9). With Reduce Motion on, views fade for `ReducedMotion.fadeDuration`")
+    w("/// instead of sliding or springing.")
+    w("public enum Motion {")
+    for key, value in tokens["motion"].items():
+        emit_numbers(w, key, value, 1)
     w("}")
     sys.stdout.write("\n".join(out) + "\n")
 
