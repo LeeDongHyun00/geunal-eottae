@@ -396,6 +396,44 @@ fn a_device_left_without_a_code_makes_it_on_the_next_run() {
 }
 
 #[test]
+fn a_replacement_left_behind_does_not_act_for_the_next_sign_in() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let (a, b) = (phone(&server), phone(&server));
+        let amy = user_id(&kakao(&a.core, "amy", "에이미").await.unwrap());
+        // Amy's sign-in on phone B asks to replace phone A; the user backs out and signs up as Ben instead.
+        assert!(matches!(kakao(&b.core, "amy", "에이미").await.unwrap(), AuthResult::ReplaceRequired { .. }));
+        let ben = user_id(&kakao(&b.core, "ben", "벤").await.unwrap());
+
+        // Starting over on B is about Ben, whose code B holds; Amy's phone and backups are not touched.
+        assert!(matches!(b.core.clone().start_fresh(None).await, Err(CoreError::Invalid { .. })));
+        assert_eq!(server.active_device(&amy), a.core.session().map(|s| s.device_id));
+        assert_eq!(server.backups_cleared(&amy), 0);
+        assert_eq!(b.core.session().unwrap().user_id, ben);
+    });
+}
+
+#[test]
+fn the_account_a_sign_in_could_not_fetch_comes_with_the_next_sync() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let a = phone(&server);
+
+        server.fail_next("me");
+        kakao(&a.core, "cleo", "클레오").await.unwrap();
+        let account = a.core.account().unwrap().unwrap();
+        assert_eq!((account.display_name.as_str(), account.providers.len()), ("클레오", 0), "the name it sent");
+        a.core.clone().sync().await.unwrap();
+        assert_eq!(a.core.account().unwrap().unwrap().providers, vec![Provider::Kakao]);
+
+        // Signing in again while GET /me fails keeps what the device knew.
+        server.fail_next("me");
+        kakao(&a.core, "cleo", "클레오").await.unwrap();
+        assert_eq!(a.core.account().unwrap().unwrap().providers, vec![Provider::Kakao]);
+    });
+}
+
+#[test]
 fn an_expired_access_token_is_refreshed_and_the_new_pair_survives_a_restart() {
     pollster::block_on(async {
         let server = FakeServer::new();

@@ -50,7 +50,7 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 | --- | --- | --- | --- | --- |
 | `Core::open(store_dir, api_base, listener, secrets)` | `Core.open(storeDir:apiBase:listener:secrets:)` | `Core.open(storeDir, apiBase, listener, secrets)` | 저장소 열기. 데이터베이스 키를 `secrets`에서 꺼내야 파일을 열 수 있어서 `SecretStore`를 여기서 받습니다. 저장된 세션이 있으면 복원 | M0 |
 | `sign_in_stub(subject, display_name, platform)` | `signInStub(subject:displayName:platform:) async throws` | `suspend fun signInStub(subject, displayName, platform)` | 인증 스텁(`POST /auth/stub`, 로컬·CI만)으로 로그인과 기기 등록. 세션과 기기 서명 키는 `SecretStore`에 둠. M1부터 `AuthResult`를 돌려주고, 다른 기기가 쓰는 계정이면 `ReplaceRequired`(protocol.md 13장) | M0 |
-| `sync()` | `sync() async throws` | `suspend fun sync()` | 모든 그룹 따라잡기, 대기 중 쓰기 보내기. M1부터 로그인 때 올리지 못한 키 패키지와 복구 자료도 올림(5장 "계정과 세션") | M0 |
+| `sync()` | `sync() async throws` | `suspend fun sync()` | 모든 그룹 따라잡기, 대기 중 쓰기 보내기. M1부터 로그인이 마치지 못한 계정 정보, 키 패키지, 복구 자료도 처리(5장 "계정과 세션") | M0 |
 | `cipher_version()` | `cipherVersion()` | `cipherVersion()` | M0 화면용 SQLCipher 버전. 화면이 없어지면 지움 | M0 |
 | `create_group(name)`, `add_members(group_id, user_ids)`, `remove_member(group_id, user_id)` | `createGroup(name:) async throws` 등 | `suspend fun createGroup(name)` 등 | 그룹 만들기, 사용자 ID로 멤버 추가(초대 코드는 M2), 탈퇴·강퇴. 헤드리스 종단 시험이 쓰는 M0 표면 | M0 |
 | `send_text`, `request_date`, `respond`, `open_poll`, `vote`, `close_poll`, `cancel` | 같은 이름, `async throws` | 같은 이름, `suspend fun` | 엔트리 보내기(protocol.md 4장). M2·M3 화면이 그대로 씀 | M0 |
@@ -363,6 +363,8 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
 - **로그인 결과:** 카카오·Apple·게스트·스텁 로그인은 모두 같은 곳에서 끝납니다.
   - `registered`: 세션을 `SecretStore`에 두고, 엔진을 만들고, 키 패키지를 올립니다. `recovery`가 거짓이면 이때 `E`와 AMK를 만들어 `PUT /me/recovery`로 올립니다.
   - 키 패키지를 올리지 못해도 로그인은 그대로 성공하고, `sync()`가 올립니다. 올리기 전에 표시를 남기므로, 그 사이에 앱이 닫혀도 다음 `sync()`가 올립니다.
+  - 등록 직후 `GET /me`가 답하지 않으면, 같은 계정이면 기기가 알던 계정 정보(이름, 제공자)를 그대로 두고, 처음이면 로그인이 보낸 이름으로 둡니다. 다음 `sync()`가 다시 묻습니다.
+  - 등록되면, 받아 두고 쓰지 않은 교체 티켓을 지웁니다. 사용자가 그만둔 로그인이 다음 계정의 `start_fresh`에서 다른 계정의 기기를 교체하거나 백업을 지우지 않게 하려는 것입니다.
   - `replace_required`: 아무것도 등록하지 않고 교체 티켓을 메모리에만 둡니다(30분). 앱이 다시 시작되면 로그인부터 다시 합니다. `start_fresh`나 `restore_from_code`가 기기 키로 티켓에 서명해 `POST /auth/replace`를 부릅니다.
   - 티켓은 교체가 성공할 때까지 남습니다. 네트워크 오류로 실패한 `start_fresh`·`restore_from_code`는 다시 부르면 됩니다.
 - **복구 자료 올리기:**

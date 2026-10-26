@@ -63,7 +63,7 @@
             register()
         }
 
-        override func startFresh() async throws -> Session {
+        override func startFresh(proof: DeletionProof?) async throws -> Session {
             register()
         }
 
