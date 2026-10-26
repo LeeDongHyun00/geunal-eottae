@@ -33,6 +33,7 @@ core/
 | mls-rs, mls-rs-crypto-rustcrypto | 0.56, 0.22 | MLS(RFC 9420), 암호 조합 0x0003 |
 | mls-rs-provider-sqlite | 0.23 | MLS 상태 저장(기본 기능이 SQLCipher 번들) |
 | chacha20poly1305, argon2 | 0.10, 0.5 | 상태 블롭·미디어·백업 AEAD, 복구 키 |
+| hkdf, sha2, ed25519-dalek | 0.12, 0.10, 2 | 복구 값 파생, 복구 서명, 로그인 nonce 묶기. MLS 암호 제공자가 이미 쓰는 판 |
 | ciborium | 0.2 | 엔트리·상태 블롭 CBOR |
 | rusqlite | mls-rs-provider-sqlite와 같은 버전 | 로컬 저장소. libsqlite3-sys가 하나만 들어가야 함 |
 | reqwest(rustls), tokio-tungstenite, tokio | 최신 안정판, 0.30 | API, 게이트웨이 |
@@ -356,6 +357,9 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
 - **공휴일:** 내장 표에서 시작해 API에서 받은 해로 바꾸고, 연차 다리 제안을 계산합니다. 아래 "공휴일과 연차 다리"에 적습니다.
 - **사람·생일:** 음력 생일을 해마다 양력으로 바꿉니다. 아래 "사람·생일과 음력"에 규칙을 적습니다.
 - **채팅:** 엔트리 타임라인, 날짜 잡기 카드, `chat_fts` 색인, 미디어 STREAM 암복호화.
+- **복구 코드:** [공통 계약](protocol.md) 10장대로 `E`를 12단어로 쓰고, 한 번의 Argon2id와 HKDF로 값을 만듭니다(`geunal-crypto`의 `recovery`, `kdf`).
+  - 단어 목록은 BIP39 한국어 목록을 NFC로 바꾼 `core/geunal-crypto/src/recovery/korean.txt`이고, 출처와 고지는 같은 폴더의 `NOTICE.md`에 있습니다. 시험이 원본 파일의 해시를 다시 확인합니다.
+  - 입력은 한글 음절 공식으로 NFC와 NFD를 맞춥니다. 단어가 모두 한글 음절이라 일반 유니코드 정규화 표가 필요 없고, 그 표는 단어 목록보다 큽니다.
 
 ```rust
 // core/geunal-domain/src/availability.rs — the group calendar is members' schedules merged. Nothing here decides what "free" means.
