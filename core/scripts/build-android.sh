@@ -7,7 +7,8 @@ core="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 repo="$(dirname "$core")"
 out="$core/out/android"
 abis=(arm64-v8a armeabi-v7a x86_64)
-# 8 MB per ABI after stripping (rust-core.md §7). The budget binds from M1, so M0 only warns.
+# 8 MB after stripping for each ABI phones download (rust-core.md §7); over it the build fails. Play hands a device only
+# its own ABI, and x86_64 runs on emulators and x86 Chromebooks, so its size is only recorded.
 budget=$((8 * 1024 * 1024))
 
 ndk="$("$repo/scripts/tool.sh" android-ndk)"
@@ -53,17 +54,29 @@ cargo run --locked -q -p uniffi-bindgen -- generate --no-format --language kotli
 strip=("$ndk"/toolchains/llvm/prebuilt/*/bin/llvm-strip)
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
+over=()
 {
-  echo "| ABI | stripped size |"
-  echo "| --- | --- |"
+  echo "| ABI | stripped size | budget |"
+  echo "| --- | --- | --- |"
   for abi in "${abis[@]}"; do
     "${strip[0]}" --strip-all -o "$tmp/$abi.so" "$out/jniLibs/$abi/libgeunal_ffi.so"
     size=$(($(wc -c <"$tmp/$abi.so")))
-    printf '| %s | %s |\n' "$abi" "$(awk -v b="$size" 'BEGIN { printf "%.2f MB", b / 1048576 }')"
-    if [ "$size" -gt "$budget" ]; then
-      message="libgeunal_ffi.so for $abi is over the 8 MB budget"
-      if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::warning::$message" >&2; else echo "warning: $message" >&2; fi
-    fi
+    case "$abi" in
+      arm64-v8a | armeabi-v7a)
+        limit="8 MB"
+        if [ "$size" -gt "$budget" ]; then over+=("$abi"); fi
+        ;;
+      *) limit="recorded only" ;;
+    esac
+    printf '| %s | %s | %s |\n' "$abi" "$(awk -v b="$size" 'BEGIN { printf "%.2f MB", b / 1048576 }')" "$limit"
   done
 } >"$out/sizes.md"
 cat "$out/sizes.md"
+# The table above is written first, so a failing build still shows every size.
+if [ "${#over[@]}" -gt 0 ]; then
+  for abi in "${over[@]}"; do
+    message="libgeunal_ffi.so for $abi is over the 8 MB budget"
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::error::$message" >&2; else echo "error: $message" >&2; fi
+  done
+  exit 1
+fi

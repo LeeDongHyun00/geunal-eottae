@@ -533,7 +533,7 @@ pub fn open(key: &[u8; 32], aad: &str, blob: &[u8]) -> Option<Vec<u8>> {
   - SQLCipher가 부르는 것(AES-256-CBC, SHA-1·256·512, HMAC, PBKDF2, 난수)만 남기고 나머지 알고리즘과 TLS·X.509·오류 문자열을 끕니다. 어셈블리는 남겨 AES와 SHA가 CPU 명령을 씁니다.
   - DB 형식은 그대로입니다. 시스템 OpenSSL로 만든 저장소를 축소판이 열고 그 반대도 열리는 것을 확인했습니다.
   - OpenSSL이 cargo 밖에 있어 RustSec이 보지 않으므로, `make audit-core`가 같은 계열의 새 패치가 나왔는지와 그 계열의 지원이 끝났는지 확인합니다([의존성 검사](../security/dependencies.md)).
-- **크기 예산:** 릴리스·심볼 제거 기준 ABI당 8MB 이하. `make build-android`가 `core/out/android/sizes.md`에 기록하고, 넘으면 경고합니다. 지금 줄이는 방법은 다섯입니다.
+- **크기 예산:** 릴리스·심볼 제거 기준으로, 폰이 내려받는 ABI(arm64-v8a, armeabi-v7a)마다 8MB 이하입니다. `make build-android`가 `core/out/android/sizes.md`에 기록하고, 넘으면 실패합니다. Play는 기기에 맞는 ABI 하나만 내려받게 하고, x86_64는 에뮬레이터와 x86 크롬북에서만 쓰므로 크기만 기록합니다. x86_64는 같은 코드가 arm64보다 약 1.8MB 큽니다. 지금 줄이는 방법은 다섯입니다.
   - **압축 재배치:** `core/.cargo/config.toml`이 안드로이드 타깃에 APS2 압축 재배치를 켭니다. 64비트 ABI에서 재배치 표가 1.5MB에서 0.1MB로 줄고, 안드로이드는 API 23부터 읽으므로 minSdk 26에서 문제없습니다.
   - **SQLite는 `-Oz`:** C 코드는 LTO 밖이라 패키지별 최적화 수준이 그대로 듣습니다. ABI마다 0.75MB가 줄어듭니다.
   - **OpenSSL과 SQLite는 쓰는 것만:** 위의 축소 OpenSSL이 3.0MB를 1.0MB로 줄입니다. SQLite는 FTS5만 남기고 쓰지 않는 모듈(FTS3, R*Tree, dbstat, soundex, STAT4, 열 메타데이터, JSON, 확장 로드)을 `core/.cargo/config.toml`의 `LIBSQLITE3_FLAGS`로 끄고, 테스트도 같은 설정으로 돕니다. 약 0.2MB입니다.
