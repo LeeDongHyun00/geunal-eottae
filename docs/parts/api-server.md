@@ -395,7 +395,7 @@ CREATE TABLE holidays (
 | POST | `/me/key-packages` | 키 패키지 묶음 올리기 |
 | GET | `/users/{id}/devices` | 활성 기기 ID와 서명 공개키(추가 전 확인용) |
 | POST | `/devices/{id}/key-packages/claim` | 그 기기를 추가하려고 키 패키지 하나 가져가기 |
-| PUT, GET | `/me/recovery` | 래핑된 AMK, 복구 ID, 복구 공개키. 이미 있으면 지금 코드의 증명이 필요하고, `new_key`면 백업을 모두 지움 |
+| PUT, GET | `/me/recovery` | 래핑된 AMK, 복구 ID, 복구 공개키. 이미 있으면 지금 코드의 증명이 필요함. `new_key`는 제공자 로그인 30분 안이나 새 제공자 증명으로만 되고, 백업을 모두 지움 |
 | POST, GET | `/me/backups` | 업로드 URL 발급, 완료된 백업 목록(최근 3개) |
 | POST | `/me/backups/{id}/complete` | 올리기 완료, 오래된 백업 정리 |
 | GET | `/me/backups/latest` | 다운로드 URL |
