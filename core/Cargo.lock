@@ -1033,8 +1033,13 @@ dependencies = [
 name = "geunal-store"
 version = "0.1.0"
 dependencies = [
+ "ciborium",
+ "geunal-crypto",
+ "hex",
  "rusqlite",
  "rustix",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
 ]

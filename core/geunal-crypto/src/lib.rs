@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 pub mod aead;
+pub mod backup;
 pub mod kdf;
 pub mod login;
 pub mod recovery;
