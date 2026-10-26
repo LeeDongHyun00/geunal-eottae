@@ -24,3 +24,6 @@ if ! diff -u "$tokens" <(python3 -I scripts/gen-tokens.py); then
   exit 1
 fi
 echo "design tokens: $tokens matches docs/design/tokens.json"
+
+# Every interface string goes through a String Catalog, and package code must look in its own bundle.
+python3 -I scripts/strings.py check

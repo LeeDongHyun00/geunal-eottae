@@ -13,13 +13,15 @@
 body{margin:0}
 a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
 button{font:inherit;letter-spacing:inherit;color:inherit}
+[data-scroll]>*{flex:none}
 </style>
 </helmet>
 <div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #f4f4f6; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
 
 <h1 style="position: absolute; top: 64px; left: 20px; margin: 0; font-size: 32px; font-weight: 600; letter-spacing: -0.025em">나</h1>
 
-<div style="position: absolute; top: 120px; left: 16px; width: 358px; display: flex; flex-direction: column; gap: 12px">
+<div data-scroll="settings" style="position: absolute; top: 120px; bottom: 0; left: 0; width: 390px; box-sizing: border-box; padding: 0 16px 176px; overflow-y: auto; display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 12px">
 <a href="Me.dc.html" style="min-height: 68px; box-sizing: border-box; padding: 0 16px; border-radius: 16px; background: #ffffff; display: flex; align-items: center; gap: 12px">
 <span style="flex: none; width: 48px; height: 48px; border-radius: 24px; background: #c1b6f6; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600">하</span>
 <span style="flex: 1 1 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 18px; font-weight: 600">하린</span><span style="font-size: 13px; color: #5c5c66">카카오 계정 · 기기 1대</span></span>
@@ -32,7 +34,7 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 </a>
 </div>
 
-<div style="position: absolute; top: 296px; left: 16px; width: 358px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; flex-direction: column; gap: 8px">
 <h2 style="margin: 0 0 0 16px; font-size: 13px; font-weight: 600; color: #5c5c66">캘린더</h2>
 <div style="border-radius: 16px; background: #ffffff; display: flex; flex-direction: column">
 <a href="Calendars.dc.html" style="min-height: 48px; padding: 0 16px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #ebebef"><span style="flex: 1 1 0; font-size: 17px">캘린더 관리</span><span style="font-size: 15px; color: #5c5c66">5개</span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="fill: none; stroke: #696973; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg></a>
@@ -42,7 +44,7 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 </div>
 </div>
 
-<div style="position: absolute; top: 528px; left: 16px; width: 358px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; flex-direction: column; gap: 8px">
 <h2 style="margin: 0 0 0 16px; font-size: 13px; font-weight: 600; color: #5c5c66">보안과 백업</h2>
 <div style="border-radius: 16px; background: #ffffff; display: flex; flex-direction: column">
 <a href="Recovery.dc.html" style="min-height: 48px; padding: 0 16px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #ebebef"><span style="flex: 1 1 0; font-size: 17px">복구 코드</span><span style="display: flex; align-items: center; gap: 4px; font-size: 15px; color: #5c5c66"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>저장함</span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="fill: none; stroke: #696973; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg></a>
@@ -51,13 +53,18 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 </div>
 </div>
 
-<div style="position: absolute; top: 712px; left: 16px; width: 358px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; flex-direction: column; gap: 8px">
 <h2 style="margin: 0 0 0 16px; font-size: 13px; font-weight: 600; color: #5c5c66">계정</h2>
 <div style="border-radius: 16px; background: #ffffff; display: flex; flex-direction: column">
 <a href="NotifySettings.dc.html" style="min-height: 48px; padding: 0 16px; display: flex; align-items: center; border-bottom: 1px solid #ebebef"><span style="font-size: 17px">알림</span></a>
 <div style="min-height: 48px; padding: 0 16px; display: flex; align-items: center; border-bottom: 1px solid #ebebef"><span style="font-size: 17px">서버가 아는 것 · 보안 안내</span></div>
+<sc-if value="{{alpha}}" hint-placeholder-val="{{true}}">
+<div style="min-height: 52px; padding: 0 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #ebebef"><span style="flex: 1 1 0; display: flex; flex-direction: column; gap: 2px; padding: 8px 0"><span style="font-size: 17px">테스트 통계 보내기</span><span style="font-size: 13px; color: #5c5c66">알파 빌드 · 하루 한 번 숫자 네 개만</span></span><button type="button" role="switch" aria-checked="{{statsOn}}" aria-label="테스트 통계 보내기" onClick="{{toggleStats}}" style="flex: none; width: 51px; height: 31px; padding: 2px; border: none; border-radius: 16px; background: {{statsTrack}}; display: flex; justify-content: {{statsSide}}; cursor: pointer"><span style="width: 27px; height: 27px; border-radius: 14px; background: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.18)"></span></button></div>
+</sc-if>
 <a href="DeleteAccount.dc.html" style="min-height: 48px; padding: 0 16px; display: flex; align-items: center"><span style="font-size: 17px; color: #c92f26">계정 삭제</span></a>
 </div>
+</div>
+
 </div>
 
 <section aria-label="다음 할 일" style="position: absolute; left: 16px; top: 696px; width: 358px; height: 56px; box-sizing: border-box; padding: 0 4px; border-radius: 28px; background: rgba(255,255,255,0.66); backdrop-filter: blur(16px) saturate(180%); box-shadow: 0 12px 32px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.05), inset 0 0 0 1px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.9); display: flex; align-items: center; gap: 2px">
@@ -99,11 +106,11 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+<script type="text/x-dc" data-dc-script data-props='{"build":{"editor":"enum","options":["알파 빌드","공개 빌드"],"default":"알파 빌드"},"$preview":{"width":390,"height":844}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { ni: 1 };
+    this.state = { ni: 1, stats: true };
   }
   renderVals() {
     const soft = 'repeating-linear-gradient(135deg, #d3dfbb 0 4px, #e4ecd5 4px 8px)';
@@ -122,7 +129,11 @@ class Component extends DCLogic {
       isGroup: cur.kind === 'group', isEvent: cur.kind === 'event', isBday: cur.kind === 'bday',
       ring: cur.kind === 'bday' ? 'inset 0 0 0 1px #e1e1e6' : 'none',
     });
+    const stats = this.state.stats;
     return {
+      alpha: (this.props.build ?? '알파 빌드') === '알파 빌드',
+      statsOn: stats ? 'true' : 'false', statsTrack: stats ? '#1b1b1f' : '#e1e1e6', statsSide: stats ? 'flex-end' : 'flex-start',
+      toggleStats: () => this.setState({ stats: !stats }),
       nx,
       atStart: ni === 0, atEnd: ni === NEXT.length - 1,
       prevOp: ni === 0 ? 0.3 : 1, nextOp: ni === NEXT.length - 1 ? 0.3 : 1,

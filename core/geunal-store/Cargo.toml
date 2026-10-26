@@ -9,11 +9,16 @@ publish.workspace = true
 # SQLCipher links Apple's CommonCrypto on iOS, the system libcrypto on Linux, and on Android the trimmed OpenSSL that
 # core/scripts/build-openssl.sh builds for each ABI (docs/parts/rust-core.md §7).
 [dependencies]
+ciborium.workspace = true
 rusqlite = { workspace = true, features = ["bundled-sqlcipher"] }
 rustix.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+geunal-crypto.workspace = true
+hex.workspace = true
+serde_json.workspace = true
 tempfile.workspace = true
 
 [lints]

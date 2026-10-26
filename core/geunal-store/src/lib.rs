@@ -4,6 +4,7 @@
 //! FTS5 trigram.
 #![forbid(unsafe_code)]
 
+pub mod archive;
 mod local;
 mod lock;
 mod repo;

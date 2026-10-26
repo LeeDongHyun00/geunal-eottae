@@ -1,0 +1,26 @@
+{
+  "sourceLanguage" : "ko",
+  "strings" : {
+    "CFBundleDisplayName" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그날어때"
+          }
+        }
+      }
+    },
+    "NSCalendarsFullAccessUsageDescription" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기기 캘린더의 일정을 읽어 내 캘린더에 함께 보여 줘요. 제목은 이 기기 밖으로 나가지 않아요."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

@@ -22,44 +22,58 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 </div>
 
 <div style="position: absolute; top: 118px; left: 24px; width: 342px; display: flex; flex-direction: column; gap: 12px">
-<h1 style="margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.2">두 가지만<br>허락해 주세요</h1>
-<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #5c5c66">둘 다 나중에 설정에서 바꿀 수 있어요.</p>
+<h1 style="margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.2">{{countText}}<br>허락해 주세요</h1>
+<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #5c5c66">모두 나중에 설정에서 바꿀 수 있어요.</p>
 </div>
 
-<div style="position: absolute; top: 270px; left: 16px; width: 358px; display: flex; flex-direction: column; gap: 12px">
-<div style="padding: 20px; border-radius: 20px; background: #f4f4f6; display: flex; flex-direction: column; gap: 14px">
+<div style="position: absolute; top: 232px; left: 16px; width: 358px; display: flex; flex-direction: column; gap: 8px">
+<div style="padding: 14px 16px; border-radius: 20px; background: #f4f4f6; display: flex; flex-direction: column; gap: 8px">
 <div style="display: flex; gap: 14px">
 <span style="flex: none; width: 44px; height: 44px; border-radius: 12px; background: #ffffff; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: #1b1b1f; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"></rect><path d="M3.5 9.5h17M8 3v4M16 3v4"></path></svg></span>
-<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 17px; font-weight: 600">기기 캘린더 가져오기</span><span style="font-size: 15px; line-height: 1.5; color: #5c5c66">읽기만 해요. 가져온 일정의 제목은 이 기기 밖으로 나가지 않고, 그룹에는 비어 있는지만 보여요.</span></span>
+<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 17px; font-weight: 600">기기 캘린더 가져오기</span><span style="font-size: 14px; line-height: 1.5; color: #5c5c66">읽기만 해요. 가져온 일정의 제목은 이 기기 밖으로 나가지 않고, 그룹에는 비어 있는지만 보여요.</span></span>
 </div>
-<button type="button" onClick="{{toggleCal}}" aria-pressed="{{cal}}" style="align-self: flex-end; height: 44px; padding: 0 20px; border: none; border-radius: 999px; background: {{calBg}}; color: {{calFg}}; display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; cursor: pointer">{{calLabel}}</button>
+<button type="button" onClick="{{toggleCal}}" aria-pressed="{{cal}}" style="align-self: flex-end; height: 40px; padding: 0 16px; border: none; border-radius: 999px; background: {{calBg}}; color: {{calFg}}; display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; cursor: pointer">{{calLabel}}</button>
 </div>
-<div style="padding: 20px; border-radius: 20px; background: #f4f4f6; display: flex; flex-direction: column; gap: 14px">
+<div style="padding: 14px 16px; border-radius: 20px; background: #f4f4f6; display: flex; flex-direction: column; gap: 8px">
 <div style="display: flex; gap: 14px">
 <span style="flex: none; width: 44px; height: 44px; border-radius: 12px; background: #ffffff; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: #1b1b1f; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"></path><path d="M10 20.5a2 2 0 0 0 4 0"></path></svg></span>
-<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 17px; font-weight: 600">알림 받기</span><span style="font-size: 15px; line-height: 1.5; color: #5c5c66">일정 알림, 친구의 날짜 잡기와 투표를 알려 드려요. 그룹마다 채팅·약속 알림을 따로 끌 수 있어요.</span></span>
+<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 17px; font-weight: 600">알림 받기</span><span style="font-size: 14px; line-height: 1.5; color: #5c5c66">일정 알림과 친구의 날짜 잡기·투표를 알려 드려요. 그룹마다 따로 끌 수 있어요.</span></span>
 </div>
-<button type="button" onClick="{{toggleNoti}}" aria-pressed="{{noti}}" style="align-self: flex-end; height: 44px; padding: 0 20px; border: none; border-radius: 999px; background: {{notiBg}}; color: {{notiFg}}; display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; cursor: pointer">{{notiLabel}}</button>
+<button type="button" onClick="{{toggleNoti}}" aria-pressed="{{noti}}" style="align-self: flex-end; height: 40px; padding: 0 16px; border: none; border-radius: 999px; background: {{notiBg}}; color: {{notiFg}}; display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; cursor: pointer">{{notiLabel}}</button>
 </div>
+<sc-if value="{{alpha}}" hint-placeholder-val="{{true}}">
+<div style="padding: 14px 16px; border-radius: 20px; background: #f4f4f6; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; gap: 14px">
+<span style="flex: none; width: 44px; height: 44px; border-radius: 12px; background: #ffffff; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: #1b1b1f; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M5 19V11M12 19V5M19 19v-8"></path></svg></span>
+<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 17px; font-weight: 600">테스트 통계 보내기 <span style="font-size: 12px; font-weight: 600; color: #5c5c66; vertical-align: 2px">알파 빌드만</span></span><span style="font-size: 14px; line-height: 1.5; color: #5c5c66">하루 한 번 숫자 네 개만 보내요: 앱을 연 횟수, 만든 일정 수, 그중 추천으로 만든 수, 비정상 종료 수. 제목·시간·이름은 가지 않아요.</span></span>
+</div>
+<button type="button" onClick="{{toggleStats}}" aria-pressed="{{stats}}" style="align-self: flex-end; height: 40px; padding: 0 16px; border: none; border-radius: 999px; background: {{statsBg}}; color: {{statsFg}}; display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; cursor: pointer">{{statsLabel}}</button>
+</div>
+</sc-if>
 </div>
 
 <div style="position: absolute; left: 24px; bottom: 34px; width: 342px; display: flex; flex-direction: column; gap: 4px">
-<a href="Month.dc.html" style="height: 56px; border-radius: 999px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600">캘린더 열기</a>
-<a href="Month.dc.html" style="height: 48px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; color: #5c5c66">나중에 할게요</a>
+<a href="Month.dc.html" style="height: 52px; border-radius: 999px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600">캘린더 열기</a>
+<a href="Month.dc.html" style="height: 40px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; color: #5c5c66">나중에 할게요</a>
 </div>
 
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+<script type="text/x-dc" data-dc-script data-props='{"build":{"editor":"enum","options":["알파 빌드","공개 빌드"],"default":"알파 빌드"},"$preview":{"width":390,"height":844}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { cal: true, noti: false };
+    this.state = { cal: true, noti: false, stats: false };
   }
   renderVals() {
-    const { cal, noti } = this.state;
+    const { cal, noti, stats } = this.state;
+    const alpha = (this.props.build ?? '알파 빌드') === '알파 빌드';
     return {
-      cal, noti,
+      cal, noti, stats, alpha,
+      countText: alpha ? '세 가지만' : '두 가지만',
+      statsLabel: stats ? '보내요 · 나에서 끌 수 있어요' : '보낼게요',
+      statsBg: stats ? '#ffffff' : '#1b1b1f', statsFg: stats ? '#1b1b1f' : '#ffffff',
+      toggleStats: () => this.setState({ stats: !stats }),
       calLabel: cal ? '가져왔어요 · 캘린더 3개' : '가져오기',
       calBg: cal ? '#ffffff' : '#1b1b1f',
       calFg: cal ? '#1b1b1f' : '#ffffff',

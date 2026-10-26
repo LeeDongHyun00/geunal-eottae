@@ -11,6 +11,9 @@
 | API 이미지(`geunal/api:local`): OS 패키지, JDK, boot jar 안의 라이브러리 | Trivy `image` | 기본. 예외 파일 없음 | `make scan-api` | HIGH·CRITICAL 중 수정판이 있는 것 |
 | 게이트웨이 이미지(`geunal/gateway:local`): OS 패키지, ERTS | Trivy `image` | 같음 | `make scan-gateway` | 같음 |
 | 게이트웨이 Hex 패키지(`server/gateway/mix.lock`) | Trivy `fs --scanners vuln` | 릴리스 안에서는 Hex 패키지가 안 보여서 잠금 파일을 따로 검사 | `make scan-gateway` | 같음 |
+| 안드로이드 릴리스 APK에 들어가는 라이브러리 | Trivy `fs --scanners vuln` | `apps/android/app/gradle.lockfile`에서 `releaseRuntimeClasspath` 줄만 골라 검사. 안드로이드 앱이 있는데 이 파일이 없거나 고를 줄이 없으면 실패 | `make audit-apps` | 같음 |
+| iOS Swift 패키지(`apps/ios/Package.resolved`) | Trivy `fs --scanners vuln`(GitHub Advisory Database의 Swift 권고) | `apps/ios/Packages`의 매니페스트가 원격 패키지를 쓰는데 이 파일이 없으면 실패 | `make audit-apps` | 같음 |
+| 안드로이드 빌드 도구(플러그인 classpath, Android Lint) | Trivy `fs --scanners vuln` | 모든 `gradle.lockfile`. 기기에 가지 않으므로 기록만(3장 S2). 수정판은 Dependabot의 Gradle 올리기로 옴 | `make audit-apps`의 로그 | 없음 |
 | GitHub Actions | Dependabot(`github-actions`) | 커밋 SHA 고정, 주 1회 묶음 PR | 없음 | 없음(PR로만 옴) |
 | 버전 올리기 | Dependabot(cargo, gradle, mix, docker, docker-compose) | `.github/dependabot.yml`. 코어는 patch만, 나머지는 major 제외 | 없음 | PR의 `ci-ok` |
 
@@ -22,7 +25,7 @@
 - `--check`는 GitHub의 태그 목록을 받지 못해도 실패합니다("could not list the OpenSSL ... releases"). 권고가 아니므로 다시 실행합니다. 주간 검사의 이슈는 다시 통과하면 닫힙니다.
 
 **아직 검사하지 않는 것:**
-- iOS Swift 패키지와 안드로이드 Gradle 의존성. 파트가 들어올 때 `ios.yml`·`android.yml`에 더합니다(Swift는 공개 DB가 없어 Dependabot 버전 올리기로 대신, 안드로이드는 Trivy `fs`로 `gradle.lockfile`).
+- 앱 의존성의 PR 검사. 지금은 주간 검사만 `make audit-apps`를 돌립니다. 잠금 파일이 바뀌는 PR에서도 돌릴지는 iOS·안드로이드 파트가 정합니다.
 - 로컬 compose의 PostgreSQL·Redis·SeaweedFS 이미지. 로컬 전용이고 Dependabot이 버전을 올립니다. 알파 서버의 compose(M1)는 운영 구성이므로 그때 `audit.yml`에 더합니다.
 - Trivy의 `--ignore-unfixed`가 숨기는, 수정판 없는 HIGH·CRITICAL. [QA](../qa.md) 5.3 제안 5.
 
@@ -32,7 +35,7 @@
 | --- | --- | --- |
 | PR마다 | `ci.yml` → `core.yml`·`api.yml`·`gateway.yml` | 바뀐 파트의 게이트. 빨간 PR은 머지되지 않음 |
 | `main` 푸시마다 | `ci.yml`(모든 파트) | 같은 게이트 전부 |
-| **주 1회(월요일 06:17 KST)와 수동 실행** | `.github/workflows/audit.yml` | `make audit` = `audit-core` + `scan-api` + `scan-gateway`를 `main`에서 |
+| **주 1회(월요일 06:17 KST)와 수동 실행** | `.github/workflows/audit.yml` | `make audit` = `audit-core` + `audit-apps` + `scan-api` + `scan-gateway`를 `main`에서 |
 | 주 1회 | Dependabot | 버전 올리기 PR |
 
 주기 검사가 필요한 이유: PR 검사는 그 파트가 바뀔 때만 돕니다. 어떤 파트도 건드리지 않는 주에 그 파트의 의존성에 권고가 나오면, 다음 PR이 올 때까지 아무도 모릅니다. 권고 데이터베이스(RustSec, Trivy DB)는 매번 새로 받으므로, 같은 `main`을 다시 검사해도 결과가 바뀔 수 있습니다.
@@ -44,7 +47,7 @@
 
 ## 3. 권고가 나왔을 때
 
-이슈가 열리면 그 주 안에 아래 순서로 처리합니다. 처리하는 PR은 `build(<part>): ...` 또는 `fix(<part>): ...`이고, 기능 PR과 섞지 않습니다([CLAUDE.md](../CLAUDE.md) 버전 고정).
+이슈가 열리면 그 주 안에 아래 순서로 처리합니다. 처리하는 PR은 `build(<part>): ...` 또는 `fix(<part>): ...`이고, 기능 PR과 섞지 않습니다([CLAUDE.md](../../CLAUDE.md) 버전 고정).
 
 1. **읽기.** 권고 ID(RUSTSEC-, CVE-, GHSA-)와 취약한 함수·조건을 확인합니다. 실행 로그는 이슈에 링크된 Actions 실행에 있습니다.
 2. **우리가 그 경로를 쓰는지 판단.** [QA](../qa.md) 4장 등급으로 적습니다.

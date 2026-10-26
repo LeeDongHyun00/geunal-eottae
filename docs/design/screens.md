@@ -1,6 +1,6 @@
 # 화면 시안
 
-시안 캔버스에서 내보낸 화면입니다(마지막 2026-10-25). 화면별 구성과 상태는 [M1 화면](m1.md)에 있습니다. 휴대폰 화면은 `@2x` PNG(780×1688, 390×844pt), 기초 보드는 1배 PNG입니다. 캔버스에서는 화면을 눌러 다음 화면으로 넘어가 볼 수 있고, 여기에는 주요 상태를 따로 내보냈습니다. 색·글꼴·간격 값은 [README](README.md)와 [`tokens.json`](tokens.json)을, 정확한 간격과 문구는 [보드 원본](boards/)을 봅니다.
+시안 캔버스에서 내보낸 화면입니다(마지막 2026-10-26). 화면별 구성과 상태는 [M1 화면](m1.md)에 있습니다. 휴대폰 화면은 `@2x` PNG(780×1688, 390×844pt), 기초 보드는 1배 PNG입니다. 캔버스에서는 화면을 눌러 다음 화면으로 넘어가 볼 수 있고, 여기에는 주요 상태를 따로 내보냈습니다. 색·글꼴·간격 값은 [README](README.md)와 [`tokens.json`](tokens.json)을, 정확한 간격과 문구는 [보드 원본](boards/)을 봅니다.
 
 ## 디자인 기초
 
@@ -19,14 +19,14 @@
 | 시작 | 로그인 | 권한 |
 | --- | --- | --- |
 | <img src="screens/m1/01-welcome@2x.png" width="240" alt="시작"> | <img src="screens/m1/02-sign-in@2x.png" width="240" alt="로그인"> | <img src="screens/m1/03-permissions@2x.png" width="240" alt="권한"> |
-| 그룹의 비어 있는 시간 띠를 미리 보여 줍니다. 초대 코드로 바로 들어갈 수도 있습니다. | 만 14세 확인을 체크해야 카카오·Apple 로그인이 켜집니다. | 기기 캘린더 가져오기(읽기만)와 알림. 둘 다 나중에 바꿀 수 있습니다. |
+| 그룹의 비어 있는 시간 띠를 미리 보여 줍니다. 초대 코드로 바로 들어갈 수도 있습니다. | 만 14세 확인을 체크해야 카카오·Apple 로그인이 켜집니다. 게스트는 "복구 코드로 돌아오기"로 다른 기기에서 돌아옵니다. | 기기 캘린더 가져오기(읽기만)와 알림. 알파 빌드는 테스트 통계(숫자 네 개) 동의 카드가 하나 더 있고([동의한 뒤](screens/m1/03-permissions--stats-on@2x.png)), 모두 나중에 바꿀 수 있습니다. |
 
 ### 빠른 입력: 날짜 탭 → 추천 칩 → 바로 저장
 
-| 월 보기(홈) | 빠른 입력 시트 | 추천 칩을 누른 뒤 |
-| --- | --- | --- |
-| <img src="screens/m1/04-month@2x.png" width="240" alt="월 보기"> | <img src="screens/m1/05-quick-entry@2x.png" width="240" alt="빠른 입력 시트"> | <img src="screens/m1/06-added@2x.png" width="240" alt="추가됨"> |
-| 일정 막대, 공휴일, 다음 할 일 막대와 탭 막대. | 날짜를 누르면 뜹니다. 추천 칩은 누르는 즉시 저장되고, 직접 입력은 끌어서 시간을 고릅니다. | "추가했어요 · 되돌리기"와 반복 제안이 다음 할 일 막대 자리에 뜹니다. |
+| 월 보기(홈) | 빠른 입력 시트 | 추천 칩을 누른 뒤 | 반복으로 바꾼 뒤 |
+| --- | --- | --- | --- |
+| <img src="screens/m1/04-month@2x.png" width="200" alt="월 보기"> | <img src="screens/m1/05-quick-entry@2x.png" width="200" alt="빠른 입력 시트"> | <img src="screens/m1/06-added@2x.png" width="200" alt="추가됨"> | <img src="screens/m1/06-added--applied@2x.png" width="200" alt="반복으로 바꿈"> |
+| 일정 막대, 공휴일, 다음 할 일 막대와 탭 막대. 칸은 날짜 아래 세 줄이고, 공휴일 이름이 한 줄을 차지하며, 넘치면 마지막 줄이 "+N"입니다. | 날짜를 누르면 뜹니다. 추천 칩은 누르는 즉시 저장되고, 직접 입력은 끌어서 시간을 고릅니다. | "추가했어요 · 되돌리기"는 다음 할 일 막대 자리에 5초, 반복 제안은 그 위 카드로 10초 뜹니다. | 제안 카드가 닫히고 토스트가 "매주 금요일로 바꿨어요"로 바뀝니다. |
 
 ### 월·주·목록과 일정 편집
 
@@ -42,10 +42,10 @@
 | <img src="screens/m1/10-shift@2x.png" width="240" alt="교대 템플릿"> | <img src="screens/m1/11-people@2x.png" width="240" alt="사람·생일"> | <img src="screens/m1/12-me@2x.png" width="240" alt="나"> |
 | 템플릿을 고르고 날짜를 누르면 근무가 찍힙니다. 같은 날을 한 번 더 누르면 빠집니다. | 양력·음력 생일과 D-day, 그룹 공개 여부. 연락처에서 가져오기는 선택입니다. | 계정, 플러스, 캘린더 관리, 복구 코드, 암호화 백업, 기기 바꾸기. |
 
-| 복구 코드 | 위젯 |
-| --- | --- |
-| <img src="screens/m1/13-recovery@2x.png" width="240" alt="복구 코드"> | <img src="screens/m1/14-widgets@2x.png" width="240" alt="위젯"> |
-| 12단어 복구 코드. 종이에 적어 두라고 안내합니다. | 작은·중간 위젯, 밝은·어두운 모드. |
+| 복구 코드 | 위젯 | 나 · 계정 묶음 |
+| --- | --- | --- |
+| <img src="screens/m1/13-recovery@2x.png" width="240" alt="복구 코드"> | <img src="screens/m1/14-widgets@2x.png" width="240" alt="위젯"> <img src="screens/m1/12-me--account@2x.png" width="240" alt="나 화면 아래쪽"> |
+| 12단어 복구 코드(BIP39 한국어 목록). 종이에 적어 두라고 안내합니다. | 작은·중간 위젯, 밝은·어두운 모드. | 아래로 내리면 알림, 보안 안내, 알파 빌드의 테스트 통계 스위치, 계정 삭제. |
 
 ### 설정: 캘린더 관리 · 사람 추가 · 템플릿 편집
 
@@ -64,12 +64,32 @@
 | 암호화 백업 | 백업하는 중 | 기기 바꾸기 | 12단어를 넣은 뒤 |
 | --- | --- | --- | --- |
 | <img src="screens/m1/20-backup@2x.png" width="200" alt="암호화 백업"> | <img src="screens/m1/20-backup--running@2x.png" width="200" alt="백업하는 중"> | <img src="screens/m1/21-restore@2x.png" width="200" alt="기기 바꾸기"> | <img src="screens/m1/21-restore--ready@2x.png" width="200" alt="12단어 입력 완료"> |
-| 마지막 백업, 자동 백업, 최근 3개, 들어가는 것과 안 들어가는 것. | 버튼이 꺼지고 상태 카드가 진행을 보여 줍니다. | 새 기기에서 로그인하면 뜹니다. 12단어 격자와 붙여넣기. | 다 넣으면 "백업 가져오기"가 켜집니다. |
+| 마지막 백업, 자동 백업, 최근 3개, 들어가는 것과 안 들어가는 것. | 버튼이 꺼지고 상태 카드가 진행을 보여 줍니다. | 두 번째 기기에서 카카오·Apple로 로그인하면 뜹니다. 12단어 격자(BIP39 한국어 목록)와 붙여넣기. | 다 넣으면 "백업 가져오기"가 켜집니다. |
+
+| 복구 코드로 돌아오기(게스트) | 단어가 목록에 없음 | 체크섬이 틀림 | 백업이 안 풀림 |
+| --- | --- | --- | --- |
+| <img src="screens/m1/21-restore--guest@2x.png" width="200" alt="게스트 복귀"> | <img src="screens/m1/21-restore--error-word@2x.png" width="200" alt="단어 없음 오류"> | <img src="screens/m1/21-restore--error-checksum@2x.png" width="200" alt="체크섬 오류"> | <img src="screens/m1/21-restore--error-locked@2x.png" width="200" alt="백업이 열리지 않음"> |
+| 로그인 화면의 "복구 코드로 돌아오기"에서. 제목·설명·버튼만 다릅니다. | 그 칸이 빨갛게, 버튼은 "8번째 단어를 고쳐 주세요". | 기기에서 판정. 버튼 "코드를 다시 확인해 주세요". | 서버의 래핑된 키가 안 풀림. "다시 시도". |
+
+| 게스트: 계정을 못 찾음 | 가져올 백업 없음 | 게스트: 백업 없음 | 게스트: 코드 없음 |
+| --- | --- | --- | --- |
+| <img src="screens/m1/21-restore--guest-error-not-found@2x.png" width="200" alt="게스트 계정 못 찾음"> | <img src="screens/m1/21-restore--no-backup@2x.png" width="200" alt="백업 없음"> | <img src="screens/m1/21-restore--guest-no-backup@2x.png" width="200" alt="게스트 백업 없음"> | <img src="screens/m1/21-restore--guest-no-code@2x.png" width="200" alt="게스트 코드 없음"> |
+| 401 `recovery_invalid`. 연결된 계정도 같은 문구. | 오류가 아니라 "돌아왔어요"의 변형. | 계정은 찾았고 일정은 새로 시작. | 새 게스트 계정으로 시작을 빨간 글자로. |
 
 | 돌아왔어요 | 복구 코드가 없을 때 | 계정 삭제 | 삭제 확인 |
 | --- | --- | --- | --- |
 | <img src="screens/m1/21-restore--done@2x.png" width="200" alt="복원 완료"> | <img src="screens/m1/21-restore--no-code@2x.png" width="200" alt="복구 코드 없음"> | <img src="screens/m1/22-delete-account@2x.png" width="200" alt="계정 삭제"> | <img src="screens/m1/22-delete-account--confirm@2x.png" width="200" alt="계정 삭제 확인"> |
-| 가져온 수와 이전 기기 로그아웃, 그룹 재참여 안내. | 되찾을 수 없음을 설명하고 새로 시작을 빨간 글자로. | 서버에서 지워지는 것과 이 기기에 남는 것을 먼저 보여 줍니다. | 되돌릴 수 없는 유일한 동작이라 '삭제'를 적게 합니다. |
+| 가져온 수와 이전 기기 로그아웃, 그룹 재참여 안내. | 되찾을 수 없음을 설명하고 새로 시작을 빨간 글자로. | 서버에서 지워지는 것과 이 기기에 남는 것을 먼저 보여 줍니다. | 되돌릴 수 없는 유일한 동작이라 '삭제'를 적고, 카카오·Apple 계정은 그 로그인을 한 번 더 거칩니다. |
+
+| 백업 가져오기(복원 제안) | 제안에서 코드가 없을 때 | 지우기 확인 | 제안에서 가져온 뒤 |
+| --- | --- | --- | --- |
+| <img src="screens/m1/21-restore--offer@2x.png" width="200" alt="백업 가져오기 제안"> | <img src="screens/m1/21-restore--offer-no-code@2x.png" width="200" alt="제안에서 코드 없음"> | <img src="screens/m1/21-restore--no-code-confirm@2x.png" width="200" alt="백업 지우기 확인"> | <img src="screens/m1/21-restore--offer-done@2x.png" width="200" alt="제안에서 복원 완료"> |
+| 다른 기기 없이 복구 자료만 있는 카카오·Apple 계정. 티켓 없이 복원을 제안하고, 지금 넣지 않아도 캘린더는 쓸 수 있다고 말합니다. | "나중에 넣을게요"가 있어 코드를 찾을 때까지 캘린더를 쓰고, 그동안 백업은 쉽니다. | "백업 없이 새로 시작"은 바로 실행하지 않습니다. 지워질 백업 수와 마지막 시각을 보여 주고 빨간 채움 버튼으로 확인합니다. | 이전 기기 문장이 없는 "돌아왔어요". |
+
+| 기기 로그아웃됨 | 복구 코드로 들어왔을 때 | 다른 계정의 일정이 남았을 때 | 계정 삭제 · 재인증 실패 |
+| --- | --- | --- | --- |
+| <img src="screens/m1/23-revoked@2x.png" width="200" alt="기기 로그아웃됨"> | <img src="screens/m1/23-revoked--recovery@2x.png" width="200" alt="복구 코드로 들어옴"> | <img src="screens/m1/24-keep-local@2x.png" width="200" alt="다른 계정의 일정"> | <img src="screens/m1/22-delete-account--reauth-failed@2x.png" width="200" alt="삭제 재인증 실패"> |
+| 다른 기기에서 로그인한 뒤 이전 기기가 받는 시트. 남는 것과 지워지는 것을 나란히 보여 주고, 캘린더는 계속 쓰게 둡니다. | `replaced_via`가 복구 코드면 종이가 노출됐을 수 있다고 말하고 카카오·Apple 연결을 권합니다. | 로그인 뒤나 복원 전에 저장소가 다른 계정의 것이면 가져오기와 지우기 중 하나를 고릅니다. | 다른 카카오·Apple 계정으로 로그인하면 403 `reauth_required`. 시트에서 바로 다시 확인합니다. 게스트는 [제공자 확인 없이](screens/m1/22-delete-account--guest@2x.png) 지웁니다. |
 
 ## M2 그룹·날짜 잡기
 

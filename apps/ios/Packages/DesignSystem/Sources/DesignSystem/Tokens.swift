@@ -19,6 +19,15 @@ public enum GeunalColor {
     /// Brand purple: the app icon, the brand surface and the selected tab (docs/design/README.md §2.3).
     public static let grape = Color(light: 0x7d63cb, dark: 0x7d63cb)
     public static let tabText = Color(light: 0x7152c4, dark: 0xa898eb)
+
+    /// Navigation and sheet chrome (docs/design/README.md §5, components.md §6–7).
+    public static let tabActivePill = Color(light: 0x000000, dark: 0xffffff, lightOpacity: 0.07, darkOpacity: 0.14)
+    public static let tabInactive = Color(light: 0x696973, dark: 0x93939d)
+    public static let badgeFill = Color(light: 0x1b1b1f, dark: 0xf4f4f6)
+    public static let badgeText = Color(light: 0xffffff, dark: 0x000000)
+    public static let badgeRing = Color(light: 0xffffff, dark: 0x2a2a2e)
+    public static let grabber = Color(light: 0xd1d1d6, dark: 0xd1d1d6)
+    public static let scrim = Color(light: 0x0a0a0e, dark: 0x0a0a0e, lightOpacity: 0.32, darkOpacity: 0.32)
 }
 
 /// The twelve group colors (docs/design/README.md §2.2). Each has five tints: the free-count scale in the group
@@ -164,21 +173,22 @@ public enum GroupColor: String, CaseIterable, Sendable {
 
 extension Color {
     /// A color from two sRGB hex values, picked by the current appearance.
-    public init(light: UInt32, dark: UInt32) {
+    public init(light: UInt32, dark: UInt32, lightOpacity: CGFloat = 1, darkOpacity: CGFloat = 1) {
         self.init(
             uiColor: UIColor { traits in
-                UIColor(rgb: traits.userInterfaceStyle == .dark ? dark : light)
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(rgb: dark, alpha: darkOpacity) : UIColor(rgb: light, alpha: lightOpacity)
             })
     }
 }
 
 extension UIColor {
-    fileprivate convenience init(rgb: UInt32) {
+    fileprivate convenience init(rgb: UInt32, alpha: CGFloat) {
         self.init(
             red: CGFloat((rgb >> 16) & 0xFF) / 255,
             green: CGFloat((rgb >> 8) & 0xFF) / 255,
             blue: CGFloat(rgb & 0xFF) / 255,
-            alpha: 1)
+            alpha: alpha)
     }
 }
 
@@ -255,4 +265,131 @@ public enum Radius {
     public static let card: CGFloat = 20
     public static let sheet: CGFloat = 20
     public static let pill: CGFloat = 999
+}
+
+/// Component sizes (docs/design/components.md), navigation and sheet metrics (docs/design/README.md §5).
+public enum Metrics {
+    public enum Button {
+        public static let primary: CGFloat = 52
+        public static let secondary: CGFloat = 44
+        public static let text: CGFloat = 44
+        public static let smallPill: CGFloat = 36
+        public static let icon: CGFloat = 44
+        public static let pairRatio: [CGFloat] = [1, 1.4]
+        public static let sideInset: CGFloat = 20
+    }
+    public enum Chip {
+        public static let suggestion: CGFloat = 44
+        public static let response: CGFloat = 36
+        public static let select: CGFloat = 36
+        public static let badge: CGFloat = 24
+        public static let dot: CGFloat = 8
+    }
+    public enum Segment {
+        public static let height: CGFloat = 40
+        public static let padding: CGFloat = 2
+    }
+    public enum Switch {
+        public static let width: CGFloat = 51
+        public static let height: CGFloat = 31
+        public static let knob: CGFloat = 27
+    }
+    public enum Checkbox {
+        public static let size: CGFloat = 24
+        public static let radius: CGFloat = 6
+    }
+    public enum Radio {
+        public static let size: CGFloat = 22
+        public static let ring: CGFloat = 7
+    }
+    public enum Row {
+        public static let setting: CGFloat = 52
+        public static let twoLine: CGFloat = 60
+        public static let event: CGFloat = 48
+        public static let card: CGFloat = 84
+    }
+    public enum Sheet {
+        public static let topRadius: CGFloat = 20
+        public enum Padding {
+            public static let top: CGFloat = 8
+            public static let side: CGFloat = 20
+            public static let bottom: CGFloat = 34
+        }
+        public static let maxHeightRatio: CGFloat = 0.9
+    }
+    public enum Toast {
+        public static let height: CGFloat = 48
+        public static let radius: CGFloat = 14
+        public static let gapAboveTabBar: CGFloat = 8
+        public static let duration: TimeInterval = 5
+    }
+    public enum ContextMenu {
+        public static let width: CGFloat = 240
+        public static let row: CGFloat = 46
+        public static let blur: CGFloat = 20
+    }
+    public enum Grid {
+        public static let monthCell: CGFloat = 88
+        public static let groupMonthCell: CGFloat = 76
+        public static let eventBar: CGFloat = 16
+        public static let strip: CGFloat = 16
+        public static let stripTick: CGFloat = 1
+        public static let dayTableRow: CGFloat = 36
+        public static let dayTableCell: CGFloat = 10
+        public static let selectionHandle: [CGFloat] = [20, 44]
+        public static let weekHour: CGFloat = 48
+    }
+    public enum TabBar {
+        public static let height: CGFloat = 64
+        public static let sideInset: CGFloat = 16
+        public static let bottomInset: CGFloat = 20
+        public static let radius: CGFloat = 32
+        public static let padding: CGFloat = 4
+        public static let itemRadius: CGFloat = 28
+        public static let icon: CGFloat = 26
+        public static let label: CGFloat = 11
+    }
+    public enum NextUpBar {
+        public static let height: CGFloat = 56
+        public static let gapAboveTabBar: CGFloat = 8
+        public static let radius: CGFloat = 28
+        public static let thumb: CGFloat = 40
+        public static let thumbRadius: CGFloat = 10
+    }
+    public enum Badge {
+        public static let height: CGFloat = 18
+        public static let minWidth: CGFloat = 18
+        public static let text: CGFloat = 10
+        public static let ring: CGFloat = 2
+    }
+    public static let minHitTarget: CGFloat = 44
+}
+
+/// Motion (docs/design/components.md §9). With Reduce Motion on, views fade for `ReducedMotion.fadeDuration`
+/// instead of sliding or springing.
+public enum Motion {
+    public enum Press {
+        public static let scale: CGFloat = 0.97
+        public static let duration: TimeInterval = 0.12
+    }
+    public enum SheetOpen {
+        public static let duration: TimeInterval = 0.32
+        public static let damping: CGFloat = 0.85
+    }
+    public enum SheetClose {
+        public static let duration: TimeInterval = 0.24
+    }
+    public enum Toast {
+        public static let inDuration: TimeInterval = 0.2
+        public static let outDuration: TimeInterval = 0.2
+    }
+    public enum NextUp {
+        public static let duration: TimeInterval = 0.16
+    }
+    public enum StripColor {
+        public static let duration: TimeInterval = 0.24
+    }
+    public enum ReducedMotion {
+        public static let fadeDuration: TimeInterval = 0.12
+    }
 }

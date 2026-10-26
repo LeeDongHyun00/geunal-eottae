@@ -1,12 +1,17 @@
 import XCTest
 
 /// The M0 completion check (docs/parts/ios.md §10): the app opens the core, shows the SQLCipher version and finishes a
-/// sync on the simulator.
-final class CoreStatusUITests: XCTestCase {
-    @MainActor
+/// sync on the simulator. Debug builds keep the screen under the 나 tab.
+final class CoreStatusUITests: GeunalUITestCase {
     func testShowsTheCoreOpenTheCipherVersionAndTheSyncResult() {
-        let app = XCUIApplication()
-        app.launch()
+        // The real Rust core on a fresh install, straight to the tabs.
+        let app = launch(realCore: true, ["-GeunalOnboardingFinished"])
+        let me = app.tabBars.buttons["나"]
+        waitFor(me)
+        me.tap()
+        let status = app.buttons["me.coreStatus"]
+        waitFor(status)
+        status.tap()
 
         let sync = app.staticTexts["status.sync"]
         XCTAssertTrue(sync.waitForExistence(timeout: 30))
