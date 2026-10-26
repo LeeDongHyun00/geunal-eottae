@@ -81,6 +81,11 @@
 | <img src="screens/m1/21-restore--done@2x.png" width="200" alt="복원 완료"> | <img src="screens/m1/21-restore--no-code@2x.png" width="200" alt="복구 코드 없음"> | <img src="screens/m1/22-delete-account@2x.png" width="200" alt="계정 삭제"> | <img src="screens/m1/22-delete-account--confirm@2x.png" width="200" alt="계정 삭제 확인"> |
 | 가져온 수와 이전 기기 로그아웃, 그룹 재참여 안내. | 되찾을 수 없음을 설명하고 새로 시작을 빨간 글자로. | 서버에서 지워지는 것과 이 기기에 남는 것을 먼저 보여 줍니다. | 되돌릴 수 없는 유일한 동작이라 '삭제'를 적고, 카카오·Apple 계정은 그 로그인을 한 번 더 거칩니다. |
 
+| 백업 가져오기(복원 제안) | 제안에서 코드가 없을 때 | 지우기 확인 | 제안에서 가져온 뒤 |
+| --- | --- | --- | --- |
+| <img src="screens/m1/21-restore--offer@2x.png" width="200" alt="백업 가져오기 제안"> | <img src="screens/m1/21-restore--offer-no-code@2x.png" width="200" alt="제안에서 코드 없음"> | <img src="screens/m1/21-restore--no-code-confirm@2x.png" width="200" alt="백업 지우기 확인"> | <img src="screens/m1/21-restore--offer-done@2x.png" width="200" alt="제안에서 복원 완료"> |
+| 다른 기기 없이 복구 자료만 있는 카카오·Apple 계정. 티켓 없이 복원을 제안하고, 지금 넣지 않아도 캘린더는 쓸 수 있다고 말합니다. | "나중에 넣을게요"가 있어 코드를 찾을 때까지 캘린더를 쓰고, 그동안 백업은 쉽니다. | "백업 없이 새로 시작"은 바로 실행하지 않습니다. 지워질 백업 수와 마지막 시각을 보여 주고 빨간 채움 버튼으로 확인합니다. | 이전 기기 문장이 없는 "돌아왔어요". |
+
 | 기기 로그아웃됨 | 복구 코드로 들어왔을 때 | 다른 계정의 일정이 남았을 때 | 계정 삭제 · 재인증 실패 |
 | --- | --- | --- | --- |
 | <img src="screens/m1/23-revoked@2x.png" width="200" alt="기기 로그아웃됨"> | <img src="screens/m1/23-revoked--recovery@2x.png" width="200" alt="복구 코드로 들어옴"> | <img src="screens/m1/24-keep-local@2x.png" width="200" alt="다른 계정의 일정"> | <img src="screens/m1/22-delete-account--reauth-failed@2x.png" width="200" alt="삭제 재인증 실패"> |
