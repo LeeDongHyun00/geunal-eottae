@@ -12,24 +12,37 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 # Each lock file line is `group:name:version=configuration,...`. The app module's releaseRuntimeClasspath is what goes
-# into the release APK, the library modules' runtime dependencies included.
+# into the release APK, the library modules' runtime dependencies included. A moved module, a lock turned off or a
+# renamed configuration would leave nothing to scan and pass in silence, so each of them fails instead.
 lock=apps/android/app/gradle.lockfile
-if [ -f "$lock" ]; then
+if [ -d apps/android ]; then
+  if [ ! -f "$lock" ]; then
+    echo "$lock is missing; update scripts/ci/audit-apps.sh" >&2
+    exit 1
+  fi
   mkdir -p "$work/android"
   grep -E '=([^=]*,)?releaseRuntimeClasspath(,|$)' "$lock" >"$work/android/gradle.lockfile" || true
-  # A renamed configuration would leave nothing to scan and pass in silence.
   if [ ! -s "$work/android/gradle.lockfile" ]; then
     echo "$lock has no releaseRuntimeClasspath entries; update scripts/ci/audit-apps.sh" >&2
     exit 1
   fi
 fi
-if [ -f apps/ios/Package.resolved ]; then
+
+# The remote Swift packages of the iOS app are pinned in one file, which must exist once a manifest names one.
+resolved=apps/ios/Package.resolved
+if grep -qs '\.package(url:' apps/ios/Packages/*/Package.swift && [ ! -f "$resolved" ]; then
+  echo "$resolved is missing while apps/ios/Packages use remote packages" >&2
+  exit 1
+fi
+if [ -f "$resolved" ]; then
   mkdir -p "$work/ios"
-  cp apps/ios/Package.resolved "$work/ios/"
+  cp "$resolved" "$work/ios/"
 fi
 
-echo "==> Every Gradle lock file, build tools included (for the record, not a gate)"
-"$trivy" fs --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed apps/android
+if [ -d apps/android ]; then
+  echo "==> Every Gradle lock file, build tools included (for the record, not a gate)"
+  "$trivy" fs --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed apps/android
+fi
 
 echo "==> What the apps ship"
 "$trivy" fs --quiet --scanners vuln --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed "$work"

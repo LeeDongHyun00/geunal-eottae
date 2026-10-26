@@ -10,8 +10,8 @@
 | API 이미지(`geunal/api:local`): OS 패키지, JDK, boot jar 안의 라이브러리 | Trivy `image` | 기본. 예외 파일 없음 | `make scan-api` | HIGH·CRITICAL 중 수정판이 있는 것 |
 | 게이트웨이 이미지(`geunal/gateway:local`): OS 패키지, ERTS | Trivy `image` | 같음 | `make scan-gateway` | 같음 |
 | 게이트웨이 Hex 패키지(`server/gateway/mix.lock`) | Trivy `fs --scanners vuln` | 릴리스 안에서는 Hex 패키지가 안 보여서 잠금 파일을 따로 검사 | `make scan-gateway` | 같음 |
-| 안드로이드 릴리스 APK에 들어가는 라이브러리 | Trivy `fs --scanners vuln` | `apps/android/app/gradle.lockfile`에서 `releaseRuntimeClasspath` 줄만 골라 검사. 고를 줄이 없으면 실패 | `make audit-apps` | 같음 |
-| iOS Swift 패키지(`apps/ios/Package.resolved`) | Trivy `fs --scanners vuln`(GitHub Advisory Database의 Swift 권고) | 파일이 있을 때 | `make audit-apps` | 같음 |
+| 안드로이드 릴리스 APK에 들어가는 라이브러리 | Trivy `fs --scanners vuln` | `apps/android/app/gradle.lockfile`에서 `releaseRuntimeClasspath` 줄만 골라 검사. 안드로이드 앱이 있는데 이 파일이 없거나 고를 줄이 없으면 실패 | `make audit-apps` | 같음 |
+| iOS Swift 패키지(`apps/ios/Package.resolved`) | Trivy `fs --scanners vuln`(GitHub Advisory Database의 Swift 권고) | `apps/ios/Packages`의 매니페스트가 원격 패키지를 쓰는데 이 파일이 없으면 실패 | `make audit-apps` | 같음 |
 | 안드로이드 빌드 도구(플러그인 classpath, Android Lint) | Trivy `fs --scanners vuln` | 모든 `gradle.lockfile`. 기기에 가지 않으므로 기록만(3장 S2). 수정판은 Dependabot의 Gradle 올리기로 옴 | `make audit-apps`의 로그 | 없음 |
 | GitHub Actions | Dependabot(`github-actions`) | 커밋 SHA 고정, 주 1회 묶음 PR | 없음 | 없음(PR로만 옴) |
 | 버전 올리기 | Dependabot(cargo, gradle, mix, docker, docker-compose) | `.github/dependabot.yml`. 코어는 patch만, 나머지는 major 제외 | 없음 | PR의 `ci-ok` |
