@@ -12,8 +12,8 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-version=3.6.3
-sha256=243a86649cf6f23eeb6a2ff2456e09e5d77dd9018a54d3d96b0c6bdd6ba6c7f1
+version=3.6.5
+sha256=a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98
 url="https://github.com/openssl/openssl/releases/download/openssl-$version/openssl-$version.tar.gz"
 
 # Security fixes arrive as patch releases of a series, and RustSec no longer sees this OpenSSL, so the weekly audit
