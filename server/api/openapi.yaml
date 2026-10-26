@@ -310,9 +310,11 @@ paths:
         The first upload needs no proof. When material is already stored, overwriting it needs `nonce` (GET
         /auth/nonce) and `proof`: the current recovery signing key's signature over the ASCII bytes
         "geunal recovery rotate v1" followed by the ASCII bytes of `nonce`, checked with the stored public key. The one
-        exception is `new_key: true` from a device registered by a Kakao or Apple sign-in less than 30 minutes ago
-        (starting over without the code); then the server also deletes every backup of the account in the same
-        transaction, since nobody can open a backup sealed with the old AMK.
+        exception is `new_key: true` from a device whose session came from a Kakao or Apple sign-in less than 30
+        minutes ago (starting over without the code): a `registered` result, or POST /auth/replace with that
+        sign-in's ticket. Refreshing does not extend the 30 minutes; signing in again on the active device starts new
+        ones. The server then also deletes every backup of the account in the same transaction, since nobody can
+        open a backup sealed with the old AMK.
       requestBody:
         content:
           application/json:
@@ -826,7 +828,7 @@ components:
         age_confirmed_at: { type: string, format: date-time, description: when the user ticked the 14-or-older box }
         display_name: { type: string, minLength: 1, maxLength: 40 }
     Registered:
-      description: This device is now the account's active device (HTTP 201)
+      description: "This device is now the account's active device (HTTP 201), also when the active device signs in again with the same signature_key"
       allOf:
         - $ref: "#/components/schemas/Tokens"
         - type: object
