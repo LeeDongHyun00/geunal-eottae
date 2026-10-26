@@ -408,6 +408,33 @@
    "w": 390,
    "x": 1410,
    "y": 6220
+  },
+  "Revoked.dc.html": {
+   "h": 844,
+   "is_interactive": true,
+   "page": "m1",
+   "title": "기기 로그아웃됨",
+   "w": 390,
+   "x": 1880,
+   "y": 6220
+  },
+  "RestoreGuest.dc.html": {
+   "h": 844,
+   "is_interactive": true,
+   "page": "m1",
+   "title": "복구 코드로 돌아오기 (게스트)",
+   "w": 390,
+   "x": 2350,
+   "y": 6220
+  },
+  "KeepLocal.dc.html": {
+   "h": 844,
+   "is_interactive": true,
+   "page": "m1",
+   "title": "다른 계정의 일정이 남았을 때",
+   "w": 390,
+   "x": 2820,
+   "y": 6220
   }
  },
  "createdOnFiles": {
@@ -530,9 +557,9 @@
   },
   "n_m1f": {
    "kind": "title1",
-   "maxW": 1800,
+   "maxW": 3210,
    "page": "m1",
-   "text": "알림 · 백업 · 기기 바꾸기 · 계정 삭제",
+   "text": "알림 · 백업 · 기기 바꾸기 · 계정 삭제 · 기기 로그아웃됨",
    "w": 240,
    "x": 0,
    "y": 5940
@@ -584,7 +611,10 @@
   "NotifySettings.dc.html",
   "Backup.dc.html",
   "Restore.dc.html",
-  "DeleteAccount.dc.html"
+  "DeleteAccount.dc.html",
+  "Revoked.dc.html",
+  "RestoreGuest.dc.html",
+  "KeepLocal.dc.html"
  ],
  "pages": [
   {

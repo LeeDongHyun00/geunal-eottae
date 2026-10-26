@@ -4,15 +4,19 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use chrono::{DateTime, Duration, FixedOffset, NaiveDate, NaiveTime, TimeZone};
-use rrule::{RRule, RRuleSet, Unvalidated};
-
 use crate::availability::Availability;
+use crate::recurrence::Rule;
 use crate::time::{KST, SLOT_MINUTES};
+use chrono::{DateTime, Duration, FixedOffset, NaiveDate, NaiveTime, TimeZone};
 
-/// The most instances one expansion may yield inside a window. A rule such as `FREQ=MINUTELY` with no end would
-/// otherwise keep a device busy forever; 1000 is far above what a daily rule produces in the eight-week window.
+/// The most instances one expansion may yield inside a window. 1000 is far above what a daily rule produces in the
+/// eight-week window, and a view that asks for years of a daily rule gets an error instead of a long pause.
 pub const MAX_OCCURRENCES: u16 = 1000;
+
+/// The zone every stored rule repeats in. The app writes no other, and Korea has had no daylight saving since 1988,
+/// so the fixed +09:00 offset is exact (`time.rs`). A rule in another zone is refused rather than expanded on the
+/// wrong clock.
+pub const RULE_ZONE: &str = "Asia/Seoul";
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CalendarError {
@@ -28,8 +32,8 @@ pub enum CalendarError {
     InvalidTimeOfDay(String),
 }
 
-/// An `events` row as the expansion reads it. `tz` is the IANA zone the rule repeats in (default `Asia/Seoul`), so
-/// "every Tuesday at 19:00" stays at 19:00 local time; `starts_at` is the first instance (the RFC 5545 DTSTART).
+/// An `events` row as the expansion reads it. `tz` is the zone the rule repeats in, always [`RULE_ZONE`], so "every
+/// Tuesday at 19:00" stays at 19:00 in Korea; `starts_at` is the first instance (the RFC 5545 DTSTART).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EventSpec {
     pub starts_at: DateTime<FixedOffset>,
@@ -99,14 +103,14 @@ pub fn occurrences(
             v.extend(moved_in.iter().map(|o| o.occurrence_at).filter(|&at| at == event.starts_at));
             v
         }
-        Some(rule) => {
-            let set = rule_set(event, rule)?;
+        Some(text) => {
+            let rule = rule_of(event, text)?;
             // An instance overlaps the window when it starts after `from - duration`; both bounds are inclusive in
-            // `all`, and the exact overlap test below removes the edge cases.
-            let mut v = expand(&set, from - duration, to)?;
+            // `starts`, and the exact overlap test below removes the edge cases.
+            let mut v = expand(&rule, event.starts_at, from - duration, to)?;
             for o in &moved_in {
                 let at = o.occurrence_at;
-                if (at < from - duration || at > to) && is_instance(&set, at)? {
+                if (at < from - duration || at > to) && is_instance(&rule, event.starts_at, at)? {
                     v.push(at);
                 }
             }
@@ -135,57 +139,34 @@ pub fn occurrences(
     Ok(out)
 }
 
-/// Resolves an IANA zone name through the rrule parser, the only zone table this crate links: a DTSTART line with
-/// that TZID either parses or names an unknown zone.
-fn zone(name: &str) -> Result<rrule::Tz, CalendarError> {
-    let unknown = || CalendarError::UnknownTimeZone(name.to_string());
-    // The name goes into an iCalendar line, so anything outside the zone-name alphabet is refused up front rather
-    // than letting it reshape the line.
-    let plain =
-        !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '+' | '-'));
-    if !plain {
-        return Err(unknown());
+/// The stored rule of `event`, which must repeat in [`RULE_ZONE`] and be one the editor wrote.
+fn rule_of(event: &EventSpec, text: &str) -> Result<Rule, CalendarError> {
+    if event.tz != RULE_ZONE {
+        return Err(CalendarError::UnknownTimeZone(event.tz.clone()));
     }
-    let probe: RRuleSet =
-        format!("DTSTART;TZID={name}:20000101T120000\nRRULE:FREQ=DAILY;COUNT=1").parse().map_err(|_| unknown())?;
-    Ok(probe.get_dt_start().timezone())
-}
-
-fn rule_set(event: &EventSpec, rule: &str) -> Result<RRuleSet, CalendarError> {
-    let tz = zone(&event.tz)?;
-    let text = rule.trim();
+    let text = text.trim();
     let text = text.strip_prefix("RRULE:").unwrap_or(text);
     // One rule per event; a second line could smuggle in RDATEs or a different DTSTART.
     if text.contains(['\n', '\r']) {
         return Err(CalendarError::InvalidRule("rule must be a single line".into()));
     }
-    let parsed: RRule<Unvalidated> =
-        text.parse().map_err(|e: rrule::RRuleError| CalendarError::InvalidRule(e.to_string()))?;
-    let dt_start = event.starts_at.with_timezone(&tz);
-    let validated = parsed.validate(dt_start).map_err(|e| CalendarError::InvalidRule(e.to_string()))?;
-    Ok(RRuleSet::new(dt_start).rrule(validated))
+    Rule::parse(text).ok_or_else(|| CalendarError::InvalidRule(text.to_owned()))
 }
 
-/// Instances with `after <= start <= before`, as fixed offsets of the event's zone.
+/// Instances with `after <= start <= before`.
 fn expand(
-    set: &RRuleSet,
+    rule: &Rule,
+    first: DateTime<FixedOffset>,
     after: DateTime<FixedOffset>,
     before: DateTime<FixedOffset>,
 ) -> Result<Vec<DateTime<FixedOffset>>, CalendarError> {
-    let result = set
-        .clone()
-        .after(after.with_timezone(&rrule::Tz::UTC))
-        .before(before.with_timezone(&rrule::Tz::UTC))
-        .all(MAX_OCCURRENCES);
-    if result.limited {
-        return Err(CalendarError::TooManyOccurrences(MAX_OCCURRENCES));
-    }
-    Ok(result.dates.iter().map(DateTime::fixed_offset).collect())
+    rule.starts(first, after, before, usize::from(MAX_OCCURRENCES))
+        .ok_or(CalendarError::TooManyOccurrences(MAX_OCCURRENCES))
 }
 
 /// Whether `at` is an instance the rule generates: an override must point at a real instance to take effect.
-fn is_instance(set: &RRuleSet, at: DateTime<FixedOffset>) -> Result<bool, CalendarError> {
-    Ok(!expand(set, at, at)?.is_empty())
+fn is_instance(rule: &Rule, first: DateTime<FixedOffset>, at: DateTime<FixedOffset>) -> Result<bool, CalendarError> {
+    Ok(!expand(rule, first, at, at)?.is_empty())
 }
 
 /// A shift such as "마감 17–23" stamped onto calendar days (kickoff §5.1). The result is an ordinary event.
@@ -304,8 +285,8 @@ mod tests {
     }
 
     #[test]
-    fn keeps_the_wall_clock_time_through_a_dst_change_in_the_events_zone() {
-        // New York leaves DST on 2026-11-01; a 09:00 local meeting stays at 09:00 local, so its UTC time shifts.
+    fn refuses_a_rule_in_another_zone_instead_of_expanding_it_on_the_wrong_clock() {
+        // New York leaves daylight saving time on 2026-11-01: on a fixed offset a 09:00 meeting would move an hour.
         let starts_at = DateTime::parse_from_rfc3339("2026-10-27T09:00:00-04:00").unwrap();
         let event = EventSpec {
             starts_at,
@@ -316,9 +297,10 @@ mod tests {
             exdates: vec![],
             overrides: vec![],
         };
-        let got = occurrences(&event, starts_at, starts_at + Duration::days(14)).unwrap();
-        let rendered: Vec<String> = got.iter().map(|o| o.starts_at.to_rfc3339()).collect();
-        assert_eq!(rendered, vec!["2026-10-27T09:00:00-04:00", "2026-11-03T09:00:00-05:00"]);
+        assert_eq!(
+            occurrences(&event, starts_at, starts_at + Duration::days(14)),
+            Err(CalendarError::UnknownTimeZone("America/New_York".into()))
+        );
     }
 
     #[test]
@@ -510,11 +492,18 @@ mod tests {
             occurrences(&backwards, kst(2026, 10, 1, 0, 0), kst(2026, 11, 1, 0, 0)),
             Err(CalendarError::EndsBeforeStart)
         );
+        // The editor never writes a rule finer than a day.
         let mut every_minute = weekly_tue_thu();
-        every_minute.ends_at = every_minute.starts_at + Duration::seconds(30);
         every_minute.rrule = Some("FREQ=MINUTELY".into());
-        assert_eq!(
+        assert!(matches!(
             occurrences(&every_minute, kst(2026, 10, 1, 0, 0), kst(2026, 11, 1, 0, 0)),
+            Err(CalendarError::InvalidRule(_))
+        ));
+        // Three years of a daily rule is more than one view may ask for.
+        let mut daily = weekly_tue_thu();
+        daily.rrule = Some("FREQ=DAILY".into());
+        assert_eq!(
+            occurrences(&daily, kst(2026, 10, 1, 0, 0), kst(2029, 10, 1, 0, 0)),
             Err(CalendarError::TooManyOccurrences(MAX_OCCURRENCES))
         );
     }

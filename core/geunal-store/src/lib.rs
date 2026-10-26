@@ -4,15 +4,18 @@
 //! FTS5 trigram.
 #![forbid(unsafe_code)]
 
+pub mod archive;
+mod local;
 mod lock;
 mod repo;
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
-use rusqlite::Connection;
+use rusqlite::{Connection, TransactionBehavior};
 
+pub use local::*;
 pub use lock::WriteLock;
 pub use repo::*;
 
@@ -33,17 +36,25 @@ pub enum StoreError {
 /// Numbered migrations, applied in order and recorded in `schema_migrations`. Never edit a shipped file; add the next
 /// number instead. `PRAGMA user_version` belongs to mls-rs-provider-sqlite, which creates its tables in the same file
 /// when it finds the pragma at 0, so the store keeps its own version in a table.
-const MIGRATIONS: &[(i64, &str)] = &[(1, include_str!("../migrations/0001_init.sql"))];
+const MIGRATIONS: &[(i64, &str)] =
+    &[(1, include_str!("../migrations/0001_init.sql")), (2, include_str!("../migrations/0002_m1.sql"))];
 
 /// The schema version this build writes.
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 /// The database file inside the store directory.
 pub const DB_FILE: &str = "geunal.db";
 
 /// A `Connection` is `Send` but not `Sync`; the mutex makes the store shareable between the sync engine's futures and
-/// the app's reads. Every query is short, so the lock is never held across network work.
+/// the app's reads. Every query is short, so the lock is never held across network work. Clones share the one
+/// connection: the calendar screens read through it whether or not an account is signed in, while the sync engine
+/// holds its own clone.
+#[derive(Clone)]
 pub struct Store {
+    inner: Arc<Inner>,
+}
+
+struct Inner {
     conn: Mutex<Connection>,
     lock_path: PathBuf,
 }
@@ -61,14 +72,30 @@ impl Store {
         conn.pragma_update(None, "foreign_keys", true)?;
         // Another process (the notification extension) may hold a write transaction for a moment.
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
-        let store = Self { conn: Mutex::new(conn), lock_path: path.with_extension("lock") };
+        let store = Self { inner: Arc::new(Inner { conn: Mutex::new(conn), lock_path: path.with_extension("lock") }) };
         store.migrate()?;
         Ok(store)
     }
 
     /// The connection, serialised. A poisoned lock is recovered: the connection itself is still consistent.
     pub(crate) fn conn(&self) -> MutexGuard<'_, Connection> {
-        self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.inner.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Runs `f` over the connection without a transaction: for reads that need no snapshot across statements.
+    pub fn read<R, E: From<StoreError>>(&self, f: impl FnOnce(&Db<'_>) -> Result<R, E>) -> Result<R, E> {
+        let conn = self.conn();
+        f(&Db::new(&conn))
+    }
+
+    /// Runs `f` in one immediate transaction: it commits when `f` returns `Ok` and rolls back otherwise, so a rule
+    /// checked inside `f` (the last calendar, a template that went away) holds for the writes that follow it.
+    pub fn write<R, E: From<StoreError>>(&self, f: impl FnOnce(&Db<'_>) -> Result<R, E>) -> Result<R, E> {
+        let mut conn = self.conn();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(StoreError::from)?;
+        let out = f(&Db::new(&tx))?;
+        tx.commit().map_err(StoreError::from)?;
+        Ok(out)
     }
 
     fn migrate(&self) -> Result<(), StoreError> {
@@ -106,7 +133,7 @@ impl Store {
     /// Takes the cross-process write lock, waiting up to `timeout`. The app and the notification extension write the
     /// same file, and the extension gives up after five seconds with a placeholder text (rust-core §4).
     pub fn write_lock(&self, timeout: std::time::Duration) -> Result<WriteLock, StoreError> {
-        WriteLock::acquire(&self.lock_path, timeout)
+        WriteLock::acquire(&self.inner.lock_path, timeout)
     }
 }
 

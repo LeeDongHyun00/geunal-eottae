@@ -44,10 +44,16 @@ simulator_destination() {
 # certificate or team; signing stays on because the simulator keychain refuses an app without the entitlements that
 # signing embeds (errSecMissingEntitlement). Extra arguments go to xcodebuild.
 run_xcodebuild() {
+  local pinned=()
+  # Packages stay at the committed versions; resolve.sh (make project-ios) already fetched them.
+  if [ -f "$ios_dir/Package.resolved" ]; then
+    pinned=(-onlyUsePackageVersionsFromResolvedFile)
+  fi
   xcodebuild \
     -project "$project" \
     -scheme "$scheme" \
     -destination "$(simulator_destination)" \
     -derivedDataPath "$derived_data" \
+    ${pinned[@]+"${pinned[@]}"} \
     "$@"
 }

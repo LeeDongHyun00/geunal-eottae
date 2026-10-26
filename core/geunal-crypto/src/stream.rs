@@ -46,8 +46,16 @@ pub enum StreamError {
 
 /// Encrypts `plaintext` in one go. Returns `nonce ‖ chunks`.
 pub fn encrypt(key: &Key, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
-    let (mut encryptor, header) = Encryptor::new(key, aad);
-    let mut out = header;
+    let mut nonce = [0u8; NONCE_LEN];
+    OsRng.fill_bytes(&mut nonce);
+    encrypt_with_nonce(key, &nonce, aad, plaintext)
+}
+
+/// [`encrypt`] with a caller-chosen nonce prefix. Only for test vectors (core/vectors/backups.json), which must be
+/// reproducible; production code never reuses a prefix under a key, so it always goes through [`encrypt`].
+pub fn encrypt_with_nonce(key: &Key, nonce: &[u8; NONCE_LEN], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let mut encryptor = Encryptor::with_nonce(key, nonce, aad);
+    let mut out = nonce.to_vec();
     out.reserve(plaintext.len() + TAG_LEN * (plaintext.len() / CHUNK_LEN + 1));
 
     // The last chunk must be non-empty when there is any plaintext at all, so a plaintext of exactly n chunks ends
@@ -113,8 +121,11 @@ impl Encryptor {
     pub fn new(key: &Key, aad: &[u8]) -> (Self, Vec<u8>) {
         let mut nonce = [0u8; NONCE_LEN];
         OsRng.fill_bytes(&mut nonce);
-        let inner = EncryptorBE32::new(key.into(), &GenericArray::from(nonce));
-        (Self { inner, aad: aad.to_vec() }, nonce.to_vec())
+        (Self::with_nonce(key, &nonce, aad), nonce.to_vec())
+    }
+
+    fn with_nonce(key: &Key, nonce: &[u8; NONCE_LEN], aad: &[u8]) -> Self {
+        Self { inner: EncryptorBE32::new(key.into(), &GenericArray::from(*nonce)), aad: aad.to_vec() }
     }
 
     /// Seals one full chunk. `chunk` must be exactly [`CHUNK_LEN`] bytes.

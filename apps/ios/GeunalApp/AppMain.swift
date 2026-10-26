@@ -1,12 +1,18 @@
+import FeatureAccount
 import SwiftUI
 
 @main
 struct AppMain: App {
-    @State private var model = CoreStatusModel(openCore: AppCore.open)
+    init() {
+        KakaoSetup.configure()
+    }
 
     var body: some Scene {
         WindowGroup {
-            CoreStatusView(model: model)
+            RootView()
+                .onOpenURL { url in
+                    _ = KakaoSetup.handle(url)
+                }
         }
     }
 }

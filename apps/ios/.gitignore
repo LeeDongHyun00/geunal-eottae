@@ -9,3 +9,7 @@ Packages/GeunalCore/Sources/GeunalCore/GeunalCore.swift
 # Xcode writes the extracted strings back into the catalog while building; only hand edits belong in git.
 *.xcuserdatad/
 .swiftpm/
+# Account-bound build settings (Kakao app key, team ID); Config/Secrets.example.xcconfig shows the shape.
+Config/Secrets.xcconfig
+# UI test screenshots exported from the result bundle for the CI artifact.
+screenshots/

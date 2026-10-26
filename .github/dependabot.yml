@@ -143,3 +143,13 @@ updates:
     commit-message:
       prefix: build
       include: scope
+
+  # The Kakao SDK, the app's one third-party package (docs/parts/ios.md §1), is pinned exactly in FeatureAccount's
+  # manifest. A bump also needs apps/ios/Package.resolved regenerated (make lock-ios); the ios job prints the file.
+  - package-ecosystem: swift
+    directory: /apps/ios/Packages/FeatureAccount
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+      include: scope

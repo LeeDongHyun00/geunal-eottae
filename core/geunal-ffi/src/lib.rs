@@ -2,6 +2,18 @@
 //! Kotlin `Core.open(...)` and `suspend fun sync()`. The M0 surface: open the encrypted store, sign in as a guest,
 //! sync, make and join groups, send entries, and read the state every device derives from the same log. Network work
 //! runs on a tokio runtime the core owns; the app's own executor only awaits the result.
+//!
+//! The M1 surface (docs/design/m1.md) lives in [`calendar`], [`people`] and [`account`]. Every function the screens
+//! call is a method of `Core`, so a view model depends on the one generated protocol and a test hands it a fake.
+
+pub mod account;
+pub mod calendar;
+mod local;
+pub mod people;
+
+pub use account::*;
+pub use calendar::*;
+pub use people::*;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -44,6 +56,33 @@ pub enum CoreError {
     Sync { reason: String },
     #[error("realtime: {reason}")]
     Realtime { reason: String },
+    /// The input breaks a rule the screen should already have enforced: an empty title, an end before the start, the
+    /// last calendar. `reason` is for logs and tests, not for display.
+    #[error("invalid: {reason}")]
+    Invalid { reason: String },
+    /// No such calendar, event, person or template on this device.
+    #[error("not found: {what}")]
+    NotFound { what: String },
+    /// The twelve words are not this account's recovery code: a word outside the list, a checksum that does not
+    /// match, or a code that does not unwrap the account master key (protocol §10).
+    #[error("wrong recovery code")]
+    WrongRecoveryCode,
+    /// The server wants the account proven again before deleting it (403 `reauth_required`, protocol §13). Nothing
+    /// was deleted and the session is still valid: get a fresh `DeletionProof` and try again.
+    #[error("the account has to be proven again")]
+    ReauthRequired,
+    /// The server has no recovery material for this account yet (409 `recovery_missing`), so a guest cannot prove the
+    /// account and no backup can be made. The core uploads it first; try again after the next `sync()`.
+    #[error("recovery material not uploaded yet")]
+    RecoveryMissing,
+    /// A function of the M1 surface whose body has not landed yet. Gone by the end of M1.
+    #[error("not implemented yet: {what}")]
+    NotImplemented { what: String },
+}
+
+/// The error of an M1 function whose body comes in a later pull request; the signature is final already.
+pub(crate) fn not_yet(what: &str) -> CoreError {
+    CoreError::NotImplemented { what: what.to_owned() }
 }
 
 impl From<SyncError> for CoreError {
@@ -85,9 +124,17 @@ pub trait SecretStore: Send + Sync {
 /// What changed, so the app knows which screens to redraw.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum Change {
+    /// Calendars, events, shift templates, people or holidays: every calendar screen and the widget snapshot.
     Calendar,
-    Group { group_id: String },
-    Chat { group_id: String },
+    Group {
+        group_id: String,
+    },
+    Chat {
+        group_id: String,
+    },
+    /// The account changed: signed in, linked, revoked by another device's sign-in, or deleted. The app reads
+    /// `session()` and `account()` again, and `revocation()` for the "기기 로그아웃됨" screen.
+    Account,
 }
 
 /// Implemented by the app to hear about changes.
@@ -218,7 +265,7 @@ pub enum RealtimeEvent {
 }
 
 enum State {
-    SignedOut(Store),
+    SignedOut,
     SignedIn(Box<Engine<Arc<HttpTransport>>>),
 }
 
@@ -226,12 +273,17 @@ enum State {
 pub struct Core {
     runtime: tokio::runtime::Runtime,
     store_dir: PathBuf,
+    /// The one connection to the store. The calendar reads and writes through it directly, signed in or not, so a
+    /// month view never waits for a sync holding the engine; the engine keeps a clone of it.
+    store: Store,
     api: Arc<HttpTransport>,
     listener: Arc<dyn CoreListener>,
     secrets: Arc<dyn SecretStore>,
     db_key: [u8; 32],
     state: Mutex<State>,
     realtime: Mutex<Option<Realtime>>,
+    /// A fixed "now" for tests; `None` reads the system clock.
+    clock: std::sync::Mutex<Option<chrono::DateTime<chrono::Utc>>>,
 }
 
 #[uniffi::export]
@@ -256,36 +308,40 @@ impl Core {
             .build()
             .map_err(|e| CoreError::Sync { reason: e.to_string() })?;
         let api = Arc::new(HttpTransport::new(&api_base).map_err(|e| CoreError::Network { reason: e.to_string() })?);
+        calendar::ensure_default_calendar(&store)?;
         let state = match saved_session(secrets.as_ref()) {
             Some(session) => {
                 api.restore_session(&session.access_token);
-                let engine =
-                    build_engine(&store_dir, &db_key, &session, secrets.as_ref(), api.clone(), listener.clone())?;
-                drop(store);
+                let engine = build_engine(
+                    &store_dir,
+                    &store,
+                    &db_key,
+                    &session,
+                    secrets.as_ref(),
+                    api.clone(),
+                    listener.clone(),
+                )?;
                 State::SignedIn(Box::new(engine))
             }
-            None => State::SignedOut(store),
+            None => State::SignedOut,
         };
         Ok(Arc::new(Self {
             runtime,
             store_dir,
+            store,
             api,
             listener,
             secrets,
             db_key,
             state: Mutex::new(state),
             realtime: Mutex::new(None),
+            clock: std::sync::Mutex::new(None),
         }))
     }
 
     /// The SQLCipher release inside the app build, for the M0 screen that shows the core runs on the device.
     pub fn cipher_version(&self) -> Result<String, CoreError> {
-        let state = self.state.blocking_lock();
-        let version = match &*state {
-            State::SignedOut(store) => store.cipher_version()?,
-            State::SignedIn(engine) => engine.store().cipher_version()?,
-        };
-        Ok(version)
+        Ok(self.store.cipher_version()?)
     }
 
     /// The signed-in account, if any.
@@ -293,15 +349,16 @@ impl Core {
         saved_session(self.secrets.as_ref()).map(|s| Session { user_id: s.user_id, device_id: s.device_id })
     }
 
-    /// Signs in through the M0 auth stub (`POST /auth/stub`, only on local and CI servers): `subject` stands for the
+    /// Signs in through the auth stub (`POST /auth/stub`, only on local and CI servers): `subject` stands for the
     /// identity Kakao or Apple would assert. The device key is made and kept in the secret store, the session too, and
-    /// the first key packages go up.
+    /// the first key packages go up. From M1 the stub follows the Kakao rules (protocol §13), so a second device gets
+    /// `ReplaceRequired`; against an M0 server every call registers.
     pub async fn sign_in_stub(
         self: Arc<Self>,
         subject: String,
         display_name: String,
         platform: String,
-    ) -> Result<Session, CoreError> {
+    ) -> Result<AuthResult, CoreError> {
         let this = self.clone();
         self.run(async move {
             let secret = signing_secret(this.secrets.as_ref())?;
@@ -310,6 +367,7 @@ impl Core {
             this.secrets.put(SESSION.to_owned(), json);
             let engine = build_engine(
                 &this.store_dir,
+                &this.store,
                 &this.db_key,
                 &session,
                 this.secrets.as_ref(),
@@ -318,7 +376,12 @@ impl Core {
             )?;
             engine.publish_key_packages(KEY_PACKAGES).await?;
             *this.state.lock().await = State::SignedIn(Box::new(engine));
-            Ok(Session { user_id: session.user_id, device_id: session.device_id })
+            // An M0 server says neither whether the account is new nor whether it holds recovery material.
+            Ok(AuthResult::Registered {
+                session: Session { user_id: session.user_id, device_id: session.device_id },
+                new_account: false,
+                recovery: false,
+            })
         })
         .await
     }
@@ -555,6 +618,21 @@ impl Core {
 }
 
 impl Core {
+    /// Fixes the clock the calendar reads ("today", the next-up bar, alerts) for tests. Not part of the FFI.
+    #[doc(hidden)]
+    pub fn set_clock(&self, now: Option<chrono::DateTime<chrono::Utc>>) {
+        *self.clock.lock().unwrap_or_else(|p| p.into_inner()) = now;
+    }
+
+    pub(crate) fn now(&self) -> chrono::DateTime<chrono::Utc> {
+        self.clock.lock().unwrap_or_else(|p| p.into_inner()).unwrap_or_else(chrono::Utc::now)
+    }
+
+    /// Tells the app the calendar screens and the widget snapshot are out of date.
+    pub(crate) fn calendar_changed(&self) {
+        self.listener.on_change(Change::Calendar);
+    }
+
     /// Runs network work on the core's runtime; the app's executor only awaits the handle.
     async fn run<F, R>(&self, fut: F) -> Result<R, CoreError>
     where
@@ -635,6 +713,7 @@ fn view_of(state: &GroupState) -> GroupStateView {
 
 fn build_engine(
     store_dir: &Path,
+    store: &Store,
     db_key: &[u8; 32],
     session: &SyncSession,
     secrets: &dyn SecretStore,
@@ -642,11 +721,10 @@ fn build_engine(
     listener: Arc<dyn CoreListener>,
 ) -> Result<Engine<Arc<HttpTransport>>, CoreError> {
     let db = store_dir.join(DB_FILE);
-    let store = Store::open(&db, db_key)?;
     let secret = signing_secret(secrets)?;
     let identity = Identity::new(session.user_id.clone(), session.device_id.clone());
     let mls = MlsClient::open(&db, db_key, identity, &secret)?;
-    Ok(Engine::new(store, mls, api, Arc::new(Forward(listener))))
+    Ok(Engine::new(store.clone(), mls, api, Arc::new(Forward(listener))))
 }
 
 fn saved_session(secrets: &dyn SecretStore) -> Option<SyncSession> {

@@ -19,11 +19,11 @@ struct CoreStatusView: View {
                     .foregroundStyle(GeunalColor.secondaryText)
 
                 VStack(spacing: 0) {
-                    row(title: "저장소 열기", step: model.open, identifier: "status.open")
+                    row(title: Text("저장소 열기"), step: model.open, identifier: "status.open")
                     Divider().overlay(GeunalColor.separator)
-                    row(title: "SQLCipher", step: model.cipher, identifier: "status.cipher")
+                    row(title: Text(verbatim: "SQLCipher"), step: model.cipher, identifier: "status.cipher")
                     Divider().overlay(GeunalColor.separator)
-                    row(title: "동기화", step: model.sync, identifier: "status.sync")
+                    row(title: Text("동기화"), step: model.sync, identifier: "status.sync")
                 }
                 .background(GeunalColor.groupedBackground, in: RoundedRectangle(cornerRadius: Radius.card))
 
@@ -52,9 +52,9 @@ struct CoreStatusView: View {
         .task { await model.start() }
     }
 
-    private func row(title: LocalizedStringKey, step: CoreStatusModel.Step, identifier: String) -> some View {
+    private func row(title: Text, step: CoreStatusModel.Step, identifier: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Space.m) {
-            Text(title)
+            title
                 .typeStyle(.bodyStrong)
                 .foregroundStyle(GeunalColor.ink)
             Spacer(minLength: Space.s)

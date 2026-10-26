@@ -7,7 +7,7 @@ SHELL := /bin/bash
 .PHONY: help setup lint test lint-repo lint-core test-core build-android build-ios lint-api test-api image-api scan-api \
 	lint-gateway test-gateway image-gateway scan-gateway lint-android test-android connected-android up down e2e \
 	audit audit-core \
-	lint-ios project-ios app-ios test-ios uitest-ios \
+	lint-ios project-ios app-ios test-ios uitest-ios lock-ios \
 	lint-terraform lock-terraform
 
 # Providers download once into .tools (gitignored, cached in CI) instead of once per root.
@@ -55,9 +55,10 @@ build-ios: ## Rust core: XCFramework and Swift bindings in core/out/ios (macOS o
 lint-ios: ## iOS: swift-format on the app and packages, and the design tokens' Swift against docs/design/tokens.json
 	apps/ios/scripts/lint.sh
 
-project-ios: ## iOS: copy the core's XCFramework and Swift (make build-ios) into the GeunalCore package and generate the Xcode project
+project-ios: ## iOS: copy the core's XCFramework and Swift (make build-ios) into the GeunalCore package, generate the Xcode project and fetch the pinned packages
 	apps/ios/scripts/import-core.sh
 	apps/ios/scripts/generate.sh
+	apps/ios/scripts/resolve.sh
 
 app-ios: project-ios ## iOS: build the app for the simulator
 	apps/ios/scripts/xcodebuild.sh build
@@ -65,8 +66,13 @@ app-ios: project-ios ## iOS: build the app for the simulator
 test-ios: project-ios ## iOS: unit tests on the simulator
 	apps/ios/scripts/xcodebuild.sh test
 
-uitest-ios: project-ios ## iOS: UI tests on the simulator
+uitest-ios: project-ios ## iOS: UI tests on the simulator, with each screen's capture in apps/ios/screenshots
 	apps/ios/scripts/xcodebuild.sh uitest
+
+lock-ios: ## iOS: resolve the Swift packages again and write apps/ios/Package.resolved (after changing a dependency)
+	apps/ios/scripts/import-core.sh
+	apps/ios/scripts/generate.sh
+	apps/ios/scripts/resolve.sh --update
 
 lint-api: ## API: ktlint
 	cd server/api && ./gradlew ktlintCheck

@@ -1,0 +1,166 @@
+{
+  "amk_aad": "geunal amk v1",
+  "argon2id": {
+    "iterations": 3,
+    "memory_kib": 65536,
+    "output_len": 32,
+    "parallelism": 1,
+    "salt": "geunal recovery v1"
+  },
+  "codes": [
+    {
+      "amk": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "delete_signature": "1bd7f6ff53f904e85154747ecc74adcf0d29de19ec2786f5366e00736c0612834717854b3586c16b0bc120ae41c5dee6a1dc0376f1f713928871127ecdf14e04",
+      "entropy": "00112233445566778899aabbccddeeff",
+      "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "recover_signature": "b796002b2a864ae6ff4fe3d5dd0fb2e44231da20ceea25b8fd1b9df987f51d154ee913b7c73124811057ba38af8b330eefd27c287b007c1fe83260953f559409",
+      "recovery_id": "86c627f60d49e89d3b381d4225e4e372",
+      "recovery_public_key": "b836a83ebf2a06c03129c322cd8ea3d617ac0fa2196f5b0a72710fb124274218",
+      "root": "1e08e69d09bf44502849097fc8d572d6e4f99358523dc29b0d7ccf7c1e524395",
+      "rotate_signature": "53bbbe015377eda80c500ef29aa7430313e7bff54dc6911c0b03254393d8be127094bca337fb75795c3c748c9352098f802efbc9ef540ef48cafe4ea2054fa0a",
+      "words": [
+        "가격",
+        "어른",
+        "여덟",
+        "양파",
+        "부정",
+        "명예",
+        "길이",
+        "마늘",
+        "점검",
+        "석사",
+        "식량",
+        "흥분"
+      ],
+      "wrap_key": "1500fa7714d884ba9a66e0882cd97a07c16ea61444a362c8c03e16fbbb3b0c68",
+      "wrap_nonce": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7",
+      "wrapped_amk": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b732ab68ffd82a4d2b24f17a927538fc113acb183906153c4f37f42eb935eef67460fdcd6ced26ef25113249e38d09ca80"
+    },
+    {
+      "amk": "1111111111111111111111111111111111111111111111111111111111111111",
+      "delete_signature": "3c2928e6649db05065d9514b58a3965eda3f54180eee34d3137174b33650c33b047a7f7642c1e26316d2f8f5eababcfb8633c9e4c39ad2e3c4fcd840a4f3f10b",
+      "entropy": "00000000000000000000000000000000",
+      "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "recover_signature": "f43c4001f3e80541e0733310aba1b6f1dd9fee6418b10d331ea16d25daf3d0ced41a69f6906bc05d3821aa13e7a86d895a53073a78031833109ebd117e2cd406",
+      "recovery_id": "c81696d08fb80c294de3dc7c416685af",
+      "recovery_public_key": "1c8fc37c58682ef2e630ea553789bb0466bfbeaaa217b5ad2a40697edf06d3d6",
+      "root": "b636e7860fe5f526013f68bf72939c1cea64701c8def022f0bbfe1671e56f9a9",
+      "rotate_signature": "cf4de0adae16e30d8a3c953ebbaf2431f2af62ef3cbb905b7f96c03163a109a23b8bca7f56fa397c186c637ee12734d2e22e18b212359246d9e3c250b809a20f",
+      "words": [
+        "가격",
+        "가격",
+        "가격",
+        "가격",
+        "가격",
+        "가격",
+        "가격",
+        "가격",
+        "가격",
+        "가격",
+        "가격",
+        "가능"
+      ],
+      "wrap_key": "dcfa2988e666c836f7eb53c295ee2bee3b60ff9c361e2aa75d096ded58dd35a5",
+      "wrap_nonce": "222222222222222222222222222222222222222222222222",
+      "wrapped_amk": "222222222222222222222222222222222222222222222222a8622e4de7d50e961be287746bef35e523f056391b6120dcdc5773e2d20706656d96ed4987edae7d91fe6c4282b3cbfd"
+    },
+    {
+      "amk": "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100",
+      "delete_signature": "c9ee82f53974e75088be22027395d3d73b76561925766c35145556157d152f237b2b9043f9f9d144fc6ddaabf51a9b3ba78fe03a10ee64f91a8c05f0b532e30c",
+      "entropy": "f0e1d2c3b4a5968778695a4b3c2d1e0f",
+      "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "recover_signature": "c41f3e0590721b22725811db3d4450cef2585654eda9bfbbee9eeb4d88fb72c50031a0bb266dcf0b6f881d0f11e3fa7bfe35b0278c399a7344f1249c2c2dbd0a",
+      "recovery_id": "16d7b536f4c0a25e5bbf0278cf97f6f6",
+      "recovery_public_key": "2854142874429f8dc352d232c4cc813796c4437b1938d0cf21f39938108a174a",
+      "root": "003a8449f80434f62551359cd2ec65e77a7f6ccb591839b1268a6b6a2d7dff17",
+      "rotate_signature": "1e418feac7635a1af465c3ae41945f31b6414619a8fe8da4479d53e648561f1e6a8a61ecd853df897f42c95dfb3ad67f576601c9c64bccb06fa9fc0ca83d250c",
+      "words": [
+        "한문",
+        "고민",
+        "자판",
+        "설치",
+        "불빛",
+        "미역",
+        "터미널",
+        "다양성",
+        "방식",
+        "탤런트",
+        "반장",
+        "금요일"
+      ],
+      "wrap_key": "f0cd36e81a8ad5e135b2d19c3621b099e330464932fb9668c84288602d4a8426",
+      "wrap_nonce": "0f0e0d0c0b0a090807060504030201000f0e0d0c0b0a0908",
+      "wrapped_amk": "0f0e0d0c0b0a090807060504030201000f0e0d0c0b0a0908f6ca26da69c8ad36a781afa69d3d2211490c903e47c28856f73016d44c0b0cd58580d57554ebe9541956212ca23d4c14"
+    }
+  ],
+  "generated_by": "cd core && GEUNAL_WRITE_VECTORS=1 cargo test -p geunal-crypto --locked --test vectors",
+  "hkdf_info": {
+    "recovery_id": "geunal recovery id v1",
+    "signing_seed": "geunal recovery sign v1",
+    "wrap_key": "geunal amk wrap v1"
+  },
+  "invalid_codes": [
+    {
+      "error": "checksum",
+      "words": [
+        "가격",
+        "어른",
+        "여덟",
+        "양파",
+        "부정",
+        "명예",
+        "길이",
+        "마늘",
+        "점검",
+        "석사",
+        "식량",
+        "희곡"
+      ]
+    },
+    {
+      "error": "word_count",
+      "words": [
+        "가격",
+        "어른",
+        "여덟",
+        "양파",
+        "부정",
+        "명예",
+        "길이",
+        "마늘",
+        "점검",
+        "석사",
+        "식량"
+      ]
+    },
+    {
+      "error": "unknown_word",
+      "index": 3,
+      "words": [
+        "가격",
+        "어른",
+        "여덟",
+        "가나다라",
+        "부정",
+        "명예",
+        "길이",
+        "마늘",
+        "점검",
+        "석사",
+        "식량",
+        "흥분"
+      ]
+    }
+  ],
+  "signed": {
+    "delete": "geunal delete v1 ‖ nonce",
+    "recover": "geunal recover v1 ‖ nonce",
+    "rotate": "geunal recovery rotate v1 ‖ nonce"
+  },
+  "version": 1,
+  "word_list": {
+    "count": 2048,
+    "sha256": "9e95f86c167de88f450f0aaf89e87f6624a57f973c67b516e338e8e8b8897f60",
+    "source": "https://github.com/bitcoin/bips/blob/100ba872c808946155b1eeb8c4568058f2eea0a7/bip-0039/korean.txt"
+  }
+}

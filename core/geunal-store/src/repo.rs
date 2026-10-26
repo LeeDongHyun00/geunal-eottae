@@ -102,38 +102,6 @@ pub struct OutboxRow {
     pub created_at: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CalendarRow {
-    pub id: String,
-    pub name: String,
-    pub color: String,
-    /// `personal`, `routine`, `device_mirror` or `group`.
-    pub kind: String,
-    /// 0 = soft: I see it, but groups see the time as free.
-    pub blocks_free: bool,
-    pub group_id: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EventRow {
-    pub id: String,
-    pub calendar_id: String,
-    pub title: String,
-    /// ISO 8601 with offset.
-    pub starts_at: String,
-    pub ends_at: String,
-    pub all_day: bool,
-    pub tz: String,
-    pub rrule: Option<String>,
-    /// JSON array of ISO timestamps.
-    pub exdates: Option<String>,
-    pub note: Option<String>,
-    pub device_event_id: Option<String>,
-    pub group_ref: Option<String>,
-    pub tentative: bool,
-    pub updated_at: String,
-}
-
 impl Store {
     // ----- groups -----
 
@@ -367,91 +335,6 @@ impl Store {
         Ok(())
     }
 
-    // ----- calendars and events -----
-
-    pub fn put_calendar(&self, row: &CalendarRow) -> Result<()> {
-        self.conn().execute(
-            "INSERT INTO calendars (id, name, color, kind, blocks_free, group_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT (id) DO UPDATE SET name = excluded.name, color = excluded.color, kind = excluded.kind,
-               blocks_free = excluded.blocks_free, group_id = excluded.group_id",
-            params![row.id, row.name, row.color, row.kind, row.blocks_free, row.group_id],
-        )?;
-        Ok(())
-    }
-
-    pub fn calendars(&self) -> Result<Vec<CalendarRow>> {
-        let conn = self.conn();
-        let mut stmt =
-            conn.prepare("SELECT id, name, color, kind, blocks_free, group_id FROM calendars ORDER BY id")?;
-        let rows = stmt.query_map([], |row| {
-            Ok(CalendarRow {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                color: row.get(2)?,
-                kind: row.get(3)?,
-                blocks_free: row.get(4)?,
-                group_id: row.get(5)?,
-            })
-        })?;
-        rows.map(|r| r.map_err(StoreError::from)).collect()
-    }
-
-    pub fn put_event(&self, row: &EventRow) -> Result<()> {
-        self.conn().execute(
-            "INSERT INTO events (id, calendar_id, title, starts_at, ends_at, all_day, tz, rrule, exdates, note,
-               device_event_id, group_ref, tentative, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
-             ON CONFLICT (id) DO UPDATE SET calendar_id = excluded.calendar_id, title = excluded.title,
-               starts_at = excluded.starts_at, ends_at = excluded.ends_at, all_day = excluded.all_day, tz = excluded.tz,
-               rrule = excluded.rrule, exdates = excluded.exdates, note = excluded.note,
-               device_event_id = excluded.device_event_id, group_ref = excluded.group_ref,
-               tentative = excluded.tentative, updated_at = excluded.updated_at",
-            params![
-                row.id,
-                row.calendar_id,
-                row.title,
-                row.starts_at,
-                row.ends_at,
-                row.all_day,
-                row.tz,
-                row.rrule,
-                row.exdates,
-                row.note,
-                row.device_event_id,
-                row.group_ref,
-                row.tentative,
-                row.updated_at
-            ],
-        )?;
-        Ok(())
-    }
-
-    pub fn delete_event(&self, id: &str) -> Result<()> {
-        self.conn().execute("DELETE FROM events WHERE id = ?1", [id])?;
-        Ok(())
-    }
-
-    pub fn events(&self) -> Result<Vec<EventRow>> {
-        let conn = self.conn();
-        let mut stmt = conn.prepare(
-            "SELECT id, calendar_id, title, starts_at, ends_at, all_day, tz, rrule, exdates, note, device_event_id,
-               group_ref, tentative, updated_at FROM events ORDER BY starts_at, id",
-        )?;
-        let rows = stmt.query_map([], event_row)?;
-        rows.map(|r| r.map_err(StoreError::from)).collect()
-    }
-
-    /// Events placed by a group appointment (`group_ref` = appt id).
-    pub fn events_for_appointment(&self, appt: &str) -> Result<Vec<EventRow>> {
-        let conn = self.conn();
-        let mut stmt = conn.prepare(
-            "SELECT id, calendar_id, title, starts_at, ends_at, all_day, tz, rrule, exdates, note, device_event_id,
-               group_ref, tentative, updated_at FROM events WHERE group_ref = ?1 ORDER BY id",
-        )?;
-        let rows = stmt.query_map([appt], event_row)?;
-        rows.map(|r| r.map_err(StoreError::from)).collect()
-    }
-
     // ----- chat search -----
 
     /// Indexes a chat text for search. Korean keeps particles attached, so the index is trigram (rust-core §4).
@@ -509,23 +392,4 @@ fn outbox_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Result<OutboxRow>> {
     let (id, group_id, payload, attempts, created_at) =
         (row.get(0)?, row.get(1)?, row.get(3)?, row.get(4)?, row.get(5)?);
     Ok(OutboxKind::parse(&kind).map(|kind| OutboxRow { id, group_id, kind, payload, attempts, created_at }))
-}
-
-fn event_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<EventRow> {
-    Ok(EventRow {
-        id: row.get(0)?,
-        calendar_id: row.get(1)?,
-        title: row.get(2)?,
-        starts_at: row.get(3)?,
-        ends_at: row.get(4)?,
-        all_day: row.get(5)?,
-        tz: row.get(6)?,
-        rrule: row.get(7)?,
-        exdates: row.get(8)?,
-        note: row.get(9)?,
-        device_event_id: row.get(10)?,
-        group_ref: row.get(11)?,
-        tentative: row.get(12)?,
-        updated_at: row.get(13)?,
-    })
 }
