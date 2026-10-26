@@ -24,6 +24,18 @@ enum AppCore {
         return SystemProviderSignIn()
     }
 
+    /// Face ID, Touch ID or the passcode before the recovery code, starting fresh and deleting the account. The UI
+    /// tests' stand-in passes at once, since the simulator cannot answer the system prompt.
+    @MainActor
+    static func deviceOwner() -> any DeviceOwnerCheck {
+        #if DEBUG
+            if LaunchOptions.usesPreviewCore {
+                return PreviewDeviceOwnerCheck(hasScreenLock: !LaunchOptions.hasNoScreenLock)
+            }
+        #endif
+        return SystemDeviceOwnerCheck()
+    }
+
     /// Before the core reads its database key. A launch without a store is a new installation on this phone: a
     /// reinstall, an iCloud restore or Quick Start. It must not inherit the keychain's secrets, nor the finished
     /// onboarding and the pending guest's tick that the defaults carried over from the other phone (`FreshInstall`).

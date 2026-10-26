@@ -11,6 +11,8 @@ final class CoreStatusUITests: GeunalUITestCase {
         me.tap()
         let status = app.buttons["me.coreStatus"]
         waitFor(status)
+        // The row is the last on 나, under the account rows.
+        app.swipeUp()
         status.tap()
 
         let sync = app.staticTexts["status.sync"]

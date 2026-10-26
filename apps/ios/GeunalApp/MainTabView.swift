@@ -1,4 +1,5 @@
 import DesignSystem
+import FeatureAccount
 import FeatureCalendar
 import GeunalCore
 import SwiftUI
@@ -19,23 +20,28 @@ struct MainTabView: View {
     @State private var openEvent: EventItem?
     /// The person whose birthday the next-up bar asked to open; the 나 tab takes it.
     @State private var openPerson: String?
+    /// A screen of 나 to open from elsewhere: the recovery code, from the month view's banner.
+    @State private var openRoute: MeTab.Route?
 
     var body: some View {
         TabView(selection: $tab) {
-            CalendarTab(model: model, core: core, openEvent: $openEvent)
-                .toastProposal(model.toasts)
-                .nextUpInset { slot }
-                .tabItem {
-                    Label {
-                        Text("캘린더")
-                    } icon: {
-                        Image(systemName: "calendar")
-                    }
+            CalendarTab(
+                model: model, core: core, openEvent: $openEvent,
+                onRecoveryBanner: model.recoveryUnsaved ? { openRecoveryCode() } : nil
+            )
+            .toastProposal(model.toasts)
+            .nextUpInset(isEnabled: slotIsEnabled) { slot }
+            .tabItem {
+                Label {
+                    Text("캘린더")
+                } icon: {
+                    Image(systemName: "calendar")
                 }
-                .tag(Tab.calendar)
-            MeTab(core: core, toasts: model.toasts, openPerson: $openPerson)
+            }
+            .tag(Tab.calendar)
+            MeTab(core: core, app: model, openPerson: $openPerson, openRoute: $openRoute)
                 .toastProposal(model.toasts)
-                .nextUpInset { slot }
+                .nextUpInset(isEnabled: slotIsEnabled) { slot }
                 .tabItem {
                     Label {
                         Text("나")
@@ -46,25 +52,45 @@ struct MainTabView: View {
                 .tag(Tab.me)
         }
         .tint(GeunalColor.tabText)
-        .nextUpAccessory { slot }
+        .nextUpAccessory(isEnabled: slotIsEnabled) { slot }
+    }
+
+    /// The slot stays while the bar is on, and otherwise only while a toast takes its place.
+    private var slotIsEnabled: Bool {
+        model.nextUp != nil && (model.showsNextUpBar || model.toasts.current != nil)
     }
 
     /// The bar, or the toast in its place (m1.md screen 6).
     @ViewBuilder
     private var slot: some View {
         if let nextUp = model.nextUp {
-            NextUpBar(model: nextUp, chrome: Self.drawsOwnChrome) { item in
-                // An event opens in the editor, a birthday the person in 사람·생일 (m1.md §2.6).
-                switch item {
-                case .event(let event, _, _):
-                    tab = .calendar
-                    openEvent = event
-                case .birthday(let birthday):
-                    tab = .me
-                    openPerson = birthday.personId
+            Group {
+                if model.showsNextUpBar {
+                    NextUpBar(model: nextUp, chrome: Self.drawsOwnChrome) { item in
+                        // An event opens in the editor, a birthday the person in 사람·생일 (m1.md §2.6).
+                        switch item {
+                        case .event(let event, _, _):
+                            tab = .calendar
+                            openEvent = event
+                        case .birthday(let birthday):
+                            tab = .me
+                            openPerson = birthday.personId
+                        }
+                    }
+                } else {
+                    Color.clear.frame(height: Metrics.NextUpBar.height)
                 }
             }
             .toastSlot(model.toasts, chrome: Self.drawsOwnChrome)
+        }
+    }
+
+    /// The banner's "저장": the OS prompt comes on the calendar, and only a pass opens 나 › 복구 코드 (decision 26).
+    private func openRecoveryCode() {
+        Task {
+            guard await model.owner.confirm(.recoveryCode) else { return }
+            tab = .me
+            openRoute = .recovery
         }
     }
 
@@ -77,11 +103,20 @@ struct MainTabView: View {
 }
 
 extension View {
-    /// iOS 26: the next-up bar as the tab view's bottom accessory.
+    /// iOS 26: the next-up bar as the tab view's bottom accessory. From 26.1 the accessory only hides through
+    /// `isEnabled`; on 26.0 an empty accessory hides itself.
     @ViewBuilder
-    fileprivate func nextUpAccessory<Accessory: View>(@ViewBuilder _ accessory: () -> Accessory) -> some View {
-        if #available(iOS 26.0, *) {
-            tabViewBottomAccessory { accessory() }
+    fileprivate func nextUpAccessory<Accessory: View>(
+        isEnabled: Bool, @ViewBuilder _ accessory: () -> Accessory
+    ) -> some View {
+        if #available(iOS 26.1, *) {
+            tabViewBottomAccessory(isEnabled: isEnabled) { accessory() }
+        } else if #available(iOS 26.0, *) {
+            tabViewBottomAccessory {
+                if isEnabled {
+                    accessory()
+                }
+            }
         } else {
             self
         }
@@ -89,14 +124,16 @@ extension View {
 
     /// iOS 17 and 18: the bar floats above the system tab bar inside each tab.
     @ViewBuilder
-    fileprivate func nextUpInset<Bar: View>(@ViewBuilder _ bar: () -> Bar) -> some View {
+    fileprivate func nextUpInset<Bar: View>(isEnabled: Bool, @ViewBuilder _ bar: () -> Bar) -> some View {
         if #available(iOS 26.0, *) {
             self
         } else {
             safeAreaInset(edge: .bottom) {
-                bar()
-                    .padding(.horizontal, Metrics.TabBar.sideInset)
-                    .padding(.bottom, Metrics.NextUpBar.gapAboveTabBar)
+                if isEnabled {
+                    bar()
+                        .padding(.horizontal, Metrics.TabBar.sideInset)
+                        .padding(.bottom, Metrics.NextUpBar.gapAboveTabBar)
+                }
             }
         }
     }

@@ -9,6 +9,7 @@ public struct OnboardingDependencies {
     public let core: any CoreProtocol
     public let providers: any ProviderSignIn
     public let permissions: any SystemPermissions
+    public let owner: any DeviceOwnerCheck
     public let connectivity: ConnectivityMonitor
     public let toasts: ToastCenter
     public let state: OnboardingState
@@ -16,12 +17,13 @@ public struct OnboardingDependencies {
 
     public init(
         core: any CoreProtocol, providers: any ProviderSignIn, permissions: any SystemPermissions,
-        connectivity: ConnectivityMonitor, toasts: ToastCenter, state: OnboardingState = OnboardingState(),
-        channel: BuildChannel = .current
+        owner: any DeviceOwnerCheck, connectivity: ConnectivityMonitor, toasts: ToastCenter,
+        state: OnboardingState = OnboardingState(), channel: BuildChannel = .current
     ) {
         self.core = core
         self.providers = providers
         self.permissions = permissions
+        self.owner = owner
         self.connectivity = connectivity
         self.toasts = toasts
         self.state = state
@@ -39,13 +41,19 @@ public struct OnboardingFlow: View {
     }
 
     private let dependencies: OnboardingDependencies
+    private let onClose: (() -> Void)?
     private let onFinish: () -> Void
     @State private var path: [Route] = []
     @State private var signIn: SignInModel
     @State private var permissions: PermissionsModel
 
-    public init(dependencies: OnboardingDependencies, onFinish: @escaping () -> Void) {
+    /// With `onClose` the flow opens on the sign-in screen and can be closed: signing in again over the tabs, after
+    /// another device's sign-in (m1.md screen 23) or from 나's "로그인".
+    public init(
+        dependencies: OnboardingDependencies, onClose: (() -> Void)? = nil, onFinish: @escaping () -> Void
+    ) {
         self.dependencies = dependencies
+        self.onClose = onClose
         self.onFinish = onFinish
         let toasts = dependencies.toasts
         _signIn = State(
@@ -60,14 +68,10 @@ public struct OnboardingFlow: View {
 
     public var body: some View {
         NavigationStack(path: $path) {
-            WelcomeView(
-                onStart: { path.append(.signIn) },
-                // Invites arrive with M2; until then the code holder signs in first like everyone else.
-                onInviteCode: { path.append(.signIn) }
-            )
-            .navigationDestination(for: Route.self) { route in
-                destination(route)
-            }
+            root
+                .navigationDestination(for: Route.self) { route in
+                    destination(route)
+                }
         }
         .tint(GeunalColor.ink)
         .overlay(alignment: .bottom) {
@@ -79,6 +83,27 @@ public struct OnboardingFlow: View {
             }
         }
         .animation(.easeOut(duration: Motion.Toast.inDuration), value: dependencies.toasts.current)
+    }
+
+    @ViewBuilder
+    private var root: some View {
+        if let onClose {
+            destination(.signIn)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(action: onClose) {
+                            Text("닫기", bundle: .module)
+                        }
+                        .accessibilityIdentifier("onboarding.close")
+                    }
+                }
+        } else {
+            WelcomeView(
+                onStart: { path.append(.signIn) },
+                // Invites arrive with M2; until then the code holder signs in first like everyone else.
+                onInviteCode: { path.append(.signIn) }
+            )
+        }
     }
 
     @ViewBuilder
@@ -102,11 +127,12 @@ public struct OnboardingFlow: View {
             let toasts = dependencies.toasts
             RestoreScreen(
                 model: RestoreModel(
-                    mode: mode, core: dependencies.core, ageConfirmedAt: signIn.ageConfirmedAt,
-                    notify: { toasts.show($0) }),
+                    mode: mode, core: dependencies.core, owner: dependencies.owner,
+                    ageConfirmedAt: signIn.ageConfirmedAt, notify: { toasts.show($0) }),
                 onDone: finish,
                 onStartedFresh: { path.append(.permissions) },
-                onBackToSignIn: { path = [.signIn] })
+                // Signing in again starts on the sign-in screen, so going back is popping to the root.
+                onBackToSignIn: { path = onClose == nil ? [.signIn] : [] })
         }
     }
 
