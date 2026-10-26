@@ -13,11 +13,12 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 | 기기를 떠나지 않음 | `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`. `kSecAttrSynchronizable`은 넣지 않음(iCloud 키체인 동기화 안 함) | `noBackupFilesDir/secrets`에 두고, 내보낼 수 없는 Keystore의 AES-256-GCM 키로 봉인 |
 | 백업에서 빠짐 | ThisDeviceOnly 항목은 백업으로 다른 기기에 넘어가지 않음 | `noBackupFilesDir`는 자동 백업과 기기 간 이전에서 빠짐. 백업 규칙 파일은 `sharedpref`만 넣음 |
 | 함께 쓰는 곳 | 키체인 접근 그룹은 앱과 알림 확장만 | 해당 없음 |
-| 다시 설치 | 첫 실행 때(UserDefaults에 실행 표시가 없을 때) 이 앱의 키체인 항목을 모두 지움. 앱을 지워도 키체인 항목은 남기 때문 | 앱을 지우면 Keystore 키와 파일이 함께 지워짐 |
+| 다시 설치 | 저장소가 없을 때(이 기기에 처음 설치됐을 때) 이 앱의 키체인 항목을 모두 지움. 앱을 지워도 키체인 항목은 남기 때문. UserDefaults의 실행 표시는 기준으로 쓰지 않음. 표시는 기기 이전으로 따라오고, 표시가 생기기 전 버전에서 올린 설치에는 없기 때문 | 앱을 지우면 Keystore 키와 파일이 함께 지워짐 |
+| 기기 이전 | iCloud 백업 복원과 빠른 시작은 UserDefaults만 옮기고, ThisDeviceOnly 항목과 백업에서 뺀 저장소는 옮기지 않음. 그래서 온보딩을 마쳤는지도 저장소가 있는지로 판단하고, 없으면 온보딩 상태를 비움. 표시만 믿으면 새 기기가 세션 없이 탭으로 가서 복원할 길을 잃음 | 자동 백업과 기기 간 이전은 `sharedpref`만 옮김. 온보딩 상태를 SharedPreferences에 두면 iOS와 같은 기준으로 비움 |
 | 해제와 계정 삭제 | 403 `device_revoked`·`revoke` 이벤트를 받거나 계정을 지우면 세션, 기기 서명 키, `E`, AMK, 그룹 상태를 지우고 일정과 DB 키만 남김. 도난 기기에 남은 `E`로 게스트 계정을 다시 가져가지 못하게 하려는 것([공통 계약](../parts/protocol.md) 13장) | 같음 |
 
 - SharedPreferences와 UserDefaults는 기기 백업에 들어갑니다. 비밀과 개인정보를 두지 않습니다. "종이에 적었어요" 같은 표시는 괜찮습니다.
-- 2026-10-25 `main` 기준으로 두 `SecretStore`는 위 설정과 맞습니다(`apps/ios/Packages/CoreBridge/Sources/CoreBridge/KeychainSecretStore.swift`, `apps/android/bridge/src/main/kotlin/app/geunal/bridge/KeystoreSecretStore.kt`, `AppStorage.kt`). `E`와 AMK도 이 콜백으로만 다니면 같은 보호를 받습니다. 첫 실행 키체인 정리만 아직 없습니다.
+- 2026-10-25 `main` 기준으로 두 `SecretStore`는 위 설정과 맞습니다(`apps/ios/Packages/CoreBridge/Sources/CoreBridge/KeychainSecretStore.swift`, `apps/android/bridge/src/main/kotlin/app/geunal/bridge/KeystoreSecretStore.kt`, `AppStorage.kt`). `E`와 AMK도 이 콜백으로만 다니면 같은 보호를 받습니다. 첫 실행 키체인 정리만 아직 없습니다(iOS #36에서 더하는 중).
 
 ## 2. 그 밖에 평문이 남는 곳
 
