@@ -87,7 +87,7 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 - **채팅:** 미디어 보내기·받기, 검색, 신고, 차단
 - **계정:** 구독 상태(서버가 확인한 혜택만 켬)
 
-**비밀 보관 콜백:** 앱이 `SecretStore` 콜백(`get(name)`, `put(name, value)`, `delete(name)`)을 구현합니다. 코어는 기기 서명 개인키, AMK, 데이터베이스 키를 이 콜백으로만 읽고 씁니다. 비밀은 SQLite에 저장하지 않습니다.
+**비밀 보관 콜백:** 앱이 `SecretStore` 콜백(`get(name)`, `put(name, value)`, `delete(name)`)을 구현합니다. 코어는 기기 서명 개인키, AMK, 복구 코드의 엔트로피 `E`([공통 계약](protocol.md) 10장), 데이터베이스 키를 이 콜백으로만 읽고 씁니다. 비밀은 SQLite에 저장하지 않습니다.
 
 ### 날짜와 시각
 
