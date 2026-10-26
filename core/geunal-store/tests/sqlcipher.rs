@@ -23,6 +23,20 @@ fn opens_an_encrypted_database_and_reports_the_sqlcipher_version() {
 }
 
 #[test]
+fn reports_the_crypto_library_it_links() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("geunal.db"), &KEY).unwrap();
+
+    let (name, version) = store.cipher_provider().unwrap();
+    if cfg!(target_vendor = "apple") {
+        assert_eq!(name, "commoncrypto");
+    } else {
+        assert_eq!(name, "openssl");
+        assert!(version.starts_with("OpenSSL "), "{version}");
+    }
+}
+
+#[test]
 fn rejects_the_database_under_a_different_key() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("geunal.db");
