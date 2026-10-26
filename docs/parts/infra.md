@@ -25,7 +25,7 @@ Supabase 같은 BaaS는 쓰지 않고, 클라우드의 기본 구성 요소(네�
 | 컨테이너 실행 | API 2대 이상, 게이트웨이 2대 이상(운영 3대), 롤링 배포 | VM에서 Docker. NCP에는 관리형 컨테이너 실행 서비스가 없고, 쿠버네티스(NKS)는 서버 종류가 늘 때 검토 |
 | 로드 밸런서 | HTTPS, WebSocket, 유휴 제한 120초 이상. 도메인 `api.`, `rt.`, 초대 링크 | API는 Application LB, 게이트웨이는 Network Proxy LB(유휴 시간 1~3600초) |
 | 비밀값 | 관리형 비밀 저장소(10장) | Secret Manager |
-| 초대 링크 도메인 | `/.well-known/apple-app-site-association`과 `/.well-known/assetlinks.json`을 API가 제공. `/i/<code>`는 앱이 없으면 스토어로 보냄 | Global DNS, Certificate Manager(무료 인증서) |
+| 초대 링크 도메인 | `/.well-known/apple-app-site-association`과 `/.well-known/assetlinks.json`을 API가 제공. `assetlinks.json`은 M1부터 필요함(안드로이드 Apple 웹 로그인이 App Link `/auth/apple`로 돌아옴). `/i/<code>`는 앱이 없으면 스토어로 보냄 | Global DNS, Certificate Manager(무료 인증서) |
 | 구성 코드 | Terraform. 콘솔에서 손으로 만들지 않음. PR에서 `terraform plan` 결과를 검토하고 머지한 뒤 적용. 상태 파일은 잠금이 되는 원격 저장소에 | 공식 제공자 `NaverCloudPlatform/ncloud`. 상태는 Object Storage 버킷 `geunal-tfstate`에 `s3` 백엔드와 잠금 파일로 둠. 이 버킷만 첫 적용 전에 손으로 만듦([infra/terraform](../../infra/terraform/README.md)) |
 | 계정과 권한 | 스테이징과 운영을 나눔. 사람은 MFA로 들어오고, 운영 쓰기 권한은 최소 인원만. CI는 배포 전용 키(5장) | VPC로 나눔(리전당 3개 무료), Sub Account로 권한 분리. 운영을 별도 계정으로 옮길지는 공개 베타 전에 정함 |
 | 네트워크 | 데이터베이스·Redis·컨테이너는 사설 서브넷. 인터넷에 열린 것은 로드 밸런서뿐. 서버 접속은 기록이 남는 방식으로 | 사설 서브넷 + NAT Gateway, ACG. 서버 접속은 배스천 한 대를 거치고, ACG로 관리자 IP만 SSH 허용. SSL VPN(VPC)은 월 12만 원부터라 ISMS 대상이 될 때 검토 |
