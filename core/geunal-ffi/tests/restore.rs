@@ -220,8 +220,36 @@ fn starting_over_forgets_the_deleted_backups() {
         }
         a.core.clone().start_fresh(None).await.unwrap();
         assert!(server.backups_of(&user).is_empty());
-        assert!(a.core.backup_status().unwrap().last.is_none());
+        let status = a.core.backup_status().unwrap();
+        assert!(status.last.is_none());
+        assert!(status.changed, "nothing on this phone is in a backup any more");
         assert!(a.core.clone().backups().await.unwrap().is_empty());
         assert_ne!(a.core.recovery_words().unwrap(), words);
+
+        // The next automatic backup takes the people over to the new key without waiting for an edit.
+        let view = a.core.clone().auto_backup().await.unwrap().unwrap();
+        assert_eq!(view.people, Some(2));
+        assert_eq!(server.backups_of(&user).len(), 1);
+    });
+}
+
+#[test]
+fn events_kept_from_another_account_are_backed_up_for_the_new_one() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        // Kai backs up on phone P, then Kai's other phone takes the account over.
+        let (p, _, _) = backed_up(&server, "kai").await;
+        let other = phone(&server);
+        kakao(&other.core, "kai", "카이").await.unwrap();
+        other.core.clone().start_fresh(None).await.unwrap();
+        assert!(p.core.clone().sync().await.is_err());
+
+        // Mina signs up on P and keeps the people there as hers: Kai's backup does not hold them for her.
+        let mina = user_id(&kakao(&p.core, "mina", "미나").await.unwrap());
+        p.core.settle_local_data(LocalDataChoice::Keep).unwrap();
+        assert!(p.core.backup_status().unwrap().changed);
+        let view = p.core.clone().auto_backup().await.unwrap().unwrap();
+        assert_eq!(view.people, Some(2));
+        assert_eq!(server.backups_of(&mina).len(), 1);
     });
 }

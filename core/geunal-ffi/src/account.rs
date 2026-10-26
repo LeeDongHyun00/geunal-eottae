@@ -15,7 +15,7 @@ use geunal_crypto::recovery::{self, CodeError, Entropy, RecoveryKeys};
 use geunal_crypto::{backup, login};
 use geunal_mls::MlsClient;
 use geunal_store::archive::{self, Restored};
-use geunal_store::{BackupRecordRow, Counted};
+use geunal_store::{BackupRecordRow, Counted, Db};
 use geunal_sync::api::{
     AuthOutcome, DeviceProof, GuestSignIn, LinkRequest, NewAccountFields, ProviderSignIn, RecoverSignIn,
     RecoveryUpload, ReplaceRequest, Replaced,
@@ -161,7 +161,9 @@ pub struct BackupView {
 pub struct BackupStatus {
     pub last: Option<BackupView>,
     pub auto: bool,
-    /// Something changed since the last backup; the automatic backup skips a day without changes.
+    /// Something changed since the last backup; the automatic backup skips a day without changes. With no backup of
+    /// this store on record (a new account, a restored phone, after starting over or a sign-in that kept another
+    /// account's events), everything in it counts as changed.
     pub changed: bool,
     /// The recovery material is on the server, so a backup can be made and opened later.
     pub ready: bool,
@@ -324,7 +326,7 @@ impl Core {
                     db.discard_own_data()?;
                 }
                 // Notes of the other account's backups.
-                db.retain_backup_records(&[])?;
+                forget_backups(db)?;
             }
             Ok::<_, CoreError>(db.set_setting(STORE_OWNER, &session.user_id)?)
         })?;
@@ -390,7 +392,7 @@ impl Core {
                     if local_data == LocalDataChoice::Discard {
                         db.discard_own_data()?;
                     }
-                    db.retain_backup_records(&[])?;
+                    forget_backups(db)?;
                 }
                 let restored = match &archive {
                     Some(archive) => db.restore_archive(archive)?,
@@ -461,7 +463,7 @@ impl Core {
             };
             this.make_recovery(&session.user_id, true, proof.as_ref()).await?;
             // The server deleted every backup; so go the notes about them.
-            this.store.write(|db| Ok::<_, CoreError>(db.retain_backup_records(&[])?))?;
+            this.store.write(forget_backups)?;
             Ok(session)
         })
         .await
@@ -599,8 +601,10 @@ impl Core {
         self.store.read(|db| {
             let last = db.backup_records()?.first().map(view_of_note).transpose()?;
             let auto = db.setting(AUTO_BACKUP)?.as_deref() != Some("0");
-            let backed_up = db.setting(BACKED_UP_CHANGES)?.and_then(|n| n.parse().ok()).unwrap_or(0);
-            let changed = changes(db)? > backed_up;
+            let changed = match db.setting(BACKED_UP_CHANGES)?.and_then(|n| n.parse::<u64>().ok()) {
+                Some(carried) => changes(db)? > carried,
+                None => true,
+            };
             Ok(BackupStatus { last, auto, changed, ready })
         })
     }
@@ -720,6 +724,13 @@ struct StoredRevocation {
     at: String,
     by: String,
     via: String,
+}
+
+/// The backups this device had on record are gone or another account's: their notes go, and so does the change count
+/// the last one carried, so the store counts as not backed up until the next backup.
+fn forget_backups(db: &Db<'_>) -> Result<(), CoreError> {
+    db.retain_backup_records(&[])?;
+    Ok(db.delete_setting(BACKED_UP_CHANGES)?)
 }
 
 fn malformed(e: impl std::fmt::Display) -> CoreError {
@@ -1311,7 +1322,7 @@ impl Core {
             db.wipe_group_state()?;
             // The notes of backups this device can no longer open. The store's owner stays, so another account
             // signing in here is asked about these events first.
-            db.retain_backup_records(&[])?;
+            forget_backups(db)?;
             for key in [ACCOUNT, RECOVERY_SAVED, RECOVERY_UPLOADED, RECOVERY_NEW_KEY, RECOVERY_OWNER] {
                 db.delete_setting(key)?;
             }
