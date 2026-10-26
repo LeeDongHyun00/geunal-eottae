@@ -7,6 +7,7 @@
 | 대상 | 도구 | 설정 | 명령 | 실패 기준 |
 | --- | --- | --- | --- | --- |
 | Rust 코어의 크레이트(`core/Cargo.lock`), 안드로이드·iOS 타깃 포함 | cargo-deny `advisories` (RustSec DB) | `core/deny.toml`: yanked 금지, `ignore`에 이유 적힌 예외 2개 | `make audit-core`(advisories만), `make lint-core`(라이선스·중복·출처까지) | 권고가 있고 `ignore`에 없으면 실패 |
+| 안드로이드의 OpenSSL(SQLCipher가 링크, cargo 밖에서 빌드) | 상류 릴리스 태그(`git ls-remote`) | `core/scripts/build-openssl.sh`에 버전과 SHA-256 고정. SQLCipher가 쓰는 알고리즘만 빌드 | `make audit-core` | 같은 계열(3.6)에 고정한 것보다 새 패치가 있거나, 스크립트에 적은 그 계열의 지원 종료일(`supported_until`)이 지났으면 실패. OpenSSL은 보안 수정을 패치 릴리스로 내므로, 그 패치의 권고를 보고 올립니다. 지원이 끝나면 지원되는 계열로 옮깁니다 |
 | API 이미지(`geunal/api:local`): OS 패키지, JDK, boot jar 안의 라이브러리 | Trivy `image` | 기본. 예외 파일 없음 | `make scan-api` | HIGH·CRITICAL 중 수정판이 있는 것 |
 | 게이트웨이 이미지(`geunal/gateway:local`): OS 패키지, ERTS | Trivy `image` | 같음 | `make scan-gateway` | 같음 |
 | 게이트웨이 Hex 패키지(`server/gateway/mix.lock`) | Trivy `fs --scanners vuln` | 릴리스 안에서는 Hex 패키지가 안 보여서 잠금 파일을 따로 검사 | `make scan-gateway` | 같음 |

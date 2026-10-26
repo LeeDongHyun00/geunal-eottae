@@ -18,10 +18,31 @@ cd "$core"
 rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 rm -rf "$out"
 
+# minSdk 26 (docs/parts/android.md §1), for both the Rust code and the OpenSSL below.
+platform=26
+
+# SQLCipher links a libcrypto trimmed to what it calls (core/scripts/build-openssl.sh). libsqlite3-sys reads the
+# OpenSSL location per target, so each ABI gets its own. It does not rerun its build script when that OpenSSL changes,
+# so a rebuilt one cleans it for the target; otherwise SQLCipher would keep the previous headers and library.
+for abi in "${abis[@]}"; do
+  case "$abi" in
+    arm64-v8a) triple=aarch64-linux-android ;;
+    armeabi-v7a) triple=armv7-linux-androideabi ;;
+    x86_64) triple=x86_64-linux-android ;;
+  esac
+  before="$(cat "$repo/.tools/openssl/$abi/key" 2>/dev/null || true)"
+  dir="$("$core/scripts/build-openssl.sh" "$abi" "$platform")"
+  if [ "$(cat "$dir/key")" != "$before" ]; then
+    cargo clean --release --target "$triple" -p libsqlite3-sys
+  fi
+  var="$(echo "$triple" | tr '[:lower:]-' '[:upper:]_')_OPENSSL_DIR"
+  export "$var=$dir"
+done
+
 targets=()
 for abi in "${abis[@]}"; do targets+=(--target "$abi"); done
-# cargo-ndk only runs as a cargo subcommand, so the pinned binary goes first on PATH. minSdk 26 (docs/parts/android.md §1).
-PATH="$(dirname "$cargo_ndk"):$PATH" ANDROID_NDK_HOME="$ndk" cargo ndk "${targets[@]}" --platform 26 \
+# cargo-ndk only runs as a cargo subcommand, so the pinned binary goes first on PATH.
+PATH="$(dirname "$cargo_ndk"):$PATH" ANDROID_NDK_HOME="$ndk" cargo ndk "${targets[@]}" --platform "$platform" \
   --output-dir "$out/jniLibs" build --locked --release -p geunal-ffi
 
 cargo run --locked -q -p uniffi-bindgen -- generate --no-format --language kotlin \
