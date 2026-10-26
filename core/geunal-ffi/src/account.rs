@@ -52,6 +52,8 @@ const BACKED_UP_CHANGES: &str = "backed_up_changes";
 /// Key packages a sign-in has yet to put up. Set before the upload, so an app closed in the middle puts them up on its
 /// next `sync()`.
 const KEY_PACKAGES_DUE: &str = "key_packages_due";
+/// The account as stored is the sign-in's guess, as `GET /me` did not answer then; `sync()` asks again.
+const ACCOUNT_STALE: &str = "account_stale";
 /// The platform a sign-in names.
 const PLATFORM: &str = if cfg!(target_os = "ios") { "ios" } else { "android" };
 const KAKAO: &str = "kakao";
@@ -1022,6 +1024,8 @@ impl Core {
             self.listener.clone(),
         )?;
         *self.state.lock().await = State::SignedIn(Box::new(engine));
+        // A replacement begun for another sign-in and left behind must not act for this one (`start_fresh`).
+        *self.ticket.lock().unwrap_or_else(|p| p.into_inner()) = None;
         // A new session asks the server again what a stopped sign-in left undone (`upload_pending_recovery`).
         self.recovery_checked.store(false, Ordering::Relaxed);
         self.store.write(|db| Ok::<_, CoreError>(db.set_setting(KEY_PACKAGES_DUE, "1")?))?;
@@ -1030,16 +1034,21 @@ impl Core {
         {
             return Err(e);
         }
-        // An M0 server has no providers on /me; the name the sign-in sent stands in.
-        let account = match self.api.me().await {
-            Ok(me) => StoredAccount { user_id: me.user_id, display_name: me.display_name, providers: me.providers },
-            Err(_) => StoredAccount {
-                user_id: session.user_id.clone(),
-                display_name: display_name.unwrap_or_default(),
-                providers: Vec::new(),
-            },
-        };
-        self.store_account(&account)?;
+        match self.api.me().await {
+            Ok(me) => self.store_me(me)?,
+            // What this device knew of the account stays; a first sign-in keeps the name it sent. `sync()` asks again.
+            Err(_) => {
+                let known = self.stored_account()?.filter(|a| a.user_id == session.user_id);
+                if known.is_none() {
+                    self.store_account(&StoredAccount {
+                        user_id: session.user_id.clone(),
+                        display_name: display_name.unwrap_or_default(),
+                        providers: Vec::new(),
+                    })?;
+                }
+                self.store.write(|db| Ok::<_, CoreError>(db.set_setting(ACCOUNT_STALE, "1")?))?;
+            }
+        }
         self.store.write(|db| {
             db.delete_setting(REVOCATION)?;
             // A store nobody owns yet, used before any sign-in, or one with nothing of anyone's in it, is this
@@ -1062,6 +1071,33 @@ impl Core {
     fn store_account(&self, account: &StoredAccount) -> Result<(), CoreError> {
         let text = serde_json::to_string(account).map_err(malformed)?;
         self.store.write(|db| Ok::<_, CoreError>(db.set_setting(ACCOUNT, &text)?))
+    }
+
+    /// The account as `GET /me` tells it. An M0 server has no providers there.
+    fn store_me(&self, me: geunal_sync::api::MeInfo) -> Result<(), CoreError> {
+        self.store_account(&StoredAccount {
+            user_id: me.user_id,
+            display_name: me.display_name,
+            providers: me.providers,
+        })?;
+        self.store.write(|db| Ok::<_, CoreError>(db.delete_setting(ACCOUNT_STALE)?))
+    }
+
+    /// Asks `GET /me` again for an account the sign-in could not (`ACCOUNT_STALE`). A network error waits for the
+    /// next `sync()`.
+    pub(crate) async fn refresh_account(&self) -> Result<(), CoreError> {
+        if self.store.read(|db| db.setting(ACCOUNT_STALE))?.is_none() {
+            return Ok(());
+        }
+        match self.checked(self.api.me().await).await {
+            Ok(me) => {
+                self.store_me(me)?;
+                self.listener.on_change(Change::Account);
+                Ok(())
+            }
+            Err(CoreError::Network { .. }) => Ok(()),
+            Err(e) => Err(e),
+        }
     }
 
     /// The code's entropy and the master key, when this device holds them for the signed-in account.
@@ -1323,7 +1359,7 @@ impl Core {
             // The notes of backups this device can no longer open. The store's owner stays, so another account
             // signing in here is asked about these events first.
             forget_backups(db)?;
-            for key in [ACCOUNT, RECOVERY_SAVED, RECOVERY_UPLOADED, RECOVERY_NEW_KEY, RECOVERY_OWNER] {
+            for key in [ACCOUNT, ACCOUNT_STALE, RECOVERY_SAVED, RECOVERY_UPLOADED, RECOVERY_NEW_KEY, RECOVERY_OWNER] {
                 db.delete_setting(key)?;
             }
             if let Some(text) = &revocation {

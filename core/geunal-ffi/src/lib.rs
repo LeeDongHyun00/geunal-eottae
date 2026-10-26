@@ -368,8 +368,8 @@ impl Core {
 
     /// Catches every group up from its cursor and sends what is waiting in the outbox. Before a sign-in there is
     /// nothing to catch up, so this returns at once: the apps' first screen opens the core and syncs without an account.
-    /// Then what could not go up at the sign-in goes up: key packages, and recovery material (protocol §10 "올리는
-    /// 때"); a refusal from the server comes back as this call's error.
+    /// Then what the sign-in could not finish is done: the account as `GET /me` tells it, key packages, and recovery
+    /// material (protocol §10 "올리는 때"); a refusal from the server comes back as this call's error.
     pub async fn sync(self: Arc<Self>) -> Result<(), CoreError> {
         if saved_session(self.secrets.as_ref()).is_none() {
             return Ok(());
@@ -377,7 +377,8 @@ impl Core {
         let this = self.clone();
         self.run(async move {
             this.engine(Box::new(|e| Box::pin(async move { e.sync().await }))).await?;
-            // After the groups, so an upload the server keeps refusing does not hold up the calendar.
+            // After the groups, so what the server keeps refusing does not hold up the calendar.
+            this.refresh_account().await?;
             this.publish_due_key_packages().await?;
             this.upload_pending_recovery().await
         })
