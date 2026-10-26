@@ -310,9 +310,16 @@ paths:
         The first upload needs no proof. When material is already stored, overwriting it needs `nonce` (GET
         /auth/nonce) and `proof`: the current recovery signing key's signature over the ASCII bytes
         "geunal recovery rotate v1" followed by the ASCII bytes of `nonce`, checked with the stored public key. The one
-        exception is `new_key: true` from a device registered by a Kakao or Apple sign-in less than 30 minutes ago
-        (starting over without the code); then the server also deletes every backup of the account in the same
-        transaction, since nobody can open a backup sealed with the old AMK.
+        exception is `new_key: true` (starting over without the code) from a Kakao or Apple account that proves itself
+        another way:
+        - the device's session came from a provider sign-in less than 30 minutes ago: a `registered` result, or POST
+          /auth/replace with that sign-in's ticket; refreshing does not extend the 30 minutes; or
+        - the body carries a fresh provider proof, as for DELETE /me: `kakao_id_token` with `nonce` (bound to this
+          device's registered key), or `apple_authorization_code` whose exchanged identity token carries this
+          account's `sub`. A device past the 30 minutes sends this proof instead of signing in again, so a proof
+          for another provider account changes nothing.
+        The server then also deletes every backup of the account in the same transaction, since nobody can open a
+        backup sealed with the old AMK.
       requestBody:
         content:
           application/json:
@@ -324,12 +331,14 @@ paths:
                 recovery_id: { $ref: "#/components/schemas/Bytes", description: "16 bytes, unique" }
                 recovery_public_key: { $ref: "#/components/schemas/Bytes", description: 32-byte Ed25519 public key of the recovery signing key }
                 new_key: { type: boolean, default: false }
-                nonce: { type: string, description: with proof }
+                nonce: { type: string, description: from GET /auth/nonce; with proof or kakao_id_token }
                 proof: { $ref: "#/components/schemas/Bytes", description: 64-byte Ed25519 signature by the current recovery signing key }
+                kakao_id_token: { type: string, description: "new_key only, Kakao accounts: from a Kakao sign-in made for this request" }
+                apple_authorization_code: { type: string, description: "new_key only, Apple accounts: from a Sign in with Apple made for this request" }
       responses:
         "204": { description: stored }
         "400": { description: invalid_request (a field of the wrong length) }
-        "403": { description: "recovery_proof_required (material exists and the proof is missing or wrong, outside the new_key exception)" }
+        "403": { description: "recovery_proof_required (material exists and the current code's proof is missing or wrong); reauth_required (new_key past the 30 minutes without a valid provider proof for this account; nothing changes)" }
         "409": { description: recovery_conflict (another account uses this recovery_id) }
     get:
       summary: "M1: The recovery material a restoring device needs; also with a replacement ticket"
