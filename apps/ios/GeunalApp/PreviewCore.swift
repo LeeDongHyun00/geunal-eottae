@@ -1,4 +1,5 @@
 #if DEBUG
+    import FeatureCalendar
     import Foundation
     import GeunalCore
 
@@ -140,6 +141,53 @@
                 .birthday(item: birthday),
             ]
         }
+
+        /// An empty month: the onboarding tests end on the calendar, and the calendar's own tests run on the real core.
+        override func calendarMonth(month: String) throws -> [DayCell] {
+            guard let first = KoreanCalendar.start(of: month + "-01"),
+                let firstDay = KoreanCalendar.weekStart(of: month + "-01")
+            else { return [] }
+            let days = KoreanCalendar.calendar.range(of: .day, in: .month, for: first)?.count ?? 30
+            let lastDay = KoreanCalendar.adding(days: days - 1, to: month + "-01") ?? month
+            let weekdayOfLast = KoreanCalendar.weekday(of: lastDay) ?? 7
+            let count = (KoreanCalendar.days(from: firstDay, to: lastDay) ?? 0) + 1 + (7 - weekdayOfLast)
+            return (0..<count).compactMap { offset in
+                guard let day = KoreanCalendar.adding(days: offset, to: firstDay),
+                    let weekday = KoreanCalendar.weekday(of: day).flatMap(Weekday.init(number:))
+                else { return nil }
+                return DayCell(
+                    day: day, weekday: weekday, inMonth: KoreanCalendar.month(of: day) == month, holidays: [],
+                    events: [], birthdays: [], leaveBridge: nil)
+            }
+        }
+
+        override func calendarWeek(startDay: String) throws -> [WeekDay] {
+            (0..<7).compactMap { offset in
+                guard let day = KoreanCalendar.adding(days: offset, to: startDay),
+                    let weekday = KoreanCalendar.weekday(of: day).flatMap(Weekday.init(number:))
+                else { return nil }
+                return WeekDay(
+                    day: day, weekday: weekday, holidays: [], allDay: [], birthdays: [], timed: [], hidden: 0)
+            }
+        }
+
+        override func calendarAgenda(fromDay: String, days: UInt16) throws -> [AgendaDay] { [] }
+
+        override func calendars() throws -> [CalendarView] {
+            [
+                CalendarView(
+                    id: "preview-personal", name: "개인", color: .tangerine, kind: .own, soft: false, visible: true,
+                    defaultAlert: .inherit, eventCount: 0, shiftTemplateCount: 0)
+            ]
+        }
+
+        override func suggestions(day: String) throws -> [Suggestion] { [] }
+
+        override func addEvent(input: EventInput, fromSuggestion: Bool) throws -> AddedEvent {
+            AddedEvent(eventId: UUID().uuidString, repeatHint: nil)
+        }
+
+        override func deleteEvent(eventId: String, occurrence: String?, scope: EditScope) throws {}
 
         private static func koreanDay(_ date: Date) -> String {
             var calendar = Calendar(identifier: .gregorian)

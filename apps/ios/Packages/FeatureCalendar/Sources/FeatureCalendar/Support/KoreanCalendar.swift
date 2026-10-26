@@ -46,4 +46,30 @@ public enum KoreanCalendar {
     public static func weekday(of day: String) -> Int? {
         start(of: day).map { calendar.component(.weekday, from: $0) }
     }
+
+    /// The day `count` days after `day`; a negative count goes back.
+    public static func adding(days count: Int, to day: String) -> String? {
+        guard let first = start(of: day), let date = calendar.date(byAdding: .day, value: count, to: first) else {
+            return nil
+        }
+        return self.day(of: date)
+    }
+
+    /// `"YYYY-MM"` of a day.
+    public static func month(of day: String) -> String {
+        String(day.prefix(7))
+    }
+
+    /// The month `count` months after `month` (`"YYYY-MM"`); a negative count goes back.
+    public static func adding(months count: Int, to month: String) -> String? {
+        let parts = month.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 2, (1...12).contains(parts[1]) else { return nil }
+        let index = parts[0] * 12 + parts[1] - 1 + count
+        return String(format: "%04ld-%02ld", index / 12, index % 12 + 1)
+    }
+
+    /// The Sunday that starts the week `day` falls in; weeks run Sunday to Saturday like the month grid.
+    public static func weekStart(of day: String) -> String? {
+        weekday(of: day).flatMap { adding(days: 1 - $0, to: day) }
+    }
 }

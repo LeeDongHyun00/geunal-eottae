@@ -10,6 +10,9 @@
 
         static var usesPreviewCore: Bool { arguments.contains("-GeunalPreviewCore") }
 
+        /// `-GeunalDemoCalendar` writes the design's example week into the core after it opens (`DemoCalendar`).
+        static var seedsDemoCalendar: Bool { arguments.contains("-GeunalDemoCalendar") }
+
         static var previewScenario: PreviewCore.Scenario {
             guard let index = arguments.firstIndex(of: "-GeunalPreviewScenario"), index + 1 < arguments.count else {
                 return .standard
