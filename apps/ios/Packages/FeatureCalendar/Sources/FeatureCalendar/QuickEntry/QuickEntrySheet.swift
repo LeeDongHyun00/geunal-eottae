@@ -8,6 +8,8 @@ struct QuickEntrySheet: View {
     /// The sheet keeps the model it opened with: the screen behind it redraws while it is up (a change reloads the
     /// views), and what the person typed must stay.
     @State private var model: QuickEntryModel
+    /// Between "저장" and the core's answer; a second tap must not add the event twice.
+    @State private var isSaving = false
     private let actions: EventActions
     @Environment(\.dismiss) private var dismiss
     @FocusState private var titleFocused: Bool
@@ -119,7 +121,7 @@ struct QuickEntrySheet: View {
                 }
             }
             .buttonStyle(.geunal(.prominentPill, height: Metrics.Button.secondary))
-            .disabled(!model.canSave)
+            .disabled(!model.canSave || isSaving)
             .accessibilityIdentifier("quickEntry.save")
         }
         .padding(.horizontal, Metrics.Sheet.Padding.side)
@@ -180,10 +182,16 @@ struct QuickEntrySheet: View {
         .accessibilityIdentifier("quickEntry.repeat")
     }
 
+    /// The sheet stays up with what was typed when the core refuses, so the toast's "다시 시도해 주세요" can be done.
     private func save() {
-        guard let input = model.typedEvent() else { return }
-        dismiss()
-        Task { await actions.add(input, fromSuggestion: false) }
+        guard !isSaving, let input = model.typedEvent() else { return }
+        isSaving = true
+        Task {
+            if await actions.add(input, fromSuggestion: false) {
+                dismiss()
+            }
+            isSaving = false
+        }
     }
 }
 

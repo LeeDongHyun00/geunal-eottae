@@ -12,46 +12,56 @@ struct AgendaView: View {
     /// The top edge loads earlier weeks only after the list has moved to today, or it would load at once.
     @State private var settled = false
 
+    /// Where the empty state sits in the list, so the list can open on it.
+    private static let emptyID = "agenda.empty"
+
     var body: some View {
-        if model.hasLoaded && model.isEmpty {
-            EmptyAgenda(onAddToday: onAddToday)
-        } else {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        if model.canLoadEarlier {
-                            Color.clear
-                                .frame(height: 1)
-                                .onAppear {
-                                    guard settled else { return }
-                                    Task { await model.loadEarlier() }
-                                }
-                        }
-                        ForEach(model.days, id: \.day) { day in
-                            AgendaSection(day: day, today: model.today, past: model.isPast(day), onDay: onDay)
-                                .id(day.day)
-                        }
-                        if model.canLoadMore {
-                            ProgressView()
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                                .id(model.loadedThrough)
-                                .onAppear { Task { await model.loadMore() } }
-                        }
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if model.canLoadEarlier {
+                        Color.clear
+                            .frame(height: 1)
+                            .onAppear {
+                                guard settled else { return }
+                                Task { await model.loadEarlier() }
+                            }
                     }
-                    .padding(.horizontal, Space.l)
-                    .padding(.bottom, Space.l)
+                    ForEach(model.days.filter { model.isPast($0) }, id: \.day) { day in
+                        AgendaSection(day: day, today: model.today, past: true, onDay: onDay)
+                            .id(day.day)
+                    }
+                    // Nothing in the next four weeks still keeps the weeks before and after within reach.
+                    if model.hasLoaded && model.isEmpty {
+                        EmptyAgenda(onAddToday: onAddToday)
+                            .id(Self.emptyID)
+                    }
+                    ForEach(model.days.filter { !model.isPast($0) }, id: \.day) { day in
+                        AgendaSection(day: day, today: model.today, past: false, onDay: onDay)
+                            .id(day.day)
+                    }
+                    if model.canLoadMore {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .id(model.loadedThrough)
+                            .onAppear { Task { await model.loadMore() } }
+                    }
                 }
-                .scrollIndicators(.hidden)
-                .onAppear { scrollToToday(proxy) }
-                .onChange(of: model.hasLoaded) { scrollToToday(proxy) }
+                .padding(.horizontal, Space.l)
+                .padding(.bottom, Space.l)
             }
+            .scrollIndicators(.hidden)
+            .onAppear { scrollToToday(proxy) }
+            .onChange(of: model.hasLoaded) { scrollToToday(proxy) }
         }
     }
 
-    /// Opens at the first day from today on, once the first page is in.
+    /// Opens at the first day from today on, or at the empty state, once the first page is in.
     private func scrollToToday(_ proxy: ScrollViewProxy) {
         guard model.hasLoaded, !settled else { return }
-        if let first = model.days.first(where: { !model.isPast($0) }) {
+        if model.isEmpty {
+            proxy.scrollTo(Self.emptyID, anchor: .top)
+        } else if let first = model.days.first(where: { !model.isPast($0) }) {
             proxy.scrollTo(first.day, anchor: .top)
         }
         // Let the move finish before the top edge may load the weeks before.
@@ -76,7 +86,8 @@ private struct EmptyAgenda: View {
             .buttonStyle(.geunal(.pill, height: Metrics.Button.secondary))
             .accessibilityIdentifier("agenda.addToday")
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Space.xxxl)
     }
 }
 

@@ -85,6 +85,12 @@ struct TimeStrip: View {
         min(max(Int(x / width * CGFloat(slots)), 0), slots - 1)
     }
 
+    /// The half-hour boundary nearest to `x`, from 0 to `slots`. An end is a boundary, not a slot: pressing the
+    /// 11:00 handle of 09:00–11:00 must leave it at 11:00.
+    private func boundary(at x: CGFloat, width: CGFloat) -> Int {
+        min(max(Int((x / width * CGFloat(slots)).rounded()), 0), slots)
+    }
+
     private func changed(_ value: DragGesture.Value, width: CGFloat) {
         let current = slot(at: value.location.x, width: width)
         if drag == nil {
@@ -97,10 +103,11 @@ struct TimeStrip: View {
             range = min(anchor, current)..<(max(anchor, current) + 1)
         case .lower:
             guard let range else { return }
-            self.range = min(current, range.upperBound - 1)..<range.upperBound
+            let lower = min(boundary(at: value.location.x, width: width), range.upperBound - 1)
+            self.range = lower..<range.upperBound
         case .upper:
             guard let range else { return }
-            let upper = min(max(current + 1, range.lowerBound + 1), slots)
+            let upper = max(boundary(at: value.location.x, width: width), range.lowerBound + 1)
             self.range = range.lowerBound..<upper
         case nil:
             break

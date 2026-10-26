@@ -1,6 +1,7 @@
 import DesignSystem
 import GeunalCore
 import SwiftUI
+import UIKit
 
 /// The calendar tab (m1.md screens 4–8): the header with the 월·주·목록 segment, the chosen view, and the quick entry
 /// sheet a day opens. The view last shown comes back on the next launch (m1.md §2.2).
@@ -17,7 +18,11 @@ public struct CalendarScreen: View {
     @State private var week: WeekModel
     @State private var agenda: AgendaModel
     @State private var entry: EntryRequest?
+    /// The Korean day the views were read for. An app left open overnight, or opened again the next day, reads them
+    /// again for the new today.
+    @State private var shownDay: String
     @AppStorage("app.geunal.calendar.view") private var kind: Kind = .month
+    @Environment(\.scenePhase) private var scenePhase
     private let actions: EventActions
     private let now: @Sendable () -> Date
 
@@ -29,6 +34,7 @@ public struct CalendarScreen: View {
         self.changes = changes
         self.now = now
         actions = EventActions(core: core, toasts: toasts)
+        _shownDay = State(initialValue: KoreanCalendar.day(of: now()))
         _month = State(initialValue: MonthModel(core: core, now: now))
         _week = State(initialValue: WeekModel(core: core, now: now))
         _agenda = State(initialValue: AgendaModel(core: core, now: now))
@@ -80,6 +86,22 @@ public struct CalendarScreen: View {
         .onChange(of: changes) {
             Task { await reload() }
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                readAgainOnANewDay()
+            }
+        }
+        // Midnight while the app is in front.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            readAgainOnANewDay()
+        }
+    }
+
+    private func readAgainOnANewDay() {
+        let today = KoreanCalendar.day(of: now())
+        guard today != shownDay else { return }
+        shownDay = today
+        Task { await reload() }
     }
 
     /// Keeps the place when the view changes: the week of the month on screen, or the month of the week on screen.
