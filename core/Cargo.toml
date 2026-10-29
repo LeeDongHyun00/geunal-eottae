@@ -43,7 +43,9 @@ ed25519-dalek = { version = "2", default-features = false }
 futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
 hex = "0.4"
 hkdf = "0.12"
-mls-rs = "0.56"
+# Without rayon, the default that parallelizes tree hashing: groups of a few dozen gain nothing from it, and it costs about
+# 0.1 MB of each Android library (docs/parts/rust-core.md §7). The other defaults stay.
+mls-rs = { version = "0.56", default-features = false, features = ["std", "rfc_compliant", "tree_index", "fast_serialize"] }
 mls-rs-crypto-rustcrypto = "0.22"
 mls-rs-provider-sqlite = "0.23"
 pollster = "0.4"

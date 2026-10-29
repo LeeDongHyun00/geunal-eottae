@@ -183,6 +183,15 @@ pub struct Session {
     pub device_id: String,
 }
 
+/// The crypto library under SQLCipher.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CipherProvider {
+    /// `openssl` on Android, `commoncrypto` on iOS.
+    pub name: String,
+    /// What the linked library reports, such as "OpenSSL 3.5.9 30 Sep 2026".
+    pub version: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct GroupInfo {
     pub group_id: String,
@@ -339,6 +348,13 @@ impl Core {
     /// The SQLCipher release inside the app build, for the M0 screen that shows the core runs on the device.
     pub fn cipher_version(&self) -> Result<String, CoreError> {
         Ok(self.store.cipher_version()?)
+    }
+
+    /// The crypto library SQLCipher links and the version it reports at run time, so a device test can see that the
+    /// app carries the OpenSSL the build pins rather than another one.
+    pub fn cipher_provider(&self) -> Result<CipherProvider, CoreError> {
+        let (name, version) = self.store.cipher_provider()?;
+        Ok(CipherProvider { name, version })
     }
 
     /// The signed-in account, if any.

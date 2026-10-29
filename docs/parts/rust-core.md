@@ -52,6 +52,7 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 | `sign_in_stub(subject, display_name, platform)` | `signInStub(subject:displayName:platform:) async throws` | `suspend fun signInStub(subject, displayName, platform)` | 인증 스텁(`POST /auth/stub`, 로컬·CI만)으로 로그인과 기기 등록. 세션과 기기 서명 키는 `SecretStore`에 둠. M1부터 `AuthResult`를 돌려주고, 다른 기기가 쓰는 계정이면 `ReplaceRequired`(protocol.md 13장) | M0 |
 | `sync()` | `sync() async throws` | `suspend fun sync()` | 모든 그룹 따라잡기, 대기 중 쓰기 보내기. M1부터 로그인이 마치지 못한 계정 정보, 키 패키지, 복구 자료도 처리(5장 "계정과 세션") | M0 |
 | `cipher_version()` | `cipherVersion()` | `cipherVersion()` | M0 화면용 SQLCipher 버전. 화면이 없어지면 지움 | M0 |
+| `cipher_provider()` | `cipherProvider()` | `cipherProvider()` | SQLCipher가 쓰는 암호 라이브러리(안드로이드 `openssl`, iOS `commoncrypto`)와, 링크된 그 라이브러리가 실행 중에 알려 주는 버전. 기기 시험이 앱에 실제로 들어간 OpenSSL을 확인 | M1 |
 | `create_group(name)`, `add_members(group_id, user_ids)`, `remove_member(group_id, user_id)` | `createGroup(name:) async throws` 등 | `suspend fun createGroup(name)` 등 | 그룹 만들기, 사용자 ID로 멤버 추가(초대 코드는 M2), 탈퇴·강퇴. 헤드리스 종단 시험이 쓰는 M0 표면 | M0 |
 | `send_text`, `request_date`, `respond`, `open_poll`, `vote`, `close_poll`, `cancel` | 같은 이름, `async throws` | 같은 이름, `suspend fun` | 엔트리 보내기(protocol.md 4장). M2·M3 화면이 그대로 씀 | M0 |
 | `group_state(group_id)`, `messages(group_id)`, `members(group_id)`, `groups()`, `group_availability(group_id)` | 같은 이름 | 같은 이름 | 저장된 로그에서 계산한 약속 상태, 채팅, 로스터, 그룹, 가용 시간 | M0 |
@@ -605,12 +606,18 @@ pub fn open(key: &[u8; 32], aad: &str, blob: &[u8]) -> Option<Vec<u8>> {
 | 안드로이드 | `aarch64-linux-android`, `armv7-linux-androideabi`, `x86_64-linux-android` | `cargo-ndk`로 `jniLibs` + 생성된 Kotlin → 안드로이드 라이브러리 모듈 `geunal-core`(JNA 의존) | 리눅스 |
 | 호스트 | `x86_64-unknown-linux-gnu` | 테스트, 헤드리스 종단 시험 클라이언트, 테스트 벡터 | 리눅스 |
 
-- **SQLCipher 빌드:** 안드로이드는 OpenSSL을 함께 빌드하는 rusqlite 기능을 쓰고, iOS는 CommonCrypto를 씁니다. M0에서 두 플랫폼 빌드를 먼저 통과시킵니다.
-- **크기 예산:** 릴리스·심볼 제거 기준 ABI당 8MB 이하. `make build-android`가 `core/out/android/sizes.md`에 기록하고, 넘으면 경고합니다. 지금 줄이는 방법은 넷입니다.
+- **SQLCipher 빌드:** iOS는 CommonCrypto, 리눅스(테스트)는 시스템 libcrypto, 안드로이드는 직접 빌드한 OpenSSL을 씁니다.
+  - `core/scripts/build-openssl.sh`가 장기 지원 계열의 OpenSSL 3.5.9(2030-04-08까지 지원)를 고정 SHA-256으로 받아 ABI마다 libcrypto만 빌드하고, `build-android.sh`가 그 위치를 libsqlite3-sys에 넘깁니다.
+  - `build-android.sh`는 빌드한 라이브러리마다 그 판의 버전 문자열("OpenSSL 3.5.9 …")이 들어 있는지 확인합니다. 다른 libcrypto가 링크돼도 빌드 오류는 나지 않기 때문입니다. 기기에서는 안드로이드 계측 시험이 `cipher_provider()`로 같은 판인지 봅니다.
+  - SQLCipher가 부르는 것(AES-256-CBC, SHA-1·256·512, HMAC, PBKDF2, 난수)만 남기고 나머지 알고리즘과 TLS·X.509·오류 문자열을 끕니다. 어셈블리는 남겨 AES와 SHA가 CPU 명령을 씁니다.
+  - DB 형식은 그대로입니다. 시스템 OpenSSL로 만든 저장소를 축소판이 열고 그 반대도 열리는 것을 확인했습니다.
+  - OpenSSL이 cargo 밖에 있어 RustSec이 보지 않으므로, `make audit-core`가 같은 계열의 새 패치가 나왔는지와 그 계열의 지원이 끝났는지 확인합니다([의존성 검사](../security/dependencies.md)).
+- **크기 예산:** 릴리스·심볼 제거 기준으로, 폰이 내려받는 ABI(arm64-v8a, armeabi-v7a)마다 8MB 이하입니다. `make build-android`가 `core/out/android/sizes.md`에 기록하고, 넘으면 실패합니다. Play는 기기에 맞는 ABI 하나만 내려받게 하고, x86_64는 에뮬레이터와 x86 크롬북에서만 쓰므로 크기만 기록합니다. x86_64는 같은 코드가 arm64보다 약 1.8MB 큽니다. 지금 줄이는 방법은 다섯입니다.
   - **압축 재배치:** `core/.cargo/config.toml`이 안드로이드 타깃에 APS2 압축 재배치를 켭니다. 64비트 ABI에서 재배치 표가 1.5MB에서 0.1MB로 줄고, 안드로이드는 API 23부터 읽으므로 minSdk 26에서 문제없습니다.
-  - **SQLite는 `-Oz`:** C 코드는 LTO 밖이라 패키지별 최적화 수준이 그대로 듣습니다. ABI마다 0.75MB가 줄어듭니다. 같이 빌드되는 OpenSSL은 자기 빌드 플래그를 써서 이 설정을 따르지 않습니다.
-  - **Rust는 `opt-level = 3`:** `"z"`로 하면 0.6MB가 더 줄지만 Argon2id(64MiB)가 약 50% 느려지고, LTO가 크레이트별 수준을 덮어써서 암호 크레이트만 빠르게 둘 수도 없습니다.
-  - **의존성:** 반복 규칙은 직접 전개하고(6장), reqwest의 HTTP/2는 끕니다([ADR 0002](../adr/0002-http-tls-stack.md)). 범용 RRULE 크레이트는 시간대 데이터베이스와 정규식을 함께 들여와 약 2MB였고, HTTP/2 클라이언트는 약 0.5MB였습니다.
+  - **SQLite는 `-Oz`:** C 코드는 LTO 밖이라 패키지별 최적화 수준이 그대로 듣습니다. ABI마다 0.75MB가 줄어듭니다.
+  - **OpenSSL과 SQLite는 쓰는 것만:** 위의 축소 OpenSSL이 3.0MB를 1.0MB로 줄입니다. SQLite는 FTS5만 남기고 쓰지 않는 모듈(FTS3, R*Tree, dbstat, soundex, STAT4, 열 메타데이터, JSON, 확장 로드)을 `core/.cargo/config.toml`의 `LIBSQLITE3_FLAGS`로 끄고, 테스트도 같은 설정으로 돕니다. 약 0.2MB입니다.
+  - **Rust는 `opt-level = 3`, 인라인 기준만 `-Os`만큼:** 안드로이드 타깃은 `core/.cargo/config.toml`이 LLVM 인라인 기준을 75로 낮춥니다(기본 225). 반복 펼치기와 벡터화 같은 나머지 `-O3` 최적화는 그대로라 Argon2id(64MiB)는 같은 속도이고(호스트에서 167ms와 168ms), ABI마다 약 0.5MB가 줄어듭니다. MLS 그룹 시험은 호스트에서 약 13% 느려졌습니다. `opt-level = "s"`나 `"z"`로 하면 0.35MB·0.68MB가 줄지만 Argon2id가 약 70% 느려지고, LTO가 크레이트별 수준을 덮어써서 암호 크레이트만 빠르게 둘 수도 없습니다.
+  - **의존성:** 반복 규칙은 직접 전개하고(6장), reqwest의 HTTP/2는 끕니다([ADR 0002](../adr/0002-http-tls-stack.md)). 범용 RRULE 크레이트는 시간대 데이터베이스와 정규식을 함께 들여와 약 2MB였고, HTTP/2 클라이언트는 약 0.5MB였습니다. mls-rs의 `rayon`(트리 해시 병렬화)도 끕니다. 수십 명 그룹에는 이득이 없고, 약 0.1MB입니다.
 - **버전:** 코어 버전은 앱 빌드 번호와 함께 올립니다. 앱과 코어를 따로 배포하지 않습니다.
 
 ## 8. 성능·메모리 예산
