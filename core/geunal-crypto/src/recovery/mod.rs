@@ -14,7 +14,7 @@ use ed25519_dalek::{Signer, SigningKey};
 use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
-use crate::aead::{Key, NONCE_LEN};
+use crate::aead::Key;
 use crate::kdf::{self, KdfError};
 
 pub use hangul::{compose, decompose};
@@ -165,7 +165,8 @@ impl RecoveryKeys {
     }
 
     /// [`Self::wrap_amk`] with a caller-chosen nonce, only for test vectors.
-    pub fn wrap_amk_with_nonce(&self, nonce: &[u8; NONCE_LEN], amk: &Key) -> Vec<u8> {
+    #[cfg(feature = "test-vectors")]
+    pub fn wrap_amk_with_nonce(&self, nonce: &[u8; crate::aead::NONCE_LEN], amk: &Key) -> Vec<u8> {
         kdf::wrap_amk_with_nonce(&self.wrap_key, nonce, amk)
     }
 

@@ -16,7 +16,7 @@ serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-geunal-crypto.workspace = true
+geunal-crypto = { workspace = true, features = ["test-vectors"] }
 hex.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

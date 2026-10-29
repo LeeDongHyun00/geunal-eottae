@@ -213,6 +213,10 @@ struct States {
 struct Providers {
     providers: Vec<String>,
 }
+#[derive(Deserialize)]
+struct Backups {
+    backups: Vec<BackupInfo>,
+}
 
 impl Transport for HttpTransport {
     async fn nonce(&self) -> Result<String, ApiError> {
@@ -257,6 +261,53 @@ impl Transport for HttpTransport {
             Some(ticket) => Self::once(self.anonymous(Method::GET, "/me/recovery").bearer_auth(ticket)).await,
             None => self.send(|t| t.request(Method::GET, "/me/recovery")).await,
         }
+    }
+
+    async fn start_backup(&self, size: u64) -> Result<BackupUpload, ApiError> {
+        let body = serde_json::json!({ "size": size });
+        self.send(|t| t.request(Method::POST, "/me/backups").json(&body)).await
+    }
+
+    async fn put_object(&self, url: &str, body: Vec<u8>) -> Result<(), ApiError> {
+        // The signature covers Content-Length, which reqwest sets from the body.
+        let response = self.client.put(url).body(body).send().await.map_err(|e| ApiError::Network(e.to_string()))?;
+        Self::check(response).await.map(|_| ())
+    }
+
+    async fn complete_backup(&self, id: i64) -> Result<BackupInfo, ApiError> {
+        let path = format!("/me/backups/{id}/complete");
+        self.send(|t| t.request(Method::POST, &path)).await
+    }
+
+    async fn backups(&self, ticket: Option<&str>) -> Result<Vec<BackupInfo>, ApiError> {
+        let list: Backups = match ticket {
+            Some(ticket) => Self::once(self.anonymous(Method::GET, "/me/backups").bearer_auth(ticket)).await?,
+            None => self.send(|t| t.request(Method::GET, "/me/backups")).await?,
+        };
+        Ok(list.backups)
+    }
+
+    async fn latest_backup(&self, ticket: Option<&str>) -> Result<Option<BackupDownload>, ApiError> {
+        let found = match ticket {
+            Some(ticket) => Self::once(self.anonymous(Method::GET, "/me/backups/latest").bearer_auth(ticket)).await,
+            None => self.send(|t| t.request(Method::GET, "/me/backups/latest")).await,
+        };
+        match found {
+            Err(e) if e.is(404, "not_found") => Ok(None),
+            other => other.map(Some),
+        }
+    }
+
+    async fn get_object(&self, url: &str, progress: Progress<'_>) -> Result<Vec<u8>, ApiError> {
+        let network = |e: reqwest::Error| ApiError::Network(e.to_string());
+        let mut response = Self::check(self.client.get(url).send().await.map_err(network)?).await?;
+        let total = response.content_length().unwrap_or(0);
+        let mut body = Vec::with_capacity(usize::try_from(total).unwrap_or(0));
+        while let Some(chunk) = response.chunk().await.map_err(network)? {
+            body.extend_from_slice(&chunk);
+            progress(body.len() as u64, total.max(body.len() as u64));
+        }
+        Ok(body)
     }
 
     fn restore_session(&self, access_token: &str, refresh_token: &str) {

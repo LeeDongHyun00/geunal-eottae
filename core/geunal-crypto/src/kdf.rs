@@ -84,6 +84,7 @@ pub fn wrap_amk(wrap_key: &Key, amk: &Key) -> Vec<u8> {
 }
 
 /// [`wrap_amk`] with a caller-chosen nonce, only for test vectors (core/vectors/recovery.json).
+#[cfg(feature = "test-vectors")]
 pub fn wrap_amk_with_nonce(wrap_key: &Key, nonce: &[u8; NONCE_LEN], amk: &Key) -> Vec<u8> {
     aead::seal_with_nonce(wrap_key, nonce, AMK_AAD, amk)
 }

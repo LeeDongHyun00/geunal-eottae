@@ -935,6 +935,7 @@ dependencies = [
  "argon2",
  "chacha20poly1305",
  "ed25519-dalek",
+ "geunal-crypto",
  "hex",
  "hkdf",
  "rand_core 0.6.4",

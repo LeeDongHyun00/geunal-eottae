@@ -11,19 +11,21 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant, SystemTime};
 
 use chrono::{DateTime, Utc};
-use geunal_crypto::login;
 use geunal_crypto::recovery::{self, CodeError, Entropy, RecoveryKeys};
+use geunal_crypto::{backup, login};
 use geunal_mls::MlsClient;
-use geunal_store::Counted;
+use geunal_store::archive::{self, Restored};
+use geunal_store::{BackupRecordRow, Counted, Db};
 use geunal_sync::api::{
-    AuthOutcome, DeviceProof, GuestSignIn, LinkRequest, NewAccountFields, ProviderSignIn, RecoveryUpload,
-    ReplaceRequest, Replaced,
+    AuthOutcome, DeviceProof, GuestSignIn, LinkRequest, NewAccountFields, ProviderSignIn, RecoverSignIn,
+    RecoveryUpload, ReplaceRequest, Replaced,
 };
 use geunal_sync::{ApiError, Transport as _};
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::local::{parse_stored, stored_utc, system_time};
+use crate::calendar::ensure_default_calendar;
+use crate::local::{changes, parse_stored, stored_utc, system_time};
 use crate::{
     Change, Core, CoreError, KEY_PACKAGES, SESSION, SIGNING_KEY, Session, State, build_engine, not_yet, revoked_error,
     signing_secret,
@@ -41,6 +43,12 @@ const RECOVERY_NEW_KEY: &str = "recovery_new_key";
 /// The account the code on this device belongs to: a sign-in into another account makes a new one.
 const RECOVERY_OWNER: &str = "recovery_owner";
 const REVOCATION: &str = "revocation";
+/// Whose calendar this store holds (protocol §10 "복원" 4). Unlike the account settings it stays through a sign-out,
+/// so the next account to sign in is asked before another account's events become its own.
+const STORE_OWNER: &str = "store_owner";
+const AUTO_BACKUP: &str = "auto_backup";
+/// The change count the last backup of this device carried, against `changes` for the automatic backup.
+const BACKED_UP_CHANGES: &str = "backed_up_changes";
 /// Key packages a sign-in has yet to put up. Set before the upload, so an app closed in the middle puts them up on its
 /// next `sync()`.
 const KEY_PACKAGES_DUE: &str = "key_packages_due";
@@ -155,7 +163,9 @@ pub struct BackupView {
 pub struct BackupStatus {
     pub last: Option<BackupView>,
     pub auto: bool,
-    /// Something changed since the last backup; the automatic backup skips a day without changes.
+    /// Something changed since the last backup; the automatic backup skips a day without changes. With no backup of
+    /// this store on record (a new account, a restored phone, after starting over or a sign-in that kept another
+    /// account's events), everything in it counts as changed.
     pub changed: bool,
     /// The recovery material is on the server, so a backup can be made and opened later.
     pub ready: bool,
@@ -291,7 +301,41 @@ impl Core {
     /// yet, or the account is not known before the code is checked (a guest coming back). `None` when there is
     /// nothing to ask, such as a store that is the signing-in account's own.
     pub fn local_data_of_other_account(&self) -> Result<Option<LocalData>, CoreError> {
-        Err(not_yet("local_data_of_other_account"))
+        // The account to compare with: the signed-in one, or the one a replacement is for. Before a guest's code is
+        // checked there is none, and then a store with an owner is someone else's as far as this question goes.
+        let account = match self.session() {
+            Some(session) => Some(session.user_id),
+            None => self.pending_ticket().ok().flatten().map(|p| p.user_id),
+        };
+        self.store.read(|db| {
+            let Some(owner) = db.setting(STORE_OWNER)? else { return Ok(None) };
+            if account.as_deref() == Some(owner.as_str()) {
+                return Ok(None);
+            }
+            let own = db.own_data()?;
+            Ok((own.events > 0 || own.people > 0).then_some(LocalData { events: own.events, people: own.people }))
+        })
+    }
+
+    /// The answer to `local_data_of_other_account` after a sign-in that restores nothing: a new account, one without a
+    /// backup, or a fresh start (screen 24). `Keep` makes the events this account's; `Discard` deletes them first.
+    /// Until it is answered no backup is made, so another account's events never reach this account's backups.
+    pub fn settle_local_data(&self, choice: LocalDataChoice) -> Result<(), CoreError> {
+        let session = self.session().ok_or(CoreError::NotSignedIn)?;
+        self.store.write(|db| {
+            if !db.setting(STORE_OWNER)?.is_none_or(|owner| owner == session.user_id) {
+                if choice == LocalDataChoice::Discard {
+                    db.discard_own_data()?;
+                }
+                // Notes of the other account's backups.
+                forget_backups(db)?;
+            }
+            Ok::<_, CoreError>(db.set_setting(STORE_OWNER, &session.user_id)?)
+        })?;
+        ensure_default_calendar(&self.store)?;
+        self.calendar_changed();
+        self.listener.on_change(Change::Account);
+        Ok(())
     }
 
     /// Restores with the recovery code: unwraps the account master key, downloads and opens the newest backup and
@@ -306,8 +350,85 @@ impl Core {
         local_data: LocalDataChoice,
         progress: Option<Arc<dyn ProgressListener>>,
     ) -> Result<RestoreSummary, CoreError> {
-        let _ = (words, local_data, progress);
-        Err(not_yet("restore_from_code"))
+        // Checked on the device first: a word outside the list or a wrong checksum never reaches Argon2id or the
+        // server.
+        let entropy = recovery::entropy(&words).map_err(|_| CoreError::WrongRecoveryCode)?;
+        let this = self.clone();
+        self.run(async move {
+            let report = |done: u64, total: u64| {
+                if let Some(listener) = &progress {
+                    listener.on_progress(done, total);
+                }
+            };
+            let keys = this.keys_of(entropy).await?;
+            let pending = this.pending_ticket()?;
+            let (user_id, ticket, recovered) = match (&pending, this.session()) {
+                (Some(p), _) => (p.user_id.clone(), Some(p.ticket.clone()), false),
+                (None, Some(session)) => (session.user_id, None, false),
+                (None, None) => (this.recover_guest(&keys).await?, None, true),
+            };
+            let read = |e: CoreError| match e {
+                CoreError::Api { status: 401, ref code, .. } if ticket.is_some() && code == "token_expired" => {
+                    CoreError::SignInAgain
+                }
+                e => e,
+            };
+            // The master key says whose code this is. Nothing on the device has changed yet.
+            let stored = this.checked(this.api.get_recovery(ticket.as_deref()).await).await.map_err(read)?;
+            let amk = keys.unwrap_amk(&stored.amk_wrapped).ok_or(CoreError::WrongRecoveryCode)?;
+            // The newest backup, downloaded and opened before anything local is touched.
+            let latest = this.checked(this.api.latest_backup(ticket.as_deref()).await).await.map_err(read)?;
+            let archive = match &latest {
+                Some(download) => {
+                    report(0, download.backup.size);
+                    let object = this.api.get_object(&download.download_url, &report).await?;
+                    let cbor = backup::open(&amk, &object).map_err(|_| malformed("the backup does not open"))?;
+                    Some(archive::decode(&cbor).map_err(malformed)?)
+                }
+                None => None,
+            };
+            // One write: another account's events go only now, with the code proven and the backup open, and a
+            // failure leaves the store as it was. The same account's store merges whatever `local_data` says.
+            let restored = this.store.write(|db| {
+                if !db.setting(STORE_OWNER)?.is_none_or(|owner| owner == user_id) {
+                    if local_data == LocalDataChoice::Discard {
+                        db.discard_own_data()?;
+                    }
+                    forget_backups(db)?;
+                }
+                let restored = match &archive {
+                    Some(archive) => db.restore_archive(archive)?,
+                    None => Restored::default(),
+                };
+                db.set_setting(STORE_OWNER, &user_id)?;
+                Ok::<_, CoreError>(restored)
+            })?;
+            ensure_default_calendar(&this.store)?;
+            this.calendar_changed();
+            // A replacement makes this the active device now; a guest's `/auth/recover` already did.
+            let replaced_device = match pending {
+                Some(pending) => {
+                    this.replace_device(pending).await?;
+                    true
+                }
+                None => recovered,
+            };
+            this.keep_recovery(&user_id, &entropy, &amk, true, false)?;
+            // The user has just typed the code from where they kept it, so the "write it down" banner has done its job.
+            this.store.write(|db| Ok::<_, CoreError>(db.set_setting(RECOVERY_SAVED, "1")?))?;
+            this.listener.on_change(Change::Account);
+            let backup_at = archive.as_ref().map(|a| parse_stored(&a.made_at).map(system_time)).transpose()?;
+            Ok(RestoreSummary {
+                events: restored.events,
+                people: restored.people,
+                calendars: restored.calendars,
+                shift_templates: restored.shift_templates,
+                backup_at,
+                replaced_device,
+                groups: 0,
+            })
+        })
+        .await
     }
 
     /// "백업 없이 새로 시작" for a Kakao or Apple account whose code is lost: a new code and master key are made, and
@@ -343,6 +464,8 @@ impl Core {
                 None => this.session().ok_or(CoreError::NotSignedIn)?,
             };
             this.make_recovery(&session.user_id, true, proof.as_ref()).await?;
+            // The server deleted every backup; so go the notes about them.
+            this.store.write(forget_backups)?;
             Ok(session)
         })
         .await
@@ -478,7 +601,16 @@ impl Core {
     // ----- backup (screen 20; protocol §10) -----
 
     pub fn backup_status(&self) -> Result<BackupStatus, CoreError> {
-        Err(not_yet("backup_status"))
+        let ready = self.backup_ready()?;
+        self.store.read(|db| {
+            let last = db.backup_records()?.first().map(view_of_note).transpose()?;
+            let auto = db.setting(AUTO_BACKUP)?.as_deref() != Some("0");
+            let changed = match db.setting(BACKED_UP_CHANGES)?.and_then(|n| n.parse::<u64>().ok()) {
+                Some(carried) => changes(db)? > carried,
+                None => true,
+            };
+            Ok(BackupStatus { last, auto, changed, ready })
+        })
     }
 
     /// "지금 백업": seals the archive with the account master key and uploads it.
@@ -486,24 +618,64 @@ impl Core {
         self: Arc<Self>,
         progress: Option<Arc<dyn ProgressListener>>,
     ) -> Result<BackupView, CoreError> {
-        let _ = progress;
-        Err(not_yet("backup_now"))
+        let this = self.clone();
+        self.run(async move { this.backup(false, progress).await }).await
     }
 
     /// The app's daily Wi-Fi task: backs up when automatic backup is on and something changed since the last one.
     /// `None` when it was not due.
     pub async fn auto_backup(self: Arc<Self>) -> Result<Option<BackupView>, CoreError> {
-        Err(not_yet("auto_backup"))
+        let status = self.backup_status()?;
+        if !(status.auto && status.changed && status.ready) {
+            return Ok(None);
+        }
+        let this = self.clone();
+        self.run(async move { this.backup(true, None).await.map(Some) }).await
     }
 
-    /// The account's backups on the server, newest first, at most three.
+    /// The account's backups on the server, newest first, at most three. A replacement in progress reads them with
+    /// its ticket, for "백업 3개 지우고 새로 시작".
     pub async fn backups(self: Arc<Self>) -> Result<Vec<BackupView>, CoreError> {
-        Err(not_yet("backups"))
+        let this = self.clone();
+        self.run(async move {
+            let signed_in = this.session().is_some();
+            let ticket = match signed_in {
+                true => None,
+                false => Some(this.pending_ticket()?.ok_or(CoreError::NotSignedIn)?.ticket),
+            };
+            let list = match this.checked(this.api.backups(ticket.as_deref()).await).await {
+                Err(CoreError::Api { status: 401, code, .. }) if ticket.is_some() && code == "token_expired" => {
+                    return Err(CoreError::SignInAgain);
+                }
+                other => other?,
+            };
+            let notes = this.store.read(|db| db.backup_records())?;
+            if signed_in && this.owns_store()? {
+                let ids: Vec<i64> = list.iter().map(|b| b.id).collect();
+                this.store.write(|db| Ok::<_, CoreError>(db.retain_backup_records(&ids)?))?;
+            }
+            let count = |n: i64| u32::try_from(n).unwrap_or(0);
+            list.iter()
+                .map(|b| {
+                    let note = notes.iter().find(|n| n.id == b.id);
+                    Ok(BackupView {
+                        id: b.id,
+                        created_at: system_time(parse_stored(&b.created_at)?),
+                        size: b.size,
+                        automatic: note.map(|n| n.automatic),
+                        events: note.map(|n| count(n.events)),
+                        people: note.map(|n| count(n.people)),
+                    })
+                })
+                .collect()
+        })
+        .await
     }
 
     pub fn set_auto_backup(&self, enabled: bool) -> Result<(), CoreError> {
-        let _ = enabled;
-        Err(not_yet("set_auto_backup"))
+        self.store.write(|db| Ok::<_, CoreError>(db.set_setting(AUTO_BACKUP, if enabled { "1" } else { "0" })?))?;
+        self.listener.on_change(Change::Account);
+        Ok(())
     }
 
     // ----- alpha statistics (protocol §14) -----
@@ -558,8 +730,27 @@ struct StoredRevocation {
     via: String,
 }
 
+/// The backups this device had on record are gone or another account's: their notes go, and so does the change count
+/// the last one carried, so the store counts as not backed up until the next backup.
+fn forget_backups(db: &Db<'_>) -> Result<(), CoreError> {
+    db.retain_backup_records(&[])?;
+    Ok(db.delete_setting(BACKED_UP_CHANGES)?)
+}
+
 fn malformed(e: impl std::fmt::Display) -> CoreError {
     CoreError::Sync { reason: e.to_string() }
+}
+
+fn view_of_note(note: &BackupRecordRow) -> Result<BackupView, CoreError> {
+    let count = |n: i64| u32::try_from(n).unwrap_or(0);
+    Ok(BackupView {
+        id: note.id,
+        created_at: system_time(parse_stored(&note.created_at)?),
+        size: u64::try_from(note.size).unwrap_or(0),
+        automatic: Some(note.automatic),
+        events: Some(count(note.events)),
+        people: Some(count(note.people)),
+    })
 }
 
 fn is_revoked(e: &CoreError) -> bool {
@@ -688,8 +879,8 @@ impl Core {
         }
     }
 
-    /// The ticket of a replacement in progress. It stays until the replacement succeeds, so a try that failed on the
-    /// network can be made again; one that ran out means signing in again.
+    /// The ticket of a replacement in progress. It stays until the replacement succeeds, so a restore that failed on a
+    /// wrong code or the network can be tried again; one that ran out means signing in again.
     pub(crate) fn pending_ticket(&self) -> Result<Option<PendingReplace>, CoreError> {
         let mut ticket = self.ticket.lock().unwrap_or_else(|p| p.into_inner());
         match ticket.as_ref() {
@@ -722,6 +913,100 @@ impl Core {
         self.register_session(&tokens, None).await
     }
 
+    /// A guest coming back with the code (`POST /auth/recover`, protocol §13): the device registers and the account's
+    /// other device is signed out. A code the server does not know is `WrongRecoveryCode`.
+    async fn recover_guest(&self, keys: &RecoveryKeys) -> Result<String, CoreError> {
+        let nonce = self.api.nonce().await?;
+        let request = RecoverSignIn {
+            proof: self.proof_for(nonce.clone())?,
+            recovery_id: keys.id().to_vec(),
+            recovery_signature: keys.sign_recovery(&nonce).to_vec(),
+        };
+        let outcome = match self.api.recover(request).await {
+            Err(e) if e.is(401, "recovery_invalid") => return Err(CoreError::WrongRecoveryCode),
+            other => other?,
+        };
+        let AuthOutcome::Registered { tokens, .. } = outcome else {
+            return Err(malformed("a guest comeback asked for a replacement"));
+        };
+        Ok(self.register_session(&tokens, None).await?.user_id)
+    }
+
+    /// Whether the store is the signed-in account's: claimed by it, or by nobody yet.
+    fn owns_store(&self) -> Result<bool, CoreError> {
+        let Some(session) = self.session() else { return Ok(false) };
+        Ok(self.store.read(|db| db.setting(STORE_OWNER))?.is_none_or(|owner| owner == session.user_id))
+    }
+
+    /// A backup needs the code on this device, its material on the server and a store that is this account's.
+    fn backup_ready(&self) -> Result<bool, CoreError> {
+        let has_code = self.recovery_secrets()?.is_some();
+        let uploaded = self.store.read(|db| db.setting(RECOVERY_UPLOADED))?.is_some();
+        Ok(has_code && uploaded && self.owns_store()?)
+    }
+
+    /// Seals the archive under the master key and uploads it (protocol §10 "올리기").
+    async fn backup(
+        &self,
+        automatic: bool,
+        progress: Option<Arc<dyn ProgressListener>>,
+    ) -> Result<BackupView, CoreError> {
+        let session = self.session().ok_or(CoreError::NotSignedIn)?;
+        if !self.owns_store()? {
+            return Err(CoreError::Invalid {
+                reason: "another account's events are on this device; settle them first".into(),
+            });
+        }
+        // The recovery material is what opens a backup later, so it goes up first.
+        self.upload_pending_recovery().await?;
+        let uploaded = self.store.read(|db| db.setting(RECOVERY_UPLOADED))?.is_some();
+        let Some((_, amk)) = self.recovery_secrets()?.filter(|_| uploaded) else {
+            return Err(CoreError::RecoveryMissing);
+        };
+        let made_at = stored_utc(self.now());
+        // The count goes with the snapshot: a change made during the upload still counts afterwards.
+        let (archive, carried) = self.store.write(|db| {
+            db.set_setting(STORE_OWNER, &session.user_id)?;
+            Ok::<_, CoreError>((db.archive(&made_at)?, changes(db)?))
+        })?;
+        let object = backup::seal(&amk, &archive::encode(&archive));
+        let size = object.len() as u64;
+        let upload = match self.checked(self.api.start_backup(size).await).await {
+            Err(CoreError::Api { status: 409, code, .. }) if code == "recovery_missing" => {
+                return Err(CoreError::RecoveryMissing);
+            }
+            other => other?,
+        };
+        let report = |done| {
+            if let Some(listener) = &progress {
+                listener.on_progress(done, size);
+            }
+        };
+        report(0);
+        self.api.put_object(&upload.upload_url, object).await?;
+        report(size);
+        let info = self.checked(self.api.complete_backup(upload.id).await).await?;
+        let count = |n: usize| i64::try_from(n).unwrap_or(i64::MAX);
+        let note = BackupRecordRow {
+            id: info.id,
+            created_at: info.created_at,
+            size: i64::try_from(info.size).unwrap_or(i64::MAX),
+            automatic,
+            events: count(archive.events.len()),
+            people: count(archive.people.len()),
+        };
+        self.store.write(|db| {
+            db.put_backup_record(&note)?;
+            // The server keeps the newest three; so do the notes.
+            let ids: Vec<i64> = db.backup_records()?.iter().take(3).map(|n| n.id).collect();
+            db.retain_backup_records(&ids)?;
+            Ok::<_, CoreError>(db.set_setting(BACKED_UP_CHANGES, &carried.to_string())?)
+        })?;
+        self.listener.on_change(Change::Account);
+        view_of_note(&note)
+    }
+
+    /// Keeps the session, starts the engine with fresh key packages, and remembers the account.
     /// Keeps the session, starts the engine with fresh key packages, and remembers the account. Key packages that do
     /// not go up do not undo the sign-in, as the device is registered by then: `sync()` puts them up.
     async fn register_session(
@@ -766,7 +1051,16 @@ impl Core {
                 self.store.write(|db| Ok::<_, CoreError>(db.set_setting(ACCOUNT_STALE, "1")?))?;
             }
         }
-        self.store.write(|db| Ok::<_, CoreError>(db.delete_setting(REVOCATION)?))?;
+        self.store.write(|db| {
+            db.delete_setting(REVOCATION)?;
+            // A store nobody owns yet, used before any sign-in, or one with nothing of anyone's in it, is this
+            // account's. One with another account's events waits for `settle_local_data` or a restore.
+            let own = db.own_data()?;
+            if db.setting(STORE_OWNER)?.is_none() || (own.events == 0 && own.people == 0) {
+                db.set_setting(STORE_OWNER, &session.user_id)?;
+            }
+            Ok::<_, CoreError>(())
+        })?;
         self.listener.on_change(Change::Account);
         Ok(Session { user_id: session.user_id, device_id: session.device_id })
     }
@@ -1064,6 +1358,9 @@ impl Core {
             .transpose()?;
         self.store.write(|db| {
             db.wipe_group_state()?;
+            // The notes of backups this device can no longer open. The store's owner stays, so another account
+            // signing in here is asked about these events first.
+            forget_backups(db)?;
             for key in [ACCOUNT, ACCOUNT_STALE, RECOVERY_SAVED, RECOVERY_UPLOADED, RECOVERY_NEW_KEY, RECOVERY_OWNER] {
                 db.delete_setting(key)?;
             }

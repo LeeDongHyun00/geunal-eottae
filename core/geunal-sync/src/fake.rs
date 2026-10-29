@@ -46,6 +46,25 @@ struct User {
     replaced: Option<Replaced>,
     /// Backups deleted by "새로 시작" (`new_key`), for tests.
     backups_cleared: u32,
+    /// Uploads in the order they started; the completed ones are the account's backups.
+    backups: Vec<Backup>,
+}
+
+/// A backup upload, listed once it is completed (protocol §10 "올리기").
+struct Backup {
+    id: i64,
+    size: u64,
+    /// Stands for the presigned URL: the only authorization a PUT or GET of the object carries.
+    url: String,
+    object: Option<Vec<u8>>,
+    completed_at: Option<String>,
+}
+
+/// 64 MiB, the contract's limit for one sealed object.
+const MAX_BACKUP: u64 = 64 << 20;
+
+fn backup_info(backup: &Backup) -> BackupInfo {
+    BackupInfo { id: backup.id, size: backup.size, created_at: backup.completed_at.clone().unwrap_or_default() }
 }
 
 /// A `replace_required` sign-in waiting for `POST /auth/replace`.
@@ -365,6 +384,18 @@ impl FakeServer {
         self.state.lock().expect("fake server").device_of(user_id)
     }
 
+    /// The account's completed backups, newest first.
+    pub fn backups_of(&self, user_id: &str) -> Vec<BackupInfo> {
+        let state = self.state.lock().expect("fake server");
+        let mut list: Vec<BackupInfo> = state
+            .users
+            .get(user_id)
+            .map(|u| u.backups.iter().filter(|b| b.completed_at.is_some()).map(backup_info).collect())
+            .unwrap_or_default();
+        list.reverse();
+        list
+    }
+
     /// How many times "새로 시작" deleted the account's backups.
     pub fn backups_cleared(&self, user_id: &str) -> u32 {
         self.state.lock().expect("fake server").users.get(user_id).map(|u| u.backups_cleared).unwrap_or(0)
@@ -534,6 +565,20 @@ impl FakeClient {
             _ => None,
         };
         subject.is_some_and(|s| state.subjects.get(&s).is_some_and(|u| u == user))
+    }
+
+    /// Who reads: the bearer of a replacement ticket, which may only read recovery material and backups, or the
+    /// session.
+    fn reader(&self, ticket: Option<&str>) -> Result<String, ApiError> {
+        match ticket {
+            Some(ticket) => {
+                let mut state = self.lock();
+                let now = state.now();
+                let user = state.tickets.get(ticket).filter(|t| t.expires_at > now).map(|t| t.user_id.clone());
+                user.ok_or_else(|| err(401, "token_expired"))
+            }
+            None => Ok(self.who()?.0),
+        }
     }
 
     fn require_active<'a>(state: &'a mut State, group_id: &str, user: &str) -> Result<&'a mut Group, ApiError> {
@@ -707,6 +752,7 @@ impl Transport for FakeClient {
         let account = state.users.get_mut(&user).expect("the session's account exists");
         if req.new_key && account.recovery.is_some() {
             account.backups_cleared += 1;
+            account.backups.clear();
         }
         account.recovery = Some(Recovery {
             amk_wrapped: req.amk_wrapped,
@@ -718,18 +764,103 @@ impl Transport for FakeClient {
     }
 
     async fn get_recovery(&self, ticket: Option<&str>) -> Result<StoredRecovery, ApiError> {
-        let user = match ticket {
-            Some(ticket) => {
-                let mut state = self.lock();
-                let now = state.now();
-                let user = state.tickets.get(ticket).filter(|t| t.expires_at > now).map(|t| t.user_id.clone());
-                user.ok_or_else(|| err(401, "token_expired"))?
-            }
-            None => self.who()?.0,
-        };
+        let user = self.reader(ticket)?;
         let state = self.lock();
         let recovery = state.users.get(&user).and_then(|u| u.recovery.as_ref()).ok_or_else(|| err(404, "not_found"))?;
         Ok(StoredRecovery { amk_wrapped: recovery.amk_wrapped.clone(), updated_at: recovery.updated_at.clone() })
+    }
+
+    async fn start_backup(&self, size: u64) -> Result<BackupUpload, ApiError> {
+        let (user, _) = self.who()?;
+        let mut state = self.lock();
+        if size == 0 {
+            return Err(err(400, "invalid_request"));
+        }
+        if size > MAX_BACKUP {
+            return Err(err(413, "too_large"));
+        }
+        if state.users.get(&user).is_none_or(|u| u.recovery.is_none()) {
+            return Err(err(409, "recovery_missing"));
+        }
+        let id = i64::try_from(state.counter).unwrap_or(i64::MAX);
+        state.counter += 1;
+        let url = format!("fake-object://backups/{user}/{id}");
+        let account = state.users.get_mut(&user).expect("the session's account exists");
+        account.backups.push(Backup { id, size, url: url.clone(), object: None, completed_at: None });
+        Ok(BackupUpload { id, upload_url: url, expires_in: 900 })
+    }
+
+    async fn put_object(&self, url: &str, body: Vec<u8>) -> Result<(), ApiError> {
+        let mut state = self.lock();
+        let backup = state
+            .users
+            .values_mut()
+            .flat_map(|u| u.backups.iter_mut())
+            .find(|b| b.url == url && b.completed_at.is_none())
+            .ok_or_else(|| err(403, "http_403"))?;
+        // The URL is signed with the declared Content-Length.
+        if body.len() as u64 != backup.size {
+            return Err(err(403, "http_403"));
+        }
+        backup.object = Some(body);
+        Ok(())
+    }
+
+    async fn complete_backup(&self, id: i64) -> Result<BackupInfo, ApiError> {
+        let (user, _) = self.who()?;
+        let mut state = self.lock();
+        let now = state.now_text();
+        let account = state.users.get_mut(&user).expect("the session's account exists");
+        let backup = account.backups.iter_mut().find(|b| b.id == id).ok_or_else(|| err(404, "not_found"))?;
+        if backup.object.as_ref().map(|o| o.len() as u64) != Some(backup.size) {
+            return Err(err(409, "upload_incomplete"));
+        }
+        backup.completed_at.get_or_insert(now);
+        let info = backup_info(backup);
+        // The newest three completed backups stay.
+        let completed: Vec<i64> = account.backups.iter().filter(|b| b.completed_at.is_some()).map(|b| b.id).collect();
+        let dropped: Vec<i64> = completed.iter().take(completed.len().saturating_sub(3)).copied().collect();
+        account.backups.retain(|b| !dropped.contains(&b.id));
+        Ok(info)
+    }
+
+    async fn backups(&self, ticket: Option<&str>) -> Result<Vec<BackupInfo>, ApiError> {
+        let user = self.reader(ticket)?;
+        let state = self.lock();
+        let mut list: Vec<BackupInfo> = state
+            .users
+            .get(&user)
+            .map(|u| u.backups.iter().filter(|b| b.completed_at.is_some()).map(backup_info).collect())
+            .unwrap_or_default();
+        list.reverse();
+        Ok(list)
+    }
+
+    async fn latest_backup(&self, ticket: Option<&str>) -> Result<Option<BackupDownload>, ApiError> {
+        let user = self.reader(ticket)?;
+        let state = self.lock();
+        let latest = state.users.get(&user).and_then(|u| u.backups.iter().rev().find(|b| b.completed_at.is_some()));
+        Ok(latest.map(|b| BackupDownload { backup: backup_info(b), download_url: b.url.clone(), expires_in: 900 }))
+    }
+
+    async fn get_object(&self, url: &str, progress: Progress<'_>) -> Result<Vec<u8>, ApiError> {
+        let object = {
+            let state = self.lock();
+            let found = state
+                .users
+                .values()
+                .flat_map(|u| u.backups.iter())
+                .find(|b| b.url == url && b.completed_at.is_some())
+                .and_then(|b| b.object.clone());
+            found.ok_or_else(|| err(404, "http_404"))?
+        };
+        // In 64 KiB steps, as a download reports them.
+        let total = object.len() as u64;
+        for done in (0..object.len()).step_by(64 << 10).skip(1) {
+            progress(done as u64, total);
+        }
+        progress(total, total);
+        Ok(object)
     }
 
     fn restore_session(&self, access_token: &str, refresh_token: &str) {

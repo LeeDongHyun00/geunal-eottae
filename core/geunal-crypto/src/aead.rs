@@ -30,12 +30,18 @@ pub fn random_key() -> Key {
 pub fn seal(key: &Key, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
     let mut nonce = [0u8; NONCE_LEN];
     OsRng.fill_bytes(&mut nonce);
-    seal_with_nonce(key, &nonce, aad, plaintext)
+    seal_at(key, &nonce, aad, plaintext)
 }
 
 /// [`seal`] with a caller-chosen nonce. Only for test vectors (core/vectors/state_blobs.json), which must be
-/// reproducible; production code never reuses a nonce under a key, so it always goes through [`seal`].
+/// reproducible; production code never reuses a nonce under a key, so it always goes through [`seal`]. Behind the
+/// `test-vectors` feature, which only the vector tests turn on, so other code cannot call it by mistake.
+#[cfg(feature = "test-vectors")]
 pub fn seal_with_nonce(key: &Key, nonce: &[u8; NONCE_LEN], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    seal_at(key, nonce, aad, plaintext)
+}
+
+fn seal_at(key: &Key, nonce: &[u8; NONCE_LEN], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
     let nonce = *nonce;
     // Encrypt in place behind the nonce so the blob is assembled in a single allocation.
     let mut blob = Vec::with_capacity(NONCE_LEN + plaintext.len() + TAG_LEN);

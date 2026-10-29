@@ -69,7 +69,7 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 | `people()`, `upcoming_birthdays(days)`, `save_person(input)`, `delete_person(person_id)`, `import_contacts(contacts)` | `people()` 등 | `people()` 등 | 사람·생일(11·17번 화면) | M1 |
 | `birthday_in_year(birthday, year)`, `lunar_to_solar(year, month, day, leap_month)` | `birthdayInYear(birthday:year:)` 등 | `birthdayInYear(birthday, year)` 등 | 음력 생일의 그해 양력 날짜(6장의 윤달·30일 규칙 적용), 음력 날짜 그대로의 변환. 표 범위 밖은 `nil`/`null` | M1 |
 | `sign_in_nonce()`, `sign_in_kakao(nonce, id_token, account)`, `sign_in_apple(nonce, id_token, account)`, `sign_in_guest(account)` | `signInNonce() async throws` 등 | `suspend fun signInNonce()` 등 | 로그인과 기기 등록(protocol.md 13장). 앱은 두 제공자 SDK에 `provider_nonce`를 넘깁니다(이 기기 키에 묶은 값). 카카오·Apple은 `AuthResult`, 게스트는 늘 새 계정. 이름이 비면 "카카오 사용자"·"Apple 사용자"·"게스트"(5장 "계정과 세션") | M1 |
-| `local_data_of_other_account()`, `restore_from_code(words, local_data, progress)`, `start_fresh(proof)` | `restoreFromCode(words:localData:progress:) async throws` 등 | `suspend fun restoreFromCode(words, localData, progress)` 등 | 복구 코드로 복원하고 이 기기를 활성 기기로(교체 티켓, 로그인한 기기, 게스트 복귀 모두), 또는 "백업 없이 새로 시작"(교체 중인 기기와, 코드 없이 등록된 기기 모두). 다른 계정의 일정이 남아 있으면 앱이 먼저 묻고 가져오기·지우기를 넘깁니다(protocol.md 10장 "복원"). 제공자 로그인 뒤 30분이 지나면 `ReauthRequired`이고, 계정 삭제와 같은 제공자 증명(`DeletionProof`)을 붙여 다시 부릅니다. 계정의 코드가 있는 기기의 새로 시작은 `Invalid` | M1 |
+| `local_data_of_other_account()`, `settle_local_data(choice)`, `restore_from_code(words, local_data, progress)`, `start_fresh(proof)` | `restoreFromCode(words:localData:progress:) async throws` 등 | `suspend fun restoreFromCode(words, localData, progress)` 등 | 복구 코드로 복원하고 이 기기를 활성 기기로(교체 티켓, 로그인한 기기, 게스트 복귀 모두), 또는 "백업 없이 새로 시작"(교체 중인 기기와, 코드 없이 등록된 기기 모두). 다른 계정의 일정이 남아 있으면 앱이 먼저 묻고 가져오기·지우기를 넘깁니다(protocol.md 10장 "복원"). 복원하지 않는 로그인 뒤의 답은 `settle_local_data`로 넘깁니다. 제공자 로그인 뒤 30분이 지나면 `ReauthRequired`이고, 계정 삭제와 같은 제공자 증명(`DeletionProof`)을 붙여 다시 부릅니다. 계정의 코드가 있는 기기의 새로 시작은 `Invalid` | M1 |
 | `link_kakao(nonce, id_token)`, `link_apple(nonce, id_token)`, `account()`, `me_summary()`, `delete_account(proof)`, `revocation()` | `linkKakao(nonce:idToken:) async throws` 등 | `suspend fun linkKakao(nonce, idToken)` 등 | 게스트 연결, 계정 정보, "나" 화면 요약, 계정 삭제(다시 증명: 게스트는 코어가 서명, 카카오는 새 ID 토큰, Apple은 새 인가 코드. 일정과 사람은 남김), 다른 기기 로그인으로 해제된 때·플랫폼·방법 | M1 |
 | `recovery_words()`, `recovery_status()`, `mark_recovery_saved()`, `check_recovery_word(text)`, `check_recovery_code(words)`, `recovery_completions(prefix)`, `split_recovery_code(text)` | `recoveryWords()` 등 | `recoveryWords()` 등 | 복구 코드 12단어(서버에 복구 자료가 없는 로그인 때 만들어 올리고, 여기서는 읽기만), 저장 표시, 입력 칸의 단어 확인, 12단어의 단어 수·목록·체크섬 확인(서버 없이, 21번 화면의 버튼), 자동 완성, 붙여넣기 | M1 |
 | `backup_status()`, `backup_now(progress)`, `auto_backup()`, `backups()`, `set_auto_backup(enabled)` | `backupStatus()`, `backupNow(progress:) async throws` 등 | `backupStatus()`, `suspend fun backupNow(progress)` 등 | 암호화 백업. `auto_backup`은 앱의 하루 한 번 와이파이 작업이 부르고, 바뀐 게 없으면 건너뜀 | M1 |
@@ -393,6 +393,27 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
   - 내 캘린더와 일정, 직접 넣거나 연락처에서 가져온 사람, 데이터베이스 키는 남깁니다.
   - 403 본문의 `replaced_at`·`replaced_by`·`replaced_via`는 다음 로그인이 이 기기를 등록할 때까지 `revocation()`이 돌려줍니다. `revoke` 이벤트는 본문이 비어 있어서, 코어가 `GET /me`를 불러 그 403을 받습니다.
   - `GET /me`가 네트워크 오류 등으로 답하지 못해도 지웁니다. 그때 `revocation()`은 `None`입니다. `GET /me`가 성공하면, 서버가 이 기기를 아직 활성으로 보는 것이라 아무것도 지우지 않습니다.
+
+### 저장소의 주인, 복원, 백업
+
+- **저장소의 주인:** 설정 `store_owner`에 이 저장소의 일정이 누구의 것인지 적습니다. 계정 설정과 달리 해제나 로그아웃 뒤에도 남아서, 다음에 다른 계정이 들어오면 먼저 묻게 합니다.
+  - 주인이 없는 저장소(로그인 전에 쓰던 캘린더)나 내 일정·사람이 하나도 없는 저장소는, 처음 등록하는 계정의 것이 됩니다.
+  - 주인이 다른 계정이고 일정이나 사람이 있으면 `local_data_of_other_account()`가 그 수를 돌려줍니다. 복원 전에는 교체 티켓의 계정과 비교하고, 게스트 복귀처럼 계정을 아직 모르면 주인이 있는 저장소는 늘 묻습니다.
+  - 답이 정해지기 전에는 백업하지 않습니다. 다른 계정의 일정이 이 계정의 백업에 섞이지 않게 하려는 것입니다.
+- **복원(`restore_from_code`):**
+  1. 단어 수·목록·체크섬을 기기에서 먼저 봅니다. 틀리면 Argon2id도 서버도 거치지 않고 `WrongRecoveryCode`입니다.
+  2. 계정을 정합니다: 교체 티켓의 계정, 등록된 기기의 계정, 아니면 게스트 복귀(`POST /auth/recover`, 모르는 코드는 `WrongRecoveryCode`).
+  3. `GET /me/recovery`의 래핑된 AMK가 이 코드로 풀려야 합니다. 풀리지 않으면 `WrongRecoveryCode`이고, 이 기기에서는 아무것도 바뀌지 않았습니다.
+  4. 가장 새 백업을 받아 엽니다(진행은 받은 바이트). 백업이 없으면 건너뜁니다.
+  5. 한 번의 쓰기 트랜잭션에서 다른 계정의 일정을 "지우기"면 지우고, 아카이브를 넣고, 주인을 적습니다. 같은 계정의 저장소면 선택과 상관없이 합칩니다. 중간에 실패하면 저장소는 그대로입니다.
+  6. 교체 티켓이 있으면 `POST /auth/replace`로 이 기기를 활성 기기로 만듭니다. 티켓은 교체가 끝날 때까지 남아서, 틀린 코드나 끊긴 연결 뒤에 다시 시도할 수 있습니다.
+  7. 아카이브는 직접 넣거나 연락처에서 가져온 사람만 되살립니다. 아카이브는 AMK로 인증되지만, 쓰는 쪽에 버그가 있어도 그룹에서 공개된 사람이 내 사람으로 들어오지 않게 하려는 것입니다.
+- **백업:** 아카이브를 AMK로 봉인해 `POST /me/backups` → 업로드 URL에 `PUT` → `complete` 순서로 올립니다. 업로드 URL에는 세션 토큰을 보내지 않습니다.
+  - 복구 자료가 서버에 없으면 먼저 올리고, 그래도 없으면 `RecoveryMissing`입니다.
+  - 기기는 자기가 만든 백업의 자동·직접 여부와 담긴 일정·사람 수를 적어 둡니다. 서버는 크기와 시각만 압니다. 이 기록도 서버처럼 최근 3개만 남기고, "새로 시작"으로 서버의 백업이 지워지면 함께 지웁니다.
+  - 자동 백업은 설정이 켜져 있고(기본), 백업이 담는 것이 마지막 백업 뒤 바뀌었을 때만 올립니다. 바뀜은 시각이 아니라 변경 횟수로 셉니다. 같은 초의 변경도 세고, 기기 시계를 되돌려도 놓치지 않습니다. 횟수는 아카이브를 뜬 순간의 값을 적으므로, 올리는 동안 바뀐 것은 다음 백업이 담습니다.
+  - 이 저장소의 백업 기록이 없으면 모두 바뀐 것으로 봅니다. 새 계정, 복원한 폰, "새로 시작"으로 서버의 백업이 지워진 폰, 다른 계정의 일정을 가져온 폰이 그렇습니다. 백업 기록을 통째로 지우는 곳(새로 시작, 기기 해제, 다른 계정의 일정 정리)은 마지막 백업이 담은 변경 횟수도 함께 지웁니다. 지워진 백업이나 다른 계정의 백업이 이 저장소를 담고 있다고 여기지 않으려는 것입니다.
+- **고정 nonce:** 벡터를 다시 만드는 함수(`seal_with_nonce`, `encrypt_with_nonce`, `wrap_amk_with_nonce`)는 `geunal-crypto`의 `test-vectors` 기능 뒤에 둡니다. 벡터 시험만 이 기능을 켜서, 운영 코드에서 부르면 컴파일되지 않습니다.
 
 ## 6. 도메인 로직
 
