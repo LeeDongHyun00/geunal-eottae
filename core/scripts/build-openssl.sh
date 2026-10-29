@@ -13,11 +13,11 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-version=3.6.3
-sha256=243a86649cf6f23eeb6a2ff2456e09e5d77dd9018a54d3d96b0c6bdd6ba6c7f1
+version=3.5.9
+sha256=603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
 # The last day upstream fixes this series (openssl-library.org/policies/releasestrat). After it no patch comes, so a
 # newer patch can no longer be the signal.
-supported_until=2026-11-01
+supported_until=2030-04-08
 url="https://github.com/openssl/openssl/releases/download/openssl-$version/openssl-$version.tar.gz"
 
 # Security fixes arrive as patch releases of a series, and RustSec no longer sees this OpenSSL, so the weekly audit
@@ -63,7 +63,7 @@ options=(
   no-ec no-ec2m no-sm2 no-sm3 no-sm4 no-dh no-dsa no-chacha no-poly1305 no-siphash no-blake2
   no-camellia no-aria no-bf no-cast no-des no-idea no-md4 no-mdc2 no-rc2 no-rc4 no-rc5 no-rmd160 no-seed
   no-whirlpool no-scrypt no-ocb no-siv no-gost no-cms no-ocsp no-ts no-ct no-srp no-psk no-cmac no-ecx
-  no-ml-kem no-ml-dsa no-slh-dsa no-lms no-argon2 no-err no-deprecated no-filenames no-uplink no-padlockeng
+  no-ml-kem no-ml-dsa no-slh-dsa no-argon2 no-err no-deprecated no-filenames no-uplink no-padlockeng
   no-afalgeng no-thread-pool no-default-thread-pool no-rfc3779
 )
 # Position-independent for the shared library it ends up in; one section per function so the final link drops what

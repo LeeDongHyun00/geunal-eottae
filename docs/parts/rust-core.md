@@ -548,7 +548,7 @@ pub fn open(key: &[u8; 32], aad: &str, blob: &[u8]) -> Option<Vec<u8>> {
 | 호스트 | `x86_64-unknown-linux-gnu` | 테스트, 헤드리스 종단 시험 클라이언트, 테스트 벡터 | 리눅스 |
 
 - **SQLCipher 빌드:** iOS는 CommonCrypto, 리눅스(테스트)는 시스템 libcrypto, 안드로이드는 직접 빌드한 OpenSSL을 씁니다.
-  - `core/scripts/build-openssl.sh`가 OpenSSL 3.6.3을 고정 SHA-256으로 받아 ABI마다 libcrypto만 빌드하고, `build-android.sh`가 그 위치를 libsqlite3-sys에 넘깁니다.
+  - `core/scripts/build-openssl.sh`가 장기 지원 계열의 OpenSSL 3.5.9(2030-04-08까지 지원)를 고정 SHA-256으로 받아 ABI마다 libcrypto만 빌드하고, `build-android.sh`가 그 위치를 libsqlite3-sys에 넘깁니다.
   - SQLCipher가 부르는 것(AES-256-CBC, SHA-1·256·512, HMAC, PBKDF2, 난수)만 남기고 나머지 알고리즘과 TLS·X.509·오류 문자열을 끕니다. 어셈블리는 남겨 AES와 SHA가 CPU 명령을 씁니다.
   - DB 형식은 그대로입니다. 시스템 OpenSSL로 만든 저장소를 축소판이 열고 그 반대도 열리는 것을 확인했습니다.
   - OpenSSL이 cargo 밖에 있어 RustSec이 보지 않으므로, `make audit-core`가 같은 계열의 새 패치가 나왔는지와 그 계열의 지원이 끝났는지 확인합니다([의존성 검사](../security/dependencies.md)).
