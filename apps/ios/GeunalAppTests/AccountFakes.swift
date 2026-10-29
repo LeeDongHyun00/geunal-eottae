@@ -79,7 +79,7 @@ final class AccountFakeCore: Core, @unchecked Sendable {
         return try guestResult.get()
     }
 
-    override func startFresh() async throws -> Session {
+    override func startFresh(proof: DeletionProof?) async throws -> Session {
         record("startFresh")
         return Session(userId: "u1", deviceId: "d2")
     }

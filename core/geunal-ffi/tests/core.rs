@@ -97,3 +97,16 @@ fn restores_a_saved_session_on_open_and_opens_the_mls_client_over_the_store() {
     assert!(core.groups().unwrap().is_empty());
     assert!(!core.cipher_version().unwrap().is_empty());
 }
+
+#[test]
+fn refuses_plain_http_outside_the_local_stack() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = Arc::new(MemorySecrets::default());
+    let refused = Core::open(
+        dir.path().to_str().unwrap().to_owned(),
+        "http://api.example".to_owned(),
+        Arc::new(Quiet),
+        secrets.clone(),
+    );
+    assert!(matches!(refused, Err(CoreError::Invalid { .. })));
+}

@@ -1,5 +1,9 @@
 //! The HTTP side of [`Transport`]: reqwest over the core's own rustls configuration, a bearer token once signed in,
 //! and protocol §11 error bodies turned into [`ApiError::Api`]. Paths and shapes follow `server/api/openapi.yaml`.
+//!
+//! An authenticated call that meets 401 `token_expired` trades the refresh token for new tokens and goes once more.
+//! The trade runs one at a time: the server ends every session of a device that presents a refresh token twice, and
+//! two calls can find the access token expired together.
 
 use std::sync::Mutex;
 
@@ -12,7 +16,20 @@ use crate::api::*;
 pub struct HttpTransport {
     base: String,
     client: Client,
-    token: Mutex<Option<String>>,
+    /// Access and refresh token.
+    tokens: Mutex<Option<(String, String)>>,
+    listener: Mutex<Option<TokenListener>>,
+    refreshing: tokio::sync::Mutex<()>,
+}
+
+/// What a failed response stands for. Bodies never reach a log (api-server.md §10); the code and status are enough to
+/// act on.
+fn api_error(status: u16, body: &str) -> ApiError {
+    match serde_json::from_str::<ErrorBody>(body) {
+        Ok(body) if status == 403 && body.error == "device_revoked" => ApiError::Revoked { replaced: body.replaced },
+        Ok(body) => ApiError::Api { status, code: body.error, message: body.message },
+        Err(_) => ApiError::Api { status, code: format!("http_{status}"), message: String::new() },
+    }
 }
 
 #[derive(Deserialize)]
@@ -20,40 +37,125 @@ struct ErrorBody {
     error: String,
     #[serde(default)]
     message: String,
+    #[serde(flatten)]
+    replaced: Option<Replaced>,
+}
+
+/// Whether `base` may be plain http: only the local stack, on this machine or, from the Android emulator, on the host
+/// at 10.0.2.2. The apps' transport security settings do not reach the core's own sockets, so the rule lives here.
+fn local_stack(base: &reqwest::Url) -> bool {
+    let host = base.host_str().unwrap_or_default();
+    match host.trim_start_matches('[').trim_end_matches(']').parse::<std::net::IpAddr>() {
+        Ok(ip) => ip.is_loopback() || ip == std::net::Ipv4Addr::new(10, 0, 2, 2),
+        Err(_) => host == "localhost",
+    }
 }
 
 impl HttpTransport {
-    /// `base` is the API origin, `https://api.example` or `http://127.0.0.1:8080` for the local stack.
+    /// `base` is the API origin: `https://api.example`, or plain http for the local stack (`http://127.0.0.1:8080`,
+    /// `http://10.0.2.2:8080` from the Android emulator). Tokens never travel in the clear otherwise, not even after a
+    /// redirect. An empty `base` is a build without a server: the calendar works and every call fails.
     pub fn new(base: &str) -> Result<Self, ApiError> {
+        let https_only = match base {
+            "" => false,
+            _ => {
+                let url = reqwest::Url::parse(base).map_err(|e| ApiError::Malformed(format!("api base: {e}")))?;
+                match url.scheme() {
+                    "https" => true,
+                    "http" if local_stack(&url) => false,
+                    _ => return Err(ApiError::Malformed("the api base must be https outside the local stack".into())),
+                }
+            }
+        };
         let client = Client::builder()
             .use_preconfigured_tls((*crate::tls::client_config()).clone())
+            .https_only(https_only)
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| ApiError::Network(e.to_string()))?;
-        Ok(Self { base: base.trim_end_matches('/').to_owned(), client, token: Mutex::new(None) })
+        Ok(Self {
+            base: base.trim_end_matches('/').to_owned(),
+            client,
+            tokens: Mutex::new(None),
+            listener: Mutex::new(None),
+            refreshing: tokio::sync::Mutex::new(()),
+        })
     }
 
     pub fn access_token(&self) -> Option<String> {
-        self.token.lock().ok().and_then(|t| t.clone())
+        self.tokens.lock().ok().and_then(|t| t.as_ref().map(|(access, _)| access.clone()))
     }
 
-    fn request(&self, method: Method, path: &str) -> RequestBuilder {
-        let mut req = self.client.request(method, format!("{}{path}", self.base));
-        if let Some(token) = self.access_token() {
-            req = req.bearer_auth(token);
+    fn refresh_token(&self) -> Option<String> {
+        self.tokens.lock().ok().and_then(|t| t.as_ref().map(|(_, refresh)| refresh.clone()))
+    }
+
+    fn set_tokens(&self, tokens: &SessionInfo) {
+        if let Ok(mut t) = self.tokens.lock() {
+            *t = Some((tokens.access_token.clone(), tokens.refresh_token.clone()));
         }
-        req
     }
 
-    async fn send<T: DeserializeOwned>(req: RequestBuilder) -> Result<T, ApiError> {
-        let response = req.send().await.map_err(|e| ApiError::Network(e.to_string()))?;
-        let response = Self::check(response).await?;
-        response.json().await.map_err(|e| ApiError::Malformed(e.to_string()))
+    /// A request carrying the session's bearer token.
+    fn request(&self, method: Method, path: &str) -> RequestBuilder {
+        let req = self.anonymous(method, path);
+        match self.access_token() {
+            Some(token) => req.bearer_auth(token),
+            None => req,
+        }
     }
 
-    async fn send_empty(req: RequestBuilder) -> Result<(), ApiError> {
+    /// A request without the session: the `/auth` calls, which prove themselves.
+    fn anonymous(&self, method: Method, path: &str) -> RequestBuilder {
+        self.client.request(method, format!("{}{path}", self.base))
+    }
+
+    /// Sends what `build` makes, and once more after a refresh when the access token had expired. `build` runs again
+    /// for the second try so the request carries the new token.
+    async fn execute(&self, build: impl Fn(&Self) -> RequestBuilder) -> Result<Response, ApiError> {
+        let used = self.access_token();
+        match Self::check(build(self).send().await.map_err(|e| ApiError::Network(e.to_string()))?).await {
+            Err(e) if used.is_some() && e.is(401, "token_expired") => {
+                self.refresh(used.as_deref()).await?;
+                Self::check(build(self).send().await.map_err(|e| ApiError::Network(e.to_string()))?).await
+            }
+            other => other,
+        }
+    }
+
+    async fn send<T: DeserializeOwned>(&self, build: impl Fn(&Self) -> RequestBuilder) -> Result<T, ApiError> {
+        self.execute(build).await?.json().await.map_err(|e| ApiError::Malformed(e.to_string()))
+    }
+
+    async fn send_empty(&self, build: impl Fn(&Self) -> RequestBuilder) -> Result<(), ApiError> {
+        self.execute(build).await.map(|_| ())
+    }
+
+    /// A call that never refreshes: the `/auth` calls, and reads under a replacement ticket.
+    async fn once<T: DeserializeOwned>(req: RequestBuilder) -> Result<T, ApiError> {
         let response = req.send().await.map_err(|e| ApiError::Network(e.to_string()))?;
-        Self::check(response).await.map(|_| ())
+        Self::check(response).await?.json().await.map_err(|e| ApiError::Malformed(e.to_string()))
+    }
+
+    /// Trades the refresh token for new tokens, unless another call already did while this one waited.
+    async fn refresh(&self, expired: Option<&str>) -> Result<(), ApiError> {
+        let _one_at_a_time = self.refreshing.lock().await;
+        if self.access_token().as_deref() != expired {
+            return Ok(());
+        }
+        let refresh_token = self.refresh_token().ok_or_else(|| ApiError::Api {
+            status: 401,
+            code: "token_expired".into(),
+            message: String::new(),
+        })?;
+        let body = serde_json::json!({ "refresh_token": refresh_token });
+        let tokens: SessionInfo = Self::once(self.anonymous(Method::POST, "/auth/refresh").json(&body)).await?;
+        self.set_tokens(&tokens);
+        let listener = self.listener.lock().ok().and_then(|l| l.clone());
+        if let Some(listener) = listener {
+            listener(&tokens);
+        }
+        Ok(())
     }
 
     async fn check(response: Response) -> Result<Response, ApiError> {
@@ -62,12 +164,15 @@ impl HttpTransport {
             return Ok(response);
         }
         let text = response.text().await.unwrap_or_default();
-        let (code, message) = match serde_json::from_str::<ErrorBody>(&text) {
-            Ok(body) => (body.error, body.message),
-            Err(_) => (format!("http_{}", status.as_u16()), String::new()),
-        };
-        // Bodies never reach a log (api-server.md §10); the code and status are enough to act on.
-        Err(ApiError::Api { status: status.as_u16(), code, message })
+        Err(api_error(status.as_u16(), &text))
+    }
+
+    /// Keeps the tokens of a sign-in that registered this device; a replacement answer registers nothing.
+    fn keep(&self, outcome: AuthOutcome) -> AuthOutcome {
+        if let AuthOutcome::Registered { tokens, .. } = &outcome {
+            self.set_tokens(tokens);
+        }
+        outcome
     }
 }
 
@@ -104,85 +209,186 @@ struct Version {
 struct States {
     states: Vec<StateBlob>,
 }
+#[derive(Deserialize)]
+struct Providers {
+    providers: Vec<String>,
+}
 
 impl Transport for HttpTransport {
     async fn nonce(&self) -> Result<String, ApiError> {
-        Ok(Self::send::<Nonce>(self.request(Method::GET, "/auth/nonce")).await?.nonce)
+        Ok(Self::once::<Nonce>(self.anonymous(Method::GET, "/auth/nonce")).await?.nonce)
     }
 
-    async fn sign_in(&self, req: StubSignIn) -> Result<SessionInfo, ApiError> {
-        let session: SessionInfo = Self::send(self.request(Method::POST, "/auth/stub").json(&req)).await?;
-        self.restore_session(&session.access_token);
-        Ok(session)
+    async fn sign_in(&self, req: StubSignIn) -> Result<AuthOutcome, ApiError> {
+        Ok(self.keep(Self::once(self.anonymous(Method::POST, "/auth/stub").json(&req)).await?))
     }
 
-    fn restore_session(&self, access_token: &str) {
-        if let Ok(mut token) = self.token.lock() {
-            *token = Some(access_token.to_owned());
+    async fn sign_in_provider(&self, provider: &str, req: ProviderSignIn) -> Result<AuthOutcome, ApiError> {
+        let path = format!("/auth/{provider}");
+        Ok(self.keep(Self::once(self.anonymous(Method::POST, &path).json(&req)).await?))
+    }
+
+    async fn sign_in_guest(&self, req: GuestSignIn) -> Result<AuthOutcome, ApiError> {
+        Ok(self.keep(Self::once(self.anonymous(Method::POST, "/auth/guest").json(&req)).await?))
+    }
+
+    async fn recover(&self, req: RecoverSignIn) -> Result<AuthOutcome, ApiError> {
+        Ok(self.keep(Self::once(self.anonymous(Method::POST, "/auth/recover").json(&req)).await?))
+    }
+
+    async fn replace(&self, req: ReplaceRequest) -> Result<AuthOutcome, ApiError> {
+        Ok(self.keep(Self::once(self.anonymous(Method::POST, "/auth/replace").json(&req)).await?))
+    }
+
+    async fn link(&self, req: LinkRequest) -> Result<Vec<String>, ApiError> {
+        Ok(self.send::<Providers>(|t| t.request(Method::POST, "/auth/link").json(&req)).await?.providers)
+    }
+
+    async fn me(&self) -> Result<MeInfo, ApiError> {
+        self.send(|t| t.request(Method::GET, "/me")).await
+    }
+
+    async fn put_recovery(&self, req: RecoveryUpload) -> Result<(), ApiError> {
+        self.send_empty(|t| t.request(Method::PUT, "/me/recovery").json(&req)).await
+    }
+
+    async fn get_recovery(&self, ticket: Option<&str>) -> Result<StoredRecovery, ApiError> {
+        match ticket {
+            Some(ticket) => Self::once(self.anonymous(Method::GET, "/me/recovery").bearer_auth(ticket)).await,
+            None => self.send(|t| t.request(Method::GET, "/me/recovery")).await,
+        }
+    }
+
+    fn restore_session(&self, access_token: &str, refresh_token: &str) {
+        if let Ok(mut tokens) = self.tokens.lock() {
+            *tokens = Some((access_token.to_owned(), refresh_token.to_owned()));
+        }
+    }
+
+    fn clear_session(&self) {
+        if let Ok(mut tokens) = self.tokens.lock() {
+            *tokens = None;
+        }
+    }
+
+    fn set_token_listener(&self, listener: TokenListener) {
+        if let Ok(mut l) = self.listener.lock() {
+            *l = Some(listener);
         }
     }
 
     async fn upload_key_packages(&self, packages: Vec<Vec<u8>>) -> Result<(), ApiError> {
         let body = serde_json::json!({ "key_packages": packages.iter().map(|p| b64::encode(p)).collect::<Vec<_>>() });
-        Self::send_empty(self.request(Method::POST, "/me/key-packages").json(&body)).await
+        self.send_empty(|t| t.request(Method::POST, "/me/key-packages").json(&body)).await
     }
 
     async fn devices(&self, user_id: &str) -> Result<Vec<DeviceInfo>, ApiError> {
-        Ok(Self::send::<Devices>(self.request(Method::GET, &format!("/users/{user_id}/devices"))).await?.devices)
+        let path = format!("/users/{user_id}/devices");
+        Ok(self.send::<Devices>(|t| t.request(Method::GET, &path)).await?.devices)
     }
 
     async fn claim_key_package(&self, device_id: &str) -> Result<Vec<u8>, ApiError> {
         let path = format!("/devices/{device_id}/key-packages/claim");
-        Ok(Self::send::<KeyPackage>(self.request(Method::POST, &path)).await?.key_package)
+        Ok(self.send::<KeyPackage>(|t| t.request(Method::POST, &path)).await?.key_package)
     }
 
     async fn my_groups(&self) -> Result<Vec<GroupSummary>, ApiError> {
-        Ok(Self::send::<Groups>(self.request(Method::GET, "/me/groups")).await?.groups)
+        Ok(self.send::<Groups>(|t| t.request(Method::GET, "/me/groups")).await?.groups)
     }
 
     async fn create_group(&self) -> Result<GroupSummary, ApiError> {
-        Self::send(self.request(Method::POST, "/groups")).await
+        self.send(|t| t.request(Method::POST, "/groups")).await
     }
 
     async fn put_group_info(&self, group_id: &str, info: GroupInfo) -> Result<(), ApiError> {
-        Self::send_empty(self.request(Method::PUT, &format!("/groups/{group_id}/group-info")).json(&info)).await
+        let path = format!("/groups/{group_id}/group-info");
+        self.send_empty(|t| t.request(Method::PUT, &path).json(&info)).await
     }
 
     async fn members(&self, group_id: &str) -> Result<Vec<MemberInfo>, ApiError> {
-        Ok(Self::send::<Members>(self.request(Method::GET, &format!("/groups/{group_id}/members"))).await?.members)
+        let path = format!("/groups/{group_id}/members");
+        Ok(self.send::<Members>(|t| t.request(Method::GET, &path)).await?.members)
     }
 
     async fn remove_member(&self, group_id: &str, user_id: &str) -> Result<(), ApiError> {
-        Self::send_empty(self.request(Method::DELETE, &format!("/groups/{group_id}/members/{user_id}"))).await
+        let path = format!("/groups/{group_id}/members/{user_id}");
+        self.send_empty(|t| t.request(Method::DELETE, &path)).await
     }
 
     async fn post_commit(&self, group_id: &str, req: CommitRequest) -> Result<CommitAccepted, ApiError> {
-        Self::send(self.request(Method::POST, &format!("/groups/{group_id}/commits")).json(&req)).await
+        let path = format!("/groups/{group_id}/commits");
+        self.send(|t| t.request(Method::POST, &path).json(&req)).await
     }
 
     async fn post_message(&self, group_id: &str, req: MessageRequest) -> Result<MessageAccepted, ApiError> {
-        Self::send(self.request(Method::POST, &format!("/groups/{group_id}/messages")).json(&req)).await
+        let path = format!("/groups/{group_id}/messages");
+        self.send(|t| t.request(Method::POST, &path).json(&req)).await
     }
 
     async fn log(&self, group_id: &str, after: i64, limit: u32) -> Result<LogPage, ApiError> {
         let path = format!("/groups/{group_id}/log?after={after}&limit={limit}");
-        Self::send(self.request(Method::GET, &path)).await
+        self.send(|t| t.request(Method::GET, &path)).await
     }
 
     async fn group_info(&self, group_id: &str) -> Result<GroupInfo, ApiError> {
-        Self::send(self.request(Method::GET, &format!("/groups/{group_id}/group-info"))).await
+        let path = format!("/groups/{group_id}/group-info");
+        self.send(|t| t.request(Method::GET, &path)).await
     }
 
     async fn welcomes(&self) -> Result<Vec<WelcomeItem>, ApiError> {
-        Ok(Self::send::<Welcomes>(self.request(Method::GET, "/me/welcomes")).await?.welcomes)
+        Ok(self.send::<Welcomes>(|t| t.request(Method::GET, "/me/welcomes")).await?.welcomes)
     }
 
     async fn put_state(&self, group_id: &str, kind: &str, req: PutState) -> Result<i64, ApiError> {
         let path = format!("/groups/{group_id}/state/{kind}");
-        Ok(Self::send::<Version>(self.request(Method::PUT, &path).json(&req)).await?.version)
+        Ok(self.send::<Version>(|t| t.request(Method::PUT, &path).json(&req)).await?.version)
     }
 
     async fn state(&self, group_id: &str) -> Result<Vec<StateBlob>, ApiError> {
-        Ok(Self::send::<States>(self.request(Method::GET, &format!("/groups/{group_id}/state"))).await?.states)
+        let path = format!("/groups/{group_id}/state");
+        Ok(self.send::<States>(|t| t.request(Method::GET, &path)).await?.states)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn takes_plain_http_only_for_the_local_stack() {
+        for base in [
+            "https://api.example",
+            "http://127.0.0.1:8080",
+            "http://localhost:8080",
+            "http://[::1]:8080",
+            "http://10.0.2.2:8080",
+            "",
+        ] {
+            assert!(HttpTransport::new(base).is_ok(), "{base}");
+        }
+        for base in [
+            "http://api.example",
+            "http://192.168.0.10:8080",
+            "http://10.0.2.3:8080",
+            "ftp://api.example",
+            "api.example",
+        ] {
+            assert!(matches!(HttpTransport::new(base), Err(ApiError::Malformed(_))), "{base}");
+        }
+    }
+
+    #[test]
+    fn a_revoked_device_reads_how_it_was_replaced_when_the_body_says() {
+        let body = r#"{"error":"device_revoked","message":"m","replaced_at":"2026-10-26T05:00:00Z","replaced_by":"ios","replaced_via":"recovery"}"#;
+        let replaced = Replaced {
+            replaced_at: "2026-10-26T05:00:00Z".into(),
+            replaced_by: "ios".into(),
+            replaced_via: "recovery".into(),
+        };
+        assert_eq!(api_error(403, body), ApiError::Revoked { replaced: Some(replaced) });
+        // An M0 server, or a revocation that was not a replacement.
+        assert_eq!(api_error(403, r#"{"error":"device_revoked","message":"m"}"#), ApiError::Revoked { replaced: None });
+        assert!(api_error(403, r#"{"error":"replace_required","message":"m"}"#).is(403, "replace_required"));
+        assert!(api_error(502, "<html>bad gateway</html>").is(502, "http_502"));
     }
 }

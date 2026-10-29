@@ -177,7 +177,7 @@ final class RestoreModelTests: XCTestCase {
 
     func testSendsThePersonBackWhenTheTicketRanOut() async {
         let f = Fixture()
-        f.core.restoreResult = .failure(.Api(status: 401, code: "token_expired", detail: ""))
+        f.core.restoreResult = .failure(.SignInAgain)
         let model = f.model()
         await model.paste(code.joined(separator: " "))
 

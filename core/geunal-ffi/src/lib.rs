@@ -10,6 +10,7 @@ pub mod account;
 pub mod calendar;
 mod local;
 pub mod people;
+mod transport;
 
 pub use account::*;
 pub use calendar::*;
@@ -25,9 +26,12 @@ use geunal_domain::entry::{Choice, Entry};
 use geunal_mls::{Identity, MlsClient};
 use geunal_store::{DB_FILE, Store};
 use geunal_sync::realtime::{Event, Realtime};
-use geunal_sync::{Alert, Engine, HttpTransport, Listener, Session as SyncSession, SyncError, Transport as _};
+use geunal_sync::{
+    Alert, ApiError, Engine, HttpTransport, Listener, Session as SyncSession, SyncError, Transport as _,
+};
 use rand_core::{OsRng, RngCore};
 use tokio::sync::Mutex;
+use transport::Api;
 
 uniffi::setup_scaffolding!();
 
@@ -67,14 +71,19 @@ pub enum CoreError {
     /// match, or a code that does not unwrap the account master key (protocol §10).
     #[error("wrong recovery code")]
     WrongRecoveryCode,
-    /// The server wants the account proven again before deleting it (403 `reauth_required`, protocol §13). Nothing
-    /// was deleted and the session is still valid: get a fresh `DeletionProof` and try again.
+    /// The server wants the account proven again (403 `reauth_required`, protocol §10, §13): before deleting it, or
+    /// before starting over without the code more than 30 minutes after the provider sign-in. Nothing changed and the
+    /// session is still valid: get a fresh `DeletionProof` and try again.
     #[error("the account has to be proven again")]
     ReauthRequired,
     /// The server has no recovery material for this account yet (409 `recovery_missing`), so a guest cannot prove the
     /// account and no backup can be made. The core uploads it first; try again after the next `sync()`.
     #[error("recovery material not uploaded yet")]
     RecoveryMissing,
+    /// The replacement ticket's 30 minutes ran out (401 `token_expired`, protocol §13): sign in with Kakao or Apple
+    /// again, which brings a new ticket.
+    #[error("sign in again")]
+    SignInAgain,
     /// A function of the M1 surface whose body has not landed yet. Gone by the end of M1.
     #[error("not implemented yet: {what}")]
     NotImplemented { what: String },
@@ -85,6 +94,17 @@ pub(crate) fn not_yet(what: &str) -> CoreError {
     CoreError::NotImplemented { what: what.to_owned() }
 }
 
+/// What every call answers once another device's sign-in signed this one out; `revocation()` says how.
+pub(crate) fn revoked_error() -> CoreError {
+    CoreError::Api { status: 403, code: "device_revoked".into(), detail: String::new() }
+}
+
+impl From<ApiError> for CoreError {
+    fn from(e: ApiError) -> Self {
+        CoreError::from(SyncError::Api(e))
+    }
+}
+
 impl From<SyncError> for CoreError {
     fn from(e: SyncError) -> Self {
         match e {
@@ -92,6 +112,7 @@ impl From<SyncError> for CoreError {
                 CoreError::Api { status, code, detail: message }
             }
             SyncError::Api(geunal_sync::ApiError::Network(reason)) => CoreError::Network { reason },
+            SyncError::Api(geunal_sync::ApiError::Revoked { .. }) => revoked_error(),
             SyncError::Store(e) => CoreError::Store { reason: e.to_string() },
             SyncError::NotSignedIn => CoreError::NotSignedIn,
             SyncError::Realtime(reason) => CoreError::Realtime { reason },
@@ -275,7 +296,7 @@ pub enum RealtimeEvent {
 
 enum State {
     SignedOut,
-    SignedIn(Box<Engine<Arc<HttpTransport>>>),
+    SignedIn(Box<Engine<Arc<Api>>>),
 }
 
 #[derive(uniffi::Object)]
@@ -285,7 +306,7 @@ pub struct Core {
     /// The one connection to the store. The calendar reads and writes through it directly, signed in or not, so a
     /// month view never waits for a sync holding the engine; the engine keeps a clone of it.
     store: Store,
-    api: Arc<HttpTransport>,
+    api: Arc<Api>,
     listener: Arc<dyn CoreListener>,
     secrets: Arc<dyn SecretStore>,
     db_key: [u8; 32],
@@ -293,6 +314,16 @@ pub struct Core {
     realtime: Mutex<Option<Realtime>>,
     /// A fixed "now" for tests; `None` reads the system clock.
     clock: std::sync::Mutex<Option<chrono::DateTime<chrono::Utc>>>,
+    /// The replacement ticket of a `ReplaceRequired` sign-in, good for 30 minutes and never written down (protocol
+    /// §13): a restarted app signs in again.
+    ticket: std::sync::Mutex<Option<account::PendingReplace>>,
+    /// The recovery keys of this device's code, derived once per run: `sync()` retries an upload until the server
+    /// takes it, and Argon2id at 64 MiB is the expensive part.
+    recovery_keys:
+        std::sync::Mutex<Option<(geunal_crypto::recovery::Entropy, Arc<geunal_crypto::recovery::RecoveryKeys>)>>,
+    /// `sync()` asked the server this run whether the account still needs a recovery code: a device without one asks
+    /// once, not at every sync.
+    recovery_checked: std::sync::atomic::AtomicBool,
 }
 
 #[uniffi::export]
@@ -307,45 +338,11 @@ impl Core {
         listener: Arc<dyn CoreListener>,
         secrets: Arc<dyn SecretStore>,
     ) -> Result<Arc<Self>, CoreError> {
-        let db_key = database_key(secrets.as_ref())?;
-        let store_dir = PathBuf::from(store_dir);
-        let store = Store::open(&store_dir.join(DB_FILE), &db_key)?;
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .thread_name("geunal-core")
-            .build()
-            .map_err(|e| CoreError::Sync { reason: e.to_string() })?;
-        let api = Arc::new(HttpTransport::new(&api_base).map_err(|e| CoreError::Network { reason: e.to_string() })?);
-        calendar::ensure_default_calendar(&store)?;
-        let state = match saved_session(secrets.as_ref()) {
-            Some(session) => {
-                api.restore_session(&session.access_token);
-                let engine = build_engine(
-                    &store_dir,
-                    &store,
-                    &db_key,
-                    &session,
-                    secrets.as_ref(),
-                    api.clone(),
-                    listener.clone(),
-                )?;
-                State::SignedIn(Box::new(engine))
-            }
-            None => State::SignedOut,
-        };
-        Ok(Arc::new(Self {
-            runtime,
-            store_dir,
-            store,
-            api,
-            listener,
-            secrets,
-            db_key,
-            state: Mutex::new(state),
-            realtime: Mutex::new(None),
-            clock: std::sync::Mutex::new(None),
-        }))
+        let api = HttpTransport::new(&api_base).map_err(|e| match e {
+            ApiError::Malformed(reason) => CoreError::Invalid { reason },
+            e => CoreError::Network { reason: e.to_string() },
+        })?;
+        Self::open_with(store_dir, Api::Http(api), listener, secrets)
     }
 
     /// The SQLCipher release inside the app build, for the M0 screen that shows the core runs on the device.
@@ -378,38 +375,30 @@ impl Core {
         let this = self.clone();
         self.run(async move {
             let secret = signing_secret(this.secrets.as_ref())?;
-            let session = geunal_sync::sign_in(&this.api, &subject, &display_name, &platform, &secret).await?;
-            let json = serde_json::to_vec(&session).map_err(|e| CoreError::Sync { reason: e.to_string() })?;
-            this.secrets.put(SESSION.to_owned(), json);
-            let engine = build_engine(
-                &this.store_dir,
-                &this.store,
-                &this.db_key,
-                &session,
-                this.secrets.as_ref(),
-                this.api.clone(),
-                this.listener.clone(),
-            )?;
-            engine.publish_key_packages(KEY_PACKAGES).await?;
-            *this.state.lock().await = State::SignedIn(Box::new(engine));
-            // An M0 server says neither whether the account is new nor whether it holds recovery material.
-            Ok(AuthResult::Registered {
-                session: Session { user_id: session.user_id, device_id: session.device_id },
-                new_account: false,
-                recovery: false,
-            })
+            let outcome =
+                geunal_sync::sign_in_stub(this.api.as_ref(), &subject, &display_name, &platform, &secret).await?;
+            this.finish_sign_in(outcome, Some(display_name)).await
         })
         .await
     }
 
     /// Catches every group up from its cursor and sends what is waiting in the outbox. Before a sign-in there is
     /// nothing to catch up, so this returns at once: the apps' first screen opens the core and syncs without an account.
+    /// Then what the sign-in could not finish is done: the account as `GET /me` tells it, key packages, and recovery
+    /// material (protocol §10 "올리는 때"); a refusal from the server comes back as this call's error.
     pub async fn sync(self: Arc<Self>) -> Result<(), CoreError> {
         if saved_session(self.secrets.as_ref()).is_none() {
             return Ok(());
         }
         let this = self.clone();
-        self.run(async move { this.engine(Box::new(|e| Box::pin(async move { e.sync().await }))).await }).await
+        self.run(async move {
+            this.engine(Box::new(|e| Box::pin(async move { e.sync().await }))).await?;
+            // After the groups, so what the server keeps refusing does not hold up the calendar.
+            this.refresh_account().await?;
+            this.publish_due_key_packages().await?;
+            this.upload_pending_recovery().await
+        })
+        .await
     }
 
     pub async fn create_group(self: Arc<Self>, name: Option<String>) -> Result<String, CoreError> {
@@ -613,17 +602,7 @@ impl Core {
                 realtime.next_within(Duration::from_millis(timeout_ms)).await
             };
             let Some(event) = event else { return Ok(None) };
-            let view = match &event {
-                Event::Entry { g, s, .. } => RealtimeEvent::Entry { group_id: g.clone(), seq: *s },
-                Event::State { g, .. } => RealtimeEvent::State { group_id: g.clone() },
-                Event::Membership { g } => RealtimeEvent::Membership { group_id: g.clone() },
-                Event::Welcome {} => RealtimeEvent::Welcome,
-                Event::Revoke {} => RealtimeEvent::Revoke,
-                Event::Joined => RealtimeEvent::Joined,
-                Event::Closed(reason) => RealtimeEvent::Closed { reason: reason.clone() },
-            };
-            this.engine(Box::new(|e| Box::pin(async move { e.handle_event(event).await }))).await?;
-            Ok(Some(view))
+            this.apply_event(event).await.map(Some)
         })
         .await
     }
@@ -634,6 +613,106 @@ impl Core {
 }
 
 impl Core {
+    fn open_with(
+        store_dir: String,
+        api: Api,
+        listener: Arc<dyn CoreListener>,
+        secrets: Arc<dyn SecretStore>,
+    ) -> Result<Arc<Self>, CoreError> {
+        let db_key = database_key(secrets.as_ref())?;
+        let store_dir = PathBuf::from(store_dir);
+        let store = Store::open(&store_dir.join(DB_FILE), &db_key)?;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .thread_name("geunal-core")
+            .build()
+            .map_err(|e| CoreError::Sync { reason: e.to_string() })?;
+        let api = Arc::new(api);
+        // A refresh spends the old refresh token at once, so the new one is kept before anything else can run.
+        let kept = secrets.clone();
+        api.set_token_listener(Arc::new(move |tokens| {
+            if let Some(mut session) = saved_session(kept.as_ref()) {
+                session.access_token = tokens.access_token.clone();
+                session.refresh_token = tokens.refresh_token.clone();
+                kept.put(SESSION.to_owned(), serde_json::to_vec(&session).expect("a session serializes"));
+            }
+        }));
+        calendar::ensure_default_calendar(&store)?;
+        let state = match saved_session(secrets.as_ref()) {
+            Some(session) => {
+                api.restore_session(&session.access_token, &session.refresh_token);
+                let engine = build_engine(
+                    &store_dir,
+                    &store,
+                    &db_key,
+                    &session,
+                    secrets.as_ref(),
+                    api.clone(),
+                    listener.clone(),
+                )?;
+                State::SignedIn(Box::new(engine))
+            }
+            None => State::SignedOut,
+        };
+        Ok(Arc::new(Self {
+            runtime,
+            store_dir,
+            store,
+            api,
+            listener,
+            secrets,
+            db_key,
+            state: Mutex::new(state),
+            realtime: Mutex::new(None),
+            clock: std::sync::Mutex::new(None),
+            ticket: std::sync::Mutex::new(None),
+            recovery_keys: std::sync::Mutex::new(None),
+            recovery_checked: std::sync::atomic::AtomicBool::new(false),
+        }))
+    }
+
+    /// [`Core::open`] against the in-process fake server, for this crate's tests. Not part of the FFI.
+    #[cfg(feature = "fake-server")]
+    #[doc(hidden)]
+    pub fn open_fake(
+        store_dir: String,
+        api: geunal_sync::fake::FakeClient,
+        listener: Arc<dyn CoreListener>,
+        secrets: Arc<dyn SecretStore>,
+    ) -> Result<Arc<Self>, CoreError> {
+        Self::open_with(store_dir, Api::Fake(api), listener, secrets)
+    }
+
+    /// Applies an event as the gateway would forward it, from the fake server's queue (`FakeServer::take_events`): the
+    /// fake has no gateway. For this crate's tests; not part of the FFI.
+    #[cfg(feature = "fake-server")]
+    #[doc(hidden)]
+    pub async fn deliver_fake_event(self: Arc<Self>, event: serde_json::Value) -> Result<RealtimeEvent, CoreError> {
+        let event: Event = serde_json::from_value(event).map_err(|e| CoreError::Realtime { reason: e.to_string() })?;
+        let this = self.clone();
+        self.run(async move { this.apply_event(event).await }).await
+    }
+
+    async fn apply_event(&self, event: Event) -> Result<RealtimeEvent, CoreError> {
+        let view = match &event {
+            Event::Entry { g, s, .. } => RealtimeEvent::Entry { group_id: g.clone(), seq: *s },
+            Event::State { g, .. } => RealtimeEvent::State { group_id: g.clone() },
+            Event::Membership { g } => RealtimeEvent::Membership { group_id: g.clone() },
+            Event::Welcome {} => RealtimeEvent::Welcome,
+            Event::Revoke {} => RealtimeEvent::Revoke,
+            Event::Joined => RealtimeEvent::Joined,
+            Event::Closed(reason) => RealtimeEvent::Closed { reason: reason.clone() },
+        };
+        let revoke = matches!(event, Event::Revoke {});
+        self.engine(Box::new(|e| Box::pin(async move { e.handle_event(event).await }))).await?;
+        if revoke {
+            // The event names nothing more; the next request learns when, where and how (protocol §13).
+            self.confirm_revocation().await?;
+        }
+        Ok(view)
+    }
+
     /// Fixes the clock the calendar reads ("today", the next-up bar, alerts) for tests. Not part of the FFI.
     #[doc(hidden)]
     pub fn set_clock(&self, now: Option<chrono::DateTime<chrono::Utc>>) {
@@ -658,11 +737,20 @@ impl Core {
         self.runtime.spawn(fut).await.map_err(|e| CoreError::Sync { reason: format!("task failed: {e}") })?
     }
 
-    /// One engine operation at a time, under the state lock.
+    /// One engine operation at a time, under the state lock. A 403 `device_revoked` on the way signs this device out
+    /// (protocol §13 "기기 해제").
     async fn engine<R>(&self, f: EngineOp<'_, R>) -> Result<R, CoreError> {
         let mut state = self.state.lock().await;
         let State::SignedIn(engine) = &mut *state else { return Err(CoreError::NotSignedIn) };
-        f(engine).await.map_err(CoreError::from)
+        match f(engine).await {
+            Err(SyncError::Api(ApiError::Revoked { replaced })) => {
+                *state = State::SignedOut;
+                drop(state);
+                self.signed_out_by_another(replaced).await?;
+                Err(revoked_error())
+            }
+            other => other.map_err(CoreError::from),
+        }
     }
 
     async fn send(
@@ -687,7 +775,7 @@ impl Core {
 }
 
 type EngineFuture<'b, R> = std::pin::Pin<Box<dyn std::future::Future<Output = Result<R, SyncError>> + Send + 'b>>;
-type EngineOp<'a, R> = Box<dyn for<'b> FnOnce(&'b mut Engine<Arc<HttpTransport>>) -> EngineFuture<'b, R> + Send + 'a>;
+type EngineOp<'a, R> = Box<dyn for<'b> FnOnce(&'b mut Engine<Arc<Api>>) -> EngineFuture<'b, R> + Send + 'a>;
 
 fn view_of(state: &GroupState) -> GroupStateView {
     let appointments = state
@@ -733,9 +821,9 @@ fn build_engine(
     db_key: &[u8; 32],
     session: &SyncSession,
     secrets: &dyn SecretStore,
-    api: Arc<HttpTransport>,
+    api: Arc<Api>,
     listener: Arc<dyn CoreListener>,
-) -> Result<Engine<Arc<HttpTransport>>, CoreError> {
+) -> Result<Engine<Arc<Api>>, CoreError> {
     let db = store_dir.join(DB_FILE);
     let secret = signing_secret(secrets)?;
     let identity = Identity::new(session.user_id.clone(), session.device_id.clone());
