@@ -434,6 +434,25 @@ fn the_account_a_sign_in_could_not_fetch_comes_with_the_next_sync() {
 }
 
 #[test]
+fn the_saved_mark_of_one_accounts_code_is_not_another_accounts() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let a = phone(&server);
+        // Bee's code is on the server; this phone then makes and saves a code for Ace.
+        kakao(&a.core, "bee", "비").await.unwrap();
+        kakao(&a.core, "ace", "에이스").await.unwrap();
+        a.core.mark_recovery_saved().unwrap();
+        assert!(a.core.me_summary().unwrap().recovery_saved);
+
+        // Back on Bee, whose code this phone does not hold.
+        let bee = kakao(&a.core, "bee", "비").await.unwrap();
+        assert!(matches!(bee, AuthResult::Registered { recovery: true, .. }), "{bee:?}");
+        assert!(!a.core.recovery_status().unwrap().created);
+        assert!(!a.core.me_summary().unwrap().recovery_saved);
+    });
+}
+
+#[test]
 fn an_expired_access_token_is_refreshed_and_the_new_pair_survives_a_restart() {
     pollster::block_on(async {
         let server = FakeServer::new();

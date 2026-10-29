@@ -371,6 +371,8 @@ impl Core {
 
     pub fn me_summary(&self) -> Result<MeSummary, CoreError> {
         let account = self.account()?;
+        // "종이에 적었어요" belongs to a code: one this device holds for another account says nothing about this one.
+        let has_code = self.recovery_secrets()?.is_some();
         let count = |n: i64| u32::try_from(n).unwrap_or(0);
         self.store.read(|db| {
             let last_backup_at = match db.backup_records()?.first() {
@@ -383,7 +385,7 @@ impl Core {
                 shift_templates: count(db.count(Counted::ShiftTemplates)?),
                 people: count(db.count(Counted::People)?),
                 device_calendars: count(db.count(Counted::DeviceCalendars)?),
-                recovery_saved: db.setting(RECOVERY_SAVED)?.is_some(),
+                recovery_saved: has_code && db.setting(RECOVERY_SAVED)?.is_some(),
                 last_backup_at,
             })
         })
