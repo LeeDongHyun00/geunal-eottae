@@ -51,6 +51,16 @@ for abi in "${abis[@]}"; do targets+=(--target "$abi"); done
 PATH="$(dirname "$cargo_ndk"):$PATH" ANDROID_NDK_HOME="$ndk" cargo ndk "${targets[@]}" --platform "$platform" \
   --output-dir "$out/jniLibs" build --locked --release -p geunal-ffi
 
+# Each library must carry the OpenSSL that build-openssl.sh pins, whose version text OpenSSL_version() returns to
+# SQLCipher. Linking another one raises no error, so this checks the result itself rather than only the paths above.
+openssl_version="$(sed -n 's/^version=//p' "$core/scripts/build-openssl.sh")"
+for abi in "${abis[@]}"; do
+  if ! grep -qaF "OpenSSL $openssl_version " "$out/jniLibs/$abi/libgeunal_ffi.so"; then
+    echo "libgeunal_ffi.so for $abi does not carry OpenSSL $openssl_version (core/scripts/build-openssl.sh)" >&2
+    exit 1
+  fi
+done
+
 cargo run --locked -q -p uniffi-bindgen -- generate --no-format --language kotlin \
   --library "$out/jniLibs/arm64-v8a/libgeunal_ffi.so" --out-dir "$out/kotlin"
 

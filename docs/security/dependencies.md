@@ -22,6 +22,7 @@
 **안드로이드 OpenSSL을 올릴 때:**
 - 고정하는 SHA-256은 같은 릴리스에서 받은 값이라, 릴리스 자체가 바뀌었는지는 PGP 서명만 알려 줍니다. openssl-library.org의 `pubkeys.asc`로 tarball의 `.asc` 서명을 확인하고, 서명 키가 OpenSSL 저장소 `doc/fingerprints.txt`의 키나 그 하위 키인지 본 뒤 `build-openssl.sh`의 버전과 SHA-256을 바꿉니다.
 - 권고는 openssl-library.org의 보안 공지에서 읽습니다.
+- 안드로이드 계측 시험 `CoreOnDeviceTest`의 `OPENSSL_VERSION`도 같은 버전으로 바꿉니다. 이 시험은 기기에서 SQLCipher가 실제로 그 판 위에서 도는지 봅니다. `make build-android`는 빌드한 라이브러리마다 그 판의 버전 문자열이 들어 있는지 확인합니다.
 - `--check`는 GitHub의 태그 목록을 받지 못해도 실패합니다("could not list the OpenSSL ... releases"). 권고가 아니므로 다시 실행합니다. 주간 검사의 이슈는 다시 통과하면 닫힙니다.
 
 **아직 검사하지 않는 것:**
