@@ -18,7 +18,8 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            CalendarTab()
+            CalendarTab(model: model, core: core)
+                .toastProposal(model.toasts)
                 .nextUpInset { slot }
                 .tabItem {
                     Label {
@@ -28,8 +29,8 @@ struct MainTabView: View {
                     }
                 }
                 .tag(Tab.calendar)
-                .accessibilityIdentifier("tab.calendar")
             MeTab(core: core)
+                .toastProposal(model.toasts)
                 .nextUpInset { slot }
                 .tabItem {
                     Label {
@@ -39,7 +40,6 @@ struct MainTabView: View {
                     }
                 }
                 .tag(Tab.me)
-                .accessibilityIdentifier("tab.me")
         }
         .tint(GeunalColor.tabText)
         .nextUpAccessory { slot }
@@ -53,7 +53,7 @@ struct MainTabView: View {
                 // The event editor opens from here once it exists (m1.md §2.6); until then the bar leads to the calendar.
                 tab = .calendar
             }
-            .toastSlot(model.toasts)
+            .toastSlot(model.toasts, chrome: Self.drawsOwnChrome)
         }
     }
 

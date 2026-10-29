@@ -42,6 +42,7 @@ fn opens_the_store_under_a_key_it_keeps_in_the_secret_store() {
 
     let core = open(&dir, &secrets).unwrap();
     assert!(!core.cipher_version().unwrap().is_empty());
+    assert!(!core.cipher_provider().unwrap().version.is_empty());
     assert_eq!(secrets.get("db_key".to_owned()).map(|key| key.len()), Some(32));
     drop(core);
 

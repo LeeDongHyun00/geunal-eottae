@@ -21,6 +21,8 @@ final class AppModel {
     private(set) var phase: Phase = .starting
     private(set) var core: (any CoreProtocol)?
     private(set) var nextUp: NextUpModel?
+    /// Counts the core's calendar changes, so the calendar views know to read again.
+    private(set) var calendarChanges = 0
     let toasts = ToastCenter()
     let connectivity = ConnectivityMonitor()
     @ObservationIgnored let onboardingState = OnboardingState()
@@ -37,6 +39,11 @@ final class AppModel {
                 LaunchOptions.skipOnboardingIfAsked(onboardingState)
             #endif
             let core = try await Task.detached { try AppCore.open() }.value
+            #if DEBUG
+                if LaunchOptions.seedsDemoCalendar {
+                    try await Task.detached { try DemoCalendar.seed(core) }.value
+                }
+            #endif
             self.core = core
             nextUp = NextUpModel(core: core)
             listen(to: core)
@@ -73,6 +80,7 @@ final class AppModel {
         changes = Task { [weak self] in
             for await change in stream {
                 if change == .calendar {
+                    self?.calendarChanges += 1
                     await self?.nextUp?.refresh()
                 }
             }
