@@ -595,8 +595,8 @@ pub fn open(key: &[u8; 32], aad: &str, blob: &[u8]) -> Option<Vec<u8>> {
   - **압축 재배치:** `core/.cargo/config.toml`이 안드로이드 타깃에 APS2 압축 재배치를 켭니다. 64비트 ABI에서 재배치 표가 1.5MB에서 0.1MB로 줄고, 안드로이드는 API 23부터 읽으므로 minSdk 26에서 문제없습니다.
   - **SQLite는 `-Oz`:** C 코드는 LTO 밖이라 패키지별 최적화 수준이 그대로 듣습니다. ABI마다 0.75MB가 줄어듭니다.
   - **OpenSSL과 SQLite는 쓰는 것만:** 위의 축소 OpenSSL이 3.0MB를 1.0MB로 줄입니다. SQLite는 FTS5만 남기고 쓰지 않는 모듈(FTS3, R*Tree, dbstat, soundex, STAT4, 열 메타데이터, JSON, 확장 로드)을 `core/.cargo/config.toml`의 `LIBSQLITE3_FLAGS`로 끄고, 테스트도 같은 설정으로 돕니다. 약 0.2MB입니다.
-  - **Rust는 `opt-level = 3`:** `"z"`로 하면 0.6MB가 더 줄지만 Argon2id(64MiB)가 약 50% 느려지고, LTO가 크레이트별 수준을 덮어써서 암호 크레이트만 빠르게 둘 수도 없습니다.
-  - **의존성:** 반복 규칙은 직접 전개하고(6장), reqwest의 HTTP/2는 끕니다([ADR 0002](../adr/0002-http-tls-stack.md)). 범용 RRULE 크레이트는 시간대 데이터베이스와 정규식을 함께 들여와 약 2MB였고, HTTP/2 클라이언트는 약 0.5MB였습니다.
+  - **Rust는 `opt-level = 3`, 인라인 기준만 `-Os`만큼:** 안드로이드 타깃은 `core/.cargo/config.toml`이 LLVM 인라인 기준을 75로 낮춥니다(기본 225). 반복 펼치기와 벡터화 같은 나머지 `-O3` 최적화는 그대로라 Argon2id(64MiB)는 같은 속도이고(호스트에서 167ms와 168ms), ABI마다 약 0.5MB가 줄어듭니다. MLS 그룹 시험은 호스트에서 약 13% 느려졌습니다. `opt-level = "s"`나 `"z"`로 하면 0.35MB·0.68MB가 줄지만 Argon2id가 약 70% 느려지고, LTO가 크레이트별 수준을 덮어써서 암호 크레이트만 빠르게 둘 수도 없습니다.
+  - **의존성:** 반복 규칙은 직접 전개하고(6장), reqwest의 HTTP/2는 끕니다([ADR 0002](../adr/0002-http-tls-stack.md)). 범용 RRULE 크레이트는 시간대 데이터베이스와 정규식을 함께 들여와 약 2MB였고, HTTP/2 클라이언트는 약 0.5MB였습니다. mls-rs의 `rayon`(트리 해시 병렬화)도 끕니다. 수십 명 그룹에는 이득이 없고, 약 0.1MB입니다.
 - **버전:** 코어 버전은 앱 빌드 번호와 함께 올립니다. 앱과 코어를 따로 배포하지 않습니다.
 
 ## 8. 성능·메모리 예산
