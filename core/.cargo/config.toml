@@ -9,3 +9,9 @@ rustflags = ["-C", "link-arg=-Wl,--pack-dyn-relocs=android"]
 
 [target.x86_64-linux-android]
 rustflags = ["-C", "link-arg=-Wl,--pack-dyn-relocs=android"]
+
+# SQLite modules nothing here uses, left out of SQLCipher on every platform so the host tests run what the apps ship.
+# The store needs FTS5 (Korean search) and nothing else optional: no FTS3, R*Tree, dbstat, soundex, STAT4, column
+# metadata, JSON or extension loading. About 0.2 MB of each Android library (docs/parts/rust-core.md §7).
+[env]
+LIBSQLITE3_FLAGS = "-USQLITE_ENABLE_FTS3 -USQLITE_ENABLE_FTS3_PARENTHESIS -USQLITE_ENABLE_RTREE -USQLITE_ENABLE_DBSTAT_VTAB -USQLITE_SOUNDEX -USQLITE_ENABLE_STAT4 -USQLITE_ENABLE_COLUMN_METADATA -USQLITE_ENABLE_LOAD_EXTENSION -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_OMIT_JSON"
