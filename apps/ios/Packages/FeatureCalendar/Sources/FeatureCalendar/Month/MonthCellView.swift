@@ -10,6 +10,8 @@ struct MonthCellView: View {
     let today: String
     let height: CGFloat
     let action: () -> Void
+    let onEvent: (EventItem) -> Void
+    let onLeave: () -> Void
 
     private var isToday: Bool { cell.day == today }
 
@@ -24,7 +26,9 @@ struct MonthCellView: View {
                         .lineLimit(1)
                 }
                 if cell.leaveBridge != nil {
+                    // The mark and the bars take their own taps before the cell's quick entry.
                     LeaveMark()
+                        .highPriorityGesture(TapGesture().onEnded { onLeave() })
                 }
                 ForEach(lines.indices, id: \.self) { index in
                     switch lines[index] {
@@ -32,6 +36,7 @@ struct MonthCellView: View {
                         BirthdayLine(name: birthday.name)
                     case .event(let event):
                         EventBar(event: event)
+                            .highPriorityGesture(TapGesture().onEnded { onEvent(event) })
                     case .more(let count):
                         Text(verbatim: "+\(count)")
                             .font(.system(size: 11, weight: .semibold))
@@ -50,6 +55,21 @@ struct MonthCellView: View {
         }
         .buttonStyle(.pressable)
         .accessibilityLabel(Text(verbatim: MonthCellView.label(cell, today: today)))
+        // VoiceOver reads the day as one button; its events open from the actions rotor.
+        .accessibilityActions {
+            ForEach(cell.events, id: \.self) { event in
+                Button {
+                    onEvent(event)
+                } label: {
+                    Text(verbatim: event.title)
+                }
+            }
+            if cell.leaveBridge != nil {
+                Button(action: onLeave) {
+                    Text("연차 넣기", bundle: .module)
+                }
+            }
+        }
         .accessibilityIdentifier("month.day.\(cell.day)")
     }
 

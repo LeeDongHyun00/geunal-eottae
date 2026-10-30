@@ -11,13 +11,16 @@ struct QuickEntrySheet: View {
     /// Between "저장" and the core's answer; a second tap must not add the event twice.
     @State private var isSaving = false
     private let actions: EventActions
+    /// "자세히": the editor with what is typed so far.
+    private let onMore: (EventInput) -> Void
     @Environment(\.dismiss) private var dismiss
     @FocusState private var titleFocused: Bool
     @ScaledMetric(relativeTo: .body) private var height: CGFloat = 552
 
-    init(model: QuickEntryModel, actions: EventActions) {
+    init(model: QuickEntryModel, actions: EventActions, onMore: @escaping (EventInput) -> Void) {
         _model = State(initialValue: model)
         self.actions = actions
+        self.onMore = onMore
     }
 
     var body: some View {
@@ -113,6 +116,13 @@ struct QuickEntrySheet: View {
             calendarMenu
             repeatMenu
             Spacer(minLength: 0)
+            Button {
+                onMore(model.draft())
+            } label: {
+                Text("자세히", bundle: .module)
+            }
+            .buttonStyle(.geunal(.text, height: Metrics.Button.secondary))
+            .accessibilityIdentifier("quickEntry.more")
             Button(action: save) {
                 if model.needsTitle {
                     Text("제목을 적어 주세요", bundle: .module)
