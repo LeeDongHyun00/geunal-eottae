@@ -16,7 +16,7 @@ final class AppModel {
 
     enum Phase {
         case starting
-        case failed(String)
+        case failed(StartFailure)
         case onboarding
         case main
     }
@@ -90,6 +90,7 @@ final class AppModel {
             try AppCore.forgetPreviousInstallation(onboarding: onboardingState)
             #if DEBUG
                 LaunchOptions.skipOnboardingIfAsked(onboardingState)
+                try LaunchOptions.failFirstOpenIfAsked()
             #endif
             let core = try await Task.detached { try AppCore.open() }.value
             #if DEBUG
@@ -117,10 +118,20 @@ final class AppModel {
             recordPendingCrashes()
             phase = onboardingState.isFinished ? .main : .onboarding
         } catch {
-            phase = .failed(CoreStatusModel.describe(error))
+            phase = .failed(StartFailure(error))
             // A background task can wake the app before the first unlock, when neither the keychain nor the store
             // opens; the next start tries again instead of keeping the failure.
             opening = nil
+        }
+    }
+
+    /// "다시 시도" on the start failure screen (m1.md §4 "시작 오류"): opens the core again and, once it opens, does what
+    /// coming to the front does.
+    func retryStart() async {
+        guard case .failed = phase else { return }
+        await prepare()
+        if core != nil {
+            appBecameActive()
         }
     }
 
@@ -313,6 +324,24 @@ final class AppModel {
                     break
                 }
             }
+        }
+    }
+}
+
+/// Why the core did not open, by kind only (m1.md §4 "시작 오류", decision 37): the screen names the kind and keeps the
+/// core's own message to itself.
+enum StartFailure: Equatable {
+    /// The keychain did not give the store's key.
+    case key
+    /// The store did not open.
+    case store
+    case unknown
+
+    init(_ error: any Error) {
+        switch error {
+        case CoreError.SecretStore(_): self = .key
+        case CoreError.Store(_): self = .store
+        default: self = .unknown
         }
     }
 }
