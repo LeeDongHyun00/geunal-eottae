@@ -671,11 +671,12 @@ impl Core {
     ) -> Result<Arc<Self>, CoreError> {
         let store_dir = PathBuf::from(store_dir);
         let db_path = store_dir.join(DB_FILE);
-        let (db_key, reset) = database_key(secrets.as_ref(), &db_path)?;
+        let db_key = database_key(secrets.as_ref(), &db_path)?;
         let store = Store::open(&db_path, &db_key)?;
-        if reset {
+        if Store::reset_pending(&db_path) {
             let at = local::stored_utc(chrono::Utc::now());
             store.write(|db| Ok::<_, CoreError>(db.set_setting(STORE_RESET, &at)?))?;
+            Store::clear_reset(&db_path)?;
         }
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -900,28 +901,28 @@ fn saved_session(secrets: &dyn SecretStore) -> Result<Option<SyncSession>, CoreE
     Ok(secrets.get(SESSION.to_owned())?.and_then(|bytes| serde_json::from_slice(&bytes).ok()))
 }
 
-/// The key of the store at `db_path`, and whether an earlier store had to be set aside for it. The first open makes
-/// the key. A key that is gone, or lost for good, leaves a database nothing can open: it goes aside, the secrets made
-/// with it go too, and an empty store starts (docs/parts/rust-core.md §4 "열 수 없는 저장소"). A store that cannot
-/// answer now fails the open, so a key it only failed to read is never written over.
-fn database_key(secrets: &dyn SecretStore, db_path: &Path) -> Result<([u8; 32], bool), CoreError> {
+/// The key of the store at `db_path`, made at the first open. A key that is gone, or lost for good, leaves a database
+/// nothing can open: it goes aside, the secrets made with it go too, and an empty store starts (docs/parts/rust-core.md
+/// §4 "열 수 없는 저장소"). A store that cannot answer now fails the open, so a key it only failed to read is never
+/// written over.
+fn database_key(secrets: &dyn SecretStore, db_path: &Path) -> Result<[u8; 32], CoreError> {
     if let Some(key) = stored_database_key(secrets)? {
-        return Ok((key, false));
+        return Ok(key);
     }
     // Asked again under the store's write lock: the notification extension may have made the key a moment ago.
     let _lock = Store::lock_unopened(db_path, RESET_LOCK_TIMEOUT)?;
     if let Some(key) = stored_database_key(secrets)? {
-        return Ok((key, false));
+        return Ok(key);
     }
     // The session and the device key belong to the MLS state inside the old file, and the code to its settings.
     for name in account::ACCOUNT_SECRETS {
         secrets.delete(name.to_owned())?;
     }
-    let set_aside = Store::set_aside(db_path)?;
+    Store::set_aside(db_path)?;
     let mut key = [0u8; 32];
     OsRng.fill_bytes(&mut key);
     secrets.put(DB_KEY.to_owned(), key.to_vec())?;
-    Ok((key, set_aside))
+    Ok(key)
 }
 
 /// The database key the secret store keeps. One lost for good reads as none: nothing can open its store any more.

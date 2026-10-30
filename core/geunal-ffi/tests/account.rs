@@ -241,6 +241,8 @@ fn a_code_the_store_half_wrote_is_not_shown_and_the_next_sync_makes_a_whole_one(
         assert!(a.secrets.has("recovery_entropy"));
         assert!(!a.core.recovery_status().unwrap().created);
         assert!(matches!(a.core.recovery_words(), Err(CoreError::NotFound { .. })));
+        // A sync while the store still fails tries and fails the same way, and leaves the next one to try again.
+        assert!(matches!(a.core.clone().sync().await, Err(CoreError::SecretStore { .. })));
 
         a.secrets.heal();
         a.core.clone().sync().await.unwrap();

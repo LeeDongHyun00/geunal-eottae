@@ -18,6 +18,8 @@ enum KeyFault {
 struct MemorySecrets {
     values: Mutex<HashMap<String, Vec<u8>>>,
     key_fault: Mutex<Option<KeyFault>>,
+    /// The database key is refused on writes.
+    key_unwritable: Mutex<bool>,
 }
 
 impl SecretStore for MemorySecrets {
@@ -29,6 +31,9 @@ impl SecretStore for MemorySecrets {
         }
     }
     fn put(&self, name: String, value: Vec<u8>) -> Result<(), SecretStoreError> {
+        if name == "db_key" && *self.key_unwritable.lock().unwrap() {
+            return Err(SecretStoreError::Unavailable { reason: "locked".into() });
+        }
         self.values.lock().unwrap().insert(name, value);
         Ok(())
     }
@@ -121,6 +126,26 @@ fn sets_a_store_found_without_its_key_aside_and_starts_an_empty_one() {
     assert_eq!(aside.len(), 1);
     let old = std::fs::read(aside[0].join("geunal.db")).unwrap();
     assert!(!old.starts_with(b"SQLite format 3"));
+}
+
+#[test]
+fn reports_a_store_set_aside_by_an_open_that_could_not_write_the_new_key() {
+    let dir = tempfile::tempdir().unwrap();
+    drop(open(&dir, &Arc::new(MemorySecrets::default())).unwrap());
+
+    // The old store goes aside, then the keychain refuses the new key: that open fails after the move.
+    let secrets = Arc::new(MemorySecrets::default());
+    *secrets.key_unwritable.lock().unwrap() = true;
+    assert!(matches!(open(&dir, &secrets), Err(CoreError::SecretStore { .. })));
+    assert!(!dir.path().join("geunal.db").exists());
+
+    // The next open finds nothing left to move, and still tells the app the calendar was set aside.
+    *secrets.key_unwritable.lock().unwrap() = false;
+    let core = open(&dir, &secrets).unwrap();
+    assert!(core.store_reset().unwrap().is_some());
+    drop(core);
+    assert!(!dir.path().join("geunal.reset").exists(), "reported once, then the marker goes");
+    assert!(open(&dir, &secrets).unwrap().store_reset().unwrap().is_some(), "until the next sign-in");
 }
 
 #[test]

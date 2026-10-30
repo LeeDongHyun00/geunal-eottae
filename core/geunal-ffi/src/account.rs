@@ -1278,10 +1278,11 @@ impl Core {
                 Err(CoreError::Network { .. }) => return Ok(()),
                 other => other?,
             };
-            self.recovery_checked.store(true, Ordering::Relaxed);
             if !me.recovery {
                 self.make_recovery(&session.user_id, false, None).await?;
             }
+            // Only once the code is made: a secret store that failed to take it leaves the next sync to try again.
+            self.recovery_checked.store(true, Ordering::Relaxed);
             return Ok(());
         }
         let (uploaded, new_key) = self.store.read(|db| {
