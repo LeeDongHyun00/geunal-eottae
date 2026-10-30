@@ -12,14 +12,16 @@ use geunal_ffi::*;
 pub struct MemorySecrets(Mutex<HashMap<String, Vec<u8>>>);
 
 impl SecretStore for MemorySecrets {
-    fn get(&self, name: String) -> Option<Vec<u8>> {
-        self.0.lock().unwrap().get(&name).cloned()
+    fn get(&self, name: String) -> Result<Option<Vec<u8>>, SecretStoreError> {
+        Ok(self.0.lock().unwrap().get(&name).cloned())
     }
-    fn put(&self, name: String, value: Vec<u8>) {
+    fn put(&self, name: String, value: Vec<u8>) -> Result<(), SecretStoreError> {
         self.0.lock().unwrap().insert(name, value);
+        Ok(())
     }
-    fn delete(&self, name: String) {
+    fn delete(&self, name: String) -> Result<(), SecretStoreError> {
         self.0.lock().unwrap().remove(&name);
+        Ok(())
     }
 }
 

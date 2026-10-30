@@ -48,9 +48,10 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 
 | Rust | Swift | Kotlin | 용도 | 단계 |
 | --- | --- | --- | --- | --- |
-| `Core::open(store_dir, api_base, listener, secrets)` | `Core.open(storeDir:apiBase:listener:secrets:)` | `Core.open(storeDir, apiBase, listener, secrets)` | 저장소 열기. 데이터베이스 키를 `secrets`에서 꺼내야 파일을 열 수 있어서 `SecretStore`를 여기서 받습니다. 저장된 세션이 있으면 복원 | M0 |
+| `Core::open(store_dir, api_base, listener, secrets)` | `Core.open(storeDir:apiBase:listener:secrets:)` | `Core.open(storeDir, apiBase, listener, secrets)` | 저장소 열기. 데이터베이스 키를 `secrets`에서 꺼내야 파일을 열 수 있어서 `SecretStore`를 여기서 받습니다. 저장된 세션이 있으면 복원. 키가 없는 저장소는 옆으로 옮기고 새로 시작(4장 "열 수 없는 저장소") | M0 |
 | `sign_in_stub(subject, display_name, platform)` | `signInStub(subject:displayName:platform:) async throws` | `suspend fun signInStub(subject, displayName, platform)` | 인증 스텁(`POST /auth/stub`, 로컬·CI만)으로 로그인과 기기 등록. 세션과 기기 서명 키는 `SecretStore`에 둠. M1부터 `AuthResult`를 돌려주고, 다른 기기가 쓰는 계정이면 `ReplaceRequired`(protocol.md 13장) | M0 |
 | `sync()` | `sync() async throws` | `suspend fun sync()` | 모든 그룹 따라잡기, 대기 중 쓰기 보내기. M1부터 로그인이 마치지 못한 계정 정보, 키 패키지, 복구 자료도 처리(5장 "계정과 세션"). 하루 한 번 공휴일 받기(6장 "공휴일과 연차 다리")와 알파 통계 보내기(5장 "알파 통계")도 하고, 이 둘은 실패해도 `sync()`를 실패시키지 않음 | M0 |
+| `store_reset()` | `storeReset()` | `storeReset()` | `open`이 키 없는 저장소를 옆으로 옮기고 새로 시작한 시각. 다음 로그인까지 돌려줌. 앱은 일정이 빈 이유를 알리고 로그인과 복원을 권함 | M1 |
 | `cipher_version()` | `cipherVersion()` | `cipherVersion()` | M0 화면용 SQLCipher 버전. 화면이 없어지면 지움 | M0 |
 | `cipher_provider()` | `cipherProvider()` | `cipherProvider()` | SQLCipher가 쓰는 암호 라이브러리(안드로이드 `openssl`, iOS `commoncrypto`)와, 링크된 그 라이브러리가 실행 중에 알려 주는 버전. 기기 시험이 앱에 실제로 들어간 OpenSSL을 확인 | M1 |
 | `create_group(name)`, `add_members(group_id, user_ids)`, `remove_member(group_id, user_id)` | `createGroup(name:) async throws` 등 | `suspend fun createGroup(name)` 등 | 그룹 만들기, 사용자 ID로 멤버 추가(초대 코드는 M2), 탈퇴·강퇴. 헤드리스 종단 시험이 쓰는 M0 표면 | M0 |
@@ -91,6 +92,13 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 - **계정:** 구독 상태(서버가 확인한 혜택만 켬)
 
 **비밀 보관 콜백:** 앱이 `SecretStore` 콜백(`get(name)`, `put(name, value)`, `delete(name)`)을 구현합니다. 코어는 기기 서명 개인키, AMK, 복구 코드의 엔트로피 `E`([공통 계약](protocol.md) 10장), 데이터베이스 키를 이 콜백으로만 읽고 씁니다. 비밀은 SQLite에 저장하지 않습니다.
+
+- **없음과 실패:** `get`은 그 이름으로 둔 것이 없을 때만 `nil`/`null`입니다. 읽지 못하면 `SecretStoreError`(Kotlin `SecretStoreException`)를 던집니다. 코어는 읽지 못한 것을 없는 것으로 보지 않습니다. 그렇게 보면 새 키나 새 복구 코드를 만들어 진짜 값 위에 쓰기 때문입니다.
+  - `Unavailable`: 지금은 답하지 못하지만 나중에는 읽힙니다(첫 잠금 해제 전의 iOS 키체인, 실패한 키스토어 호출). 코어는 그 호출을 `CoreError::SecretStore`로 실패시키고 아무것도 바꾸지 않습니다.
+  - `Lost`: 값은 있지만 다시는 열리지 않습니다(안드로이드 키스토어 키가 사라져 봉인한 파일이 태그 검사에서 실패). 데이터베이스 키가 그러면 저장소를 옆으로 옮깁니다(4장 "열 수 없는 저장소"). 다른 비밀은 `Unavailable`과 같이 실패합니다.
+  - 콜백이 그 밖의 예외를 던지면 UniFFI가 `Unavailable`로 넘깁니다. 잃었다고 말한 것이 아니므로 아무것도 옮기지 않습니다.
+- **쓰기와 지우기:** `put`·`delete`도 실패를 던집니다. 지울 것이 없는 `delete`는 성공입니다. 코어는 실패한 쓰기를 그 호출의 오류로 돌려줍니다. 기기 해제와 계정 삭제에서 지우지 못한 비밀이 있으면, 나머지를 다 지운 뒤 그 오류를 돌려줍니다.
+- **`session()`:** 화면이 어디로 갈지만 정하므로, 읽지 못하면 `nil`/`null`입니다. 계정에 무언가 하는 함수는 저장소를 직접 읽고, 읽지 못하면 실패합니다.
 
 ### 날짜와 시각
 
@@ -139,6 +147,12 @@ UniFFI는 Rust 쪽 객체 없이 만드는 생성자(Swift `Core(noHandle: Core.
 
 - **파일:** 하나의 SQLCipher 데이터베이스입니다. iOS는 App Group 컨테이너, 안드로이드는 앱 전용 디렉터리에 둡니다. WAL 모드를 씁니다.
 - **키:** 32바이트 무작위 키를 `SecretStore`에 둡니다. iOS 파일 보호 등급은 첫 잠금 해제 후 접근 가능(`completeUntilFirstUserAuthentication`)으로 해서, 잠긴 상태에서도 알림 확장이 읽을 수 있게 합니다.
+- **열 수 없는 저장소:** 데이터베이스 파일은 있는데 키가 없거나(`get`이 `nil`/`null`) 영영 잃었으면(`Lost`), 그 파일은 다시 열 수 없습니다. 지금까지는 새 키로 열다 실패해서 앱이 시작 오류에 머물렀습니다. 이제 `open`이 다음을 합니다.
+  - 옛 파일을 WAL 파일과 함께 저장소 디렉터리의 `unreadable/<유닉스 밀리초>/`로 옮기고 빈 저장소로 시작합니다. 키가 돌아오는 경우를 위해 지우지 않고 둡니다.
+  - 세션, 기기 서명 키, `E`, AMK를 지웁니다. MLS 상태와 복구 코드의 기록이 옛 파일에 있었기 때문입니다. 그래서 기기는 로그아웃 상태가 됩니다. 키를 처음 만드는 첫 실행도 같은 길이고, 그때는 지울 것이 없습니다.
+  - `store_reset()`이 다음 로그인까지 옮긴 시각을 돌려줍니다. 서버에 있던 것은 로그인과 복원으로 돌아옵니다.
+  - 키를 정하는 동안 쓰기 잠금(아래)을 잡고 키를 다시 읽습니다. 알림 확장이 같은 때 열어도 키를 두 번 만들지 않습니다.
+  - 키를 지금 읽지 못하면(`Unavailable`) `open`이 실패하고 아무것도 옮기지 않습니다.
 - **MLS 상태:** mls-rs-provider-sqlite가 같은 파일의 별도 테이블로 관리합니다.
 - **프로세스 간 잠금:** iOS의 앱과 알림 확장이 같은 파일을 씁니다. 쓰기 전에 잠금 파일에 `flock`을 겁니다.
   - 알림 확장은 5초 안에 잠금을 못 얻으면 자리표시 문구로 끝냅니다.
