@@ -65,11 +65,11 @@ enum AppCore {
         SystemAlertCenter()
     }
 
-    /// The phone's calendars; the UI tests' preview core comes with a made-up phone that already said yes.
+    /// The phone's calendars, or a made-up phone that already said yes for the UI tests.
     @MainActor
     static func deviceCalendars() -> any DeviceCalendarSource {
         #if DEBUG
-            if LaunchOptions.usesPreviewCore {
+            if LaunchOptions.usesPhoneCalendars {
                 return PreviewDeviceCalendars()
             }
         #endif

@@ -27,6 +27,60 @@ final class PermissionsModelTests: XCTestCase {
         XCTAssertEqual(model.calendarCount, 3)
     }
 
+    /// Counts what the mirror was asked to import, and answers like a phone with two calendars.
+    @MainActor
+    private final class ImportLog {
+        var count = 0
+    }
+
+    private func importing(_ f: Fixture, log: ImportLog) -> PermissionsModel {
+        PermissionsModel(
+            core: f.core, permissions: f.permissions, channel: .alpha,
+            importCalendars: {
+                log.count += 1
+                return 2
+            }, notify: { _ in })
+    }
+
+    func testImportsThePhonesCalendarsOnceAllowed() async {
+        let f = Fixture()
+        let log = ImportLog()
+        let model = importing(f, log: log)
+
+        await model.calendarTapped()
+        await model.refresh()
+
+        XCTAssertEqual(model.calendarCount, 2)
+        XCTAssertEqual(log.count, 1)
+    }
+
+    func testImportsWhenTheSettingsGaveTheAccess() async {
+        let f = Fixture()
+        f.permissions.calendar = .denied
+        let log = ImportLog()
+        let model = importing(f, log: log)
+        await model.refresh()
+        XCTAssertEqual(log.count, 0)
+
+        f.permissions.calendar = .granted
+        await model.refresh()
+
+        XCTAssertEqual(model.calendarCount, 2)
+        XCTAssertEqual(log.count, 1)
+    }
+
+    func testImportsNothingWhenRefused() async {
+        let f = Fixture()
+        f.permissions.calendarAnswer = .denied
+        let log = ImportLog()
+        let model = importing(f, log: log)
+
+        await model.calendarTapped()
+
+        XCTAssertEqual(model.calendarCount, 0)
+        XCTAssertEqual(log.count, 0)
+    }
+
     func testOpensTheCalendarOnlyOnceBothAreAnswered() async {
         let f = Fixture()
         let model = f.model()
