@@ -4,11 +4,13 @@ import app.geunal.core.AuthResult
 import app.geunal.core.BackupView
 import app.geunal.core.Core
 import app.geunal.core.CoreException
+import app.geunal.core.DeletionProof
 import app.geunal.core.LocalData
 import app.geunal.core.LocalDataChoice
 import app.geunal.core.NewAccount
 import app.geunal.core.NoHandle
 import app.geunal.core.ProgressListener
+import app.geunal.core.RecoveryCodeCheck
 import app.geunal.core.RestoreSummary
 import app.geunal.core.Session
 import app.geunal.core.SignInNonce
@@ -105,6 +107,10 @@ open class AccountFakeCore : Core(NoHandle) {
     override fun splitRecoveryCode(text: String): List<String> =
         text.split(Regex("[\\s.,]+|\\d+")).filter { it.isNotBlank() }
 
+    /** Valid for the example code only: any other twelve listed words fail the checksum, as most orders would. */
+    override fun checkRecoveryCode(words: List<String>): RecoveryCodeCheck =
+        if (words == CODE) RecoveryCodeCheck.Valid else RecoveryCodeCheck.Checksum
+
     override fun localDataOfOtherAccount(): LocalData? = otherAccountData
 
     override suspend fun restoreFromCode(
@@ -118,8 +124,8 @@ open class AccountFakeCore : Core(NoHandle) {
         return restoreResult.getOrThrow()
     }
 
-    override suspend fun startFresh(): Session {
-        calls += "startFresh"
+    override suspend fun startFresh(proof: DeletionProof?): Session {
+        calls += if (proof == null) "startFresh" else "startFresh $proof"
         return startFreshResult.getOrThrow()
     }
 

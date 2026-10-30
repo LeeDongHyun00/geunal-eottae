@@ -106,16 +106,18 @@ private fun TabBar(
 ) {
     val neutrals = LocalNeutralColors.current
     val dark = LocalDarkTheme.current
-    // README §5 gives the light values; in the dark the bar takes the grouped background and the pill grape's dark tint.
+    // README §5: in the dark the bar takes the grouped background and the pill grape's dark tint, and the other tabs the
+    // tertiary text, as the secondary one is lighter than the selected grape and would stand out more than it.
     val grape = GroupColors.first { it.name == "grape" }
     val selected = if (dark) BrandColors.tabTextDark else BrandColors.tabTextLight
+    val unselected = if (dark) neutrals.tertiaryText else neutrals.secondaryText
     val colors =
         NavigationBarItemDefaults.colors(
             selectedIconColor = selected,
             selectedTextColor = selected,
             indicatorColor = if (dark) grape.dark[1] else BrandColors.androidIndicator,
-            unselectedIconColor = neutrals.secondaryText,
-            unselectedTextColor = neutrals.secondaryText,
+            unselectedIconColor = unselected,
+            unselectedTextColor = unselected,
         )
     NavigationBar(containerColor = if (dark) neutrals.groupedBackground else BrandColors.androidBar) {
         TabItem(MainTab.CALENDAR, tab, R.string.tab_calendar, DesignR.drawable.ds_ic_calendar, colors, onSelect)

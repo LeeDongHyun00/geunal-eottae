@@ -111,8 +111,9 @@ private fun Profile(
                 .fillMaxWidth()
                 .background(neutrals.background, RoundedCornerShape(Radius.card))
                 .padding(Space.m)
-                .clearAndSetSemantics { contentDescription = card }
-                .testTag("me.profile"),
+                // Ahead of clearAndSetSemantics, which drops whatever comes after it in the chain, a tag included.
+                .testTag("me.profile")
+                .clearAndSetSemantics { contentDescription = card },
     ) {
         Box(
             contentAlignment = Alignment.Center,

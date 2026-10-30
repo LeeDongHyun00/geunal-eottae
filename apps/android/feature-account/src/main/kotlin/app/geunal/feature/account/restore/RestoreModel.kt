@@ -7,6 +7,7 @@ import app.geunal.core.InternalException
 import app.geunal.core.LocalData
 import app.geunal.core.LocalDataChoice
 import app.geunal.core.ProgressListener
+import app.geunal.core.RecoveryCodeCheck
 import app.geunal.core.RestoreSummary
 import app.geunal.feature.account.onboarding.SignInModel
 import app.geunal.feature.account.support.AccountNotice
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -55,9 +57,12 @@ class RestoreModel(
             val index: Int,
         ) : Problem
 
+        /** All twelve words are in the list but their checksum does not match: a word differs or two swapped places. */
+        data object Checksum : Problem
+
         /**
-         * The code did not open this account's key, or found no guest account. Until the core can judge the checksum
-         * alone (core PR #38), a wrong checksum lands here too.
+         * The code did not open this account's key, or found no guest account. One wrong code in sixteen passes the
+         * checksum, so only this tells whose code it is.
          */
         data object WrongCode : Problem
 
@@ -145,7 +150,19 @@ class RestoreModel(
         index: Int,
         text: String,
     ) {
-        _state.update { it.copy(cells = it.cells.replaced(index, text)) }
+        _state.update { current ->
+            val cells = current.cells.replaced(index, text)
+            // Spaces around a word change nothing the core said about it.
+            if (current.cells[index].trim() == text.trim()) return@update current.copy(cells = cells)
+            // What the core said about the old text no longer holds. Until it answers for the new text, neither the
+            // main button nor leaving the cell may use the old word or hint.
+            current.copy(
+                cells = cells,
+                accepted = current.accepted.replaced(index, null),
+                completions = current.completions.replaced(index, null),
+                problem = current.problem.takeUnless { it == Problem.Checksum },
+            )
+        }
         scope.launch { check(index) }
     }
 
@@ -168,22 +185,44 @@ class RestoreModel(
         }
     }
 
-    /** "붙여넣기": a whole code in one go, numbering and line breaks dropped by the core. */
+    /**
+     * "붙여넣기": a whole code in one go, numbering and line breaks dropped by the core. The words are looked up before
+     * the cells change, so they fill in at once with their verdicts and no cell shows red on the way.
+     */
     fun paste(text: String) {
         scope.launch {
-            val words = withContext(io) { runCatching { core.splitRecoveryCode(text) }.getOrDefault(emptyList()) }
-            if (words.isEmpty()) return@launch
+            val looked =
+                withContext(io) {
+                    runCatching { core.splitRecoveryCode(text) }
+                        .getOrDefault(emptyList())
+                        .take(WORD_COUNT)
+                        .map { word -> word to lookUp(word.trim()) }
+                }
+            if (looked.isEmpty()) return@launch
             _state.update { current ->
                 var cells = current.cells
                 var rewrites = current.rewrites
-                words.take(WORD_COUNT).forEachIndexed { index, word ->
+                var accepted = current.accepted
+                var completions = current.completions
+                looked.forEachIndexed { index, (word, verdict) ->
                     cells = cells.replaced(index, word)
                     rewrites = rewrites.replaced(index, rewrites[index] + 1)
+                    accepted = accepted.replaced(index, verdict.word)
+                    completions = completions.replaced(index, verdict.completion)
                 }
-                current.copy(cells = cells, rewrites = rewrites, focused = null)
+                current.copy(
+                    cells = cells,
+                    rewrites = rewrites,
+                    accepted = accepted,
+                    completions = completions,
+                    focused = cells.indexOfFirst { it.isBlank() }.takeIf { it >= 0 },
+                    // As with a typed word: new words take the old code's verdict away.
+                    problem =
+                        current.problem.takeUnless {
+                            it == Problem.Checksum || (it == Problem.WrongCode && looked.any { (_, verdict) -> verdict.word != null })
+                        },
+                )
             }
-            for (index in 0 until minOf(words.size, WORD_COUNT)) check(index)
-            _state.update { current -> current.copy(focused = current.cells.indexOfFirst { it.isBlank() }.takeIf { it >= 0 }) }
             refreshProblem()
         }
     }
@@ -191,7 +230,7 @@ class RestoreModel(
     /** The main button: asks about another account's events first when there are any, then restores. */
     fun start() {
         val current = _state.value
-        if (!current.isComplete || current.isWorking) return
+        if (!current.isComplete || current.isWorking || current.problem == Problem.Checksum) return
         _state.update { it.copy(isWorking = true) }
         scope.launch {
             val local = withContext(io) { runCatching { core.localDataOfOtherAccount() }.getOrNull() }
@@ -270,12 +309,16 @@ class RestoreModel(
         scope.launch {
             try {
                 if (!deviceAuth.confirm(DeviceAuthPurpose.WIPE_BACKUPS)) return@launch
-                core.startFresh()
+                // Without a proof: within 30 minutes of the provider sign-in the server needs none. A later start of the
+                // offer gets `ReauthRequired`, and the provider check it asks for comes with account deletion's.
+                core.startFresh(null)
                 _state.update { it.copy(phase = Phase.StartedFresh, noCode = null) }
             } catch (e: CoreException.Network) {
                 _state.update { it.copy(problem = Problem.Offline, noCode = null) }
+            } catch (e: CoreException.SignInAgain) {
+                expireTicket()
             } catch (e: CoreException) {
-                if (e.isTicketExpired()) expireTicket() else notify(AccountNotice.SOMETHING_FAILED)
+                notify(AccountNotice.SOMETHING_FAILED)
             } catch (e: InternalException) {
                 notify(AccountNotice.SOMETHING_FAILED)
             } finally {
@@ -333,12 +376,10 @@ class RestoreModel(
             _state.update { it.copy(problem = Problem.WrongCode, phase = Phase.Entering) }
         } catch (e: CoreException.Network) {
             _state.update { it.copy(problem = Problem.Offline, phase = Phase.Entering) }
+        } catch (e: CoreException.SignInAgain) {
+            expireTicket()
         } catch (e: CoreException) {
-            if (e.isTicketExpired()) {
-                expireTicket()
-            } else {
-                _state.update { it.copy(problem = Problem.Failed, phase = Phase.Entering) }
-            }
+            _state.update { it.copy(problem = Problem.Failed, phase = Phase.Entering) }
         } catch (e: InternalException) {
             _state.update { it.copy(problem = Problem.Failed, phase = Phase.Entering) }
         } finally {
@@ -359,28 +400,24 @@ class RestoreModel(
      */
     private suspend fun check(index: Int) {
         val text = _state.value.cells[index].trim()
-        val (word, matches) =
-            withContext(io) {
-                if (text.isEmpty()) {
-                    null to emptyList()
-                } else {
-                    val word = runCatching { core.checkRecoveryWord(text) }.getOrNull()
-                    word to if (word == null) runCatching { core.recoveryCompletions(text) }.getOrDefault(emptyList()) else emptyList()
-                }
+        val verdict = withContext(io) { lookUp(text) }
+        // Typing may have gone on while the core looked; then the newer text has its own check on the way, and this
+        // verdict must not land on it.
+        val now =
+            _state.updateAndGet { current ->
+                if (current.cells[index].trim() != text) return@updateAndGet current
+                current.copy(
+                    accepted = current.accepted.replaced(index, verdict.word),
+                    completions = current.completions.replaced(index, verdict.completion),
+                    problem = if (verdict.word != null && current.problem == Problem.WrongCode) null else current.problem,
+                )
             }
-        // Typing may have gone on while the core looked.
-        if (_state.value.cells[index].trim() != text) return
-        _state.update { current ->
-            current.copy(
-                accepted = current.accepted.replaced(index, word),
-                completions = current.completions.replaced(index, matches.singleOrNull()),
-                problem = if (word != null && current.problem == Problem.WrongCode) null else current.problem,
-            )
-        }
-        if (word != null && _state.value.focused == index) moveFocus(after = index)
+        if (now.cells[index].trim() != text) return
+        if (verdict.word != null && now.focused == index) moveFocus(after = index)
         refreshProblem()
     }
 
+    /** Takes the cell's hint. The hint is always the current text's: an edit drops it, and a late verdict is not kept. */
     private suspend fun commit(index: Int) {
         val current = _state.value
         val completion = current.completions[index]
@@ -393,6 +430,19 @@ class RestoreModel(
         refreshProblem()
     }
 
+    /** What the core says of one cell's text: the word it is, or else the one word it leads to. */
+    private fun lookUp(text: String): Verdict {
+        if (text.isEmpty()) return Verdict(null, null)
+        val word = runCatching { core.checkRecoveryWord(text) }.getOrNull()
+        if (word != null) return Verdict(word, null)
+        return Verdict(null, runCatching { core.recoveryCompletions(text) }.getOrDefault(emptyList()).singleOrNull())
+    }
+
+    private data class Verdict(
+        val word: String?,
+        val completion: String?,
+    )
+
     private fun moveFocus(after: Int) {
         _state.update { current ->
             val next =
@@ -402,12 +452,22 @@ class RestoreModel(
         }
     }
 
-    private fun refreshProblem() {
+    /**
+     * The cells' problem in the order of m1.md screen 21: a word outside the list, then the checksum of the twelve. Both
+     * are judged on the device, so a mistyped code never reaches Argon2id or the server.
+     */
+    private suspend fun refreshProblem() {
+        val words = _state.value.accepted
+        val checksumFails =
+            words.all { it != null } &&
+                withContext(io) { runCatching { core.checkRecoveryCode(words.filterNotNull()) }.getOrNull() } is RecoveryCodeCheck.Checksum
         _state.update { current ->
             val unknown = current.firstUnknownIndex
             when {
                 unknown != null -> current.copy(problem = Problem.UnknownWord(unknown))
-                current.problem is Problem.UnknownWord -> current.copy(problem = null)
+                // Only for the words judged; an edit since then brings its own judgement.
+                checksumFails && current.accepted == words -> current.copy(problem = Problem.Checksum)
+                current.problem is Problem.UnknownWord || current.problem == Problem.Checksum -> current.copy(problem = null)
                 else -> current
             }
         }
@@ -422,6 +482,3 @@ private fun <T> List<T>.replaced(
     index: Int,
     value: T,
 ): List<T> = toMutableList().also { it[index] = value }
-
-/** 401 `token_expired` on a replacement ticket: the 30 minutes ran out, and the person signs in again. */
-private fun CoreException.isTicketExpired(): Boolean = this is CoreException.Api && status.toInt() == 401 && code == "token_expired"

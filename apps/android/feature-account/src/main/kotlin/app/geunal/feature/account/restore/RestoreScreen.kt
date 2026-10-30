@@ -172,6 +172,7 @@ private fun ColumnScope.Entering(
         when {
             problem is RestoreModel.Problem.UnknownWord ->
                 stringResource(R.string.restore_fix_word, problem.index + 1) to false
+            problem == RestoreModel.Problem.Checksum -> stringResource(R.string.restore_check_code) to false
             !state.isComplete -> stringResource(R.string.restore_more_words, RestoreModel.WORD_COUNT - state.acceptedCount) to false
             state.isWorking -> stringResource(R.string.busy) to false
             problem != null -> stringResource(R.string.restore_retry) to true
@@ -335,6 +336,7 @@ private fun ProblemCard(
     val text =
         when (problem) {
             is RestoreModel.Problem.UnknownWord -> stringResource(R.string.restore_error_word, problem.index + 1)
+            RestoreModel.Problem.Checksum -> stringResource(R.string.restore_error_checksum)
             RestoreModel.Problem.WrongCode ->
                 stringResource(
                     if (mode == RestoreMode.GUEST_RETURN) R.string.restore_error_guest_not_found else R.string.restore_error_locked,

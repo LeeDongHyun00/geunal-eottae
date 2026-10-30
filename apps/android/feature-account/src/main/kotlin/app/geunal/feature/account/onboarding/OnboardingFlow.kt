@@ -133,7 +133,8 @@ class OnboardingViewModel(
     private fun go(outcome: SignInModel.Outcome) {
         if (backStack.lastOrNull() != OnboardingRoute.SignIn) return
         when (outcome) {
-            SignInModel.Outcome.Permissions -> backStack.add(OnboardingRoute.Permissions)
+            // A new account or a guest's: it is set, so the permissions come next with nothing behind them.
+            SignInModel.Outcome.Permissions -> settle(OnboardingRoute.Permissions)
             is SignInModel.Outcome.Restore -> openRestore(outcome.mode)
         }
     }
@@ -151,26 +152,40 @@ class OnboardingViewModel(
                 deviceAuth = dependencies.deviceAuth,
                 io = io,
             )
-        backStack.add(OnboardingRoute.Restore(mode, model, scope))
+        val route = OnboardingRoute.Restore(mode, model, scope)
+        backStack.add(route)
         scope.launch {
             model.state
                 .map { it.phase }
                 .distinctUntilChanged()
-                .collect(::restoreMoved)
+                .collect { restoreMoved(route, it) }
         }
     }
 
-    private fun restoreMoved(phase: RestoreModel.Phase) {
+    private fun restoreMoved(
+        route: OnboardingRoute.Restore,
+        phase: RestoreModel.Phase,
+    ) {
         when (phase) {
-            // The account is set up without a restore: the permissions take the restore screen's place.
-            RestoreModel.Phase.StartedFresh, RestoreModel.Phase.Later -> {
-                popRestore()
-                backStack.add(OnboardingRoute.Permissions)
-            }
+            // The account is set without a restore: the permissions come next, as after a new account.
+            RestoreModel.Phase.StartedFresh, RestoreModel.Phase.Later -> settle(OnboardingRoute.Permissions)
+            // "돌아왔어요" stays, alone: back from it opens the calendar.
+            is RestoreModel.Phase.Finished -> settle(route)
             // The age box first, or a new sign-in after the ticket's 30 minutes.
             RestoreModel.Phase.AgeCheckNeeded, RestoreModel.Phase.TicketExpired -> popRestore()
             else -> Unit
         }
+    }
+
+    /**
+     * The account is set (m1.md §2.1 "뒤로 가기"): [next] becomes the first screen. Back can no longer reach a sign-in,
+     * which would put a second account on this device over the one just made or restored.
+     */
+    private fun settle(next: OnboardingRoute) {
+        if (next !in backStack) backStack.add(next)
+        val left = backStack.filter { it != next }
+        backStack.removeAll(left)
+        left.filterIsInstance<OnboardingRoute.Restore>().forEach { it.scope.cancel() }
     }
 
     private fun popRestore() {
@@ -229,7 +244,6 @@ fun OnboardingFlow(
                             PermissionsScreen(
                                 model = model.permissions,
                                 permissions = dependencies.permissions,
-                                onBack = model::back,
                                 onFinish = finish,
                             )
                         is OnboardingRoute.Restore -> RestoreScreen(model = route.model, onBack = model::back, onDone = finish)

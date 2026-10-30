@@ -1,5 +1,6 @@
 package app.geunal.feature.account.onboarding
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -20,7 +21,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,12 +51,13 @@ import app.geunal.designsystem.R as DesignR
 fun PermissionsScreen(
     model: PermissionsModel,
     permissions: SystemPermissions,
-    onBack: () -> Unit,
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val neutrals = LocalNeutralColors.current
+    // The first screen once the account is set (m1.md §2.1 "뒤로 가기"): back means "나중에 할게요", never the sign-in.
+    BackHandler(onBack = onFinish)
     val calendarLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission(), model::calendarAnswered)
     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission(), model::notificationsAnswered)
     // Coming back from the settings app, or after a system dialog: read what the OS says now.
@@ -86,13 +87,8 @@ fun PermissionsScreen(
                 .navigationBarsPadding()
                 .padding(horizontal = Metrics.Button.sideInset),
     ) {
-        IconButton(onClick = onBack, modifier = Modifier.padding(top = Space.xs).size(Metrics.minHitTarget)) {
-            Icon(
-                painterResource(DesignR.drawable.ds_ic_chevron_left),
-                contentDescription = stringResource(R.string.sign_in_back),
-                tint = neutrals.ink,
-            )
-        }
+        // Where the back button stood before the account was set, so the title stays where the board has it.
+        Spacer(Modifier.padding(top = Space.xs).height(Metrics.minHitTarget))
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(Space.s),

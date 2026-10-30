@@ -3,6 +3,7 @@ package app.geunal.feature.account
 import app.geunal.core.AuthResult
 import app.geunal.core.CoreException
 import app.geunal.core.Provider
+import app.geunal.core.Session
 import app.geunal.designsystem.components.ToastCenter
 import app.geunal.feature.account.onboarding.LegalLinks
 import app.geunal.feature.account.onboarding.OnboardingDependencies
@@ -11,6 +12,7 @@ import app.geunal.feature.account.onboarding.OnboardingViewModel
 import app.geunal.feature.account.providers.ProviderCredential
 import app.geunal.feature.account.providers.ProviderSignIn
 import app.geunal.feature.account.restore.RestoreMode
+import app.geunal.feature.account.restore.RestoreModel
 import app.geunal.feature.account.support.AccountNotice
 import app.geunal.feature.account.support.BuildChannel
 import app.geunal.feature.account.support.OnboardingState
@@ -93,7 +95,7 @@ class OnboardingViewModelTest {
     }
 
     @Test
-    fun takesAGuestFromTheWelcomeScreenToThePermissions() =
+    fun leavesOnlyThePermissionsOnceAGuestStarts() =
         runTest(dispatcher) {
             val model = viewModel()
 
@@ -102,10 +104,16 @@ class OnboardingViewModelTest {
             model.continueAsGuest()
             advanceUntilIdle()
 
-            assertEquals(
-                listOf(OnboardingRoute.Welcome, OnboardingRoute.SignIn, OnboardingRoute.Permissions),
-                model.backStack.toList(),
-            )
+            // The account is set: back must not reach the sign-in again (m1.md decision 30).
+            assertEquals(listOf(OnboardingRoute.Permissions), model.backStack.toList())
+        }
+
+    @Test
+    fun leavesOnlyThePermissionsAfterANewAccountSignsIn() =
+        runTest(dispatcher) {
+            val model = signedIn()
+
+            assertEquals(listOf(OnboardingRoute.Permissions), model.backStack.toList())
         }
 
     @Test
@@ -120,7 +128,7 @@ class OnboardingViewModelTest {
         }
 
     @Test
-    fun putsThePermissionsInTheRestoreScreensPlaceAfterAFreshStart() =
+    fun leavesOnlyThePermissionsAfterAFreshStart() =
         runTest(dispatcher) {
             replacementTicket()
             val model = signedIn()
@@ -132,18 +140,49 @@ class OnboardingViewModelTest {
             restore.confirmWipe()
             advanceUntilIdle()
 
-            assertEquals(
-                listOf(OnboardingRoute.Welcome, OnboardingRoute.SignIn, OnboardingRoute.Permissions),
-                model.backStack.toList(),
-            )
+            assertEquals(listOf(OnboardingRoute.Permissions), model.backStack.toList())
             assertNull(model.restore)
+        }
+
+    @Test
+    fun leavesOnlyThePermissionsWhenTheCodeComesLater() =
+        runTest(dispatcher) {
+            core.authResult = Result.success(AuthResult.Registered(Session("u1", "d1"), newAccount = false, recovery = true))
+            val model = signedIn()
+            val restore = checkNotNull(model.restore)
+            assertEquals(RestoreMode.OFFER, restore.mode)
+
+            restore.openNoCode()
+            restore.later()
+            advanceUntilIdle()
+
+            assertEquals(listOf(OnboardingRoute.Permissions), model.backStack.toList())
+        }
+
+    @Test
+    fun keepsOnlyTheFinishedRestore() =
+        runTest(dispatcher) {
+            replacementTicket()
+            val model = signedIn()
+            val route = model.backStack.last()
+            val restore = checkNotNull(model.restore)
+
+            restore.paste("바람 연필 구름 달력 열쇠 우산 단추 마당 편지 소풍 거울 하늘")
+            advanceUntilIdle()
+            restore.start()
+            advanceUntilIdle()
+
+            // "돌아왔어요" stays, with nothing behind it; its model goes on drawing the result.
+            assertEquals(listOf(route), model.backStack.toList())
+            assertTrue(restore.state.value.phase is RestoreModel.Phase.Finished)
+            assertEquals(restore, model.restore)
         }
 
     @Test
     fun goesBackToTheSignInWhenTheTicketRunsOut() =
         runTest(dispatcher) {
             replacementTicket()
-            core.restoreResult = Result.failure(CoreException.Api(401u, "token_expired", ""))
+            core.restoreResult = Result.failure(CoreException.SignInAgain())
             val model = signedIn()
             val restore = checkNotNull(model.restore)
 

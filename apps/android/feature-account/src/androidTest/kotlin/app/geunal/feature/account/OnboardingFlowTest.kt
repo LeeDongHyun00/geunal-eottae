@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -41,7 +42,8 @@ class OnboardingFlowTest {
         compose.waitForTag("permissions.later")
         compose.onNodeWithTag("permissions.open").assertIsNotEnabled()
         compose.screenshot("03-permissions")
-        compose.onNodeWithTag("permissions.stats").performClick()
+        // A small screen keeps the third card below the fold, and a click outside the window goes nowhere.
+        compose.onNodeWithTag("permissions.stats").performScrollTo().performClick()
         compose.onNodeWithTag("permissions.stats").assertTextEquals("보내요 · 나에서 끌 수 있어요")
         compose.screenshot("03-permissions--stats-on")
 
@@ -51,5 +53,23 @@ class OnboardingFlowTest {
         assertEquals(1, host.finished)
         assertTrue(host.onboarding.isFinished)
         assertTrue(host.core.statsOn)
+    }
+
+    @Test
+    fun takesBackOnThePermissionsAsLater() {
+        val host = OnboardingTestHost(folder.newFolder("onboarding")).apply { show(compose) }
+        compose.waitForTag("welcome.start")
+        compose.onNodeWithTag("welcome.start").performClick()
+        compose.onNodeWithTag("signIn.age").performClick()
+        compose.waitUntilEnabled("signIn.guest")
+        compose.onNodeWithTag("signIn.guest").performClick()
+        compose.waitForTag("permissions.later")
+
+        compose.pressBack()
+
+        // "나중에 할게요", not the sign-in: the guest account is made (m1.md §2.1 "뒤로 가기").
+        assertEquals(1, host.finished)
+        compose.onNodeWithTag("permissions.later").assertExists()
+        compose.onNodeWithTag("signIn.guest").assertDoesNotExist()
     }
 }

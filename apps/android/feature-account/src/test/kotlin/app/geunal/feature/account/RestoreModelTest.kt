@@ -10,6 +10,7 @@ import app.geunal.feature.account.support.DeviceAuthPurpose
 import app.geunal.feature.account.testing.AccountFakeCore
 import app.geunal.feature.account.testing.CODE
 import app.geunal.feature.account.testing.FakeDeviceAuth
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -32,7 +33,8 @@ class RestoreModelTest {
     private fun TestScope.model(
         mode: RestoreMode = RestoreMode.DEVICE_CHANGE,
         ageConfirmedAt: Instant? = null,
-    ) = RestoreModel(mode, core, this, ageConfirmedAt, notify = { notices += it }, deviceAuth = deviceAuth, io = dispatcher)
+        io: CoroutineDispatcher = dispatcher,
+    ) = RestoreModel(mode, core, this, ageConfirmedAt, notify = { notices += it }, deviceAuth = deviceAuth, io = io)
 
     private fun TestScope.type(
         model: RestoreModel,
@@ -151,6 +153,57 @@ class RestoreModelTest {
         }
 
     @Test
+    fun dropsACellsWordTheMomentItIsEdited() =
+        runTest(dispatcher) {
+            val model = pasted(model())
+
+            // No check has run yet for the new text: the button must not send the word the cell no longer shows.
+            model.changed(4, "열")
+
+            assertNull(model.state.value.accepted[4])
+            assertFalse(model.state.value.isComplete)
+            model.start()
+            advanceUntilIdle()
+            assertTrue(core.calls.none { it.startsWith("restore") })
+        }
+
+    @Test
+    fun leavesANewTextAloneWhenTheOldOnesHintIsStillOnItsWay() =
+        runTest(dispatcher) {
+            // The core answers on its own dispatcher, so a check is still out when the person leaves the cell.
+            val model = model(io = StandardTestDispatcher(testScheduler))
+            type(model, 0, "가이")
+            assertEquals("가이드", model.state.value.completions[0])
+
+            model.changed(0, "가입")
+            model.left(0)
+            advanceUntilIdle()
+
+            assertEquals("가입", model.state.value.cells[0])
+            assertNull(model.state.value.completions[0])
+        }
+
+    @Test
+    fun turnsTheButtonOffWhenTheChecksumFails() =
+        runTest(dispatcher) {
+            val model = model()
+
+            // Every word is in the list, but the first two swapped places.
+            model.paste((listOf(CODE[1], CODE[0]) + CODE.drop(2)).joinToString(" "))
+            advanceUntilIdle()
+
+            assertTrue(model.state.value.isComplete)
+            assertEquals(RestoreModel.Problem.Checksum, model.state.value.problem)
+            model.start()
+            advanceUntilIdle()
+            assertTrue(core.calls.none { it.startsWith("restore") })
+
+            type(model, 0, CODE[0])
+            type(model, 1, CODE[1])
+            assertNull(model.state.value.problem)
+        }
+
+    @Test
     fun fillsAllTwelveFromAPastedCode() =
         runTest(dispatcher) {
             val model = model()
@@ -241,7 +294,7 @@ class RestoreModelTest {
     @Test
     fun sendsThePersonBackWhenTheTicketRanOut() =
         runTest(dispatcher) {
-            core.restoreResult = Result.failure(CoreException.Api(401u, "token_expired", ""))
+            core.restoreResult = Result.failure(CoreException.SignInAgain())
             val model = pasted(model())
 
             model.start()

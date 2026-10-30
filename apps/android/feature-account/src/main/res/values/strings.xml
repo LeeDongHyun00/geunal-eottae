@@ -75,11 +75,13 @@
     <string name="restore_reassurance">단어는 이 기기에서만 쓰여요. 두 글자를 넣으면 단어가 정해지고, 목록에 없는 단어는 바로 빨갛게 표시돼요. 횟수 제한은 없어요.</string>
     <string name="restore_more_words">단어 %1$d개 더</string>
     <string name="restore_fix_word">%1$d번째 단어를 고쳐 주세요</string>
+    <string name="restore_check_code">코드를 다시 확인해 주세요</string>
     <string name="restore_action_device_change">백업 가져오기</string>
     <string name="restore_action_guest">계정 찾기</string>
     <string name="restore_retry">다시 시도</string>
     <string name="restore_no_code">복구 코드가 없어요</string>
     <string name="restore_error_word">%1$d번째 단어가 목록에 없어요. 종이에 적은 글자를 다시 봐 주세요.</string>
+    <string name="restore_error_checksum">12단어의 조합이 맞지 않아요. 단어 하나가 다르거나 순서가 바뀌었을 수 있어요. 종이에 적은 순서대로 다시 확인해 주세요.</string>
     <string name="restore_error_locked">이 코드로는 백업이 열리지 않아요. 다른 계정의 코드이거나 단어 하나가 다를 수 있어요.</string>
     <string name="restore_error_guest_not_found">이 코드로 계정을 찾지 못했어요. 게스트 계정의 코드인지, 카카오·Apple에 연결한 계정은 아닌지 확인해 주세요.</string>
     <string name="restore_error_offline">연결이 없어요. 연결되면 다시 시도할게요.</string>

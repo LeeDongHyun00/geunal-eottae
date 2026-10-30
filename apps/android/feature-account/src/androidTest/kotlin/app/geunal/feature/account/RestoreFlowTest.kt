@@ -111,6 +111,10 @@ class RestoreFlowTest {
         compose.onNodeWithTag("restore.start").performClick()
         compose.waitForTag("keepLocal.keep")
         compose.screenshot("24-keep-local")
+        // Sheet 24 has to be answered: back neither closes it nor leaves the screen.
+        compose.pressBack()
+        compose.onNodeWithTag("keepLocal.keep").assertExists()
+        assertTrue(host.core.calls.none { it.startsWith("restore") })
         compose.onNodeWithTag("keepLocal.keep").performClick()
         compose.waitForTag("restore.open")
         compose.screenshot("21-restore--done")
@@ -120,6 +124,27 @@ class RestoreFlowTest {
         assertEquals(LocalDataChoice.KEEP, host.core.lastLocalData)
         assertEquals("restore " + CODE.joinToString(" "), host.core.calls.last())
         assertEquals(1, host.finished)
+    }
+
+    @Test
+    fun opensTheCalendarOnBackFromTheResult() {
+        val host = host()
+        openDeviceChange(host)
+        compose.runOnUiThread {
+            compose.activity
+                .getSystemService(ClipboardManager::class.java)
+                .setPrimaryClip(ClipData.newPlainText("code", CODE.joinToString(" ")))
+        }
+        compose.onNodeWithTag("restore.paste").performClick()
+        compose.waitUntilEnabled("restore.start")
+        compose.onNodeWithTag("restore.start").performClick()
+        compose.waitForTag("restore.open")
+
+        compose.pressBack()
+
+        // "돌아왔어요" is the first screen once the restore is done; back means "캘린더 열기".
+        assertEquals(1, host.finished)
+        compose.onNodeWithTag("restore.open").assertExists()
     }
 
     @Test
