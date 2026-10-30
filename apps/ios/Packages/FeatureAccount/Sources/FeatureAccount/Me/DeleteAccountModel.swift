@@ -118,18 +118,7 @@ public final class DeleteAccountModel {
     }
 
     private func proof() async throws -> DeletionProof {
-        switch provider {
-        case .kakao:
-            let nonce = try await core.signInNonce()
-            let credential = try await providers.kakao(providerNonce: nonce.providerNonce)
-            return .kakao(nonce: nonce.nonce, idToken: credential.idToken)
-        case .apple:
-            let nonce = try await core.signInNonce()
-            let credential = try await providers.apple(providerNonce: nonce.providerNonce)
-            guard let code = credential.authorizationCode else { throw ProviderSignInError.unavailable }
-            return .apple(authorizationCode: code)
-        case nil:
-            return .guest
-        }
+        guard let provider else { return .guest }
+        return try await ProviderProof.make(with: provider, core: core, providers: providers)
     }
 }

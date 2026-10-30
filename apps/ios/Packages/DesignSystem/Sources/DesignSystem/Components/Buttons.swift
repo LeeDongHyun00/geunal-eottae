@@ -11,6 +11,9 @@ public struct GeunalButtonStyle: ButtonStyle {
         case secondary
         /// `fill` capsule with `sunday` text: cancel an appointment, delete the account.
         case destructive
+        /// `sunday` capsule: the last step of something that cannot be undone, after a sheet that says so
+        /// ("백업 3개 지우고 새로 시작", m1.md screen 21).
+        case destructiveFilled
         /// No background, `secondaryText`: "나중에 할게요", "초대 코드가 있어요".
         case text
         /// Small `fill` pill: "붙여넣기", "복사".
@@ -65,7 +68,7 @@ private struct StyledButton: View {
 
     private var defaultHeight: CGFloat {
         switch kind {
-        case .primary, .destructive: Metrics.Button.primary
+        case .primary, .destructive, .destructiveFilled: Metrics.Button.primary
         case .secondary, .text: Metrics.Button.secondary
         case .pill, .prominentPill, .donePill: Metrics.Button.smallPill
         }
@@ -73,14 +76,14 @@ private struct StyledButton: View {
 
     private var fillsWidth: Bool {
         switch kind {
-        case .primary, .secondary, .destructive: true
+        case .primary, .secondary, .destructive, .destructiveFilled: true
         case .text, .pill, .prominentPill, .donePill: false
         }
     }
 
     private var horizontalPadding: CGFloat {
         switch kind {
-        case .primary, .secondary, .destructive: Space.xl
+        case .primary, .secondary, .destructive, .destructiveFilled: Space.xl
         case .text: Space.xs
         case .pill, .prominentPill, .donePill: Space.m
         }
@@ -88,7 +91,7 @@ private struct StyledButton: View {
 
     private var typeStyle: TypeStyle {
         switch kind {
-        case .primary, .secondary, .destructive: .bodyStrong
+        case .primary, .secondary, .destructive, .destructiveFilled: .bodyStrong
         case .text: .secondaryStrong
         case .pill, .prominentPill, .donePill: .pillLabel
         }
@@ -97,7 +100,8 @@ private struct StyledButton: View {
     private var foreground: Color {
         guard isEnabled else { return GeunalColor.tertiaryText }
         switch kind {
-        case .primary, .prominentPill: return GeunalColor.background
+        // The page color on the filled kinds: white on the light colors, black on their light dark-mode values.
+        case .primary, .prominentPill, .destructiveFilled: return GeunalColor.background
         case .secondary, .pill, .donePill: return GeunalColor.ink
         case .destructive: return GeunalColor.sunday
         case .text: return GeunalColor.secondaryText
@@ -108,6 +112,7 @@ private struct StyledButton: View {
         switch kind {
         case .text: return .clear
         case .primary, .prominentPill: return isEnabled ? GeunalColor.ink : GeunalColor.fill
+        case .destructiveFilled: return isEnabled ? GeunalColor.sunday : GeunalColor.fill
         case .secondary, .destructive, .pill: return GeunalColor.fill
         case .donePill: return isEnabled ? GeunalColor.background : GeunalColor.fill
         }

@@ -21,7 +21,9 @@ struct RootView: View {
                 StartFailureView(reason: reason)
             case .onboarding:
                 if let core = model.core {
-                    OnboardingFlow(dependencies: dependencies(core), onFinish: { model.finishOnboarding() })
+                    OnboardingFlow(
+                        dependencies: dependencies(core), resumesOnPermissions: model.onboardingResumes,
+                        onFinish: { model.finishOnboarding() })
                 }
             case .main:
                 if let core = model.core {
@@ -40,6 +42,16 @@ struct RootView: View {
                                 dependencies: dependencies(core), onClose: { model.signingIn = false },
                                 onFinish: { model.signedInAgain() })
                         }
+                        .fullScreenCover(isPresented: $model.enteringRecoveryCode) {
+                            RestoreCover(dependencies: dependencies(core), onClose: { model.recoveryCodeClosed() })
+                        }
+                        .sheet(isPresented: asksLocalData) {
+                            if let question = model.localData, let local = question.asking {
+                                KeepLocalSheet(local: local) { choice in
+                                    Task { await question.answer(choice) }
+                                }
+                            }
+                        }
                 }
             }
         }
@@ -54,7 +66,13 @@ struct RootView: View {
     private func dependencies(_ core: any CoreProtocol) -> OnboardingDependencies {
         OnboardingDependencies(
             core: core, providers: AppCore.providers(), permissions: DevicePermissions(), owner: model.owner,
-            connectivity: model.connectivity, toasts: model.toasts, state: model.onboardingState)
+            connectivity: model.connectivity, toasts: model.toasts, state: model.onboardingState,
+            timeText: { MeText.time($0) })
+    }
+
+    /// The sheet only closes with an answer.
+    private var asksLocalData: Binding<Bool> {
+        Binding(get: { model.localData?.asking != nil }, set: { _ in })
     }
 
     /// An item rather than a flag, so the sheet keeps its words while it slides away.

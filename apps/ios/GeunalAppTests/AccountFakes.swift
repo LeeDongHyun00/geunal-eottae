@@ -56,6 +56,14 @@ final class AccountFakeCore: Core, @unchecked Sendable {
     let deleteErrors = Locked<[CoreError]>([])
     let lastProof = Locked<DeletionProof?>(nil)
     var linkResult: Result<[Provider], CoreError> = .success([.kakao])
+    /// What `checkRecoveryCode` says about twelve words in the list.
+    var codeCheck: RecoveryCodeCheck = .valid
+    /// What `startFresh` throws, one error per call in turn; once empty it starts fresh.
+    let startFreshErrors = Locked<[CoreError]>([])
+    /// The proof each `startFresh` carried, `nil` for none.
+    let freshProofs = Locked<[DeletionProof?]>([])
+    var settleError: CoreError?
+    let settled = Locked<[LocalDataChoice]>([])
 
     init() {
         super.init(noHandle: Core.NoHandle())
@@ -96,7 +104,20 @@ final class AccountFakeCore: Core, @unchecked Sendable {
 
     override func startFresh(proof: DeletionProof?) async throws -> Session {
         record("startFresh")
+        freshProofs.update { $0.append(proof) }
+        var error: CoreError?
+        startFreshErrors.update { errors in
+            if !errors.isEmpty { error = errors.removeFirst() }
+        }
+        if let error { throw error }
         return Session(userId: "u1", deviceId: "d2")
+    }
+
+    override func checkRecoveryCode(words: [String]) -> RecoveryCodeCheck { codeCheck }
+
+    override func settleLocalData(choice: LocalDataChoice) throws {
+        if let settleError { throw settleError }
+        settled.update { $0.append(choice) }
     }
 
     override func checkRecoveryWord(text: String) throws -> String? {

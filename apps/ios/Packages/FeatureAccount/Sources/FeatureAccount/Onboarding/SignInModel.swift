@@ -71,6 +71,7 @@ public final class SignInModel {
                 result = try await core.signInApple(nonce: nonce.nonce, idToken: credential.idToken, account: account)
             }
             state.pendingGuestAgeConfirmedAt = nil
+            state.lastProviderSignIn = (provider, now())
             return Self.outcome(of: result)
         } catch ProviderSignInError.cancelled {
             return nil
