@@ -223,11 +223,14 @@ struct MeTab: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("me.people")
             separator
-            // The mirror and its own screen land with the device calendars (screen 15's second group).
-            SettingsRow(
-                Text("기기 캘린더 가져오기"),
-                value: (model.summary?.deviceCalendars ?? 0) > 0 ? Text("읽기만 · 켜짐") : Text("읽기만 · 꺼짐"),
-                chevron: false)
+            // The import switch and the phone's calendars live in 캘린더 관리 (screen 15's second group).
+            NavigationLink(value: Route.calendars) {
+                SettingsRow(
+                    Text("기기 캘린더 가져오기"),
+                    value: (model.summary?.deviceCalendars ?? 0) > 0 ? Text("읽기만 · 켜짐") : Text("읽기만 · 꺼짐"))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("me.deviceCalendars")
         }
     }
 
@@ -352,7 +355,7 @@ struct MeTab: View {
         case .people(let focus):
             PeopleScreen(core: core, contacts: DeviceContacts(), toasts: app.toasts, focus: focus)
         case .calendars:
-            CalendarsScreen(core: core)
+            CalendarsScreen(core: core, mirror: app.mirror)
         case .notifications:
             NotificationSettingsScreen(
                 model: NotificationSettingsModel(core: core, permission: MeText.alertPermission),

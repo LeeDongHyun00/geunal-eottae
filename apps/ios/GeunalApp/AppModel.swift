@@ -11,6 +11,9 @@ import Observation
 @MainActor
 @Observable
 final class AppModel {
+    /// One per process: the scene's screens and the system's background tasks and notification taps share it.
+    static let shared = AppModel()
+
     enum Phase {
         case starting
         case failed(String)
@@ -44,14 +47,42 @@ final class AppModel {
     /// The account was decided before the app last closed, on the permissions screen: onboarding goes on there
     /// instead of at the sign-in (m1.md decision 30).
     private(set) var onboardingResumes = false
+    /// A tapped alert waiting for the tabs (m1.md §2.6).
+    private(set) var route: AlertRoute?
+    /// The phone's calendars mirrored into the core (m1.md screen 15's second group).
+    private(set) var mirror: DeviceCalendarMirror?
     let toasts = AppModel.makeToasts()
     let connectivity = ConnectivityMonitor()
     @ObservationIgnored let owner = AppCore.deviceOwner()
     @ObservationIgnored let onboardingState = OnboardingState()
     @ObservationIgnored private var changes: Task<Void, Never>?
+    @ObservationIgnored private var alerts: AlertScheduler?
+    @ObservationIgnored private let deviceCalendars = AppCore.deviceCalendars()
+    @ObservationIgnored private var opening: Task<Void, Never>?
+    @ObservationIgnored private var startedInFront = false
+    /// MetricKit's crash counts that came before the core opened.
+    @ObservationIgnored private var pendingCrashes: [String: UInt32] = [:]
 
+    /// The scene's start: the core, then what coming to the front does, once.
     func start() async {
-        guard case .starting = phase else { return }
+        await prepare()
+        guard !startedInFront else { return }
+        startedInFront = true
+        appBecameActive()
+    }
+
+    /// Opens the core once, for whoever asks first: the scene, or a background task that launched the app without one.
+    private func prepare() async {
+        if let opening {
+            await opening.value
+            return
+        }
+        let task = Task { await open() }
+        opening = task
+        await task.value
+    }
+
+    private func open() async {
         #if DEBUG
             LaunchOptions.resetIfAsked()
         #endif
@@ -77,8 +108,14 @@ final class AppModel {
             onboardingResumes =
                 !onboardingState.isFinished
                 && (core.session() != nil || onboardingState.pendingGuestAgeConfirmedAt != nil)
+            alerts = AlertScheduler(core: core, center: AppCore.alertCenter())
+            let mirror = DeviceCalendarMirror(core: core, source: deviceCalendars)
+            self.mirror = mirror
+            deviceCalendars.observeChanges {
+                Task { await mirror.refresh() }
+            }
+            recordPendingCrashes()
             phase = onboardingState.isFinished ? .main : .onboarding
-            appBecameActive()
         } catch {
             phase = .failed(CoreStatusModel.describe(error))
         }
@@ -124,7 +161,55 @@ final class AppModel {
             await nextUp?.refresh()
             await refreshSettings()
             await refreshAccount()
+            // The phone's calendars may have changed while the app was away; the alerts move on with the clock.
+            await mirror?.refresh()
+            await alerts?.refresh()
         }
+    }
+
+    /// A background refresh (docs/parts/ios.md §5): the phone's calendars, a sync and the nearest alerts. It counts
+    /// no session, since nobody opened the app.
+    func refreshInBackground() async {
+        await prepare()
+        guard let core else { return }
+        await mirror?.refresh()
+        if !Task.isCancelled {
+            try? await core.sync()
+        }
+        if !Task.isCancelled {
+            await alerts?.refresh()
+        }
+    }
+
+    /// The daily task on an unmetered network (rust-core.md §5 "백업"): the core backs up only when automatic backup is
+    /// on and something changed since the last one.
+    func backUpInBackground() async {
+        await prepare()
+        guard let core, connectivity.isUnmetered else { return }
+        _ = try? await core.autoBackup()
+    }
+
+    /// The system's notification tap; the tabs take it when they are there.
+    func open(_ route: AlertRoute) {
+        self.route = route
+    }
+
+    func routeTaken() {
+        route = nil
+    }
+
+    /// MetricKit's crashes by Korean day, which the core adds to the alpha statistics while they are on (protocol §14).
+    func recordCrashes(_ counts: [String: UInt32]) {
+        pendingCrashes.merge(counts, uniquingKeysWith: +)
+        recordPendingCrashes()
+    }
+
+    private func recordPendingCrashes() {
+        guard let core, !pendingCrashes.isEmpty else { return }
+        for (day, count) in pendingCrashes {
+            try? core.recordCrashes(day: day, count: count)
+        }
+        pendingCrashes = [:]
     }
 
     /// The sheet's two answers both close it for this revocation; the core keeps it until the next sign-in.
@@ -209,6 +294,8 @@ final class AppModel {
                     self?.calendarChanges += 1
                     await self?.nextUp?.refresh()
                     await self?.refreshSettings()
+                    // Events, people's birthdays and the 알림 settings all decide what fires when.
+                    await self?.alerts?.refresh()
                 case .account:
                     self?.accountChanges += 1
                     await self?.refreshAccount()

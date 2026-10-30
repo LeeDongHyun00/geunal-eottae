@@ -80,13 +80,20 @@ public final class AlertScheduler {
 
     private let core: any CoreProtocol
     private let center: any AlertCenter
+    private let coalescer = Coalescer()
 
     public init(core: any CoreProtocol, center: any AlertCenter) {
         self.core = core
         self.center = center
     }
 
+    /// A burst of calendar changes makes one refresh: two at once would both read the pending list before either
+    /// wrote it and schedule the same alert twice.
     public func refresh() async {
+        await coalescer.run { [self] in await refreshOnce() }
+    }
+
+    private func refreshOnce() async {
         guard await center.allowsAlerts() else {
             // Turned off in the system settings: nothing is left to fire later.
             center.cancel(await center.scheduled().map(\.id))

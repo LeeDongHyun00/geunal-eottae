@@ -14,7 +14,7 @@ public struct CalendarScreen: View {
 
     private let core: any CoreProtocol
     private let changes: Int
-    @Binding private var openEvent: EventItem?
+    @Binding private var opening: Opening?
     @State private var month: MonthModel
     @State private var week: WeekModel
     @State private var agenda: AgendaModel
@@ -40,16 +40,23 @@ public struct CalendarScreen: View {
         case pending(() -> Void)
     }
 
-    /// `changes` counts the core's calendar changes; each new value reads the views again. An event set in
-    /// `openEvent` (the next-up bar's) opens in the editor. `recoveryBanner` puts the recovery code banner under the
-    /// month view's header.
+    /// What to open from outside the calendar (m1.md §2.6): the next-up bar's or an alert's event in the editor, a
+    /// leave suggestion's week in the month view.
+    public enum Opening: Equatable, Sendable {
+        case event(eventId: String, occurrence: String?)
+        case week(day: String)
+    }
+
+    /// `changes` counts the core's calendar changes; each new value reads the views again. What is set in `opening`
+    /// opens, also when it was set before the screen appeared. `recoveryBanner` puts the recovery code banner under
+    /// the month view's header.
     public init(
-        core: any CoreProtocol, toasts: ToastCenter, changes: Int, openEvent: Binding<EventItem?> = .constant(nil),
+        core: any CoreProtocol, toasts: ToastCenter, changes: Int, opening: Binding<Opening?> = .constant(nil),
         recoveryBanner: RecoveryBanner? = nil, now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.core = core
         self.changes = changes
-        _openEvent = openEvent
+        _opening = opening
         self.recoveryBanner = recoveryBanner
         self.now = now
         actions = EventActions(core: core, toasts: toasts)
@@ -130,10 +137,10 @@ public struct CalendarScreen: View {
                 stamping = nil
             }
         }
-        .onChange(of: openEvent) { _, event in
-            guard let event else { return }
-            openEvent = nil
-            edit(event)
+        .onChange(of: opening, initial: true) { _, opening in
+            guard let opening else { return }
+            self.opening = nil
+            open(opening)
         }
         .task { await agenda.reload() }
         .onChange(of: kind) { previous, next in
@@ -218,6 +225,18 @@ public struct CalendarScreen: View {
 
     private func edit(_ event: EventItem) {
         editor = EditorRequest(.existing(eventId: event.eventId, occurrence: event.occurrence))
+    }
+
+    private func open(_ opening: Opening) {
+        switch opening {
+        case .event(let eventId, let occurrence):
+            editor = EditorRequest(.existing(eventId: eventId, occurrence: occurrence))
+        case .week(let day):
+            // Coming from the week view, keeping the place shows the month of that week, as this does.
+            week.show(day: day)
+            month.show(month: KoreanCalendar.month(of: day))
+            kind = .month
+        }
     }
 
     /// The month on screen, or this month in the other views.

@@ -73,6 +73,21 @@ final class AlertSchedulerTests: XCTestCase {
             ])
     }
 
+    func testRefreshesAskedForTogetherScheduleEachAlertOnce() async {
+        let core = AlertFakeCore()
+        core.alerts = [dinner(), birthday("p1")]
+        let center = FakeCenter()
+        let scheduler = AlertScheduler(core: core, center: center)
+
+        async let first: Void = scheduler.refresh()
+        async let second: Void = scheduler.refresh()
+        async let third: Void = scheduler.refresh()
+        _ = await (first, second, third)
+
+        XCTAssertEqual(center.added.sorted(), ["alert.birthday:p1", "alert.event:e1:k:60"])
+        XCTAssertEqual(center.pending.count, 2)
+    }
+
     func testLeavesAnUnchangedCalendarAlone() async {
         let core = AlertFakeCore()
         core.alerts = [dinner()]
