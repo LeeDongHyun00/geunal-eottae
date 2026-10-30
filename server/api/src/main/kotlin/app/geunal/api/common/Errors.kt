@@ -16,11 +16,15 @@ data class ErrorBody(
     val message: String,
 )
 
-/** An error from the protocol §11 table, such as 409 `epoch_conflict` or 410 `cursor_expired`. */
+/**
+ * An error from the protocol §11 table, such as 409 `epoch_conflict` or 410 `cursor_expired`. [details] are the extra
+ * fields a code carries next to `error` and `message`, such as `replaced_at` on 403 `device_revoked`.
+ */
 class ApiException(
     val status: HttpStatus,
     val code: String,
     message: String,
+    val details: Map<String, String> = emptyMap(),
 ) : RuntimeException(message) {
     companion object {
         fun invalid(message: String) = ApiException(HttpStatus.BAD_REQUEST, "invalid_request", message)
@@ -41,23 +45,23 @@ class ErrorHandler {
     private val log = LoggerFactory.getLogger(ErrorHandler::class.java)
 
     @ExceptionHandler(ApiException::class)
-    fun handle(e: ApiException): ResponseEntity<ErrorBody> = ResponseEntity.status(e.status).body(ErrorBody(e.code, e.message.orEmpty()))
+    fun handle(e: ApiException): ResponseEntity<Any> = ResponseEntity.status(e.status).body(body(e))
 
     /** A body Jackson could not bind: wrong type, missing field, bad base64. The message may quote the body, so it stays out of the log. */
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handle(
         @Suppress("unused") e: HttpMessageNotReadableException,
-    ): ResponseEntity<ErrorBody> = handle(ApiException.invalid("the request body does not match the endpoint's schema"))
+    ): ResponseEntity<Any> = handle(ApiException.invalid("the request body does not match the endpoint's schema"))
 
     /** A path variable or query parameter of the wrong shape, or a required one missing. */
     @ExceptionHandler(TypeMismatchException::class, ServletRequestBindingException::class)
     fun handleBinding(
         @Suppress("unused") e: Exception,
-    ): ResponseEntity<ErrorBody> = handle(ApiException.invalid("a path or query parameter is missing or malformed"))
+    ): ResponseEntity<Any> = handle(ApiException.invalid("a path or query parameter is missing or malformed"))
 
     /** Everything else, kept in the protocol's body shape. Spring MVC's own errors (404, 405, type mismatches) carry their status. */
     @ExceptionHandler(Exception::class)
-    fun handle(e: Exception): ResponseEntity<ErrorBody> {
+    fun handle(e: Exception): ResponseEntity<Any> {
         val status = (e as? ErrorResponse)?.statusCode?.let { HttpStatus.resolve(it.value()) } ?: HttpStatus.INTERNAL_SERVER_ERROR
         val code =
             when {
@@ -68,5 +72,15 @@ class ErrorHandler {
             }
         if (status.is5xxServerError) log.error("request failed", e)
         return handle(ApiException(status, code, if (status.is5xxServerError) "internal error" else "the request is malformed"))
+    }
+
+    companion object {
+        /** The body for [e]: an [ErrorBody], or the same two fields followed by the code's details. */
+        fun body(e: ApiException): Any =
+            if (e.details.isEmpty()) {
+                ErrorBody(e.code, e.message.orEmpty())
+            } else {
+                linkedMapOf<String, String>("error" to e.code, "message" to e.message.orEmpty()) + e.details
+            }
     }
 }

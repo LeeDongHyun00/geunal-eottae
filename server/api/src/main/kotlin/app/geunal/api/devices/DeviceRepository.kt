@@ -1,8 +1,11 @@
 package app.geunal.api.devices
 
+import app.geunal.api.common.ApiException
+import org.springframework.http.HttpStatus
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.UUID
 
 data class DeviceRow(
@@ -47,27 +50,80 @@ class DeviceRepository(
             .optional()
             .orElse(null)
 
-    /** Revokes the account's active device and returns its id, so the caller can send it `revoke`. */
-    fun revokeActive(userId: UUID): UUID? =
+    /**
+     * Revokes the account's active device and returns its id, so the caller can send it `revoke`. [via] is how the
+     * replacing sign-in proved itself (`provider` or `recovery`), which the old device reads in its 403.
+     */
+    fun revokeActive(
+        userId: UUID,
+        via: String? = null,
+    ): UUID? =
         jdbc
-            .sql("UPDATE devices SET revoked_at = now() WHERE user_id = :user AND revoked_at IS NULL RETURNING id")
+            .sql("UPDATE devices SET revoked_at = now(), replaced_via = :via WHERE user_id = :user AND revoked_at IS NULL RETURNING id")
             .param("user", userId)
+            .param("via", via)
             .query(UUID::class.java)
             .optional()
             .orElse(null)
 
+    /** [providerAuth]: a Kakao, Apple or stub sign-in gave this device its session, which starts the 30-minute window. */
     fun insert(
         userId: UUID,
         platform: String,
         signatureKey: ByteArray,
+        providerAuth: Boolean = false,
     ): UUID =
         jdbc
-            .sql("INSERT INTO devices (user_id, platform, signature_key) VALUES (:user, :platform, :key) RETURNING id")
-            .param("user", userId)
+            .sql(
+                """
+                INSERT INTO devices (user_id, platform, signature_key, provider_auth_at)
+                VALUES (:user, :platform, :key, CASE WHEN :provider::boolean THEN now() END) RETURNING id
+                """,
+            ).param("user", userId)
             .param("platform", platform)
             .param("key", signatureKey)
+            .param("provider", providerAuth)
             .query(UUID::class.java)
             .single()
+
+    /** Holds the device row until the transaction ends: one refresh or reuse check of the device at a time. */
+    fun lock(deviceId: UUID) {
+        jdbc
+            .sql("SELECT id FROM devices WHERE id = :id FOR UPDATE")
+            .param("id", deviceId)
+            .query(UUID::class.java)
+            .optional()
+    }
+
+    /** The same device signed in with its provider again: "새로 시작" without the code counts from now. */
+    fun markProviderAuth(deviceId: UUID) {
+        jdbc.sql("UPDATE devices SET provider_auth_at = now() WHERE id = :id").param("id", deviceId).update()
+    }
+
+    /**
+     * 403 `device_revoked` for a device that is no longer current. A device a replacement retired also hears when,
+     * where and how (protocol §13): `replaced_at`, the account's active platform now, and `provider` or `recovery`.
+     */
+    fun revokedError(deviceId: UUID): ApiException {
+        val details =
+            jdbc
+                .sql(
+                    """
+                    SELECT d.revoked_at, d.replaced_via, a.platform AS active_platform
+                    FROM devices d JOIN devices a ON a.user_id = d.user_id AND a.revoked_at IS NULL
+                    WHERE d.id = :id AND d.replaced_via IS NOT NULL
+                    """,
+                ).param("id", deviceId)
+                .query { rs, _ ->
+                    mapOf(
+                        "replaced_at" to rs.getObject("revoked_at", OffsetDateTime::class.java).toInstant().toString(),
+                        "replaced_by" to rs.getString("active_platform"),
+                        "replaced_via" to rs.getString("replaced_via"),
+                    )
+                }.optional()
+                .orElse(emptyMap())
+        return ApiException(HttpStatus.FORBIDDEN, "device_revoked", "this device was replaced; sign out", details)
+    }
 
     fun setPushToken(
         deviceId: UUID,

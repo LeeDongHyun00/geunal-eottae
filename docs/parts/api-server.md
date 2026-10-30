@@ -374,6 +374,7 @@ CREATE TABLE holidays (
 | 파일 | 바뀐 것 |
 | --- | --- |
 | `V2__welcome_seq.sql` | `welcomes.seq`: 그 기기를 넣은 Add 커밋의 순번. 새 멤버가 로그를 그 자리부터 읽습니다 |
+| `V3__m1_sign_in.sql` | M1 로그인. `provider_links`: 카카오·Apple 계정과의 연결과 끊긴 시각(`users`의 `kakao_sub`·`apple_sub`를 옮기고 지움, 게스트는 연결이 없음). `replace_tickets`: 교체 티켓의 SHA-256. `devices.provider_auth_at`(제공자 로그인 30분 창)과 `replaced_via`(해제된 기기가 받는 교체 방식). `sessions.spent_at`(리프레시 토큰 재사용 감지). `recovery`는 `kdf_salt`를 빼고 복구 ID·복구 공개키를 더함 |
 
 ## 7. 엔드포인트
 
@@ -383,6 +384,7 @@ CREATE TABLE holidays (
 | POST | `/auth/kakao` | 카카오 로그인 + 기기 등록. 다른 활성 기기가 있으면 교체 티켓 |
 | POST | `/auth/apple` | Apple 로그인 + 기기 등록. 다른 활성 기기가 있으면 교체 티켓 |
 | POST | `/auth/apple/callback` | 안드로이드 Apple 웹 로그인의 form_post를 받아 App Links 주소로 앱에 넘기기 |
+| GET | `/auth/apple` | App Links 주소. 앱이 없을 때 열리는, 스크립트 없는 정적 페이지 |
 | POST | `/auth/guest` | 게스트 계정 + 기기 등록 |
 | POST | `/auth/recover` | 게스트 복귀: 복구 ID와 복구 서명으로 로그인 + 기기 교체 |
 | POST | `/auth/replace` | 교체 티켓으로 이 기기 등록, 이전 기기 해제 |
