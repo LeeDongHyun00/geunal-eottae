@@ -21,6 +21,10 @@
         /// timing itself.
         static var toastsWait: Bool { arguments.contains("-GeunalToastsWait") }
 
+        /// `-GeunalPhoneCalendars` stands a made-up phone with two calendars in for EventKit, whose access prompt a UI
+        /// test cannot answer (`PreviewDeviceCalendars`).
+        static var usesPhoneCalendars: Bool { arguments.contains("-GeunalPhoneCalendars") }
+
         /// `-GeunalNoScreenLock` plays a device without a passcode for the preview core's OS prompt stand-in.
         static var hasNoScreenLock: Bool { arguments.contains("-GeunalNoScreenLock") }
 
