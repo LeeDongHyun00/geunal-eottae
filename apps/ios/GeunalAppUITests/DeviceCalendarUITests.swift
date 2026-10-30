@@ -16,8 +16,9 @@ final class DeviceCalendarUITests: GeunalUITestCase {
 
         let toggle = app.switches["calendars.device.import"]
         waitFor(toggle)
-        app.swipeUp()
         toggle.tap()
+        // The phone's calendars list under the switch, below the fold with the demo week's five calendars.
+        app.swipeUp()
         let family = app.buttons["calendars.device.iCloud · 가족"]
         waitFor(family)
         waitUntil(family, "isSelected == true")
