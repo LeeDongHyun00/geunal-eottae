@@ -3,6 +3,7 @@ package app.geunal.feature.calendar.screen
 import android.content.res.Resources
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +17,8 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -40,7 +43,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.geunal.core.AlertRule
 import app.geunal.core.BirthdayItem
+import app.geunal.core.DayTime
+import app.geunal.core.EventInput
+import app.geunal.core.EventItem
 import app.geunal.core.Holiday
 import app.geunal.designsystem.GeunalType
 import app.geunal.designsystem.LocalNeutralColors
@@ -48,6 +55,7 @@ import app.geunal.designsystem.Space
 import app.geunal.designsystem.components.SegmentedControl
 import app.geunal.feature.calendar.R
 import app.geunal.feature.calendar.agenda.AgendaView
+import app.geunal.feature.calendar.editor.EditorTarget
 import app.geunal.feature.calendar.month.MonthView
 import app.geunal.feature.calendar.quickentry.QuickEntryModel
 import app.geunal.feature.calendar.quickentry.QuickEntrySheet
@@ -64,11 +72,14 @@ import app.geunal.designsystem.R as DesignR
 
 /**
  * The calendar tab (m1.md screens 4–8): the header with the 월·주·목록 segment, the chosen view, and the quick entry
- * sheet a day opens. The view last shown comes back on the next launch (m1.md §2.2).
+ * sheet a day opens. The view last shown comes back on the next launch (m1.md §2.2). [onEdit] and [onStamp] open the
+ * editor and the shift stamp screen over the tabs.
  */
 @Composable
 fun CalendarScreen(
     model: CalendarViewModel,
+    onEdit: (EditorTarget) -> Unit,
+    onStamp: (month: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val kind by model.kind.collectAsStateWithLifecycle()
@@ -78,6 +89,8 @@ fun CalendarScreen(
     val resources = LocalResources.current
     var entry by remember { mutableStateOf<QuickEntryModel?>(null) }
     val open = { day: String, notes: List<String>, range: IntRange? -> entry = model.quickEntry(day, notes, range) }
+    val edit = { event: EventItem -> onEdit(EditorTarget.Existing(event.eventId, event.occurrence)) }
+    val leave = resources.getString(R.string.calendar_leave)
     // Coming back to the app, or midnight while it is in front: a new today means reading the views again.
     LifecycleResumeEffect(model) {
         model.refreshIfNewDay()
@@ -102,7 +115,8 @@ fun CalendarScreen(
             title = heading?.title(resources).orEmpty(),
             onTitle = if (kind == CalendarViewKind.LIST) null else model::showToday,
             onSelect = model::select,
-            onAdd = if (kind == CalendarViewKind.LIST) null else ({ open(model.today, emptyList(), null) }),
+            onNewEvent = if (kind == CalendarViewKind.LIST) null else ({ onEdit(EditorTarget.New(model.newEventDay())) }),
+            onStamp = { onStamp(model.stampMonth()) },
         )
         when (kind) {
             CalendarViewKind.MONTH -> {
@@ -119,6 +133,9 @@ fun CalendarScreen(
                         model = model.month,
                         pager = monthPager,
                         onDay = { cell -> open(cell.day, notes(cell.birthdays, cell.holidays, resources), null) },
+                        onEvent = edit,
+                        // The leave mark fills an all-day '연차' (rust-core.md §6 "공휴일과 연차 다리").
+                        onLeave = { cell -> onEdit(EditorTarget.New(cell.day, leaveInput(cell.day, leave))) },
                     )
                 }
             }
@@ -130,6 +147,7 @@ fun CalendarScreen(
                     pager = weekPager,
                     onDay = { day -> open(day.day, notes(day.birthdays, day.holidays, resources), null) },
                     onSlot = { day, hour -> open(day.day, notes(day.birthdays, day.holidays, resources), (hour * 2)..(hour * 2 + 1)) },
+                    onEvent = edit,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -138,12 +156,21 @@ fun CalendarScreen(
                     model = model.agenda,
                     onDay = { day -> open(day.day, notes(day.birthdays, day.holidays, resources), null) },
                     onAddToday = { open(model.today, emptyList(), null) },
+                    onEvent = edit,
                     modifier = Modifier.weight(1f),
                 )
         }
     }
     entry?.let { quickEntry ->
-        QuickEntrySheet(model = quickEntry, actions = model.actions, onDismiss = { entry = null })
+        QuickEntrySheet(
+            model = quickEntry,
+            actions = model.actions,
+            onDismiss = { entry = null },
+            onMore = { input ->
+                entry = null
+                onEdit(EditorTarget.New(quickEntry.day, input))
+            },
+        )
     }
 }
 
@@ -165,6 +192,21 @@ private fun FollowPager(
     }
 }
 
+/** An all-day '연차' on [day], in the first own calendar the editor picks. */
+private fun leaveInput(
+    day: String,
+    title: String,
+) = EventInput(
+    calendarId = "",
+    title = title,
+    allDay = true,
+    start = DayTime(day, 0u),
+    end = DayTime(day, 0u),
+    recurrence = null,
+    alert = AlertRule.Inherit,
+    note = null,
+)
+
 /** The line under the quick entry's title: "민수 생일 · 개천절". */
 private fun notes(
     birthdays: List<BirthdayItem>,
@@ -183,7 +225,8 @@ private const val DAY_MS = 86_400_000L
 
 /**
  * The header of the three views (boards/Month, Week, List): the year (13 · 600) over the month or range (32), the
- * segment, and "＋". Tapping the title goes back to today.
+ * segment, and "＋", a menu of a new event and the shift stamp screen (m1.md §2.3). Tapping the title goes back to
+ * today.
  */
 @Composable
 private fun CalendarHeader(
@@ -192,7 +235,8 @@ private fun CalendarHeader(
     title: String,
     onTitle: (() -> Unit)?,
     onSelect: (CalendarViewKind) -> Unit,
-    onAdd: (() -> Unit)?,
+    onNewEvent: (() -> Unit)?,
+    onStamp: () -> Unit,
 ) {
     val neutrals = LocalNeutralColors.current
     Row(
@@ -236,15 +280,47 @@ private fun CalendarHeader(
             onSelect = { onSelect(CalendarViewKind.entries[it]) },
             modifier = Modifier.width(SEGMENT_WIDTH).testTag("calendar.segment"),
         )
-        if (onAdd != null) {
-            IconButton(onClick = onAdd, modifier = Modifier.testTag("calendar.add")) {
-                Icon(
-                    painterResource(DesignR.drawable.ds_ic_add),
-                    contentDescription = stringResource(R.string.calendar_add),
-                    tint = neutrals.ink,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
+        if (onNewEvent != null) {
+            AddMenu(onNewEvent = onNewEvent, onStamp = onStamp)
+        }
+    }
+}
+
+@Composable
+private fun AddMenu(
+    onNewEvent: () -> Unit,
+    onStamp: () -> Unit,
+) {
+    val ink = LocalNeutralColors.current.ink
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }, modifier = Modifier.testTag("calendar.add")) {
+            Icon(
+                painterResource(DesignR.drawable.ds_ic_add),
+                contentDescription = stringResource(R.string.calendar_add_menu),
+                tint = ink,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.calendar_add), style = GeunalType.body) },
+                leadingIcon = { Icon(painterResource(DesignR.drawable.ds_ic_calendar), contentDescription = null, tint = ink) },
+                onClick = {
+                    open = false
+                    onNewEvent()
+                },
+                modifier = Modifier.testTag("calendar.add.event"),
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.calendar_stamp_shifts), style = GeunalType.body) },
+                leadingIcon = { Icon(painterResource(DesignR.drawable.ds_ic_grid), contentDescription = null, tint = ink) },
+                onClick = {
+                    open = false
+                    onStamp()
+                },
+                modifier = Modifier.testTag("calendar.add.shifts"),
+            )
         }
     }
 }

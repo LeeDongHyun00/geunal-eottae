@@ -1,5 +1,6 @@
 package app.geunal.designsystem
 
+import android.content.res.Resources
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
@@ -147,6 +148,9 @@ val GroupColors: List<GroupColor> =
     )
 
 private fun tints(vararg rgb: Long): List<Color> = rgb.map { Color(0xFF000000 or it) }
+
+/** The Korean name settings show for a group color ("민트"), as tokens.json names it. */
+fun GroupColor.label(resources: Resources): String = resources.getStringArray(R.array.ds_group_color_names)[GroupColors.indexOf(this)]
 
 /**
  * The tint for `free` people free out of `total` (docs/design/README.md §2.2): 0 is the empty cell (null), everyone is
