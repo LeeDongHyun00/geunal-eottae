@@ -50,7 +50,7 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 | --- | --- | --- | --- | --- |
 | `Core::open(store_dir, api_base, listener, secrets)` | `Core.open(storeDir:apiBase:listener:secrets:)` | `Core.open(storeDir, apiBase, listener, secrets)` | 저장소 열기. 데이터베이스 키를 `secrets`에서 꺼내야 파일을 열 수 있어서 `SecretStore`를 여기서 받습니다. 저장된 세션이 있으면 복원 | M0 |
 | `sign_in_stub(subject, display_name, platform)` | `signInStub(subject:displayName:platform:) async throws` | `suspend fun signInStub(subject, displayName, platform)` | 인증 스텁(`POST /auth/stub`, 로컬·CI만)으로 로그인과 기기 등록. 세션과 기기 서명 키는 `SecretStore`에 둠. M1부터 `AuthResult`를 돌려주고, 다른 기기가 쓰는 계정이면 `ReplaceRequired`(protocol.md 13장) | M0 |
-| `sync()` | `sync() async throws` | `suspend fun sync()` | 모든 그룹 따라잡기, 대기 중 쓰기 보내기. M1부터 로그인이 마치지 못한 계정 정보, 키 패키지, 복구 자료도 처리(5장 "계정과 세션") | M0 |
+| `sync()` | `sync() async throws` | `suspend fun sync()` | 모든 그룹 따라잡기, 대기 중 쓰기 보내기. M1부터 로그인이 마치지 못한 계정 정보, 키 패키지, 복구 자료도 처리(5장 "계정과 세션"). 하루 한 번 공휴일 받기(6장 "공휴일과 연차 다리")와 알파 통계 보내기(5장 "알파 통계")도 하고, 이 둘은 실패해도 `sync()`를 실패시키지 않음 | M0 |
 | `cipher_version()` | `cipherVersion()` | `cipherVersion()` | M0 화면용 SQLCipher 버전. 화면이 없어지면 지움 | M0 |
 | `cipher_provider()` | `cipherProvider()` | `cipherProvider()` | SQLCipher가 쓰는 암호 라이브러리(안드로이드 `openssl`, iOS `commoncrypto`)와, 링크된 그 라이브러리가 실행 중에 알려 주는 버전. 기기 시험이 앱에 실제로 들어간 OpenSSL을 확인 | M1 |
 | `create_group(name)`, `add_members(group_id, user_ids)`, `remove_member(group_id, user_id)` | `createGroup(name:) async throws` 등 | `suspend fun createGroup(name)` 등 | 그룹 만들기, 사용자 ID로 멤버 추가(초대 코드는 M2), 탈퇴·강퇴. 헤드리스 종단 시험이 쓰는 M0 표면 | M0 |
@@ -320,6 +320,8 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
 - **추천 기록:** 같은 요일에 마지막으로 쓴 끝 시각·캘린더·종일 여부, 반복 제안을 물었는지
 - **새 테이블:** 설정(`settings`), 서버가 보낸 해의 공휴일(`holidays`, `holiday_years`), 알파 통계(`alpha_stats`), 이 기기가 만든 백업의 기록(`backup_records`)
 
+`0003_alpha_sessions.sql`은 알파 통계에 앱만 아는 두 값, 그날 앱이 앞으로 나온 횟수(`sessions`)와 OS가 알려 준 크래시 수(`crashes`)를 더합니다.
+
 ### 백업 아카이브
 
 [공통 계약](protocol.md) 10장의 백업에 들어가는 내용입니다. 형식은 `geunal-store`의 `archive`가 정하는 CBOR이고 지금은 1판입니다. 저장소의 행과 따로 정의해서, 스키마가 바뀌어도 형식은 그대로입니다.
@@ -393,6 +395,13 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
   - 내 캘린더와 일정, 직접 넣거나 연락처에서 가져온 사람, 데이터베이스 키는 남깁니다.
   - 403 본문의 `replaced_at`·`replaced_by`·`replaced_via`는 다음 로그인이 이 기기를 등록할 때까지 `revocation()`이 돌려줍니다. `revoke` 이벤트는 본문이 비어 있어서, 코어가 `GET /me`를 불러 그 403을 받습니다.
   - `GET /me`가 네트워크 오류 등으로 답하지 못해도 지웁니다. 그때 `revocation()`은 `None`입니다. `GET /me`가 성공하면, 서버가 이 기기를 아직 활성으로 보는 것이라 아무것도 지우지 않습니다.
+- **계정 삭제(`delete_account(proof)`):** `DELETE /me`에 계정 종류의 증명을 붙입니다(protocol.md 13장 "계정 삭제").
+  - 게스트(`DeletionProof::Guest`)는 코어가 새 nonce를 받아 이 기기의 코드에서 나온 복구 서명 키로 서명합니다. 사용자에게 묻지 않습니다. 서명할 코드가 기기에 없으면 `Invalid`입니다.
+  - 카카오는 `sign_in_nonce`의 `provider_nonce`로 받은 ID 토큰과 그 `nonce`, Apple은 새 인가 코드를 그대로 보냅니다.
+  - 403 `reauth_required`면 `ReauthRequired`이고, 아무것도 지우지 않으며 세션도 그대로입니다. 앱은 증명만 다시 받습니다.
+  - 409 `recovery_missing`(복구 자료를 아직 못 올린 게스트)이면 기기의 코드를 먼저 올리고 한 번 더 지웁니다(디자인 22번 화면). 그래도 안 되면 `RecoveryMissing`입니다.
+  - 204를 받으면 기기 해제 때와 같은 것(세션, 기기 서명 키, `E`, AMK, 그룹 상태, 계정을 따라가는 설정)을 지우고, 해제 기록은 남기지 않습니다. 알파 통계는 끄고 기기의 숫자를 지웁니다. 계정이 지워졌으니 새 계정은 다시 동의를 받습니다.
+  - 저장소의 주인은 지운 계정으로 남습니다. 그래서 이 기기에서 새로 가입한 계정은 남은 일정을 가져올지 먼저 묻습니다.
 
 ### 저장소의 주인, 복원, 백업
 
@@ -414,6 +423,21 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
   - 자동 백업은 설정이 켜져 있고(기본), 백업이 담는 것이 마지막 백업 뒤 바뀌었을 때만 올립니다. 바뀜은 시각이 아니라 변경 횟수로 셉니다. 같은 초의 변경도 세고, 기기 시계를 되돌려도 놓치지 않습니다. 횟수는 아카이브를 뜬 순간의 값을 적으므로, 올리는 동안 바뀐 것은 다음 백업이 담습니다.
   - 이 저장소의 백업 기록이 없으면 모두 바뀐 것으로 봅니다. 새 계정, 복원한 폰, "새로 시작"으로 서버의 백업이 지워진 폰, 다른 계정의 일정을 가져온 폰이 그렇습니다. 백업 기록을 통째로 지우는 곳(새로 시작, 기기 해제, 다른 계정의 일정 정리)은 마지막 백업이 담은 변경 횟수도 함께 지웁니다. 지워진 백업이나 다른 계정의 백업이 이 저장소를 담고 있다고 여기지 않으려는 것입니다.
 - **고정 nonce:** 벡터를 다시 만드는 함수(`seal_with_nonce`, `encrypt_with_nonce`, `wrap_amk_with_nonce`)는 `geunal-crypto`의 `test-vectors` 기능 뒤에 둡니다. 벡터 시험만 이 기능을 켜서, 운영 코드에서 부르면 컴파일되지 않습니다.
+
+### 알파 통계
+
+[공통 계약](protocol.md) 14장의 숫자를 코어가 이렇게 세고 보냅니다.
+
+- **동의:** 기본은 꺼짐입니다. `set_alpha_stats(true)`가 동의한 날(한국 날짜)을 적고, 그 전날까지의 숫자는 보내지 않습니다. 끄면 기기가 센 숫자를 모두 지웁니다.
+- **세는 것:**
+  - `events`와 `suggested`는 일정을 넣을 때 코어가 셉니다. 5초 안의 되돌리기는 센 것을 돌려놓습니다(6장 "입력 추천").
+  - `sessions`는 앱이 앞으로 나올 때마다 부르는 `record_app_foreground()`로 셉니다.
+  - `crashes`는 다음 실행에서 OS가 알려 준 날짜별 수를 `record_crashes(day, count)`로 넘겨 셉니다.
+  - `sessions`와 `crashes`는 켜져 있을 때만 셉니다. 14일보다 오래된 날의 크래시는 버립니다.
+- **보내기:** 로그인한 기기의 `sync()`가 하루 한 번, 최근 14일 중 동의한 날 이후이고 마지막으로 보낸 뒤 바뀐 날을 보냅니다.
+  - 오늘도 그때까지의 숫자로 보내고, 다음 날 마지막 숫자로 다시 보냅니다. 앱을 다시 열지 않은 테스터의 마지막 날도 서버에 남게 하려는 것입니다.
+  - 보내는 동안 바뀐 날은 보낸 것으로 적지 않아, 다음에 새 숫자로 갑니다.
+  - 네트워크 오류면 다음 `sync()`가 다시 보내고, 그 밖의 실패는 다음 날 보냅니다. 기기 해제 말고는 `sync()`를 실패시키지 않습니다.
 
 ## 6. 도메인 로직
 
@@ -560,6 +584,11 @@ pub fn open(key: &[u8; 32], aad: &str, blob: &[u8]) -> Option<Vec<u8>> {
 ### 공휴일과 연차 다리
 
 - 코어에 2026–2027년 표가 있습니다(`core/geunal-domain/src/holidays.rs`, 출처는 파일 머리). 서버가 한 해를 보내면 그해 전체를 바꿉니다([공통 계약](protocol.md) 14장). 그래서 나중에 정한 임시공휴일도 보입니다.
+- **받기:** 로그인한 기기의 `sync()`가 하루 한 번 올해와 다음 해를 `GET /holidays`로 묻습니다(한국 날짜 기준).
+  - 서버가 다 아는 해(`years`)만 통째로 바꾸고, 모르는 해(발표 전의 다음 해)는 가진 것을 그대로 둡니다.
+  - 날짜가 아닌 날이나 이름 없는 항목이 하나라도 있으면 그날의 답은 받지 않습니다. 공휴일이 하나도 없는 해도 받지 않습니다. 잘못된 답이 내장 표가 맞게 가진 그해 공휴일을 지우지 않게 하려는 것입니다.
+  - 네트워크 오류면 다음 `sync()`에 다시 묻고, 그 밖의 실패는 다음 날 묻습니다. 캘린더는 이것을 기다리지 않으므로 `sync()`를 실패시키지 않습니다.
+  - `ETag`로 다시 묻지는 않습니다. 하루 한 번이고 두 해의 표가 작기 때문입니다.
 - 하루에 공휴일이 둘일 수 있습니다(2025-05-05의 어린이날·부처님오신날).
 - **연차 다리:** 앞뒤가 모두 쉬는 날(주말·공휴일)인 평일 하루를 쉬면 4일 이상 이어 쉬게 될 때, 그 평일을 제안합니다.
 - 그날에 제목에 "연차"나 "휴가"가 들어간 종일 일정이 있으면 이미 쉬는 것으로 보고 제안하지 않습니다. 제안 칩이 채워 넣는 일정이 "연차"이기 때문입니다. 다른 종일 일정("약속")은 쉬는 날로 보지 않습니다.
