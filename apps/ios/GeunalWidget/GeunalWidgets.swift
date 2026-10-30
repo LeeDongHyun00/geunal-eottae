@@ -68,7 +68,8 @@ struct SnapshotTimeline: TimelineProvider {
             day: WidgetDays.day(of: date),
             state: .events(
                 today: [
-                    WidgetSnapshot.Event(title: "가족 · 저녁", color: "blossom", allDay: false, start: "18:00", end: "20:00")
+                    WidgetSnapshot.Event(
+                        title: "가족 · 저녁", color: "blossom", allDay: false, start: "18:00", end: "20:00")
                 ],
                 tomorrow: [
                     WidgetSnapshot.Event(title: "전공 수업", color: "sea", allDay: false, start: "10:00", end: "12:00")

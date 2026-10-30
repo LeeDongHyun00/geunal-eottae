@@ -16,7 +16,8 @@ public enum WidgetLink: Equatable, Sendable {
             parts.host = "today"
         case .event(let eventId, let occurrence):
             parts.host = "event"
-            parts.queryItems = [URLQueryItem(name: "id", value: eventId)]
+            parts.queryItems =
+                [URLQueryItem(name: "id", value: eventId)]
                 + (occurrence.map { [URLQueryItem(name: "occurrence", value: $0)] } ?? [])
         }
         return parts.url ?? URL(fileURLWithPath: "/")
