@@ -9,6 +9,9 @@
 #   for a device revoked by a replacement also carries replaced_at (date-time), replaced_by (ios | android, the
 #   account's active device) and replaced_via (provider | recovery), so the old device can say when, where and how
 #   the account signed in (protocol §13).
+# - M1: once DELETE /me succeeds, a request with that account's access or refresh token answers 401 account_deleted
+#   until the token would have expired (15 minutes, 30 days), so a device that lost the 204 finishes the deletion
+#   instead of taking it for an ended session (protocol §11, §13).
 # - M1 sign-in binding: the nonce handed to Kakao or Apple is lowercase hex SHA-256("geunal login v1" ‖ nonce ‖
 #   signature_key), with nonce as its ASCII bytes and signature_key as the 32 raw bytes; the server recomputes it from
 #   the request and compares it with the token's nonce claim (protocol §13).
@@ -238,7 +241,7 @@ paths:
             schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } }
       responses:
         "200": { content: { application/json: { schema: { $ref: "#/components/schemas/Tokens" } } } }
-        "401": { description: "token_expired (unknown, spent or expired refresh token)" }
+        "401": { description: "token_expired (unknown, spent or expired refresh token); M1: account_deleted (the token's account was deleted)" }
         "403": { description: device_revoked }
 
   /.well-known/jwks.json:
@@ -299,7 +302,7 @@ paths:
                 kakao_id_token: { type: string, description: Kakao accounts }
                 apple_authorization_code: { type: string, description: Apple accounts }
       responses:
-        "204": { description: deleted; this device's tokens stop working }
+        "204": { description: "deleted; until they would have expired, this device's tokens answer 401 account_deleted" }
         "403": { description: "reauth_required (the proof is missing, of the wrong kind for this account, or does not verify, including a provider token for another account; the session stays valid); replace_required (called with a replacement ticket)" }
         "409": { description: "recovery_missing (a guest whose recovery material is not stored yet: PUT /me/recovery first, then delete again)" }
 
