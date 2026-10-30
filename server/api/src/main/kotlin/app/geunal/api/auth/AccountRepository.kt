@@ -122,6 +122,16 @@ class AccountRepository(
             .list()
             .filterNotNull()
 
+    /** The provider accounts the account signs in with now, by provider: what a deletion or "새로 시작" proves again. */
+    fun links(userId: UUID): Map<Provider, String> =
+        jdbc
+            .sql(
+                "SELECT provider::text AS provider, sub FROM provider_links WHERE user_id = :user AND unlinked_at IS NULL AND provider IN ('kakao', 'apple')",
+            ).param("user", userId)
+            .query { rs, _ -> Provider.linkable(rs.getString("provider"))!! to rs.getString("sub") }
+            .list()
+            .toMap()
+
     fun hasRecovery(userId: UUID): Boolean =
         jdbc
             .sql("SELECT EXISTS (SELECT 1 FROM recovery WHERE user_id = :user)")

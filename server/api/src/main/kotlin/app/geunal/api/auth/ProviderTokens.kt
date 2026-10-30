@@ -76,6 +76,18 @@ class ProviderTokens(
         return claims.subject
     }
 
+    /**
+     * The `sub` of an identity token Apple's token endpoint returned for a code exchange with [clientId] (account
+     * deletion, "새로 시작"): the exchange itself is the proof, so no nonce binding applies.
+     */
+    fun appleSubject(
+        idToken: String,
+        clientId: String,
+    ): String? {
+        val claims = apple?.verify(idToken) ?: return null
+        return claims.subject.takeIf { clientId in claims.audience }
+    }
+
     private fun verifier(provider: Provider): Verifier? =
         when (provider) {
             Provider.KAKAO -> kakao

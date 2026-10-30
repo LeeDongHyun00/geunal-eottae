@@ -95,6 +95,15 @@ class DeviceRepository(
             .optional()
     }
 
+    /** When a provider sign-in last gave this device a session; null if none did (a guest, a recovery). */
+    fun providerAuthAt(deviceId: UUID): Instant? =
+        jdbc
+            .sql("SELECT provider_auth_at FROM devices WHERE id = :id")
+            .param("id", deviceId)
+            .query { rs, _ -> rs.getObject("provider_auth_at", OffsetDateTime::class.java)?.toInstant() }
+            .list()
+            .firstOrNull()
+
     /** The same device signed in with its provider again: "새로 시작" without the code counts from now. */
     fun markProviderAuth(deviceId: UUID) {
         jdbc.sql("UPDATE devices SET provider_auth_at = now() WHERE id = :id").param("id", deviceId).update()

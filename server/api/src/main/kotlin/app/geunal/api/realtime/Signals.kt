@@ -1,10 +1,9 @@
 package app.geunal.api.realtime
 
+import app.geunal.api.common.afterCommit
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
-import org.springframework.transaction.support.TransactionSynchronization
-import org.springframework.transaction.support.TransactionSynchronizationManager
 import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
 
@@ -41,15 +40,6 @@ class Signals(
         } catch (e: RuntimeException) {
             log.warn("could not publish to {}: {}", channel, e.toString())
         }
-    }
-
-    private fun afterCommit(block: () -> Unit) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) return block()
-        TransactionSynchronizationManager.registerSynchronization(
-            object : TransactionSynchronization {
-                override fun afterCommit() = block()
-            },
-        )
     }
 
     private companion object {

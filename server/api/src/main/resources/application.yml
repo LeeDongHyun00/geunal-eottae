@@ -34,6 +34,8 @@ geunal:
     nonce-ttl: 5m
     # How long a replace_required ticket stays good for POST /auth/replace and the restore reads (protocol §13).
     ticket-ttl: 30m
+    # "새로 시작" (PUT /me/recovery with new_key) without a fresh provider proof: this long after a provider sign-in.
+    provider-window: 30m
     jwt:
       # GEUNAL_AUTH_JWT_KEYS: a JWK Set with at least one P-256 private key; the first one signs, all are published at
       # /.well-known/jwks.json so a key can be rotated by adding the new one in front. Empty means a fresh key for this
@@ -65,3 +67,14 @@ geunal:
     android-package: app.geunal
     android-fingerprints:
       - "DE:B8:C0:15:7E:58:20:68:36:81:A1:8D:74:0B:2D:17:6B:FC:AA:67:48:68:9E:5B:25:4B:2A:53:9C:52:1E:B8"
+  # Object storage for backups (S3-compatible: NCP Object Storage, SeaweedFS locally). GEUNAL_S3_ENDPOINT is where the
+  # API reaches the store; GEUNAL_S3_PUBLIC_ENDPOINT, if different, is the address devices reach, which presigned URLs
+  # are signed for. GEUNAL_S3_ACCESS_KEY and GEUNAL_S3_SECRET_KEY come from the secret manager. GEUNAL_S3_BACKUPS_BUCKET
+  # is the full bucket name (<prefix>-backups). The prod profile refuses to start without an endpoint.
+  s3:
+    endpoint: ""
+    public-endpoint: ""
+    region: kr-standard
+    access-key: ""
+    secret-key: ""
+    backups-bucket: backups
