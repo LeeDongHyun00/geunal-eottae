@@ -18,13 +18,19 @@ final class WidgetContentTests: XCTestCase {
             listener: ChangeStreamListener(), secrets: MemorySecretStore())
     }
 
-    private func add(_ core: Core, _ title: String, on day: String, from start: UInt16, to end: UInt16) throws {
+    @discardableResult
+    private func add(
+        _ core: Core, _ title: String, on day: String, from start: UInt16, to end: UInt16
+    ) throws
+        -> String
+    {
         let calendarId = try XCTUnwrap(core.calendars().first { $0.kind == .own }?.id)
-        _ = try core.addEvent(
+        return try core.addEvent(
             input: EventInput(
                 calendarId: calendarId, title: title, allDay: false, start: DayTime(day: day, minute: start),
                 end: DayTime(day: day, minute: end), recurrence: nil, alert: .inherit, note: nil),
-            fromSuggestion: false)
+            fromSuggestion: false
+        ).eventId
     }
 
     private func titles(_ events: [WidgetSnapshot.Event]?) -> [String]? {
@@ -35,7 +41,7 @@ final class WidgetContentTests: XCTestCase {
         let core = try makeCore()
         let today = KoreanCalendar.day(of: Date())
         let tomorrow = try XCTUnwrap(KoreanCalendar.adding(days: 1, to: today))
-        try add(core, "가족 · 저녁", on: today, from: 1080, to: 1200)
+        let dinner = try add(core, "가족 · 저녁", on: today, from: 1080, to: 1200)
         try add(core, "전공 수업", on: tomorrow, from: 600, to: 720)
 
         let content = WidgetContent.make(WidgetSnapshot.read(Data(try core.widgetSnapshot().utf8)), day: today)
@@ -46,6 +52,8 @@ final class WidgetContentTests: XCTestCase {
         XCTAssertEqual(titles(shownToday), ["가족 · 저녁 18:00–20:00"])
         XCTAssertEqual(titles(shownTomorrow), ["전공 수업 10:00–12:00"])
         XCTAssertEqual(shownToday.first?.color, "tangerine")
+        // The core names each event (core #55), so tapping one opens it in the editor (m1.md 2.6).
+        XCTAssertEqual(shownToday.first.flatMap(WidgetLink.event), .event(eventId: dinner, occurrence: nil))
     }
 
     private let snapshot = WidgetSnapshot(
