@@ -95,3 +95,26 @@ public enum KakaoSetup {
         return AuthController.handleOpenUrl(url: url)
     }
 }
+
+#if DEBUG
+    extension KakaoSetup {
+        /// QA D12 for the app's tests, which do not link the SDK themselves: the SDK's token manager is this app's,
+        /// and a token handed to it leaves the SDK's slot in the standard defaults (`TokenManager.OAuthTokenKey`) as
+        /// it was. It puts a stand-in token through the manager and gives back the one it held.
+        @MainActor
+        public static var keepsTokensInMemory: Bool {
+            let manager = Auth.shared.tokenManager
+            guard manager is MemoryTokenManager else { return false }
+            let key = "com.kakao.sdk.oauth_token"
+            let before = UserDefaults.standard.data(forKey: key)
+            let held = manager.getToken()
+            manager.setToken(
+                OAuthToken(
+                    accessToken: "stand-in", tokenType: "bearer", refreshToken: "stand-in", scope: nil, scopes: nil))
+            let kept = manager.getToken()?.accessToken == "stand-in"
+            let after = UserDefaults.standard.data(forKey: key)
+            manager.setToken(held)
+            return kept && before == after
+        }
+    }
+#endif
