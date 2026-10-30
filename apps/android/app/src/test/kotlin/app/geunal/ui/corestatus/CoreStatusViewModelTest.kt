@@ -3,11 +3,11 @@ package app.geunal.ui.corestatus
 import app.geunal.core.Change
 import app.geunal.core.Core
 import app.geunal.core.CoreException
-import app.geunal.core.CoreListener
 import app.geunal.core.NoHandle
-import app.geunal.core.Session
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -15,7 +15,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 
@@ -36,52 +35,31 @@ class CoreStatusViewModelTest {
     @Test
     fun showsTheCipherVersionAndASuccessfulSync() =
         runTest(dispatcher) {
-            val viewModel = CoreStatusViewModel({ FakeCore() }, dispatcher)
+            val viewModel = CoreStatusViewModel(FakeCore(), emptyFlow(), dispatcher)
             advanceUntilIdle()
 
-            assertEquals(
-                CoreStatus(store = Step.Done, cipherVersion = "4.7.0 community", sync = Step.Done, changes = 0),
-                viewModel.status.value,
-            )
+            assertEquals(CoreStatus(cipherVersion = "4.7.0 community", sync = Step.Done, changes = 0), viewModel.status.value)
         }
 
     @Test
-    fun showsWhyTheStoreDidNotOpen() =
+    fun namesAFailedSyncByKindOnly() =
         runTest(dispatcher) {
-            val viewModel = CoreStatusViewModel({ throw CoreException.Store("file is not a database") }, dispatcher)
+            val viewModel =
+                CoreStatusViewModel(FakeCore(syncError = CoreException.Network("connect to 10.0.2.2 refused")), emptyFlow(), dispatcher)
             advanceUntilIdle()
 
-            val status = viewModel.status.value
-            assertEquals(Step.Failed("reason=file is not a database"), status.store)
-            assertNull(status.cipherVersion)
-            assertEquals(Step.Pending, status.sync)
-        }
-
-    @Test
-    fun showsAFailedSyncAfterASuccessfulOpen() =
-        runTest(dispatcher) {
-            val core = FakeCore(syncError = CoreException.Store("offline"))
-            val viewModel = CoreStatusViewModel({ core }, dispatcher)
-            advanceUntilIdle()
-
-            assertEquals(Step.Done, viewModel.status.value.store)
-            assertEquals(Step.Failed("reason=offline"), viewModel.status.value.sync)
+            assertEquals(Step.Failed("Network"), viewModel.status.value.sync)
         }
 
     @Test
     fun countsTheChangesTheListenerHears() =
         runTest(dispatcher) {
-            var listener: CoreListener? = null
-            val viewModel =
-                CoreStatusViewModel({
-                    listener = it
-                    FakeCore()
-                }, dispatcher)
+            val changes = MutableSharedFlow<Change>(extraBufferCapacity = 4)
+            val viewModel = CoreStatusViewModel(FakeCore(), changes, dispatcher)
             advanceUntilIdle()
 
-            val heard = checkNotNull(listener)
-            heard.onChange(Change.Calendar)
-            heard.onChange(Change.Group("g1"))
+            changes.emit(Change.Calendar)
+            changes.emit(Change.Group("g1"))
             advanceUntilIdle()
 
             assertEquals(2, viewModel.status.value.changes)
@@ -99,7 +77,5 @@ class CoreStatusViewModelTest {
         override suspend fun sync() {
             syncError?.let { throw it }
         }
-
-        override fun session(): Session? = null
     }
 }

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Added to the build only when it has a Kakao app key (app/build.gradle.kts): without one the SDK is not set up, and
+     an exported activity for the bare "kakao" scheme would answer links meant for other apps. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Kakao Login: the SDK's activity that receives the authorization code back from KakaoTalk or the web login. -->
+        <activity
+            android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="oauth"
+                    android:scheme="kakao${geunalKakaoAppKey}" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

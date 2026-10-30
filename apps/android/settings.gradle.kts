@@ -13,10 +13,18 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Kakao publishes its Android SDK only to its own repository. Only the SDK's group is looked up there, and that
+        // group only there, so nothing else can ever resolve from it.
+        exclusiveContent {
+            forRepository {
+                maven("https://devrepo.kakao.com/nexus/content/groups/public/") { name = "Kakao" }
+            }
+            filter { includeGroup("com.kakao.sdk") }
+        }
     }
 }
 
 rootProject.name = "geunal"
 
-// docs/parts/android.md §2. The feature and widget modules arrive with the screens they hold (M1 and later).
-include(":core", ":bridge", ":designsystem", ":app")
+// docs/parts/android.md §2. The remaining feature modules and the widget arrive with the screens they hold.
+include(":core", ":bridge", ":designsystem", ":feature-calendar", ":feature-account", ":app")

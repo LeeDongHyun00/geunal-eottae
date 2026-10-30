@@ -87,6 +87,14 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: make connected-android
+      # What the screen tests saved through the test storage service, named like docs/design/screens/m1, for review
+      # next to the iOS ones.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: android-screenshots
+          path: apps/android/*/build/outputs/connected_android_test_additional_output/**/*.png
+          if-no-files-found: warn
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:

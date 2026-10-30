@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- docs/design/tone.md "날짜와 시간". -->
+    <string name="calendar_today">오늘</string>
+    <string name="calendar_tomorrow">내일</string>
+    <string name="calendar_day_after_tomorrow">모레</string>
+    <string name="calendar_day_this_year">%1$d월 %2$d일(%3$s)</string>
+    <string name="calendar_day_other_year">%1$s년 %2$d월 %3$d일</string>
+    <string-array name="calendar_weekday_short">
+        <item>일</item>
+        <item>월</item>
+        <item>화</item>
+        <item>수</item>
+        <item>목</item>
+        <item>금</item>
+        <item>토</item>
+    </string-array>
+    <string name="calendar_until_minutes">%1$d분 뒤</string>
+    <string name="calendar_until_hours">%1$d시간 뒤</string>
+    <string name="calendar_until_hours_minutes">%1$d시간 %2$d분 뒤</string>
+    <string name="calendar_until_days">%1$d일 뒤</string>
+    <string name="calendar_until_days_hours">%1$d일 %2$d시간 뒤</string>
+
+    <!-- The next-up bar (docs/design/README.md §5). -->
+    <string name="next_up_all_day">%1$s · 종일</string>
+    <string name="next_up_timed">%1$s %2$s · %3$s</string>
+    <string name="next_up_now">%1$s %2$s · 지금</string>
+    <string name="next_up_birthday">%1$s 생일</string>
+    <string name="next_up_empty">다가오는 일정이 없어요</string>
+    <string name="next_up_previous">이전 할 일</string>
+    <string name="next_up_next">다음 할 일</string>
+</resources>

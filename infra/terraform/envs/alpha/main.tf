@@ -28,6 +28,9 @@ module "server" {
   spec_code   = var.server_spec_code
   public_ip   = true
 
+  # NCP refuses an hourly plan for Micro specs; the free year (infra.md §2) is billed as a monthly plan at zero.
+  fee_system_type_code = var.server_fee_system_type_code
+
   # Caddy answers 80 (ACME, redirect) and 443; SSH only from the operator's address (infra.md §2).
   inbound_rules = [
     { protocol = "TCP", ip_block = "0.0.0.0/0", port_range = "80", description = "HTTP" },

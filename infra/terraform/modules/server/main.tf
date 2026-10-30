@@ -77,6 +77,7 @@ resource "ncloud_server" "this" {
   subnet_no                     = var.subnet_no
   server_image_number           = data.ncloud_server_image_numbers.this.image_number_list[0].server_image_number
   server_spec_code              = var.spec_code
+  fee_system_type_code          = var.fee_system_type_code
   login_key_name                = ncloud_login_key.this.key_name
   init_script_no                = var.init_script == null ? null : ncloud_init_script.this[0].id
   is_protect_server_termination = var.protect_termination
