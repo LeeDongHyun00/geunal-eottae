@@ -107,7 +107,15 @@ final class AppModel {
                 // The sync finishes what a sign-in left undone (the account, key packages, the recovery material) and
                 // once a day fetches the holidays and sends the alpha statistics; what it changes arrives through the
                 // listener. On its own task, so a slow network does not hold the next-up bar back.
-                Task { try? await core.sync() }
+                Task {
+                    do {
+                        try await core.sync()
+                    } catch let error as CoreError where error.isAccountDeleted {
+                        // Deleted while this device had no answer, or before the app last closed: the core has
+                        // finished as after a 204, and the app ends the same way (m1.md decision 36).
+                        self.accountDeleted()
+                    } catch {}
+                }
             }
             // The core backs nothing up while another account's events wait for an answer.
             if case .main = phase {

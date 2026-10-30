@@ -400,6 +400,117 @@ final class MeModelTests: XCTestCase {
         XCTAssertEqual(model.problem, .recoveryMissing)
     }
 
+    private let accountDeleted = CoreError.Api(status: 401, code: "account_deleted", detail: "")
+
+    func testALostAnswerIsCheckedAndPressingAgainSendsTheFirstProof() async {
+        let core = AccountFakeCore()
+        core.deleteErrors.update { $0 = [.Network(reason: "timed out")] }
+        let owner = FakeDeviceOwner()
+        let providers = FakeProviders()
+        let model = deletion(core, owner, account: kakao, providers: providers)
+
+        let first = await model.delete(online: true)
+        XCTAssertFalse(first)
+        XCTAssertEqual(model.problem, .answerLost)
+        XCTAssertFalse(model.canConfirm, "the button waits for the check")
+
+        await model.checkLostAnswer()
+        XCTAssertEqual(model.problem, .notDeleted)
+        XCTAssertTrue(model.canConfirm)
+
+        let second = await model.delete(online: true)
+        XCTAssertTrue(second)
+        XCTAssertTrue(model.deleted)
+        // No second OS prompt and no second Kakao sign-in: the first proof went again.
+        XCTAssertEqual(owner.asked, [.deleteAccount])
+        XCTAssertEqual(providers.nonces, ["p1"])
+        XCTAssertEqual(core.calls.current, ["nonce", "delete", "sync", "delete"])
+        XCTAssertEqual(core.lastProof.current, .kakao(nonce: "n1", idToken: "token"))
+    }
+
+    func testALostAnswerEndsWhenTheCheckFindsTheAccountGone() async {
+        let core = AccountFakeCore()
+        core.deleteErrors.update { $0 = [.Network(reason: "timed out")] }
+        core.syncErrors.update { $0 = [accountDeleted] }
+        let model = deletion(core, FakeDeviceOwner())
+        _ = await model.delete(online: true)
+
+        await model.checkLostAnswer()
+
+        XCTAssertTrue(model.deleted)
+    }
+
+    func testACheckThatFailsWaitsForTheNextConnection() async {
+        let core = AccountFakeCore()
+        core.deleteErrors.update { $0 = [.Network(reason: "timed out")] }
+        core.syncErrors.update { $0 = [.Network(reason: "offline")] }
+        let model = deletion(core, FakeDeviceOwner())
+        _ = await model.delete(online: true)
+
+        await model.checkLostAnswer()
+
+        XCTAssertEqual(model.problem, .answerLost)
+        XCTAssertFalse(model.deleted)
+        await model.checkLostAnswer()
+        XCTAssertEqual(model.problem, .notDeleted)
+    }
+
+    func testASpentProofAsksAgainFromTheOwnerPrompt() async {
+        let core = AccountFakeCore()
+        core.deleteErrors.update { $0 = [.Network(reason: "timed out"), .ReauthRequired] }
+        let owner = FakeDeviceOwner()
+        let model = deletion(core, owner, account: kakao)
+        _ = await model.delete(online: true)
+        await model.checkLostAnswer()
+
+        let deleted = await model.delete(online: true)
+
+        XCTAssertTrue(deleted)
+        XCTAssertEqual(owner.asked, [.deleteAccount, .deleteAccount])
+        XCTAssertEqual(core.calls.current, ["nonce", "delete", "sync", "delete", "nonce", "delete"])
+    }
+
+    func testAResentProofThatLosesItsAnswerAgainIsCheckedAgain() async {
+        let core = AccountFakeCore()
+        core.deleteErrors.update { $0 = [.Network(reason: "timed out"), .Network(reason: "timed out")] }
+        let model = deletion(core, FakeDeviceOwner())
+        _ = await model.delete(online: true)
+        await model.checkLostAnswer()
+
+        let deleted = await model.delete(online: true)
+
+        XCTAssertFalse(deleted)
+        XCTAssertEqual(model.problem, .answerLost)
+    }
+
+    func testClosingTheSheetDropsTheProof() async {
+        let core = AccountFakeCore()
+        core.deleteErrors.update { $0 = [.Network(reason: "timed out")] }
+        let providers = FakeProviders()
+        let model = deletion(core, FakeDeviceOwner(), account: kakao, providers: providers)
+        _ = await model.delete(online: true)
+
+        model.sheetClosed()
+        XCTAssertNil(model.problem)
+        let deleted = await model.delete(online: true)
+
+        XCTAssertTrue(deleted)
+        // A fresh Kakao sign-in made a new proof.
+        XCTAssertEqual(core.calls.current, ["nonce", "delete", "nonce", "delete"])
+    }
+
+    func testAnAccountAlreadyGoneEndsAsDeleted() async {
+        let core = AccountFakeCore()
+        core.deleteErrors.update { $0 = [accountDeleted] }
+        let model = deletion(core, FakeDeviceOwner())
+
+        let deleted = await model.delete(online: true)
+
+        XCTAssertTrue(deleted)
+        XCTAssertTrue(accountDeleted.isAccountDeleted)
+        XCTAssertFalse(CoreError.Api(status: 401, code: "token_expired", detail: "").isAccountDeleted)
+    }
+
     func testDeletingWaitsForAConnectionBeforeAsking() async {
         let core = AccountFakeCore()
         let owner = FakeDeviceOwner()

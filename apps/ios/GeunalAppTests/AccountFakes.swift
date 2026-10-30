@@ -54,6 +54,8 @@ final class AccountFakeCore: Core, @unchecked Sendable {
         BackupView(id: 1, createdAt: Date(), size: 1_000, automatic: false, events: 3, people: 1))
     /// What `deleteAccount` throws, one error per call in turn; once empty it deletes.
     let deleteErrors = Locked<[CoreError]>([])
+    /// What `sync` throws, one error per call in turn; once empty it syncs.
+    let syncErrors = Locked<[CoreError]>([])
     let lastProof = Locked<DeletionProof?>(nil)
     var linkResult: Result<[Provider], CoreError> = .success([.kakao])
     /// What `checkRecoveryCode` says about twelve words in the list.
@@ -157,7 +159,16 @@ final class AccountFakeCore: Core, @unchecked Sendable {
 
     // MARK: 나 and the account (m1.md screens 12, 13, 20, 22)
 
-    override func sync() async throws { record("sync") }
+    override func sync() async throws {
+        record("sync")
+        var next: CoreError?
+        syncErrors.update { errors in
+            if !errors.isEmpty {
+                next = errors.removeFirst()
+            }
+        }
+        if let next { throw next }
+    }
     override func meSummary() throws -> MeSummary { summary }
     override func revocation() throws -> Revocation? { revoked }
 
