@@ -11,7 +11,7 @@ use geunal_ffi::{
     SecretStore,
 };
 use geunal_sync::fake::FakeServer;
-use phones::{MemorySecrets, Quiet, kakao, keys_of, new_account, phone, user_id};
+use phones::{Fault, MemorySecrets, Quiet, kakao, keys_of, new_account, phone, user_id};
 
 #[test]
 fn a_kakao_sign_in_makes_the_account_and_uploads_the_code_it_shows() {
@@ -187,6 +187,71 @@ fn a_guest_deletes_with_its_code_once_the_material_the_server_lacked_goes_up() {
 }
 
 #[test]
+fn a_code_the_store_cannot_read_is_never_replaced_by_a_new_one() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let a = phone(&server);
+        // The upload drops, so the code lives on this phone alone: the one the person may already have written down.
+        server.fail_next("put_recovery");
+        let session = a.core.clone().sign_in_guest(new_account("게스트")).await.unwrap();
+        let words = a.core.recovery_words().unwrap();
+
+        // The server still lacks material, which is when a device without a code makes one (protocol §10 "올리는 때").
+        a.secrets.fail("recovery_entropy", Fault::Read);
+        assert!(matches!(a.core.clone().sync().await, Err(CoreError::SecretStore { .. })));
+        assert!(matches!(a.core.recovery_words(), Err(CoreError::SecretStore { .. })));
+
+        a.secrets.heal();
+        assert_eq!(a.core.recovery_words().unwrap(), words);
+        a.core.clone().sync().await.unwrap();
+        assert_eq!(server.recovery_of(&session.user_id).unwrap().1, keys_of(&a.core).id());
+    });
+}
+
+#[test]
+fn a_device_key_the_store_cannot_read_fails_the_sign_in_and_stays() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let a = phone(&server);
+        let user = user_id(&kakao(&a.core, "ivy", "아이비").await.unwrap());
+        let device = server.active_device(&user);
+        let key = a.secrets.value("device_signing_key");
+
+        a.secrets.fail("device_signing_key", Fault::Read);
+        assert!(matches!(kakao(&a.core, "ivy", "아이비").await, Err(CoreError::SecretStore { .. })));
+        assert_eq!(a.secrets.value("device_signing_key"), key);
+
+        // The same key signs the next sign-in, so the server still knows this phone, rather than asking to replace it.
+        a.secrets.heal();
+        let again = kakao(&a.core, "ivy", "아이비").await.unwrap();
+        assert!(matches!(again, AuthResult::Registered { new_account: false, .. }), "{again:?}");
+        assert_eq!(server.active_device(&user), device);
+    });
+}
+
+#[test]
+fn a_code_the_store_half_wrote_is_not_shown_and_the_next_sync_makes_a_whole_one() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let a = phone(&server);
+        a.secrets.fail("account_master_key", Fault::Write);
+        // The phone is registered by then, but the code it made never became whole.
+        assert!(matches!(kakao(&a.core, "june", "준").await, Err(CoreError::SecretStore { .. })));
+        let user = a.core.session().unwrap().user_id;
+        assert!(a.secrets.has("recovery_entropy"));
+        assert!(!a.core.recovery_status().unwrap().created);
+        assert!(matches!(a.core.recovery_words(), Err(CoreError::NotFound { .. })));
+        // A sync while the store still fails tries and fails the same way, and leaves the next one to try again.
+        assert!(matches!(a.core.clone().sync().await, Err(CoreError::SecretStore { .. })));
+
+        a.secrets.heal();
+        a.core.clone().sync().await.unwrap();
+        assert!(a.core.recovery_status().unwrap().uploaded);
+        assert_eq!(server.recovery_of(&user).unwrap().1, keys_of(&a.core).id());
+    });
+}
+
+#[test]
 fn a_new_account_without_a_name_takes_the_default_and_a_long_one_is_cut() {
     pollster::block_on(async {
         let server = FakeServer::new();
@@ -212,7 +277,7 @@ fn starting_over_works_on_a_registered_device_and_needs_a_provider_proof_after_t
         let user = user_id(&kakao(&a.core, "erin", "에린").await.unwrap());
         // The code is gone from this device while the server keeps the material: the "나중에 넣을게요" state.
         for secret in ["recovery_entropy", "account_master_key"] {
-            a.secrets.delete(secret.to_owned());
+            a.secrets.delete(secret.to_owned()).unwrap();
         }
         let again = kakao(&a.core, "erin", "에린").await.unwrap();
         assert!(matches!(again, AuthResult::Registered { new_account: false, recovery: true, .. }), "{again:?}");
@@ -377,7 +442,7 @@ fn a_device_left_without_a_code_makes_it_on_the_next_run() {
         let session = core.clone().sign_in_guest(new_account("게스트")).await.unwrap();
         // As if the app had been closed before it made the code: the session is kept, and nothing else.
         for secret in ["recovery_entropy", "account_master_key"] {
-            secrets.delete(secret.to_owned());
+            secrets.delete(secret.to_owned()).unwrap();
         }
         assert!(server.recovery_of(&session.user_id).is_none());
         drop(core);
@@ -458,11 +523,11 @@ fn an_expired_access_token_is_refreshed_and_the_new_pair_survives_a_restart() {
         };
         let core = open().unwrap();
         core.clone().sign_in_guest(new_account("게스트")).await.unwrap();
-        let before = secrets.get("session".to_owned()).unwrap();
+        let before = secrets.value("session").unwrap();
 
         server.expire_access_tokens();
         core.clone().sync().await.unwrap();
-        let after = secrets.get("session".to_owned()).unwrap();
+        let after = secrets.value("session").unwrap();
         assert_ne!(before, after, "the refreshed tokens are kept");
         drop(core);
 

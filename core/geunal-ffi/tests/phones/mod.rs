@@ -7,27 +7,65 @@ use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use geunal_crypto::recovery::{self, RecoveryKeys};
-use geunal_ffi::{AuthResult, Change, Core, CoreError, CoreListener, NewAccount, SecretStore};
+use geunal_ffi::{AuthResult, Change, Core, CoreError, CoreListener, NewAccount, SecretStore, SecretStoreError};
 use geunal_sync::fake::FakeServer;
 
+/// How the store fails for one name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fault {
+    /// Reads fail as unavailable while writes still land: the iOS keychain before #38 decision 7 read every failure as
+    /// "nothing there", and a core that believed it wrote a new key over the real one.
+    Read,
+    /// Writes fail; reads and deletes work.
+    Write,
+}
+
 #[derive(Default)]
-pub struct MemorySecrets(Mutex<HashMap<String, Vec<u8>>>);
+pub struct MemorySecrets {
+    values: Mutex<HashMap<String, Vec<u8>>>,
+    faults: Mutex<HashMap<String, Fault>>,
+}
 
 impl SecretStore for MemorySecrets {
-    fn get(&self, name: String) -> Option<Vec<u8>> {
-        self.0.lock().unwrap().get(&name).cloned()
+    fn get(&self, name: String) -> Result<Option<Vec<u8>>, SecretStoreError> {
+        self.check(&name, Fault::Read)?;
+        Ok(self.values.lock().unwrap().get(&name).cloned())
     }
-    fn put(&self, name: String, value: Vec<u8>) {
-        self.0.lock().unwrap().insert(name, value);
+    fn put(&self, name: String, value: Vec<u8>) -> Result<(), SecretStoreError> {
+        self.check(&name, Fault::Write)?;
+        self.values.lock().unwrap().insert(name, value);
+        Ok(())
     }
-    fn delete(&self, name: String) {
-        self.0.lock().unwrap().remove(&name);
+    fn delete(&self, name: String) -> Result<(), SecretStoreError> {
+        self.values.lock().unwrap().remove(&name);
+        Ok(())
     }
 }
 
 impl MemorySecrets {
     pub fn has(&self, name: &str) -> bool {
-        self.0.lock().unwrap().contains_key(name)
+        self.values.lock().unwrap().contains_key(name)
+    }
+
+    pub fn value(&self, name: &str) -> Option<Vec<u8>> {
+        self.values.lock().unwrap().get(name).cloned()
+    }
+
+    pub fn fail(&self, name: &str, fault: Fault) {
+        self.faults.lock().unwrap().insert(name.to_owned(), fault);
+    }
+
+    pub fn heal(&self) {
+        self.faults.lock().unwrap().clear();
+    }
+
+    fn check(&self, name: &str, call: Fault) -> Result<(), SecretStoreError> {
+        match self.faults.lock().unwrap().get(name) {
+            Some(fault) if *fault == call => {
+                Err(SecretStoreError::Unavailable { reason: format!("{name}: {fault:?}") })
+            }
+            _ => Ok(()),
+        }
     }
 }
 

@@ -27,14 +27,16 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::calendar::ensure_default_calendar;
 use crate::local::{changes, day_text, kst_day, parse_stored, stored_utc, system_time};
 use crate::{
-    Change, Core, CoreError, KEY_PACKAGES, SESSION, SIGNING_KEY, Session, State, build_engine, revoked_error,
-    signing_secret,
+    Change, Core, CoreError, KEY_PACKAGES, SESSION, SIGNING_KEY, STORE_RESET, Session, State, build_engine,
+    revoked_error, signing_secret,
 };
 
 // The code's entropy and the master key live in the app's secret store; what follows the code on this device lives in
 // its settings, never in the backup.
 const ENTROPY: &str = "recovery_entropy";
 const AMK: &str = "account_master_key";
+/// What leaves with the account: the secrets kept for it, as opposed to the database key, which stays with the store.
+pub(crate) const ACCOUNT_SECRETS: [&str; 4] = [SESSION, SIGNING_KEY, ENTROPY, AMK];
 const ACCOUNT: &str = "account";
 const RECOVERY_SAVED: &str = "recovery_saved";
 const RECOVERY_UPLOADED: &str = "recovery_uploaded";
@@ -310,7 +312,7 @@ impl Core {
     pub fn local_data_of_other_account(&self) -> Result<Option<LocalData>, CoreError> {
         // The account to compare with: the signed-in one, or the one a replacement is for. Before a guest's code is
         // checked there is none, and then a store with an owner is someone else's as far as this question goes.
-        let account = match self.session() {
+        let account = match self.current_session()? {
             Some(session) => Some(session.user_id),
             None => self.pending_ticket().ok().flatten().map(|p| p.user_id),
         };
@@ -328,7 +330,7 @@ impl Core {
     /// backup, or a fresh start (screen 24). `Keep` makes the events this account's; `Discard` deletes them first.
     /// Until it is answered no backup is made, so another account's events never reach this account's backups.
     pub fn settle_local_data(&self, choice: LocalDataChoice) -> Result<(), CoreError> {
-        let session = self.session().ok_or(CoreError::NotSignedIn)?;
+        let session = self.current_session()?.ok_or(CoreError::NotSignedIn)?;
         self.store.write(|db| {
             if !db.setting(STORE_OWNER)?.is_none_or(|owner| owner == session.user_id) {
                 if choice == LocalDataChoice::Discard {
@@ -369,7 +371,7 @@ impl Core {
             };
             let keys = this.keys_of(entropy).await?;
             let pending = this.pending_ticket()?;
-            let (user_id, ticket, recovered) = match (&pending, this.session()) {
+            let (user_id, ticket, recovered) = match (&pending, this.current_session()?) {
                 (Some(p), _) => (p.user_id.clone(), Some(p.ticket.clone()), false),
                 (None, Some(session)) => (session.user_id, None, false),
                 (None, None) => (this.recover_guest(&keys).await?, None, true),
@@ -457,7 +459,7 @@ impl Core {
         let this = self.clone();
         self.run(async move {
             let pending = this.pending_ticket()?;
-            let user_id = match (&pending, this.session()) {
+            let user_id = match (&pending, this.current_session()?) {
                 (Some(pending), _) => pending.user_id.clone(),
                 (None, Some(session)) => session.user_id,
                 (None, None) => return Err(CoreError::NotSignedIn),
@@ -468,7 +470,7 @@ impl Core {
             }
             let session = match pending {
                 Some(pending) => this.replace_device(pending).await?,
-                None => this.session().ok_or(CoreError::NotSignedIn)?,
+                None => this.current_session()?.ok_or(CoreError::NotSignedIn)?,
             };
             this.make_recovery(&session.user_id, true, proof.as_ref()).await?;
             // The server deleted every backup; so go the notes about them.
@@ -489,7 +491,7 @@ impl Core {
 
     /// The signed-in account as this device knows it; `None` before a sign-in.
     pub fn account(&self) -> Result<Option<AccountView>, CoreError> {
-        if self.session().is_none() {
+        if self.current_session()?.is_none() {
             return Ok(None);
         }
         Ok(self.stored_account()?.map(|a| AccountView {
@@ -532,7 +534,7 @@ impl Core {
     pub async fn delete_account(self: Arc<Self>, proof: DeletionProof) -> Result<(), CoreError> {
         let this = self.clone();
         self.run(async move {
-            this.session().ok_or(CoreError::NotSignedIn)?;
+            this.current_session()?.ok_or(CoreError::NotSignedIn)?;
             let mut uploaded = false;
             loop {
                 let req = this.deletion_request(&proof).await?;
@@ -679,7 +681,7 @@ impl Core {
     pub async fn backups(self: Arc<Self>) -> Result<Vec<BackupView>, CoreError> {
         let this = self.clone();
         self.run(async move {
-            let signed_in = this.session().is_some();
+            let signed_in = this.current_session()?.is_some();
             let ticket = match signed_in {
                 true => None,
                 false => Some(this.pending_ticket()?.ok_or(CoreError::NotSignedIn)?.ticket),
@@ -1005,7 +1007,7 @@ impl Core {
 
     /// Whether the store is the signed-in account's: claimed by it, or by nobody yet.
     fn owns_store(&self) -> Result<bool, CoreError> {
-        let Some(session) = self.session() else { return Ok(false) };
+        let Some(session) = self.current_session()? else { return Ok(false) };
         Ok(self.store.read(|db| db.setting(STORE_OWNER))?.is_none_or(|owner| owner == session.user_id))
     }
 
@@ -1022,7 +1024,7 @@ impl Core {
         automatic: bool,
         progress: Option<Arc<dyn ProgressListener>>,
     ) -> Result<BackupView, CoreError> {
-        let session = self.session().ok_or(CoreError::NotSignedIn)?;
+        let session = self.current_session()?.ok_or(CoreError::NotSignedIn)?;
         if !self.owns_store()? {
             return Err(CoreError::Invalid {
                 reason: "another account's events are on this device; settle them first".into(),
@@ -1086,7 +1088,7 @@ impl Core {
         display_name: Option<String>,
     ) -> Result<Session, CoreError> {
         let session = geunal_sync::session_of(tokens);
-        self.secrets.put(SESSION.to_owned(), serde_json::to_vec(&session).map_err(malformed)?);
+        self.secrets.put(SESSION.to_owned(), serde_json::to_vec(&session).map_err(malformed)?)?;
         let engine = build_engine(
             &self.store_dir,
             &self.store,
@@ -1124,6 +1126,7 @@ impl Core {
         }
         self.store.write(|db| {
             db.delete_setting(REVOCATION)?;
+            db.delete_setting(STORE_RESET)?;
             // A store nobody owns yet, used before any sign-in, or one with nothing of anyone's in it, is this
             // account's. One with another account's events waits for `settle_local_data` or a restore.
             let own = db.own_data()?;
@@ -1175,7 +1178,7 @@ impl Core {
 
     /// The code's entropy and the master key, when this device holds them for the signed-in account.
     pub(crate) fn recovery_secrets(&self) -> Result<Option<(Entropy, geunal_crypto::Key)>, CoreError> {
-        let Some(session) = self.session() else { return Ok(None) };
+        let Some(session) = self.current_session()? else { return Ok(None) };
         self.recovery_secrets_of(&session.user_id)
     }
 
@@ -1185,8 +1188,8 @@ impl Core {
         if owner.as_deref() != Some(user_id) {
             return Ok(None);
         }
-        let entropy = self.secrets.get(ENTROPY.to_owned()).and_then(|e| Entropy::try_from(e.as_slice()).ok());
-        let amk = self.secrets.get(AMK.to_owned()).and_then(|k| geunal_crypto::Key::try_from(k.as_slice()).ok());
+        let entropy = self.secrets.get(ENTROPY.to_owned())?.and_then(|e| Entropy::try_from(e.as_slice()).ok());
+        let amk = self.secrets.get(AMK.to_owned())?.and_then(|k| geunal_crypto::Key::try_from(k.as_slice()).ok());
         Ok(entropy.zip(amk))
     }
 
@@ -1200,8 +1203,11 @@ impl Core {
         uploaded: bool,
         new_key: bool,
     ) -> Result<(), CoreError> {
-        self.secrets.put(ENTROPY.to_owned(), entropy.to_vec());
-        self.secrets.put(AMK.to_owned(), amk.to_vec());
+        // The owner marks the pair as whole. A store that takes the entropy and then fails on the key leaves no owner,
+        // so the new words are never shown, or uploaded, with the old key.
+        self.store.write(|db| Ok::<_, CoreError>(db.delete_setting(RECOVERY_OWNER)?))?;
+        self.secrets.put(ENTROPY.to_owned(), entropy.to_vec())?;
+        self.secrets.put(AMK.to_owned(), amk.to_vec())?;
         self.store.write(|db| {
             db.set_setting(RECOVERY_OWNER, user_id)?;
             db.delete_setting(RECOVERY_SAVED)?;
@@ -1221,8 +1227,8 @@ impl Core {
 
     /// Drops this device's code and master key.
     fn forget_recovery(&self) -> Result<(), CoreError> {
-        self.secrets.delete(ENTROPY.to_owned());
-        self.secrets.delete(AMK.to_owned());
+        self.secrets.delete(ENTROPY.to_owned())?;
+        self.secrets.delete(AMK.to_owned())?;
         *self.recovery_keys.lock().unwrap_or_else(|p| p.into_inner()) = None;
         self.store.write(|db| {
             for key in [RECOVERY_SAVED, RECOVERY_UPLOADED, RECOVERY_NEW_KEY, RECOVERY_OWNER] {
@@ -1263,7 +1269,7 @@ impl Core {
     /// A device without a code asks `GET /me` once a run whether the account has recovery material, and makes the
     /// code when it has none: a sign-in that stopped before making it, as when the app was closed, ends here.
     pub(crate) async fn upload_pending_recovery(&self) -> Result<(), CoreError> {
-        let Some(session) = self.session() else { return Ok(()) };
+        let Some(session) = self.current_session()? else { return Ok(()) };
         if self.recovery_secrets()?.is_none() {
             if self.recovery_checked.load(Ordering::Relaxed) {
                 return Ok(());
@@ -1272,10 +1278,11 @@ impl Core {
                 Err(CoreError::Network { .. }) => return Ok(()),
                 other => other?,
             };
-            self.recovery_checked.store(true, Ordering::Relaxed);
             if !me.recovery {
                 self.make_recovery(&session.user_id, false, None).await?;
             }
+            // Only once the code is made: a secret store that failed to take it leaves the next sync to try again.
+            self.recovery_checked.store(true, Ordering::Relaxed);
             return Ok(());
         }
         let (uploaded, new_key) = self.store.read(|db| {
@@ -1293,7 +1300,7 @@ impl Core {
     /// `PUT /me/recovery`. A retry may find its own earlier upload stored, which the same code then proves; an id
     /// another account already uses means a new `E` (409 `recovery_conflict`, protocol §11).
     async fn upload_recovery(&self, new_key: bool, provider: Option<&DeletionProof>) -> Result<(), CoreError> {
-        let session = self.session().ok_or(CoreError::NotSignedIn)?;
+        let session = self.current_session()?.ok_or(CoreError::NotSignedIn)?;
         let mut conflicts = 0;
         loop {
             let (entropy, amk) = self.recovery_secrets()?.ok_or_else(|| malformed("no recovery code to upload"))?;
@@ -1503,8 +1510,13 @@ impl Core {
     async fn leave_account(&self, revocation: Option<String>) -> Result<(), CoreError> {
         self.api.clear_session();
         *self.realtime.lock().await = None;
-        for name in [SESSION, SIGNING_KEY, ENTROPY, AMK] {
-            self.secrets.delete(name.to_owned());
+        // A secret the store fails to delete does not stop the rest: the account is gone either way. The failure comes
+        // back once everything else is wiped.
+        let mut failed = None;
+        for name in ACCOUNT_SECRETS {
+            if let Err(e) = self.secrets.delete(name.to_owned()) {
+                failed.get_or_insert(e);
+            }
         }
         *self.recovery_keys.lock().unwrap_or_else(|p| p.into_inner()) = None;
         self.store.write(|db| {
@@ -1521,7 +1533,7 @@ impl Core {
             Ok::<_, CoreError>(())
         })?;
         self.listener.on_change(Change::Account);
-        Ok(())
+        failed.map_or(Ok(()), |e| Err(e.into()))
     }
 }
 
