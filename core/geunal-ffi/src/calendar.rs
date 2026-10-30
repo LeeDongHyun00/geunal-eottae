@@ -430,6 +430,12 @@ pub struct ScheduledAlert {
     pub title: String,
     pub start: DayTime,
     pub all_day: bool,
+    /// An event's end as `EventItem::end` gives it, for the body ("1시간 뒤 · 18:00–20:00", "내일부터 11/9(월)까지",
+    /// docs/design/tone.md): the end of a timed event, the last day of an all-day one. `None` for a birthday or a
+    /// leave bridge, which last the one day or carry their days in the target. Last and defaulted, so the apps' fakes
+    /// that build an alert keep compiling.
+    #[uniffi(default = None)]
+    pub end: Option<DayTime>,
 }
 
 #[uniffi::export]
@@ -857,6 +863,8 @@ impl Core {
                 .into_iter()
                 .take(WIDGET_ITEMS)
                 .map(|i| WidgetEvent {
+                    event_id: i.event_id,
+                    occurrence: i.occurrence,
                     color: i.color.map(palette_key),
                     start: (!i.all_day).then(|| hm(i.start.minute)),
                     end: (!i.all_day).then(|| hm(i.end.minute)),
@@ -1181,6 +1189,7 @@ impl Core {
                         title: occ.title.clone().unwrap_or_else(|| row.title.clone()),
                         start: day_time(occ.starts_at),
                         all_day: row.all_day,
+                        end: Some(end_of(row.all_day, occ.ends_at)),
                     },
                 ));
             }
@@ -1207,6 +1216,7 @@ impl Core {
                             title: row.name.clone(),
                             start: DayTime { day: day_text(d), minute: 0 },
                             all_day: true,
+                            end: None,
                         },
                     ));
                 }
@@ -1228,6 +1238,7 @@ impl Core {
                             title: String::new(),
                             start: DayTime { day: day_text(b.leave_day), minute: 0 },
                             all_day: true,
+                            end: None,
                         },
                     ));
                 }
@@ -1366,6 +1377,9 @@ struct WidgetSnapshot {
 
 #[derive(Serialize)]
 struct WidgetEvent {
+    /// With `occurrence`, what the app hands `event()` when the widget's event is tapped (m1.md 2.6).
+    event_id: String,
+    occurrence: Option<String>,
     title: String,
     color: Option<&'static str>,
     all_day: bool,
