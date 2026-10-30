@@ -19,6 +19,17 @@ struct MeTab: View {
                         .padding(.top, Space.xl)
                         .accessibilityAddTraits(.isHeader)
                     profile
+                    #if DEBUG
+                        // The M0 check that the core opens and syncs on the device, kept for the UI test.
+                        NavigationLink {
+                            CoreStatusScreen()
+                        } label: {
+                            SettingsRow(Text("코어 상태"))
+                                .background(GeunalColor.background, in: RoundedRectangle(cornerRadius: Radius.card))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("me.coreStatus")
+                    #endif
                 }
                 .padding(.horizontal, Space.m)
             }
@@ -74,3 +85,14 @@ struct MeTab: View {
         return Text("게스트 · 기기를 잃으면 복구 코드로만 돌아올 수 있어요")
     }
 }
+
+#if DEBUG
+    /// Owns the status model, so redrawing the 나 tab does not start the check over.
+    private struct CoreStatusScreen: View {
+        @State private var model = CoreStatusModel(openCore: AppCore.open)
+
+        var body: some View {
+            CoreStatusView(model: model)
+        }
+    }
+#endif

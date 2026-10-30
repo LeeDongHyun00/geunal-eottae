@@ -48,12 +48,18 @@ pub enum StreamError {
 pub fn encrypt(key: &Key, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
     let mut nonce = [0u8; NONCE_LEN];
     OsRng.fill_bytes(&mut nonce);
-    encrypt_with_nonce(key, &nonce, aad, plaintext)
+    encrypt_at(key, &nonce, aad, plaintext)
 }
 
 /// [`encrypt`] with a caller-chosen nonce prefix. Only for test vectors (core/vectors/backups.json), which must be
-/// reproducible; production code never reuses a prefix under a key, so it always goes through [`encrypt`].
+/// reproducible; production code never reuses a prefix under a key, so it always goes through [`encrypt`]. Behind
+/// the `test-vectors` feature.
+#[cfg(feature = "test-vectors")]
 pub fn encrypt_with_nonce(key: &Key, nonce: &[u8; NONCE_LEN], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    encrypt_at(key, nonce, aad, plaintext)
+}
+
+fn encrypt_at(key: &Key, nonce: &[u8; NONCE_LEN], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
     let mut encryptor = Encryptor::with_nonce(key, nonce, aad);
     let mut out = nonce.to_vec();
     out.reserve(plaintext.len() + TAG_LEN * (plaintext.len() / CHUNK_LEN + 1));

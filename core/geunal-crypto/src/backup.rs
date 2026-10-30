@@ -3,7 +3,7 @@
 
 use crate::aead::Key;
 use crate::kdf;
-use crate::stream::{self, NONCE_LEN, StreamError};
+use crate::stream::{self, StreamError};
 
 /// AAD of every chunk of a backup object.
 pub const AAD: &[u8] = b"geunal backup v1";
@@ -14,7 +14,8 @@ pub fn seal(amk: &Key, archive: &[u8]) -> Vec<u8> {
 }
 
 /// [`seal`] with a caller-chosen nonce prefix, only for test vectors (core/vectors/backups.json).
-pub fn seal_with_nonce(amk: &Key, nonce: &[u8; NONCE_LEN], archive: &[u8]) -> Vec<u8> {
+#[cfg(feature = "test-vectors")]
+pub fn seal_with_nonce(amk: &Key, nonce: &[u8; stream::NONCE_LEN], archive: &[u8]) -> Vec<u8> {
     stream::encrypt_with_nonce(&kdf::backup_key(amk), nonce, AAD, archive)
 }
 

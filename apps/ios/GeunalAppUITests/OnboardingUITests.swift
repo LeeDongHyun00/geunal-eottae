@@ -29,7 +29,9 @@ final class OnboardingUITests: GeunalUITestCase {
         let me = app.tabBars.buttons["나"]
         waitFor(me)
         waitFor(app.descendants(matching: .any)["nextUp"])
-        snapshot(app, "04-calendar-tab")
+        // A new calendar shows the hint under today's cell (m1.md screen 4, first run).
+        waitFor(app.descendants(matching: .any)["month.hint"])
+        snapshot(app, "04-month--first-run")
         me.tap()
         waitFor(app.descendants(matching: .any)["me.profile"])
         snapshot(app, "12-me")

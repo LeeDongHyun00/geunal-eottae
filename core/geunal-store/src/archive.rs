@@ -294,7 +294,10 @@ impl Db<'_> {
                 origin: Some(RESTORED.to_owned()),
             })?;
         }
-        for p in &archive.people {
+        // Only people the user entered or imported: an archive is authenticated by the master key, but a bug on the
+        // writing side must still not turn someone a group shared into a person of mine.
+        let people: Vec<&Person> = archive.people.iter().filter(|p| OWN_SOURCES.contains(&p.source.as_str())).collect();
+        for p in &people {
             self.put_person(&PersonRow {
                 id: p.id.clone(),
                 name: p.name.clone(),
@@ -320,7 +323,7 @@ impl Db<'_> {
             calendars: count(archive.calendars.len()),
             events: count(archive.events.len()),
             shift_templates: count(archive.shift_templates.len()),
-            people: count(archive.people.len()),
+            people: count(people.len()),
         })
     }
 

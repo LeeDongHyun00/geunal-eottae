@@ -6,7 +6,7 @@ SHELL := /bin/bash
 
 .PHONY: help setup lint test lint-repo lint-core test-core build-android build-ios lint-api test-api image-api scan-api \
 	lint-gateway test-gateway image-gateway scan-gateway lint-android test-android connected-android up down e2e \
-	audit audit-core \
+	audit audit-core audit-apps \
 	lint-ios project-ios app-ios test-ios uitest-ios lock-ios \
 	lint-terraform lock-terraform
 
@@ -26,10 +26,15 @@ test: test-core test-api test-gateway test-android ## Run every part's tests
 
 # PR CI runs these gates only for the parts a change touches, so .github/workflows/audit.yml runs them on main weekly:
 # an advisory published against code nobody is editing would otherwise go unnoticed (docs/security/dependencies.md).
-audit: audit-core scan-api scan-gateway ## Dependency vulnerability gates of every part, as the weekly audit runs them
+audit: audit-core audit-apps scan-api scan-gateway ## Dependency vulnerability gates of every part, as the weekly audit runs them
 
-audit-core: ## Rust core: cargo-deny advisories only (lint-core runs the whole policy)
+audit-core: ## Rust core: cargo-deny advisories, and whether the Android OpenSSL has a newer patch (lint-core runs the whole policy)
 	"$$(scripts/tool.sh cargo-deny)" --manifest-path core/Cargo.toml --locked check advisories
+	core/scripts/build-openssl.sh --check
+
+# Weekly only for now: the iOS and Android parts decide whether their PR checks run it too.
+audit-apps: ## Apps: Trivy on the Android release APK's libraries and the iOS Swift packages (build tools: log only)
+	scripts/ci/audit-apps.sh
 
 lint-repo: ## Lint workflows (actionlint) and every tracked shell script (shellcheck)
 	shellcheck="$$(scripts/tool.sh shellcheck)"; \

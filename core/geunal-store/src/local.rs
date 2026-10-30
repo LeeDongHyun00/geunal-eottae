@@ -557,6 +557,15 @@ impl Db<'_> {
 
     // ----- backup notes -----
 
+    /// Keeps the notes of `ids` only: the backups the server still has. An empty list clears them, as when "새로
+    /// 시작" deletes every backup or the store changes hands.
+    pub fn retain_backup_records(&self, ids: &[i64]) -> Result<()> {
+        // Integers only, so they go into the statement as they are; SQLite takes an empty list.
+        let keep: Vec<String> = ids.iter().map(i64::to_string).collect();
+        self.conn.execute(&format!("DELETE FROM backup_records WHERE id NOT IN ({})", keep.join(",")), [])?;
+        Ok(())
+    }
+
     pub fn put_backup_record(&self, row: &BackupRecordRow) -> Result<()> {
         self.conn.execute(
             "INSERT OR REPLACE INTO backup_records (id, created_at, size, automatic, events, people)
@@ -581,6 +590,34 @@ impl Db<'_> {
                 })
             },
         )
+    }
+
+    // ----- device revocation -----
+
+    /// Forgets every group on this device and the MLS state under them, for a device another sign-in signed out
+    /// (protocol §13 "기기 해제"). Own calendars, events and people stay. Group calendars and the people groups made
+    /// public go too: this device is no longer a member, and one that signs in again gets them back as it rejoins.
+    pub fn wipe_group_state(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "DELETE FROM outbox;
+             DELETE FROM chat_fts;
+             DELETE FROM groups;
+             DELETE FROM calendars WHERE kind = 'group';
+             DELETE FROM people WHERE source = 'group';",
+        )?;
+        // mls-rs-provider-sqlite makes its tables when an engine first opens the file, so a device that never signed in
+        // has none. Epochs go before their groups, which they reference.
+        for table in ["epoch", "mls_group", "key_package", "psk", "kvs"] {
+            let exists: bool = self.conn.query_row(
+                "SELECT count(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                [table],
+                |r| r.get(0),
+            )?;
+            if exists {
+                self.conn.execute(&format!("DELETE FROM {table}"), [])?;
+            }
+        }
+        Ok(())
     }
 }
 

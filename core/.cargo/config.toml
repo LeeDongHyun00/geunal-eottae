@@ -1,11 +1,21 @@
 # Android's loader reads APS2-packed relocations from API 23, below the apps' minSdk 26 (docs/parts/android.md §1).
 # Packing shrinks the library's relocation table from about 1.5 MB to 0.2 MB per 64-bit ABI (docs/parts/rust-core.md
 # §7, size budget). RELR would pack more but needs API 28.
+#
+# The inliner runs at -Os's threshold (75, not 225) and every other -O3 pass stays: about 0.5 MB less per library, with
+# Argon2id (64 MiB) as fast as before, since what it needs is unrolling and vectorization, not inlining. opt-level "s"
+# drops those too and made it about 70% slower; LTO applies one level to every crate, so the KDF cannot keep its own.
 [target.aarch64-linux-android]
-rustflags = ["-C", "link-arg=-Wl,--pack-dyn-relocs=android"]
+rustflags = ["-C", "link-arg=-Wl,--pack-dyn-relocs=android", "-C", "llvm-args=-inline-threshold=75"]
 
 [target.armv7-linux-androideabi]
-rustflags = ["-C", "link-arg=-Wl,--pack-dyn-relocs=android"]
+rustflags = ["-C", "link-arg=-Wl,--pack-dyn-relocs=android", "-C", "llvm-args=-inline-threshold=75"]
 
 [target.x86_64-linux-android]
-rustflags = ["-C", "link-arg=-Wl,--pack-dyn-relocs=android"]
+rustflags = ["-C", "link-arg=-Wl,--pack-dyn-relocs=android", "-C", "llvm-args=-inline-threshold=75"]
+
+# SQLite modules nothing here uses, left out of SQLCipher on every platform so the host tests run what the apps ship.
+# The store needs FTS5 (Korean search) and nothing else optional: no FTS3, R*Tree, dbstat, soundex, STAT4, column
+# metadata, JSON or extension loading. About 0.2 MB of each Android library (docs/parts/rust-core.md §7).
+[env]
+LIBSQLITE3_FLAGS = "-USQLITE_ENABLE_FTS3 -USQLITE_ENABLE_FTS3_PARENTHESIS -USQLITE_ENABLE_RTREE -USQLITE_ENABLE_DBSTAT_VTAB -USQLITE_SOUNDEX -USQLITE_ENABLE_STAT4 -USQLITE_ENABLE_COLUMN_METADATA -USQLITE_ENABLE_LOAD_EXTENSION -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_OMIT_JSON"

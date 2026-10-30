@@ -103,9 +103,56 @@ pub struct Engine<T: Transport> {
     clock: Box<dyn Fn() -> DateTime<Utc> + Send + Sync>,
 }
 
-/// Registers this device (M0 auth stub, `POST /auth/stub`): nonce → Ed25519 proof → session. `subject` stands for
-/// the identity a provider would assert. Done before an engine exists, because the MLS client needs the identity the
-/// server hands back.
+/// The proof every sign-in carries: a fresh nonce from the server, signed with this device's key.
+pub async fn device_proof<T: Transport>(
+    api: &T,
+    platform: &str,
+    signing_secret: &[u8],
+) -> Result<DeviceProof, SyncError> {
+    let nonce = api.nonce().await?;
+    Ok(DeviceProof {
+        platform: platform.to_owned(),
+        signature_key: MlsClient::public_key_of(signing_secret)?,
+        signature: MlsClient::sign_with(signing_secret, nonce.as_bytes())?,
+        nonce,
+    })
+}
+
+/// The session a registered sign-in hands back.
+pub fn session_of(tokens: &SessionInfo) -> Session {
+    Session {
+        user_id: tokens.user_id.clone(),
+        device_id: tokens.device_id.clone(),
+        access_token: tokens.access_token.clone(),
+        refresh_token: tokens.refresh_token.clone(),
+    }
+}
+
+/// Signs in through the auth stub (`POST /auth/stub`), which stands for a Kakao or Apple sign-in on local and CI
+/// servers: `subject` is the identity a provider would assert. Done before an engine exists, because the MLS client
+/// needs the identity the server hands back.
+pub async fn sign_in_stub<T: Transport>(
+    api: &T,
+    subject: &str,
+    display_name: &str,
+    platform: &str,
+    signing_secret: &[u8],
+) -> Result<AuthOutcome, SyncError> {
+    let proof = device_proof(api, platform, signing_secret).await?;
+    Ok(api
+        .sign_in(StubSignIn {
+            subject: subject.to_owned(),
+            display_name: display_name.to_owned(),
+            platform: proof.platform,
+            signature_key: proof.signature_key,
+            nonce: proof.nonce,
+            signature: proof.signature,
+        })
+        .await?)
+}
+
+/// [`sign_in_stub`] for a device that must end up registered, as every test device and the M0 gate does. Another
+/// device already active on the account is an error here.
 pub async fn sign_in<T: Transport>(
     api: &T,
     subject: &str,
@@ -113,24 +160,12 @@ pub async fn sign_in<T: Transport>(
     platform: &str,
     signing_secret: &[u8],
 ) -> Result<Session, SyncError> {
-    let nonce = api.nonce().await?;
-    let signature = MlsClient::sign_with(signing_secret, nonce.as_bytes())?;
-    let info = api
-        .sign_in(StubSignIn {
-            subject: subject.to_owned(),
-            display_name: display_name.to_owned(),
-            platform: platform.to_owned(),
-            signature_key: MlsClient::public_key_of(signing_secret)?,
-            nonce,
-            signature,
-        })
-        .await?;
-    Ok(Session {
-        user_id: info.user_id,
-        device_id: info.device_id,
-        access_token: info.access_token,
-        refresh_token: info.refresh_token,
-    })
+    match sign_in_stub(api, subject, display_name, platform, signing_secret).await? {
+        AuthOutcome::Registered { tokens, .. } => Ok(session_of(&tokens)),
+        AuthOutcome::ReplaceRequired { .. } => {
+            Err(SyncError::Malformed("another device is active on this account".into()))
+        }
+    }
 }
 
 impl<T: Transport> Engine<T> {

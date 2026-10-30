@@ -1,6 +1,7 @@
 # Weekly dependency audit of main. Pull request CI runs the same gates (cargo-deny advisories, Trivy on the images and
 # lock files) only for the parts a change touches, so an advisory published against code nobody is editing would stay
-# unseen until the next unrelated PR. This runs `make audit` on a schedule and keeps one issue open while it fails.
+# unseen until the next unrelated PR. The apps' lock files are audited only here so far. This runs `make audit` on a
+# schedule and keeps one issue open while it fails.
 # docs/security/dependencies.md describes what is scanned and how to respond.
 name: audit
 
@@ -31,6 +32,20 @@ jobs:
           path: .tools
           key: tools-${{ runner.os }}-${{ hashFiles('scripts/tool.sh') }}
       - run: make audit-core
+
+  apps:
+    name: apps
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .tools
+          key: tools-${{ runner.os }}-${{ hashFiles('scripts/tool.sh') }}
+      - run: make audit-apps
 
   api:
     name: api
@@ -63,7 +78,7 @@ jobs:
   report:
     name: report
     if: always()
-    needs: [core, api, gateway]
+    needs: [core, apps, api, gateway]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

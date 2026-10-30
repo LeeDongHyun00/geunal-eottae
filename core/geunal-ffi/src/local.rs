@@ -458,7 +458,9 @@ pub(crate) fn default_calendar(db: &Db<'_>) -> Result<CalendarRow, CoreError> {
 // ----- settings -----
 
 const NOTIFICATIONS: &str = "notifications";
-const CHANGED_AT: &str = "changed_at";
+/// How many changes the backup would carry this store has seen. A count rather than a time, so a change in the same
+/// second as a backup still counts and a clock set back hides nothing.
+pub(crate) const CHANGES: &str = "changes";
 
 #[derive(Serialize, Deserialize)]
 struct StoredNotifications {
@@ -504,9 +506,13 @@ pub(crate) fn set_notifications(db: &Db<'_>, s: &NotificationSettings) -> Result
 }
 
 /// Marks that something the backup carries changed, so the daily automatic backup knows to run.
-pub(crate) fn mark_changed(db: &Db<'_>, now: DateTime<Utc>) -> Result<(), CoreError> {
-    db.set_setting(CHANGED_AT, &stored_utc(now))?;
+pub(crate) fn mark_changed(db: &Db<'_>) -> Result<(), CoreError> {
+    db.set_setting(CHANGES, &(changes(db)? + 1).to_string())?;
     Ok(())
+}
+
+pub(crate) fn changes(db: &Db<'_>) -> Result<u64, CoreError> {
+    Ok(db.setting(CHANGES)?.and_then(|n| n.parse().ok()).unwrap_or(0))
 }
 
 #[cfg(test)]
