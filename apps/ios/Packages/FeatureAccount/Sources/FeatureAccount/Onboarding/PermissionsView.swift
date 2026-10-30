@@ -103,6 +103,9 @@ public struct PermissionsView: View {
             ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
         }
         .toolbarRole(.editor)
+        // Every way here decides the account (a new sign-in, a guest, starting fresh, "나중에 넣을게요"), and going back
+        // would let another account sign in over it (m1.md decision 30). Hiding the button also stops the swipe.
+        .navigationBarBackButtonHidden(true)
         .task { await model.refresh() }
         // "설정에서 켜기" leaves the app; the screen is still on top when the person comes back, so the appearance
         // task above does not run again.

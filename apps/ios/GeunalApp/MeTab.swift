@@ -232,11 +232,17 @@ struct MeTab: View {
     private var securityRows: some View {
         RowGroup(header: Text("보안과 백업")) {
             Button {
-                openRecoveryCode()
+                // After "나중에 넣을게요" the code is to be entered, not shown (m1.md screen 12).
+                if app.recoveryPending {
+                    app.enterRecoveryCode()
+                } else {
+                    openRecoveryCode()
+                }
             } label: {
                 SettingsRow(
                     Text("복구 코드"), value: recoveryValue,
-                    valueColor: model.summary?.recoverySaved == false ? GeunalColor.sunday : GeunalColor.secondaryText)
+                    valueColor: app.recoveryPending || model.summary?.recoverySaved == false
+                        ? GeunalColor.sunday : GeunalColor.secondaryText)
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("me.recovery")
@@ -310,10 +316,16 @@ struct MeTab: View {
 
     private var recoveryValue: Text {
         guard let summary = model.summary, model.hasAccount else { return Text(verbatim: "") }
+        if app.recoveryPending {
+            return Text("넣어야 해요")
+        }
         return summary.recoverySaved ? Text("✓ 저장함") : Text("저장 안 함")
     }
 
     private var backupValue: Text {
+        if app.recoveryPending {
+            return Text("멈춤")
+        }
         guard let last = model.summary?.lastBackupAt else { return Text("아직 없어요") }
         return Text(verbatim: MeText.time(last))
     }
@@ -350,7 +362,7 @@ struct MeTab: View {
         case .backup:
             BackupScreen(
                 model: BackupModel(core: core), online: app.connectivity.isOnline, timeText: MeText.time,
-                onRecoveryCode: { openRecoveryCode() })
+                onRecoveryCode: { openRecoveryCode() }, onEnterRecoveryCode: { app.enterRecoveryCode() })
         case .deviceChange:
             DeviceChangeGuideScreen(onRecoveryCode: model.hasAccount ? { openRecoveryCode() } : nil)
         case .serverKnows:

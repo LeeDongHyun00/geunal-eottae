@@ -21,6 +21,11 @@
             case kakao
             /// Another device signed in with the recovery code: the "기기 로그아웃됨" sheet on launch (screen 23).
             case revoked
+            /// Kakao and Apple sign-ins find the account's backup on the server and no other device: "백업 가져오기"
+            /// with "나중에 넣을게요" (screen 21).
+            case offer
+            /// A new account's sign-in finds another account's events on the device, asked about at once (screen 24).
+            case otherAccountSignIn
         }
 
         /// The design's example code (docs/design/m1.md screen 21), all in the BIP39 Korean list.
@@ -32,6 +37,10 @@
         private var linked: [Provider] = []
         private var recoverySaved = false
         private var revoked: Revocation?
+        /// The offer's account has its code on the server only, until a restore or a fresh start.
+        private var codeMissing = false
+        /// Another account's events were answered for, by a restore or `settleLocalData`.
+        private var localSettled = false
         private var autoBackup = true
         private var alphaStats = false
         private var settings = NotificationSettings(
@@ -49,7 +58,7 @@
             case .revoked:
                 revoked = Revocation(
                     at: Date(timeIntervalSinceNow: -3_600), byPlatform: "android", via: .recovery)
-            case .standard, .replace, .otherAccountData:
+            case .standard, .replace, .otherAccountData, .offer, .otherAccountSignIn:
                 break
             }
         }
@@ -89,7 +98,8 @@
         }
 
         override func startFresh(proof: DeletionProof?) async throws -> Session {
-            register()
+            locked { codeMissing = false }
+            return register()
         }
 
         override func account() throws -> AccountView? {
@@ -137,7 +147,10 @@
                 return .replaceRequired(
                     userId: "preview-user", activePlatform: "android", activeSince: Date(timeIntervalSinceNow: -86_400),
                     recovery: true)
-            case .standard, .guest, .kakao, .revoked:
+            case .offer:
+                locked { codeMissing = true }
+                return .registered(session: register(), newAccount: false, recovery: true)
+            case .standard, .guest, .kakao, .revoked, .otherAccountSignIn:
                 return .registered(session: register(), newAccount: true, recovery: false)
             }
         }
@@ -160,7 +173,10 @@
         }
 
         override func recoveryStatus() throws -> RecoveryStatus {
-            locked { RecoveryStatus(created: signedIn != nil, saved: recoverySaved, uploaded: signedIn != nil) }
+            locked {
+                let created = signedIn != nil && !codeMissing
+                return RecoveryStatus(created: created, saved: recoverySaved, uploaded: created)
+            }
         }
 
         override func markRecoverySaved() throws { locked { recoverySaved = true } }
@@ -198,7 +214,15 @@
         }
 
         override func localDataOfOtherAccount() throws -> LocalData? {
-            scenario == .otherAccountData ? LocalData(events: 86, people: 5) : nil
+            let asks = (scenario == .otherAccountData || scenario == .otherAccountSignIn) && !locked({ localSettled })
+            return asks ? LocalData(events: 86, people: 5) : nil
+        }
+
+        override func settleLocalData(choice: LocalDataChoice) throws { locked { localSettled = true } }
+
+        /// The design's code passes; the same twelve words in another order fail the checksum.
+        override func checkRecoveryCode(words: [String]) -> RecoveryCodeCheck {
+            words != Self.words && words.sorted() == Self.words.sorted() ? .checksum : .valid
         }
 
         override func restoreFromCode(
@@ -206,6 +230,10 @@
         ) async throws -> RestoreSummary {
             guard words == Self.words else { throw CoreError.WrongRecoveryCode }
             progress?.onProgress(done: 512_000, total: 1_024_000)
+            locked {
+                codeMissing = false
+                localSettled = true
+            }
             _ = register()
             return RestoreSummary(
                 events: 128, people: 12, calendars: 4, shiftTemplates: 3, backupAt: Date(timeIntervalSinceNow: -3_600),

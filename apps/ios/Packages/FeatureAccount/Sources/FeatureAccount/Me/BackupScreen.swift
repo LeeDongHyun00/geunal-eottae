@@ -9,15 +9,19 @@ public struct BackupScreen: View {
     private let timeText: (Date) -> String
     private let online: Bool
     private let onRecoveryCode: () -> Void
+    private let onEnterRecoveryCode: () -> Void
 
     /// `timeText` words a backup's time ("오늘 03:12", "10월 23일 03:11"); the app has the date style.
+    /// `onRecoveryCode` shows the code to write down, `onEnterRecoveryCode` asks for it after "나중에 넣을게요".
     public init(
-        model: BackupModel, online: Bool, timeText: @escaping (Date) -> String, onRecoveryCode: @escaping () -> Void
+        model: BackupModel, online: Bool, timeText: @escaping (Date) -> String, onRecoveryCode: @escaping () -> Void,
+        onEnterRecoveryCode: @escaping () -> Void = {}
     ) {
         _model = State(initialValue: model)
         self.online = online
         self.timeText = timeText
         self.onRecoveryCode = onRecoveryCode
+        self.onEnterRecoveryCode = onEnterRecoveryCode
     }
 
     public var body: some View {
@@ -31,7 +35,13 @@ public struct BackupScreen: View {
                     .typeStyle(.secondary)
                     .foregroundStyle(GeunalColor.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                if !model.recoverySaved {
+                if model.recoveryPending {
+                    Button(action: onEnterRecoveryCode) {
+                        NoticeCard(systemImage: "key", text: Text("복구 코드 넣기 ›", bundle: .module), tone: .offline)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("backup.enterRecovery")
+                } else if !model.recoverySaved {
                     Button(action: onRecoveryCode) {
                         NoticeCard(
                             systemImage: "key",
@@ -44,11 +54,12 @@ public struct BackupScreen: View {
                 RowGroup {
                     GeunalToggle(
                         isOn: Binding(
-                            get: { model.status?.auto ?? false },
+                            get: { !model.recoveryPending && model.status?.auto == true },
                             set: { on in Task { await model.setAuto(on) } }),
                         title: Text("자동 백업", bundle: .module),
                         detail: Text("와이파이에서 하루 한 번. 바뀐 게 없으면 건너뛰어요", bundle: .module)
                     )
+                    .disabled(model.recoveryPending)
                     .accessibilityIdentifier("backup.auto")
                 }
                 if !model.backups.isEmpty {
@@ -127,6 +138,8 @@ public struct BackupScreen: View {
                 } label: {
                     if model.isRunning {
                         Text("올리는 중", bundle: .module)
+                    } else if model.recoveryPending {
+                        Text("복구 코드를 넣으면 백업할 수 있어요", bundle: .module)
                     } else if !online {
                         Text("연결되면 할 수 있어요", bundle: .module)
                     } else {

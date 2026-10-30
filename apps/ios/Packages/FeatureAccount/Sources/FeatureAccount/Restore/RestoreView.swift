@@ -2,24 +2,29 @@ import DesignSystem
 import GeunalCore
 import SwiftUI
 
-/// "기기 바꾸기" and "복구 코드로 돌아오기" (m1.md screen 21, boards/Restore.dc.html): twelve cells, paste, the error
-/// states in the order the design judges them, then the restore and "돌아왔어요".
+/// "기기 바꾸기", "백업 가져오기" and "복구 코드로 돌아오기" (m1.md screen 21, boards/Restore.dc.html): twelve cells,
+/// paste, the error states in the order the design judges them, then the restore and "돌아왔어요".
 public struct RestoreView: View {
     @Bindable private var model: RestoreModel
     @FocusState private var focus: Int?
     @Environment(\.scenePhase) private var scenePhase
     @State private var showsNoCode = false
+    private let timeText: (Date) -> String
     private let onDone: () -> Void
     private let onStartedFresh: () -> Void
+    private let onLater: () -> Void
     private let onBackToSignIn: () -> Void
 
+    /// `timeText` writes the last backup's time on the start-fresh confirmation.
     public init(
-        model: RestoreModel, onDone: @escaping () -> Void, onStartedFresh: @escaping () -> Void,
-        onBackToSignIn: @escaping () -> Void
+        model: RestoreModel, timeText: @escaping (Date) -> String, onDone: @escaping () -> Void,
+        onStartedFresh: @escaping () -> Void, onLater: @escaping () -> Void, onBackToSignIn: @escaping () -> Void
     ) {
         self.model = model
+        self.timeText = timeText
         self.onDone = onDone
         self.onStartedFresh = onStartedFresh
+        self.onLater = onLater
         self.onBackToSignIn = onBackToSignIn
     }
 
@@ -30,7 +35,7 @@ public struct RestoreView: View {
                 RestoreDoneView(mode: model.mode, summary: summary, onOpen: onDone)
             case .restoring(let done, let total):
                 RestoringView(done: done, total: total)
-            case .entering, .askingLocalData, .startedFresh, .ticketExpired:
+            case .entering, .askingLocalData, .startedFresh, .later, .ticketExpired:
                 entry
             }
         }
@@ -40,18 +45,24 @@ public struct RestoreView: View {
         .toolbar {
             ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
         }
-        .navigationBarBackButtonHidden(isBusyPhase)
-        .sheet(isPresented: $showsNoCode) {
-            NoCodeSheet(mode: model.mode, screenLocked: model.screenLocked) {
-                Task {
-                    if await model.startWithoutCode() {
-                        showsNoCode = false
-                    } else if model.mode == .guestReturn {
-                        showsNoCode = false
-                        onBackToSignIn()
+        .navigationBarBackButtonHidden(model.holdsTheScreen)
+        .sheet(isPresented: $showsNoCode, onDismiss: { model.noCodeClosed() }) {
+            NoCodeSheet(
+                model: model, timeText: timeText,
+                onStartOver: {
+                    Task {
+                        if await model.startWithoutCode() {
+                            showsNoCode = false
+                        } else if model.mode == .guestReturn {
+                            showsNoCode = false
+                            onBackToSignIn()
+                        }
                     }
-                }
-            }
+                },
+                onLater: {
+                    model.later()
+                    showsNoCode = false
+                })
         }
         .sheet(isPresented: askingLocalData) {
             if case .askingLocalData(let local) = model.phase {
@@ -63,7 +74,10 @@ public struct RestoreView: View {
         .onChange(of: model.phase) { _, phase in
             switch phase {
             case .startedFresh: onStartedFresh()
-            case .ticketExpired: onBackToSignIn()
+            case .later: onLater()
+            case .ticketExpired:
+                showsNoCode = false
+                onBackToSignIn()
             default: break
             }
         }
@@ -79,13 +93,6 @@ public struct RestoreView: View {
         .onAppear { focus = model.focused }
     }
 
-    private var isBusyPhase: Bool {
-        switch model.phase {
-        case .restoring, .finished: true
-        default: false
-        }
-    }
-
     private var askingLocalData: Binding<Bool> {
         Binding {
             if case .askingLocalData = model.phase { return true }
@@ -97,7 +104,8 @@ public struct RestoreView: View {
     private var title: Text {
         switch model.mode {
         case .guestReturn: Text("복구 코드로 돌아오기", bundle: .module)
-        case .deviceChange, .offer: Text("기기 바꾸기", bundle: .module)
+        case .offer: Text("백업 가져오기", bundle: .module)
+        case .deviceChange: Text("기기 바꾸기", bundle: .module)
         }
     }
 
@@ -151,7 +159,7 @@ public struct RestoreView: View {
                     actionTitle
                 }
                 .buttonStyle(.geunal(.primary))
-                .disabled(!model.isComplete || model.isWorking)
+                .disabled(!model.canStart)
                 .accessibilityIdentifier("restore.start")
                 Button {
                     showsNoCode = true
@@ -178,7 +186,7 @@ public struct RestoreView: View {
         case .deviceChange:
             Text("이 계정은 다른 기기에서 쓰고 있어요. 복구 코드 12단어를 넣으면 암호화 백업을 이 기기로 가져오고, 이전 기기는 로그아웃돼요.", bundle: .module)
         case .offer:
-            Text("이 계정에는 암호화 백업이 있어요. 복구 코드 12단어를 넣으면 백업을 이 기기로 가져와요.", bundle: .module)
+            Text("이 계정의 암호화 백업이 서버에 있어요. 복구 코드 12단어를 넣으면 이 기기로 가져와요. 지금 넣지 않아도 캘린더는 쓸 수 있어요.", bundle: .module)
         case .guestReturn:
             Text("게스트 계정은 복구 코드가 곧 열쇠예요. 12단어를 넣으면 계정을 찾고 암호화 백업을 이 기기로 가져와요. 이전 기기는 로그아웃돼요.", bundle: .module)
         }
@@ -195,6 +203,9 @@ public struct RestoreView: View {
         if case .unknownWord(let index) = model.problem {
             return Text("\(index + 1)번째 단어를 고쳐 주세요", bundle: .module)
         }
+        if model.problem == .checksum {
+            return Text("코드를 다시 확인해 주세요", bundle: .module)
+        }
         if !model.isComplete {
             return Text("단어 \(RestoreModel.wordCount - model.acceptedCount)개 더", bundle: .module)
         }
@@ -204,7 +215,7 @@ public struct RestoreView: View {
         switch model.problem {
         case .wrongCode, .offline, .failed:
             return Text("다시 시도", bundle: .module)
-        case .unknownWord, .none:
+        case .unknownWord, .checksum, .none:
             return model.mode == .guestReturn
                 ? Text("계정 찾기", bundle: .module) : Text("백업 가져오기", bundle: .module)
         }
@@ -217,6 +228,11 @@ public struct RestoreView: View {
             NoticeCard(
                 systemImage: "exclamationmark.triangle",
                 text: Text("\(index + 1)번째 단어가 목록에 없어요. 종이에 적은 글자를 다시 봐 주세요.", bundle: .module),
+                tone: .problem)
+        case .checksum:
+            NoticeCard(
+                systemImage: "exclamationmark.triangle",
+                text: Text("12단어의 조합이 맞지 않아요. 단어 하나가 다르거나 순서가 바뀌었을 수 있어요. 종이에 적은 순서대로 다시 확인해 주세요.", bundle: .module),
                 tone: .problem)
         case .wrongCode:
             NoticeCard(systemImage: "exclamationmark.triangle", text: wrongCodeText, tone: .problem)

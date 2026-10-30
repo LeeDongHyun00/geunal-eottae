@@ -31,8 +31,19 @@ final class AppModel {
     private(set) var revocation: Revocation?
     /// The recovery code is not written down yet: the month view's banner (m1.md screen 4).
     private(set) var recoveryUnsaved = false
+    /// "나중에 넣을게요" left the account's backup on the server without its code on this device: the banner and 나 ask
+    /// for the code, and backups wait (m1.md screens 4, 12, 20).
+    private(set) var recoveryPending = false
+    /// "백업 가져오기" over the tabs, from the banner or 나.
+    var enteringRecoveryCode = false
+    /// Another account's events, asked about over the tabs when a guest who started offline gets the account later
+    /// (m1.md screen 24); onboarding asks its own.
+    private(set) var localData: LocalDataQuestion?
     /// The sign-in screen over the tabs, after "이 기기에서 다시 로그인" or 나's "로그인".
     var signingIn = false
+    /// The account was decided before the app last closed, on the permissions screen: onboarding goes on there
+    /// instead of at the sign-in (m1.md decision 30).
+    private(set) var onboardingResumes = false
     let toasts = AppModel.makeToasts()
     let connectivity = ConnectivityMonitor()
     @ObservationIgnored let owner = AppCore.deviceOwner()
@@ -60,7 +71,12 @@ final class AppModel {
             #endif
             self.core = core
             nextUp = NextUpModel(core: core)
+            let toasts = self.toasts
+            localData = LocalDataQuestion(core: core, notify: { toasts.show($0) })
             listen(to: core)
+            onboardingResumes =
+                !onboardingState.isFinished
+                && (core.session() != nil || onboardingState.pendingGuestAgeConfirmedAt != nil)
             phase = onboardingState.isFinished ? .main : .onboarding
             appBecameActive()
         } catch {
@@ -93,6 +109,10 @@ final class AppModel {
                 // listener. On its own task, so a slow network does not hold the next-up bar back.
                 Task { try? await core.sync() }
             }
+            // The core backs nothing up while another account's events wait for an answer.
+            if case .main = phase {
+                await localData?.ask {}
+            }
             await nextUp?.refresh()
             await refreshSettings()
             await refreshAccount()
@@ -111,6 +131,17 @@ final class AppModel {
         signingIn = true
     }
 
+    func enterRecoveryCode() {
+        enteringRecoveryCode = true
+    }
+
+    /// The restore over the tabs closed: restored, started fresh, or "나중에" once more.
+    func recoveryCodeClosed() {
+        enteringRecoveryCode = false
+        accountChanges += 1
+        Task { await refreshAccount() }
+    }
+
     /// The sign-in that `signInAgain()` opened came through.
     func signedInAgain() {
         signingIn = false
@@ -122,8 +153,10 @@ final class AppModel {
     /// onboarding comes back for the next account.
     func accountDeleted() {
         onboardingState.isFinished = false
+        onboardingResumes = false
         accountChanges += 1
         recoveryUnsaved = false
+        recoveryPending = false
         phase = .onboarding
         toasts.show(String(localized: "계정을 삭제했어요"))
     }
@@ -131,11 +164,13 @@ final class AppModel {
     /// A revocation the sheet has not shown, and whether the recovery code still waits for the paper.
     func refreshAccount() async {
         guard let core else { return }
-        let read = await Task.detached { (try? core.revocation(), try? core.recoveryStatus()) }.value
+        let read = await Task.detached { (try? core.revocation(), try? core.recoveryStatus(), core.session()) }.value
         if let revoked = read.0, revoked.at != onboardingState.revocationShownAt {
             revocation = revoked
         }
         recoveryUnsaved = read.0 == nil && read.1.map { $0.created && !$0.saved } == true
+        // A signed-in device makes or receives the code at sign-in, unless the account's backup is waiting for it.
+        recoveryPending = read.0 == nil && read.2 != nil && read.1.map { !$0.created } == true
     }
 
     /// The core reports a change of the 알림 settings as a calendar change.
