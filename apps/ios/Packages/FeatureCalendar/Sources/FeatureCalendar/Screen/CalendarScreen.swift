@@ -29,17 +29,20 @@ public struct CalendarScreen: View {
     @AppStorage("app.geunal.calendar.view") private var kind: Kind = .month
     @Environment(\.scenePhase) private var scenePhase
     private let actions: EventActions
+    private let onRecoveryBanner: (() -> Void)?
     private let now: @Sendable () -> Date
 
     /// `changes` counts the core's calendar changes; each new value reads the views again. An event set in
-    /// `openEvent` (the next-up bar's) opens in the editor.
+    /// `openEvent` (the next-up bar's) opens in the editor. `onRecoveryBanner` puts the recovery code banner under the
+    /// month view's header until the code is written down (m1.md screen 4).
     public init(
         core: any CoreProtocol, toasts: ToastCenter, changes: Int, openEvent: Binding<EventItem?> = .constant(nil),
-        now: @escaping @Sendable () -> Date = Date.init
+        onRecoveryBanner: (() -> Void)? = nil, now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.core = core
         self.changes = changes
         _openEvent = openEvent
+        self.onRecoveryBanner = onRecoveryBanner
         self.now = now
         actions = EventActions(core: core, toasts: toasts)
         _shownDay = State(initialValue: KoreanCalendar.day(of: now()))
@@ -56,6 +59,17 @@ public struct CalendarScreen: View {
                 onTitle: showToday,
                 onNewEvent: kind == .list ? nil : { editor = EditorRequest(.new(day: addDay, input: nil)) },
                 onStamp: { stamping = StampRequest(month: visibleMonth) })
+            if kind == .month, let onRecoveryBanner {
+                Banner(
+                    systemImage: "lock", title: Text("복구 코드를 저장해 두세요", bundle: .module),
+                    detail: Text("첫 그룹에 들어가기 전까지 이 배너로 알려요.", bundle: .module),
+                    actionLabel: Text("저장", bundle: .module), action: onRecoveryBanner
+                )
+                .padding(.horizontal, Space.m)
+                .padding(.bottom, Space.s)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("month.recoveryBanner")
+            }
             switch kind {
             case .month:
                 ScrollView(.vertical) {

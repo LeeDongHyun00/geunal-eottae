@@ -21,6 +21,9 @@
         /// timing itself.
         static var toastsWait: Bool { arguments.contains("-GeunalToastsWait") }
 
+        /// `-GeunalNoScreenLock` plays a device without a passcode for the preview core's OS prompt stand-in.
+        static var hasNoScreenLock: Bool { arguments.contains("-GeunalNoScreenLock") }
+
         static var previewScenario: PreviewCore.Scenario {
             guard let index = arguments.firstIndex(of: "-GeunalPreviewScenario"), index + 1 < arguments.count else {
                 return .standard

@@ -42,7 +42,7 @@ public struct RestoreView: View {
         }
         .navigationBarBackButtonHidden(isBusyPhase)
         .sheet(isPresented: $showsNoCode) {
-            NoCodeSheet(mode: model.mode) {
+            NoCodeSheet(mode: model.mode, screenLocked: model.screenLocked) {
                 Task {
                     if await model.startWithoutCode() {
                         showsNoCode = false
