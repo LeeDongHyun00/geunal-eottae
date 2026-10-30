@@ -118,6 +118,9 @@ final class AppModel {
             phase = onboardingState.isFinished ? .main : .onboarding
         } catch {
             phase = .failed(CoreStatusModel.describe(error))
+            // A background task can wake the app before the first unlock, when neither the keychain nor the store
+            // opens; the next start tries again instead of keeping the failure.
+            opening = nil
         }
     }
 
