@@ -84,6 +84,33 @@ final class StoreDirectoryTests: XCTestCase {
         XCTAssertEqual(try moved.calendars().first { $0.kind == .own }?.eventCount, 1)
     }
 
+    /// QA: a move that fails leaves the store where it was, and this run opens it there with its key; wiping the keys
+    /// as for a new installation would lose the store for good.
+    func testOpensTheOldStoreWhenItCannotMove() throws {
+        let support = try temporaryDirectory()
+        let secrets = MemorySecretStore()
+        let old = support.appendingPathComponent("core", isDirectory: true)
+        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+        try {
+            let core = try Core.open(
+                storeDir: old.path(percentEncoded: false), apiBase: "http://127.0.0.1:8080",
+                listener: ChangeStreamListener(), secrets: secrets)
+            _ = try core.calendars()
+        }()
+        // A file where the group's container should be, so nothing can move into it.
+        let blocked = try temporaryDirectory().appendingPathComponent("container")
+        try Data().write(to: blocked)
+
+        let directory = try StoreDirectory.url(groupContainer: blocked, applicationSupport: support)
+
+        XCTAssertEqual(directory.standardizedFileURL, old.standardizedFileURL)
+        XCTAssertTrue(FreshInstall.hasStore(in: directory), "FreshInstall keeps the keys of a store it can see")
+        XCTAssertNoThrow(
+            try Core.open(
+                storeDir: directory.path(percentEncoded: false), apiBase: "http://127.0.0.1:8080",
+                listener: ChangeStreamListener(), secrets: secrets))
+    }
+
     func testLeavesTheGroupsStoreAloneWhenBothHaveOne() throws {
         let support = try temporaryDirectory()
         let group = try temporaryDirectory()
