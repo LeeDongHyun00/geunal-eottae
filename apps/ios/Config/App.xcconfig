@@ -5,6 +5,9 @@
 KAKAO_APP_KEY =
 // The Apple Developer Program team that signs device builds; simulator builds need none.
 DEVELOPMENT_TEAM =
+// The App Group the app and its widget share (docs/parts/ios.md §2): the core's store and the widget snapshot. Not an
+// account secret; the Apple Developer account registers it once, which automatic signing does with a team set.
+GEUNAL_APP_GROUP = group.app.geunal
 // `alpha` builds offer the test statistics consent (docs/design/m1.md decision 10); public builds set `public`.
 GEUNAL_BUILD_CHANNEL = alpha
 // The terms and privacy pages once the domain exists. xcconfig reads `//` as a comment, so write https:/$()/….

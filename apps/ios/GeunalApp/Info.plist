@@ -20,6 +20,8 @@
 	</array>
 	<key>GeunalAPIBase</key>
 	<string>$(GEUNAL_API_BASE)</string>
+	<key>GeunalAppGroup</key>
+	<string>$(GEUNAL_APP_GROUP)</string>
 	<key>GeunalBuildChannel</key>
 	<string>$(GEUNAL_BUILD_CHANNEL)</string>
 	<key>GeunalPrivacyURL</key>

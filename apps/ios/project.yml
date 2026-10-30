@@ -38,6 +38,8 @@ packages:
     path: Packages/FeatureAccount
   FeatureCalendar:
     path: Packages/FeatureCalendar
+  HomeWidget:
+    path: Packages/HomeWidget
 
 targets:
   GeunalApp:
@@ -51,6 +53,9 @@ targets:
       - package: DesignSystem
       - package: FeatureAccount
       - package: FeatureCalendar
+      - package: HomeWidget
+      # Embedded in PlugIns; the widget reads the snapshot the app writes to the App Group.
+      - target: GeunalWidget
     # Account-bound values (Kakao app key, team ID) come from Config/Secrets.xcconfig, which git ignores.
     configFiles:
       Debug: Config/App.xcconfig
@@ -84,6 +89,30 @@ targets:
       language: ko
       region: KR
 
+  # The home screen widgets (docs/parts/ios.md §2, m1.md screen 14). They read the snapshot the app writes to the App
+  # Group container and never open the core; the views live in the HomeWidget package, which the app's tests share.
+  GeunalWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: GeunalWidget
+    dependencies:
+      - package: HomeWidget
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    configFiles:
+      Debug: Config/App.xcconfig
+      Release: Config/App.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.geunal.ios.widget
+        INFOPLIST_FILE: GeunalWidget/Info.plist
+        # App Groups, for the snapshot; signing adds the capability to the widget's App ID once a team is set.
+        CODE_SIGN_ENTITLEMENTS: GeunalWidget/GeunalWidget.entitlements
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+        INFOPLIST_KEY_CFBundleDisplayName: 그날어때
+        SKIP_INSTALL: YES
+
   GeunalAppTests:
     type: bundle.unit-test
     platform: iOS
@@ -96,6 +125,7 @@ targets:
       - package: DesignSystem
       - package: FeatureAccount
       - package: FeatureCalendar
+      - package: HomeWidget
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.geunal.ios.tests
