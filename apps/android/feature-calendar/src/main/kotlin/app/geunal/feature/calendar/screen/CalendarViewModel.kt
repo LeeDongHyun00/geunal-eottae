@@ -33,7 +33,10 @@ interface ViewKindStore {
     fun save(kind: CalendarViewKind)
 }
 
-/** A view preference is neither a secret nor the person's data, so plain preferences hold it. */
+/**
+ * A view preference is neither a secret nor the person's data, so plain preferences hold it. The app's backup rules
+ * name this file (`calendar.xml`); a renamed file would quietly drop out of backups.
+ */
 class PreferencesViewKindStore(
     context: Context,
 ) : ViewKindStore {
