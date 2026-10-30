@@ -212,32 +212,66 @@ fn a_deletion_whose_answer_was_lost_finishes_when_tried_again() {
 }
 
 #[test]
-fn a_deleted_accounts_tokens_finish_the_deletion_until_they_would_have_run_out() {
+fn finishes_leaving_a_deleted_account_when_a_later_request_answers_account_deleted() {
     pollster::block_on(async {
         let server = FakeServer::new();
         let t0 = chrono::Utc::now();
         server.set_now(t0);
         let (a, b) = (phone(&server), phone(&server));
-        kakao(&a.core, "finn", "핀").await.unwrap();
-        kakao(&b.core, "gail", "게일").await.unwrap();
         for (phone, subject) in [(&a, "finn"), (&b, "gail")] {
+            kakao(&phone.core, subject, "핀").await.unwrap();
+            let person =
+                PersonInput {
+                    id: None, name: "엄마".into(), birthday: None, alert: AlertRule::Inherit, suggest: true
+                };
+            phone.core.save_person(person).unwrap();
+            phone.core.set_alpha_stats(true).unwrap();
+            // The server deletes the account, and the answer never comes back.
             server.lose_next("delete_account");
             assert!(phone.core.clone().delete_account(kakao_deletion(&phone.core, subject).await).await.is_err());
+            assert!(phone.core.session().is_some(), "the phone does not know yet");
         }
 
-        // Past the access token's 15 minutes the transport refreshes, and the refresh token answers the same: any
-        // call finishes the deletion and says so.
-        server.set_now(t0 + chrono::Duration::minutes(20));
+        // The next sync meets 401 account_deleted: at once on the access token, and past its 15 minutes on the refresh
+        // token, which the transport never trades for new ones (geunal-sync's http tests).
+        let deleted =
+            |e: &CoreError| matches!(e, CoreError::Api { status: 401, code, .. } if code == "account_deleted");
         let error = a.core.clone().sync().await.unwrap_err();
-        assert!(matches!(&error, CoreError::Api { status: 401, code, .. } if code == "account_deleted"), "{error:?}");
-        assert!(a.core.session().is_none() && !a.secrets.has("device_signing_key"));
-        a.core.clone().sync().await.unwrap();
+        assert!(deleted(&error), "{error:?}");
+        server.set_now(t0 + chrono::Duration::minutes(20));
+        let error = b.core.clone().sync().await.unwrap_err();
+        assert!(deleted(&error), "{error:?}");
+
+        // Either phone is left as the 204 would have left it.
+        for phone in [&a, &b] {
+            assert!(phone.core.session().is_none() && phone.core.revocation().unwrap().is_none());
+            for secret in ["session", "device_signing_key", "recovery_entropy", "account_master_key"] {
+                assert!(!phone.secrets.has(secret), "{secret} is gone");
+            }
+            assert!(phone.secrets.has("db_key"), "the calendar still opens");
+            assert_eq!(phone.core.people().unwrap().len(), 1);
+            assert!(!phone.core.alpha_stats_enabled().unwrap());
+            phone.core.clone().sync().await.unwrap();
+        }
+    });
+}
+
+#[test]
+fn a_deleted_accounts_tokens_read_as_expired_once_they_would_have_run_out() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let t0 = chrono::Utc::now();
+        server.set_now(t0);
+        let a = phone(&server);
+        kakao(&a.core, "hugo", "휴고").await.unwrap();
+        server.lose_next("delete_account");
+        assert!(a.core.clone().delete_account(kakao_deletion(&a.core, "hugo").await).await.is_err());
 
         // After 30 days the server cannot tell any more, and a session that merely ended is no deletion.
         server.set_now(t0 + chrono::Duration::days(31));
-        let error = b.core.clone().sync().await.unwrap_err();
+        let error = a.core.clone().sync().await.unwrap_err();
         assert!(matches!(&error, CoreError::Api { status: 401, code, .. } if code == "token_expired"), "{error:?}");
-        assert!(b.core.session().is_some() && b.secrets.has("device_signing_key"));
+        assert!(a.core.session().is_some() && a.secrets.has("device_signing_key"));
     });
 }
 
