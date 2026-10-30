@@ -27,6 +27,7 @@ android {
         abortOnError = true
         // Versions are pinned on purpose and Dependabot proposes the moves; a release upstream must not turn CI red.
         disable += "AndroidGradlePluginVersion"
+        disable += "GradleDependency"
         // targetSdk follows the Play requirement of the year, not the newest release (docs/parts/android.md §1).
         disable += "OldTargetApi"
     }
@@ -37,6 +38,13 @@ dependencies {
     api(libs.compose.foundation)
     api(libs.compose.material3)
     api(libs.compose.ui)
+    // ToastCenter's timer.
+    implementation(libs.kotlinx.coroutines.core)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    // DesignTokensTest reads docs/design/tokens.json.
+    testImplementation(libs.kotlinx.serialization.json)
 }
 
 dependencyLocking {

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Added to the build only when it has the domain (app/build.gradle.kts): the App Link needs a host to verify. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- The App Link the API server sends Apple's sign-in result to (protocol §13). Verified against the domain's
+             assetlinks.json, so no other app can receive the code and ID token in its fragment. -->
+        <activity
+            android:name="app.geunal.feature.account.providers.AppleSignInCallbackActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="${geunalAppLinkHost}"
+                    android:path="/auth/apple"
+                    android:scheme="https" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
