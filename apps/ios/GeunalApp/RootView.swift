@@ -28,6 +28,7 @@ struct RootView: View {
             case .main:
                 if let core = model.core {
                     MainTabView(model: model, core: core)
+                        .widgetGalleryIfAsked(core: core)
                         .sheet(item: shownRevocation, onDismiss: signInIfAsked) { item in
                             RevokedSheet(
                                 revocation: item.revocation, when: MeText.time(item.revocation.at),

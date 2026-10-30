@@ -26,6 +26,9 @@
         /// test cannot answer (`PreviewDeviceCalendars`).
         static var usesPhoneCalendars: Bool { arguments.contains("-GeunalPhoneCalendars") }
 
+        /// `-GeunalWidgetGallery` draws the widgets over the tabs from the app's own snapshot (`WidgetGallery`).
+        static var showsWidgetGallery: Bool { arguments.contains("-GeunalWidgetGallery") }
+
         /// `-GeunalNoScreenLock` plays a device without a passcode for the preview core's OS prompt stand-in.
         static var hasNoScreenLock: Bool { arguments.contains("-GeunalNoScreenLock") }
 

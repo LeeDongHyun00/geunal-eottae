@@ -1,4 +1,5 @@
 import FeatureAccount
+import HomeWidget
 import SwiftUI
 
 @main
@@ -13,7 +14,12 @@ struct AppMain: App {
         WindowGroup {
             RootView()
                 .onOpenURL { url in
-                    _ = KakaoSetup.handle(url)
+                    if KakaoSetup.handle(url) {
+                        return
+                    }
+                    if let link = WidgetLink(url: url) {
+                        AppModel.shared.open(link)
+                    }
                 }
         }
     }
