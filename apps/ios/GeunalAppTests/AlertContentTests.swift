@@ -10,21 +10,25 @@ final class AlertContentTests: XCTestCase {
     }
 
     private func alert(
-        _ target: AlertTarget, title: String = "가족 · 저녁", firesAt: Date, start: DayTime, allDay: Bool = false
+        _ target: AlertTarget, title: String = "가족 · 저녁", firesAt: Date, start: DayTime, end: DayTime? = nil,
+        allDay: Bool = false
     ) -> ScheduledAlert {
-        ScheduledAlert(id: "a", fireAt: firesAt, target: target, title: title, start: start, allDay: allDay)
+        ScheduledAlert(
+            id: "a", fireAt: firesAt, target: target, title: title, start: start, allDay: allDay, end: end)
     }
 
     private let dinner = AlertTarget.event(eventId: "e1", occurrence: nil)
 
     func testAnEventTheSameDaySaysHowLongUntilItStarts() {
         let start = DayTime(day: "2026-10-30", minute: 18 * 60)
-        let soon = alert(dinner, firesAt: at("2026-10-30", 17), start: start)
+        let soon = alert(
+            dinner, firesAt: at("2026-10-30", 17), start: start, end: DayTime(day: "2026-10-30", minute: 20 * 60))
 
-        let text = AlertContent.text(for: soon, end: DayTime(day: "2026-10-30", minute: 20 * 60))
+        let text = AlertContent.text(for: soon)
 
         XCTAssertEqual(text, AlertContent.Text(title: "가족 · 저녁", body: "1시간 뒤 · 18:00–20:00"))
-        XCTAssertEqual(AlertContent.text(for: soon).body, "1시간 뒤 · 18:00")
+        let withoutEnd = alert(dinner, firesAt: at("2026-10-30", 17), start: start)
+        XCTAssertEqual(AlertContent.text(for: withoutEnd).body, "1시간 뒤 · 18:00")
     }
 
     func testAnEventAtItsStartSaysNow() {
@@ -39,21 +43,23 @@ final class AlertContentTests: XCTestCase {
         let start = DayTime(day: "2026-10-30", minute: 18 * 60)
 
         let text = AlertContent.text(
-            for: alert(dinner, firesAt: at("2026-10-29", 18), start: start),
-            end: DayTime(day: "2026-10-30", minute: 20 * 60))
+            for: alert(
+                dinner, firesAt: at("2026-10-29", 18), start: start, end: DayTime(day: "2026-10-30", minute: 20 * 60)))
 
         XCTAssertEqual(text.body, "내일 · 18:00–20:00")
     }
 
     func testAnAllDayEventSaysItsDayAndWhenItEnds() {
         let start = DayTime(day: "2026-10-30", minute: 0)
-        let eve = alert(dinner, title: "가족 · 여행", firesAt: at("2026-10-29", 18), start: start, allDay: true)
+        func eve(through last: String?) -> ScheduledAlert {
+            alert(
+                dinner, title: "가족 · 여행", firesAt: at("2026-10-29", 18), start: start,
+                end: last.map { DayTime(day: $0, minute: 0) }, allDay: true)
+        }
 
-        XCTAssertEqual(AlertContent.text(for: eve).body, "내일 · 종일")
-        XCTAssertEqual(
-            AlertContent.text(for: eve, end: DayTime(day: "2026-10-30", minute: 0)).body, "내일 · 종일")
-        XCTAssertEqual(
-            AlertContent.text(for: eve, end: DayTime(day: "2026-11-09", minute: 0)).body, "내일부터 11/9(월)까지")
+        XCTAssertEqual(AlertContent.text(for: eve(through: nil)).body, "내일 · 종일")
+        XCTAssertEqual(AlertContent.text(for: eve(through: "2026-10-30")).body, "내일 · 종일")
+        XCTAssertEqual(AlertContent.text(for: eve(through: "2026-11-09")).body, "내일부터 11/9(월)까지")
         let morning = alert(dinner, firesAt: at("2026-10-30", 9), start: start, allDay: true)
         XCTAssertEqual(AlertContent.text(for: morning).body, "오늘 · 종일")
     }
