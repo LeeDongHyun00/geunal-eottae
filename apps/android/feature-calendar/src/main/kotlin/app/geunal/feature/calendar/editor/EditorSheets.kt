@@ -96,23 +96,29 @@ internal fun ScopeSheet(
     }
 }
 
-/** The question before deleting an event that does not repeat. */
+/**
+ * The question before deleting an event that does not repeat, and with its own words before deleting a person (m1.md
+ * decision 4: a sheet, not the platform's dialog).
+ */
 @Composable
 internal fun DeleteSheet(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    title: String = stringResource(R.string.editor_delete_question),
+    body: String = stringResource(R.string.editor_delete_body),
+    confirm: String = stringResource(R.string.editor_delete),
 ) {
     GeunalSheet(onDismiss = onDismiss) {
         SheetColumn {
-            SheetTitle(stringResource(R.string.editor_delete_question))
+            SheetTitle(title)
             Text(
-                stringResource(R.string.editor_delete_body),
+                body,
                 style = GeunalType.secondary,
                 color = LocalNeutralColors.current.secondaryText,
             )
             Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
                 GeunalButton(
-                    text = stringResource(R.string.editor_delete),
+                    text = confirm,
                     onClick = onConfirm,
                     kind = ButtonKind.Danger,
                     modifier = Modifier.testTag("delete.confirm"),

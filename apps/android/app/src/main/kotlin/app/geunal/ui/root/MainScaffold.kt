@@ -35,7 +35,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import app.geunal.R
-import app.geunal.core.EventItem
 import app.geunal.core.UpNext
 import app.geunal.designsystem.BrandColors
 import app.geunal.designsystem.GroupColors
@@ -63,8 +62,8 @@ enum class MainTab { CALENDAR, ME }
 fun MainScaffold(
     nextUp: NextUpModel,
     toasts: ToastCenter,
-    /** The next-up bar's event, for the editor (m1.md §2.6). */
-    onOpenEvent: (EventItem) -> Unit,
+    /** The next-up bar's event or birthday (m1.md §2.6). */
+    onOpenItem: (UpNext) -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable (tab: MainTab, padding: PaddingValues) -> Unit,
 ) {
@@ -79,15 +78,14 @@ fun MainScaffold(
             containerColor = neutrals.background,
             bottomBar = {
                 Column(Modifier.onSizeChanged { barsHeight = it.height }) {
-                    // An event opens in the editor over the calendar (m1.md §2.6); a birthday leads to the calendar until
-                    // 사람·생일 exists.
+                    // An event opens in the editor over the calendar, a birthday on 사람·생일 (m1.md §2.6).
                     NextUpSlot(
                         nextUp = nextUp,
                         toasts = toasts,
                         toastShown = toast != null,
                         onOpen = { item ->
-                            tab = MainTab.CALENDAR
-                            if (item is UpNext.Event) onOpenEvent(item.item)
+                            if (item is UpNext.Event) tab = MainTab.CALENDAR
+                            onOpenItem(item)
                         },
                     )
                     TabBar(tab = tab, onSelect = { tab = it })

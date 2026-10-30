@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -20,9 +22,13 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.services.storage.TestStorage
 import app.geunal.core.AccountView
+import app.geunal.core.AlertRule
 import app.geunal.core.Core
 import app.geunal.core.NoHandle
+import app.geunal.core.Person
+import app.geunal.core.PersonSource
 import app.geunal.core.Provider
+import app.geunal.core.ShiftTemplate
 import app.geunal.core.UpNext
 import app.geunal.designsystem.GeunalTheme
 import app.geunal.designsystem.components.ToastCenter
@@ -46,12 +52,20 @@ class MainScaffoldTest {
     @Test
     fun showsTheTabsWithTheNextUpBarAndTheMeTab() {
         val core = FakeCore()
+        var openedPeople = false
         compose.setContent {
             GeunalTheme {
-                MainScaffold(nextUp = NextUpModel(core), toasts = toasts, onOpenEvent = {}) { tab, padding ->
+                MainScaffold(nextUp = NextUpModel(core), toasts = toasts, onOpenItem = {}) { tab, padding ->
                     when (tab) {
                         MainTab.CALENDAR -> Box(Modifier.fillMaxSize().padding(padding)) { Text("calendar") }
-                        MainTab.ME -> MeScreen(core = core, pendingGuest = false, modifier = Modifier.padding(padding))
+                        MainTab.ME ->
+                            MeScreen(
+                                core = core,
+                                pendingGuest = false,
+                                onShifts = {},
+                                onPeople = { openedPeople = true },
+                                modifier = Modifier.padding(padding),
+                            )
                     }
                 }
             }
@@ -66,13 +80,27 @@ class MainScaffoldTest {
 
         compose.onNodeWithTag("tab.me").performClick()
         compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("me.profile")).fetchSemanticsNodes().isNotEmpty() }
+        // The calendar section counts what the covers over the tabs hold (m1.md screen 12).
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("me.people") and hasText("2명")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("me.shifts").assertTextContains("0개", substring = true)
         compose.screenshot("12-me")
+        compose.onNodeWithTag("me.people").performClick()
+        compose.waitUntil(10_000) { openedPeople }
     }
 
     private class FakeCore : Core(NoHandle) {
         override fun nextUp(count: UShort): List<UpNext> = emptyList()
 
         override fun account(): AccountView = AccountView(userId = "u1", displayName = "하린", providers = listOf(Provider.KAKAO))
+
+        override fun shiftTemplates(): List<ShiftTemplate> = emptyList()
+
+        override fun people(): List<Person> = listOf(person("p1", "민수"), person("p2", "엄마"))
+
+        private fun person(
+            id: String,
+            name: String,
+        ) = Person(id, name, null, null, null, PersonSource.Manual, readOnly = false, alert = AlertRule.Inherit, suggest = true)
     }
 }
 

@@ -3,9 +3,13 @@ package app.geunal.feature.calendar.testing
 import app.geunal.core.AddedEvent
 import app.geunal.core.AgendaDay
 import app.geunal.core.AlertRule
+import app.geunal.core.Birthday
+import app.geunal.core.BirthdayCalendar
 import app.geunal.core.BirthdayItem
 import app.geunal.core.CalendarKind
 import app.geunal.core.CalendarView
+import app.geunal.core.ContactImport
+import app.geunal.core.ContactInput
 import app.geunal.core.Core
 import app.geunal.core.CoreException
 import app.geunal.core.DayCell
@@ -19,6 +23,9 @@ import app.geunal.core.Holiday
 import app.geunal.core.LeaveBridge
 import app.geunal.core.NoHandle
 import app.geunal.core.Palette
+import app.geunal.core.Person
+import app.geunal.core.PersonInput
+import app.geunal.core.PersonSource
 import app.geunal.core.Recurrence
 import app.geunal.core.ShiftDay
 import app.geunal.core.ShiftTemplate
@@ -120,6 +127,28 @@ object Samples {
         readOnly = event.source is EventSource.Device,
     )
 
+    /** A person with a birthday on [month]/[day], next on [next] in [days] days, as 사람·생일 lists them. */
+    fun person(
+        id: String,
+        name: String,
+        month: Int,
+        day: Int,
+        lunar: Boolean = false,
+        next: String? = null,
+        days: Int? = null,
+        source: PersonSource = PersonSource.Manual,
+    ) = Person(
+        id = id,
+        name = name,
+        birthday = Birthday(month.toUByte(), day.toUByte(), null, if (lunar) BirthdayCalendar.Lunar(false) else BirthdayCalendar.Solar),
+        nextBirthday = next,
+        daysUntil = days?.toUShort(),
+        source = source,
+        readOnly = source is PersonSource.Group,
+        alert = AlertRule.Inherit,
+        suggest = true,
+    )
+
     /** A shift template in [calendar]'s color at [tint], as the core lists it. */
     fun template(
         id: String,
@@ -198,6 +227,14 @@ open class CalendarFakeCore : Core(NoHandle) {
     @Volatile var shifts: Map<String, List<String>> = emptyMap()
 
     @Volatile var writeError: CoreException? = null
+
+    @Volatile var peopleList: List<Person> = emptyList()
+
+    /** What `upcomingBirthdays` answers, soonest first. */
+    @Volatile var upcomingList: List<Person> = emptyList()
+
+    /** This year's solar day of any lunar birthday, as `birthdayInYear` answers. */
+    @Volatile var solarDay: String? = "2026-11-11"
 
     /** The month grid from the Sunday on or before the 1st to the Saturday on or after the last day. */
     override fun calendarMonth(month: String): List<DayCell> {
@@ -339,6 +376,45 @@ open class CalendarFakeCore : Core(NoHandle) {
         calls += "shifts $month"
         readError?.let { throw it }
         return shifts.filter { KoreanCalendar.month(it.key) == month }.map { (day, ids) -> ShiftDay(day, ids) }.sortedBy { it.day }
+    }
+
+    override fun people(): List<Person> = peopleList
+
+    override fun upcomingBirthdays(days: UShort): List<Person> = upcomingList
+
+    override fun birthdayInYear(
+        birthday: Birthday,
+        year: Int,
+    ): String? {
+        calls += "birthdayInYear ${birthday.month}-${birthday.day} $year"
+        return solarDay
+    }
+
+    /** A new person gets the next id; the list keeps the saved values, the birthday's next day left to the core. */
+    override fun savePerson(input: PersonInput): String {
+        val lunar = if (input.birthday?.calendar is BirthdayCalendar.Lunar) " lunar" else ""
+        calls += "savePerson ${input.name} ${input.birthday?.month}-${input.birthday?.day}$lunar"
+        writeError?.let { throw it }
+        val id = input.id ?: "p${peopleList.size + 1}"
+        val saved =
+            Person(id, input.name, input.birthday, null, null, PersonSource.Manual, readOnly = false, alert = input.alert, suggest = input.suggest)
+        peopleList = peopleList.filterNot { it.id == id } + saved
+        return id
+    }
+
+    override fun deletePerson(personId: String) {
+        calls += "deletePerson $personId"
+        writeError?.let { throw it }
+        peopleList = peopleList.filterNot { it.id == personId }
+    }
+
+    override fun importContacts(contacts: List<ContactInput>): ContactImport {
+        calls += "importContacts " + contacts.joinToString(" ") { it.contactId }
+        writeError?.let { throw it }
+        val added = contacts.filter { contact -> peopleList.none { it.id == "c-${contact.contactId}" } }
+        peopleList = peopleList +
+            added.map { Person("c-${it.contactId}", it.name, it.birthday, null, null, PersonSource.Contacts, false, AlertRule.Inherit, true) }
+        return ContactImport(added.size.toUInt(), (contacts.size - added.size).toUInt(), 0u)
     }
 
     override fun setShiftDays(days: List<ShiftDay>) {
