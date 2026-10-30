@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import app.geunal.R
 import app.geunal.core.AccountView
 import app.geunal.core.CoreInterface
+import app.geunal.core.MeSummary
 import app.geunal.core.Provider
 import app.geunal.designsystem.GeunalType
 import app.geunal.designsystem.GroupColors
@@ -47,8 +48,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * The 나 tab (m1.md screen 12): the account card, then the calendar group with the shift templates and 사람·생일. The
- * rest of the screen (calendars, recovery code, backup, deletion) follows with those screens.
+ * The 나 tab (m1.md screen 12): the account card, the calendar group (캘린더 관리, the shift templates and 사람·생일 with
+ * their counts from one `meSummary`), and the account group with 알림. The security and backup group, the device
+ * calendars and the deletion follow with those screens.
  */
 @Composable
 fun MeScreen(
@@ -56,20 +58,16 @@ fun MeScreen(
     pendingGuest: Boolean,
     onShifts: () -> Unit,
     onPeople: () -> Unit,
+    onCalendars: () -> Unit,
+    onAlerts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val neutrals = LocalNeutralColors.current
-    var account by remember { mutableStateOf<AccountView?>(null) }
+    var summary by remember { mutableStateOf<MeSummary?>(null) }
     var loaded by remember { mutableStateOf(false) }
-    var templates by remember { mutableStateOf<Int?>(null) }
-    var people by remember { mutableStateOf<Int?>(null) }
     // Read again each time the tab comes back, so the counts follow what the covers over it changed.
     LaunchedEffect(core) {
-        withContext(Dispatchers.IO) {
-            account = runCatching { core.account() }.getOrNull()
-            templates = runCatching { core.shiftTemplates().size }.getOrNull()
-            people = runCatching { core.people().size }.getOrNull()
-        }
+        summary = withContext(Dispatchers.IO) { runCatching { core.meSummary() }.getOrNull() }
         loaded = true
     }
     Column(
@@ -88,7 +86,7 @@ fun MeScreen(
             color = neutrals.ink,
             modifier = Modifier.padding(top = Space.xl).semantics { heading() },
         )
-        if (loaded) Profile(account, pendingGuest)
+        if (loaded) Profile(summary?.account, pendingGuest)
         Text(
             stringResource(R.string.me_section_calendar),
             style = GeunalType.caption.copy(fontWeight = FontWeight.SemiBold),
@@ -97,17 +95,37 @@ fun MeScreen(
         )
         SettingsGroup(Modifier.background(neutrals.background, RoundedCornerShape(Radius.card))) {
             SettingsRow(
+                title = stringResource(R.string.me_calendars),
+                value = summary?.let { stringResource(R.string.me_count_items, it.calendars.toInt()) },
+                onClick = onCalendars,
+                modifier = Modifier.testTag("me.calendars"),
+            )
+            SettingsDivider()
+            SettingsRow(
                 title = stringResource(R.string.me_shift_templates),
-                value = templates?.let { stringResource(R.string.me_count_items, it) },
+                value = summary?.let { stringResource(R.string.me_count_items, it.shiftTemplates.toInt()) },
                 onClick = onShifts,
                 modifier = Modifier.testTag("me.shifts"),
             )
             SettingsDivider()
             SettingsRow(
                 title = stringResource(R.string.me_people),
-                value = people?.let { stringResource(R.string.me_count_people, it) },
+                value = summary?.let { stringResource(R.string.me_count_people, it.people.toInt()) },
                 onClick = onPeople,
                 modifier = Modifier.testTag("me.people"),
+            )
+        }
+        Text(
+            stringResource(R.string.me_section_account),
+            style = GeunalType.caption.copy(fontWeight = FontWeight.SemiBold),
+            color = neutrals.secondaryText,
+            modifier = Modifier.padding(start = Space.m).semantics { heading() },
+        )
+        SettingsGroup(Modifier.background(neutrals.background, RoundedCornerShape(Radius.card))) {
+            SettingsRow(
+                title = stringResource(R.string.me_alerts),
+                onClick = onAlerts,
+                modifier = Modifier.testTag("me.alerts"),
             )
         }
     }

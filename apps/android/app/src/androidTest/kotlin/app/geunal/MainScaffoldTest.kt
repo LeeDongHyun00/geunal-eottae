@@ -12,15 +12,13 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.geunal.core.AccountView
-import app.geunal.core.AlertRule
 import app.geunal.core.Core
+import app.geunal.core.MeSummary
 import app.geunal.core.NoHandle
-import app.geunal.core.Person
-import app.geunal.core.PersonSource
 import app.geunal.core.Provider
-import app.geunal.core.ShiftTemplate
 import app.geunal.core.UpNext
 import app.geunal.designsystem.GeunalTheme
 import app.geunal.designsystem.components.ToastCenter
@@ -45,6 +43,7 @@ class MainScaffoldTest {
     fun showsTheTabsWithTheNextUpBarAndTheMeTab() {
         val core = FakeCore()
         var openedPeople = false
+        var openedAlerts = false
         compose.setContent {
             GeunalTheme {
                 MainScaffold(nextUp = NextUpModel(core), toasts = toasts, onOpenItem = {}) { tab, padding ->
@@ -56,6 +55,8 @@ class MainScaffoldTest {
                                 pendingGuest = false,
                                 onShifts = {},
                                 onPeople = { openedPeople = true },
+                                onCalendars = {},
+                                onAlerts = { openedAlerts = true },
                                 modifier = Modifier.padding(padding),
                             )
                     }
@@ -74,24 +75,28 @@ class MainScaffoldTest {
         compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("me.profile")).fetchSemanticsNodes().isNotEmpty() }
         // The calendar section counts what the covers over the tabs hold (m1.md screen 12).
         compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("me.people") and hasText("2명")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("me.calendars").assertTextContains("3개", substring = true)
         compose.onNodeWithTag("me.shifts").assertTextContains("0개", substring = true)
         compose.screenshot("12-me")
         compose.onNodeWithTag("me.people").performClick()
         compose.waitUntil(10_000) { openedPeople }
+        compose.onNodeWithTag("me.alerts").performScrollTo().performClick()
+        compose.waitUntil(10_000) { openedAlerts }
     }
 
     private class FakeCore : Core(NoHandle) {
         override fun nextUp(count: UShort): List<UpNext> = emptyList()
 
-        override fun account(): AccountView = AccountView(userId = "u1", displayName = "하린", providers = listOf(Provider.KAKAO))
-
-        override fun shiftTemplates(): List<ShiftTemplate> = emptyList()
-
-        override fun people(): List<Person> = listOf(person("p1", "민수"), person("p2", "엄마"))
-
-        private fun person(
-            id: String,
-            name: String,
-        ) = Person(id, name, null, null, null, PersonSource.Manual, readOnly = false, alert = AlertRule.Inherit, suggest = true)
+        // The 나 tab reads its counts in one summary.
+        override fun meSummary(): MeSummary =
+            MeSummary(
+                account = AccountView(userId = "u1", displayName = "하린", providers = listOf(Provider.KAKAO)),
+                calendars = 3u,
+                shiftTemplates = 0u,
+                people = 2u,
+                deviceCalendars = 0u,
+                recoverySaved = true,
+                lastBackupAt = null,
+            )
     }
 }

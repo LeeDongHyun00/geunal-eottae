@@ -6,6 +6,7 @@ import app.geunal.core.AlertRule
 import app.geunal.core.Birthday
 import app.geunal.core.BirthdayCalendar
 import app.geunal.core.BirthdayItem
+import app.geunal.core.CalendarInput
 import app.geunal.core.CalendarKind
 import app.geunal.core.CalendarView
 import app.geunal.core.ContactImport
@@ -430,4 +431,54 @@ open class CalendarFakeCore : Core(NoHandle) {
     override fun nextUp(count: UShort): List<UpNext> = emptyList()
 
     override fun notificationSettings(): NotificationSettings = settings
+
+    override fun setNotificationSettings(settings: NotificationSettings) {
+        calls += "setNotificationSettings ${settings.eventAlert} ${settings.allDayAlert} ${settings.nextUpBar} " +
+            "${settings.birthdayAlerts} ${settings.leaveSuggestions}"
+        writeError?.let { throw it }
+        this.settings = settings
+    }
+
+    override fun setCalendarVisible(
+        calendarId: String,
+        visible: Boolean,
+    ) {
+        calls += "setCalendarVisible $calendarId $visible"
+        writeError?.let { throw it }
+        calendarList = calendarList.map { if (it.id == calendarId) it.copy(visible = visible) else it }
+    }
+
+    /** A new calendar gets the next id; the list keeps the saved values. */
+    override fun saveCalendar(input: CalendarInput): String {
+        val alert =
+            when (val rule = input.defaultAlert) {
+                AlertRule.Inherit -> "inherit"
+                AlertRule.Off -> "off"
+                is AlertRule.Before -> "before${rule.minutes}"
+            }
+        calls += "saveCalendar ${input.name} ${input.color.name.lowercase()} soft=${input.soft} $alert"
+        writeError?.let { throw it }
+        val id = input.id ?: "c${calendarList.size + 1}"
+        val old = calendarList.firstOrNull { it.id == id }
+        val saved =
+            CalendarView(
+                id,
+                input.name,
+                input.color,
+                CalendarKind.OWN,
+                input.soft,
+                old?.visible ?: true,
+                input.defaultAlert,
+                old?.eventCount ?: 0u,
+                old?.shiftTemplateCount ?: 0u,
+            )
+        calendarList = if (old == null) calendarList + saved else calendarList.map { if (it.id == id) saved else it }
+        return id
+    }
+
+    override fun deleteCalendar(calendarId: String) {
+        calls += "deleteCalendar $calendarId"
+        writeError?.let { throw it }
+        calendarList = calendarList.filterNot { it.id == calendarId }
+    }
 }

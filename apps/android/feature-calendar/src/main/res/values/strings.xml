@@ -266,6 +266,59 @@
     <string name="person_month">월</string>
     <string name="person_day">일</string>
 
+    <!-- 15. 캘린더 관리 · 16. 캘린더 편집 -->
+    <string name="me_back">나</string>
+    <string name="calendars_title">캘린더 관리</string>
+    <string name="calendars_note">색은 내 화면의 일정 색이에요. 그룹에는 어느 캘린더든 비어 있는지만 보여요.</string>
+    <string name="calendars_mine">내 캘린더 · %1$d개</string>
+    <string name="calendars_new">새 캘린더</string>
+    <string name="calendars_soft_detail">소프트 캘린더 · %1$s</string>
+    <string name="calendars_event_count">일정 %1$d개</string>
+    <string name="calendars_soft">소프트 캘린더</string>
+    <string name="calendars_show">%1$s 표시</string>
+    <string name="calendars_change_failed">바꾸지 못했어요. 다시 시도해 주세요</string>
+    <string name="calendar_edit_close">닫기</string>
+    <string name="calendar_edit_name">이름</string>
+    <string name="calendar_edit_soft">소프트 캘린더</string>
+    <string name="calendar_edit_soft_note">나에게만 보이고, 그룹에는 비어 있는 시간으로 보여요. 헬스장, 혼자 하는 공부처럼 약속이 생기면 미룰 수 있는 것에 써요.</string>
+    <string name="calendar_edit_alert">기본 알림</string>
+    <string name="calendar_edit_alert_inherit">%1$s · 알림 설정을 따름</string>
+    <string name="calendar_edit_save">저장</string>
+    <string name="calendar_edit_needs_name">이름을 적어 주세요</string>
+    <string name="calendar_edit_delete">캘린더 삭제 · 일정 %1$d개도 지워져요</string>
+    <string name="calendar_edit_delete_empty">캘린더 삭제</string>
+    <string name="calendar_edit_last">캘린더는 하나 이상 있어야 해요</string>
+    <string name="calendar_delete_question">‘%1$s’ 캘린더를 삭제할까요?</string>
+    <string name="calendar_delete_body">일정 %1$d개도 함께 지워져요. 되돌릴 수 없어요.</string>
+    <string name="calendar_delete_body_empty">되돌릴 수 없어요.</string>
+    <string name="calendar_delete_confirm">캘린더 삭제</string>
+
+    <!-- 19. 알림 설정 -->
+    <string name="alerts_title">알림</string>
+    <string name="alerts_note">모두 이 기기에서 울리는 알림이에요. 내용은 서버를 거치지 않아요.</string>
+    <string name="alerts_system_off_card">알림이 꺼져 있어요</string>
+    <string name="alerts_turn_on">설정에서 켜기</string>
+    <string name="alerts_failed">바꾸지 못했어요. 다시 시도해 주세요</string>
+    <string name="alerts_events">일정</string>
+    <string name="alerts_event_default">기본 알림</string>
+    <string name="alerts_all_day">종일 일정</string>
+    <string name="alerts_next_up">다음 할 일 막대</string>
+    <string name="alerts_next_up_note">시작 전까지 남은 시간을 함께 보여 줘요</string>
+    <string name="alerts_events_note">일정마다 편집 화면에서 따로 바꿀 수 있어요. 바꾼 일정은 기본값을 따르지 않아요.</string>
+    <string name="alerts_people">사람·생일</string>
+    <string name="alerts_birthdays">생일 알림</string>
+    <string name="alerts_birthdays_time">당일 09:00</string>
+    <string name="alerts_leave">연휴·연차 제안</string>
+    <string name="alerts_leave_note">공휴일 사이 평일 하루를 쉬면 4일 연휴가 될 때 알려 줘요</string>
+    <string name="alerts_groups">그룹</string>
+    <string name="alerts_groups_chat">채팅과 약속</string>
+    <string name="alerts_groups_note">그룹에 들어가면 그룹마다 채팅·약속 알림을 따로 끌 수 있어요. 전체 끄기는 1시간·오늘·계속 중에서 골라요.</string>
+    <string name="alerts_m2">M2</string>
+    <string name="alerts_system">시스템 알림 설정</string>
+    <string name="alerts_system_note">소리, 잠금 화면 표시, 요약은 설정 앱에서</string>
+    <string name="alerts_system_on">켜짐</string>
+    <string name="alerts_system_off">꺼짐</string>
+
     <!-- The next-up bar (docs/design/README.md §5). -->
     <string name="next_up_all_day">%1$s · 종일</string>
     <string name="next_up_timed">%1$s %2$s · %3$s</string>
