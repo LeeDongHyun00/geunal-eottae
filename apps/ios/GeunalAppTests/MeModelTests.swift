@@ -148,6 +148,19 @@ final class MeModelTests: XCTestCase {
         XCTAssertFalse(model.justMade)
     }
 
+    func testABackupThatFindsTheAccountGoneEndsTheApp() async {
+        let core = AccountFakeCore()
+        core.backupResult = .failure(accountDeleted)
+        let ended = Locked(0)
+        let model = BackupModel(core: core, onAccountDeleted: { ended.update { $0 += 1 } })
+        await model.load()
+
+        await model.backUpNow()
+
+        XCTAssertEqual(ended.current, 1)
+        XCTAssertEqual(model.phase, .idle)
+    }
+
     // MARK: 카카오·Apple 연결
 
     func testLinksAGuestToKakao() async {
@@ -174,6 +187,22 @@ final class MeModelTests: XCTestCase {
         _ = await model.link(.apple, online: true)
 
         XCTAssertEqual(toasts.messages, ["이미 연결한 계정이에요", "이미 다른 계정에 연결된 카카오·Apple 계정이에요"])
+    }
+
+    func testALinkThatFindsTheAccountGoneEndsTheApp() async {
+        let core = AccountFakeCore()
+        core.linkResult = .failure(accountDeleted)
+        let toasts = ToastLog()
+        let ended = Locked(0)
+        let model = LinkModel(
+            core: core, providers: FakeProviders(), notify: { toasts.append($0) },
+            onAccountDeleted: { ended.update { $0 += 1 } })
+
+        let linked = await model.link(.kakao, online: true)
+
+        XCTAssertFalse(linked)
+        XCTAssertEqual(ended.current, 1)
+        XCTAssertEqual(toasts.messages, [])
     }
 
     func testLinkingWaitsForAConnectionAndIgnoresAClosedSheet() async {

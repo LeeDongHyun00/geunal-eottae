@@ -26,9 +26,13 @@ public final class BackupModel {
     public private(set) var justMade = false
 
     @ObservationIgnored private let core: any CoreProtocol
+    @ObservationIgnored private let onAccountDeleted: @MainActor () -> Void
 
-    public init(core: any CoreProtocol) {
+    /// `onAccountDeleted` ends the app as after a deletion when a call here learns the account is gone (m1.md
+    /// decision 36).
+    public init(core: any CoreProtocol, onAccountDeleted: @escaping @MainActor () -> Void = {}) {
         self.core = core
+        self.onAccountDeleted = onAccountDeleted
     }
 
     public var isRunning: Bool {
@@ -46,9 +50,11 @@ public final class BackupModel {
         recoverySaved = recovery?.saved ?? true
         recoveryPending = recovery.map { !$0.created } ?? false
         // The list comes from the server; offline it stays as it was.
-        if let list = try? await core.backups() {
-            backups = list
-        }
+        do {
+            backups = try await core.backups()
+        } catch let error as CoreError where error.isAccountDeleted {
+            onAccountDeleted()
+        } catch {}
     }
 
     public func backUpNow() async {
@@ -64,6 +70,10 @@ public final class BackupModel {
             _ = try await core.backupNow(progress: relay)
             phase = .idle
             justMade = true
+        } catch let error as CoreError where error.isAccountDeleted {
+            phase = .idle
+            onAccountDeleted()
+            return
         } catch CoreError.Network(_) {
             phase = .waitingForNetwork
         } catch {

@@ -42,7 +42,9 @@ struct MeTab: View {
         _model = State(initialValue: MeModel(core: core))
         let toasts = app.toasts
         _link = State(
-            initialValue: LinkModel(core: core, providers: AppCore.providers(), notify: { toasts.show($0) }))
+            initialValue: LinkModel(
+                core: core, providers: AppCore.providers(), notify: { toasts.show($0) },
+                onAccountDeleted: { app.accountDeleted() }))
     }
 
     var body: some View {
@@ -361,7 +363,8 @@ struct MeTab: View {
                 backupLine: { MeText.backupLine($0) }, notify: { app.toasts.show($0) })
         case .backup:
             BackupScreen(
-                model: BackupModel(core: core), online: app.connectivity.isOnline, timeText: MeText.time,
+                model: BackupModel(core: core, onAccountDeleted: { app.accountDeleted() }),
+                online: app.connectivity.isOnline, timeText: MeText.time,
                 onRecoveryCode: { openRecoveryCode() }, onEnterRecoveryCode: { app.enterRecoveryCode() })
         case .deviceChange:
             DeviceChangeGuideScreen(onRecoveryCode: model.hasAccount ? { openRecoveryCode() } : nil)
