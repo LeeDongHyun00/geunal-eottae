@@ -75,13 +75,13 @@ public final class ShiftStampModel {
         if selectedTemplateId == nil || selectedTemplate == nil {
             selectedTemplateId = templates.first?.id
         }
-        await loadMonth(month)
+        await loadGrid()
         hasLoaded = true
     }
 
     public func show(month: String) async {
         self.month = month
-        await loadMonth(month)
+        await loadGrid()
     }
 
     public func step(months: Int) async {
@@ -89,9 +89,10 @@ public final class ShiftStampModel {
         await show(month: next)
     }
 
-    /// A tap with the chosen template: the same template again takes it off, another one is replaced by it.
+    /// A tap with the chosen template: the same template again takes it off, another one is replaced by it. A day whose
+    /// month has not been read takes no tap, so a tap never stamps over a shift the screen did not show.
     public func tap(day: String) {
-        guard let template = selectedTemplateId else { return }
+        guard let template = selectedTemplateId, loadedMonths.contains(KoreanCalendar.month(of: day)) else { return }
         let current = draft[day] ?? []
         draft[day] = current == [template] ? [] : [template]
     }
@@ -135,6 +136,14 @@ public final class ShiftStampModel {
         } catch {
             failed = true
             return false
+        }
+    }
+
+    /// The grid shows the ends of the months on either side, and those days take taps too, so their months are read
+    /// as well.
+    private func loadGrid() async {
+        for month in Set(weeks.joined().map { KoreanCalendar.month(of: $0) }).sorted() {
+            await loadMonth(month)
         }
     }
 

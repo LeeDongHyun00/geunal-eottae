@@ -164,6 +164,27 @@ final class EditorModelTests: XCTestCase {
         XCTAssertEqual(shift.end, DayTime(day: "2026-11-15", minute: 120))
     }
 
+    func testKnowsTheShiftsOnTheNextMonthsDaysOfTheGrid() async throws {
+        let core = try makeCore()
+        let edit = TemplateEditModel(core: core)
+        edit.name = "오픈"
+        let saved = await edit.save()
+        let id = try XCTUnwrap(saved)
+        try core.setShiftDays(days: [ShiftDay(day: "2026-12-01", templateIds: [id])])
+
+        let model = ShiftStampModel(month: "2026-11", core: core)
+        await model.load()
+        XCTAssertTrue(model.weeks.joined().contains("2026-12-01"))
+        XCTAssertEqual(model.templates(on: "2026-12-01").map(\.name), ["오픈"])
+
+        // The same template again takes the shift off, as it does inside the month.
+        model.tap(day: "2026-12-01")
+
+        XCTAssertEqual(model.changedDays, [ShiftDay(day: "2026-12-01", templateIds: [])])
+        await model.show(month: "2026-12")
+        XCTAssertEqual(model.changedDays, [ShiftDay(day: "2026-12-01", templateIds: [])])
+    }
+
     func testATemplateGoesButItsShiftsStay() async throws {
         let core = try makeCore()
         let edit = TemplateEditModel(core: core)
