@@ -14,6 +14,8 @@ import app.geunal.core.RecoveryCodeCheck
 import app.geunal.core.RestoreSummary
 import app.geunal.core.Session
 import app.geunal.core.SignInNonce
+import app.geunal.core.BackupStatus
+import app.geunal.core.RecoveryStatus
 import app.geunal.feature.account.onboarding.SystemPermissions
 import app.geunal.feature.account.providers.ProviderCredential
 import app.geunal.feature.account.providers.ProviderSignIn
@@ -66,6 +68,13 @@ open class AccountFakeCore : Core(NoHandle) {
         )
     var statsOn = false
     var alphaStatsError: CoreException? = null
+
+    /** What 복구 코드 shows; `null` when the core has none to give. */
+    var recoveryCode: List<String>? = CODE
+    var recovery = RecoveryStatus(created = true, saved = false, uploaded = true)
+    var backup = BackupStatus(last = null, auto = true, changed = true, ready = true)
+    var backupNowResult: Result<BackupView> =
+        Result.success(BackupView(4, Instant.parse("2026-10-30T03:12:00Z"), size = 2_400_000u, automatic = false, events = 128u, people = 12u))
 
     override suspend fun signInNonce(): SignInNonce {
         calls += "nonce"
@@ -127,6 +136,33 @@ open class AccountFakeCore : Core(NoHandle) {
     override suspend fun startFresh(proof: DeletionProof?): Session {
         calls += if (proof == null) "startFresh" else "startFresh $proof"
         return startFreshResult.getOrThrow()
+    }
+
+    override fun recoveryWords(): List<String> {
+        calls += "recoveryWords"
+        return recoveryCode ?: throw CoreException.NotSignedIn()
+    }
+
+    override fun recoveryStatus(): RecoveryStatus = recovery
+
+    override fun markRecoverySaved() {
+        calls += "markRecoverySaved"
+        recovery = recovery.copy(saved = true)
+    }
+
+    override fun backupStatus(): BackupStatus = backup
+
+    /** Reports half and then all of the upload, as the core's listener does, and keeps the backup as the last. */
+    override suspend fun backupNow(progress: ProgressListener?): BackupView {
+        calls += "backupNow"
+        progress?.onProgress(1u, 2u)
+        progress?.onProgress(2u, 2u)
+        return backupNowResult.getOrThrow().also { backup = backup.copy(last = it, changed = false) }
+    }
+
+    override fun setAutoBackup(enabled: Boolean) {
+        calls += "setAutoBackup $enabled"
+        backup = backup.copy(auto = enabled)
     }
 
     override suspend fun backups(): List<BackupView> {
