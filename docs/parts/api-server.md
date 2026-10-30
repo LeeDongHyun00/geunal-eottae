@@ -389,6 +389,7 @@ CREATE TABLE holidays (
 | POST | `/auth/refresh` | 토큰 갱신(리프레시 교체) |
 | POST | `/auth/link` | 게스트를 카카오·애플에 연결 |
 | GET | `/.well-known/jwks.json` | 게이트웨이가 쓰는 공개키 |
+| GET | `/.well-known/assetlinks.json` | 안드로이드 App Links 확인 파일. M1부터 Apple 웹 로그인 콜백(`/auth/apple`), M2부터 초대(`/i/<code>`). 패키지 이름과 Play 앱 서명 인증서의 SHA-256 |
 | GET | `/me` | 계정, 현재 기기, 남은 키 패키지 수, 연결한 로그인(`providers`), 복구 자료가 있는지 |
 | DELETE | `/me` | 계정 삭제. 다시 증명이 필요함(게스트는 복구 서명, 카카오는 새 ID 토큰, Apple은 새 `authorization_code`로 그 자리에서 토큰 철회) |
 | PUT | `/me/push-token` | 현재 기기 푸시 토큰 |
