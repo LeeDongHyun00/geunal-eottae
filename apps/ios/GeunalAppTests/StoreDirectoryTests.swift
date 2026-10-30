@@ -1,4 +1,5 @@
 import CoreBridge
+import GeunalCore
 import XCTest
 
 final class StoreDirectoryTests: XCTestCase {
@@ -52,6 +53,35 @@ final class StoreDirectoryTests: XCTestCase {
             try Data(contentsOf: directory.appendingPathComponent(FreshInstall.databaseFile + "-wal")),
             Data("wal".utf8))
         XCTAssertFalse(FreshInstall.hasStore(in: old))
+    }
+
+    /// QA: a store that moves must open with the same key, or the core would set it aside as unreadable and start
+    /// empty. The key stays where it was: the keychain items keep their service and access group.
+    func testTheMovedStoreOpensWithTheSameKey() throws {
+        let support = try temporaryDirectory()
+        let group = try temporaryDirectory()
+        let secrets = MemorySecretStore()
+        let old = support.appendingPathComponent("core", isDirectory: true)
+        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+        try {
+            let core = try Core.open(
+                storeDir: old.path(percentEncoded: false), apiBase: "http://127.0.0.1:8080",
+                listener: ChangeStreamListener(), secrets: secrets)
+            let calendarId = try XCTUnwrap(core.calendars().first { $0.kind == .own }?.id)
+            _ = try core.addEvent(
+                input: EventInput(
+                    calendarId: calendarId, title: "이사 전 일정", allDay: false,
+                    start: DayTime(day: "2026-11-02", minute: 540), end: DayTime(day: "2026-11-02", minute: 600),
+                    recurrence: nil, alert: .inherit, note: nil),
+                fromSuggestion: false)
+        }()
+
+        let directory = try StoreDirectory.url(groupContainer: group, applicationSupport: support)
+        let moved = try Core.open(
+            storeDir: directory.path(percentEncoded: false), apiBase: "http://127.0.0.1:8080",
+            listener: ChangeStreamListener(), secrets: secrets)
+
+        XCTAssertEqual(try moved.calendars().first { $0.kind == .own }?.eventCount, 1)
     }
 
     func testLeavesTheGroupsStoreAloneWhenBothHaveOne() throws {
