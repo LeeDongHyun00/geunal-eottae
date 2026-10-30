@@ -127,6 +127,8 @@ final class AppModel {
         Task {
             await nextUp?.refresh()
             await refreshAccount()
+            // The permissions screen may just have allowed alerts.
+            await alerts?.refresh()
         }
     }
 
