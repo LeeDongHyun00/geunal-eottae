@@ -28,12 +28,31 @@ class AuthTests : ApiTest() {
     }
 
     @Test
-    fun `signing in again with the same subject keeps the account`() {
+    fun `signing in again with the same subject and key keeps the account and the device`() {
         val first = signIn("same-person")
-        val second = Client(api, "same-person").also { it.login() }
+        val again = first.stubSignIn().expect(201)
 
-        assertThat(second.userId).isEqualTo(first.userId)
-        assertThat(second.deviceId).isNotEqualTo(first.deviceId)
+        assertThat(again.uuid("user_id")).isEqualTo(first.userId)
+        assertThat(again.uuid("device_id")).isEqualTo(first.deviceId)
+        assertThat(again.string("result")).isEqualTo("registered")
+        assertThat(again["new_account"].booleanValue()).isFalse()
+        first.get("/me").expect(200)
+    }
+
+    @Test
+    fun `another device of the same subject gets a ticket and registers nothing yet`() {
+        val first = signIn("same-person-two-keys", platform = "android")
+        val second = Client(api, "same-person-two-keys")
+
+        val answer = second.stubSignIn().expect(200)
+
+        assertThat(answer.string("result")).isEqualTo("replace_required")
+        assertThat(answer.uuid("user_id")).isEqualTo(first.userId)
+        assertThat(answer.long("expires_in")).isEqualTo(1800)
+        assertThat(answer["active_device"].path("platform").stringValue()).isEqualTo("android")
+        assertThat(answer["recovery"].booleanValue()).isFalse()
+        assertThat(answer.json!!.has("access_token")).isFalse()
+        first.get("/me").expect(200)
     }
 
     @Test
@@ -105,7 +124,21 @@ class AuthTests : ApiTest() {
         client.adopt(refreshed)
         assertThat(client.refreshToken).isNotEqualTo(oldRefresh)
         client.get("/me").expect(200)
-        api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to oldRefresh)).expectError(401, "token_expired")
+    }
+
+    @Test
+    fun `a refresh token presented twice ends every session of its device`() {
+        val client = signIn()
+        val stolen = client.refreshToken
+        client.adopt(api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to stolen)).expect(200))
+        val other = client.stubSignIn().expect(201).string("refresh_token")
+
+        api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to stolen)).expectError(401, "token_expired")
+
+        api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to client.refreshToken)).expectError(401, "token_expired")
+        api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to other)).expectError(401, "token_expired")
+        // The access token lives out its 15 minutes; only the refresh tokens end.
+        client.get("/me").expect(200)
     }
 
     @Test
@@ -114,10 +147,13 @@ class AuthTests : ApiTest() {
         val oldToken = old.token
         val oldRefresh = old.refreshToken
         inbox(old.deviceId).use { signals ->
-            val new = Client(api, "two-phones").also { it.login() }
+            val new = replaceDevice("two-phones", platform = "android")
 
             assertThat(signals.next().type).isEqualTo("revoke")
-            api.send(HttpMethod.GET, "/me", token = oldToken).expectError(403, "device_revoked")
+            val revoked = api.send(HttpMethod.GET, "/me", token = oldToken).expectError(403, "device_revoked")
+            assertThat(revoked.string("replaced_by")).isEqualTo("android")
+            assertThat(revoked.string("replaced_via")).isEqualTo("provider")
+            assertThat(java.time.Instant.parse(revoked.string("replaced_at"))).isBeforeOrEqualTo(java.time.Instant.now())
             api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to oldRefresh)).expectError(401, "token_expired")
             val devices = new.get("/users/${new.userId}/devices").expect(200)["devices"]
             assertThat(devices.size()).isEqualTo(1)
@@ -131,7 +167,7 @@ class AuthTests : ApiTest() {
         val member = signIn("replacing")
         val groupId = groupWith(owner, member)
         inbox(owner.deviceId).use { signals ->
-            Client(api, "replacing").login()
+            replaceDevice("replacing")
 
             val membership = signals.next()
             assertThat(membership.type).isEqualTo("membership")

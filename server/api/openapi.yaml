@@ -5,11 +5,11 @@
 #
 # Conventions:
 # - Field names are snake_case. Bytes (ciphertext, keys, MLS messages) are standard base64 with padding.
-# - Every error body is {"error": "<code>", "message": "..."} (docs/parts/protocol.md §11). M1: 403 device_revoked
+# - Every error body is {"error": "<code>", "message": "..."} (docs/parts/protocol.md §11). 403 device_revoked
 #   for a device revoked by a replacement also carries replaced_at (date-time), replaced_by (ios | android, the
 #   account's active device) and replaced_via (provider | recovery), so the old device can say when, where and how
 #   the account signed in (protocol §13).
-# - M1 sign-in binding: the nonce handed to Kakao or Apple is lowercase hex SHA-256("geunal login v1" ‖ nonce ‖
+# - Sign-in binding: the nonce handed to Kakao or Apple is lowercase hex SHA-256("geunal login v1" ‖ nonce ‖
 #   signature_key), with nonce as its ASCII bytes and signature_key as the 32 raw bytes; the server recomputes it from
 #   the request and compares it with the token's nonce claim (protocol §13).
 # - Authentication: `Authorization: Bearer <access JWT>` on everything but /auth/*, /.well-known/jwks.json, /holidays
@@ -38,9 +38,10 @@ paths:
       description: |
         `subject` stands for the identity a provider would assert; the same subject is the same account on every call.
         `signature` is Ed25519 over the ASCII bytes of `nonce` with the key whose public part is `signature_key`.
-        M0 registered every call and revoked the account's previous device. M1: the same rules as /auth/kakao
-        (protocol §13): 201 registers this device; when the account already has another active device the answer is 200
-        `replace_required` with a ticket for /auth/replace, and nothing is registered yet.
+        The same rules as /auth/kakao (protocol §13): 201 registers this device; when the account already has another
+        active device the answer is 200 `replace_required` with a ticket for /auth/replace, and nothing is registered
+        yet. `display_name` is read only when the call creates the account. A stub account has no Kakao or Apple link,
+        so GET /me lists no provider for it.
       security: []
       requestBody:
         content:
@@ -62,11 +63,12 @@ paths:
 
   /auth/kakao:
     post:
-      summary: "M1: Sign in with Kakao and register this device (protocol §13)"
+      summary: "Sign in with Kakao and register this device (protocol §13)"
       description: |
         `id_token` is the Kakao OIDC ID token for our app key whose `nonce` claim is the sign-in binding of the
         request's `nonce` and `signature_key` (see the conventions above). 201 registers this device; 200 means another
-        device is active, and a replacement ticket comes back instead.
+        device is active, and a replacement ticket comes back instead. The same key signing in again is the same device
+        and keeps its device_id. A server without the Kakao keys answers 404 not_found.
       security: []
       requestBody:
         content:
@@ -84,11 +86,18 @@ paths:
         "200": { content: { application/json: { schema: { $ref: "#/components/schemas/ReplaceRequired" } } } }
         "400": { description: "invalid_request (bad proof, unknown or reused nonce, a new account without age_confirmed_at or display_name)" }
         "401": { description: provider_token_invalid }
+        "404": { description: not_found (Kakao sign-in is not configured on this server) }
         "429": { description: rate_limited }
 
   /auth/apple:
+    get:
+      summary: The App Links address itself, opened in a browser when the app is not installed
+      description: "A fixed page under Content-Security-Policy default-src 'none' that runs no script, so nothing reads or draws the fragment."
+      security: []
+      responses:
+        "200": { content: { text/html: { schema: { type: string } } } }
     post:
-      summary: "M1: Sign in with Apple and register this device (protocol §13)"
+      summary: "Sign in with Apple and register this device (protocol §13)"
       description: |
         `id_token` is the identity token for the iOS bundle ID or the Android services ID whose `nonce` claim is the
         sign-in binding of the request's `nonce` and `signature_key`. The server keeps no Apple token: account deletion
@@ -110,14 +119,16 @@ paths:
         "200": { content: { application/json: { schema: { $ref: "#/components/schemas/ReplaceRequired" } } } }
         "400": { description: invalid_request }
         "401": { description: provider_token_invalid }
+        "404": { description: not_found (Sign in with Apple is not configured on this server) }
         "429": { description: rate_limited }
 
   /auth/apple/callback:
     post:
-      summary: "M1: Android's Sign in with Apple web flow posts here (response_mode form_post)"
+      summary: "Android's Sign in with Apple web flow posts here (response_mode form_post)"
       description: |
-        The server checks nothing here and answers 303 to https://<domain>/auth/apple with `code`, `id_token`, `state`
-        and `user` in the fragment, each percent-encoded and length-limited. The app receives that App Link, checks
+        The server checks nothing here and answers 303 to https://<domain>/auth/apple with `code`, `id_token`, `state`,
+        `user` and Apple's `error` in the fragment, each percent-encoded (form encoding, as java.net.URLDecoder reads
+        it); a value over its limit (code 512, id_token 4096, state 256, user 1024, error 128 characters) is left out. The app receives that App Link, checks
         `state`, and calls POST /auth/apple with `id_token`; it keeps `code` only for an account deletion
         (`apple_authorization_code` of DELETE /me), since this callback is the one way an Android device gets a fresh
         code. `user` (JSON with the name) arrives on the first authorization only; the app may use it as
@@ -136,10 +147,18 @@ paths:
                 user: { type: string }
       responses:
         "303": { description: redirect to the App Links address carrying the fields in the fragment }
+        "404": { description: not_found (Sign in with Apple is not configured on this server) }
+
+  /.well-known/assetlinks.json:
+    get:
+      summary: Android App Links statement for app.geunal and the Play app signing certificate's SHA-256 (infra.md §10)
+      security: []
+      responses:
+        "200": { content: { application/json: { schema: { type: array, items: { type: object } } } } }
 
   /auth/guest:
     post:
-      summary: "M1: Create a guest account and register this device"
+      summary: "Create a guest account and register this device"
       security: []
       requestBody:
         content:
@@ -159,7 +178,7 @@ paths:
 
   /auth/recover:
     post:
-      summary: "M1: A guest comes back on another device with the recovery code (protocol §10, §13)"
+      summary: "A guest comes back on another device with the recovery code (protocol §10, §13)"
       description: |
         The server finds the account by `recovery_id` and checks `recovery_signature` with the stored recovery public
         key; the signed message is the ASCII bytes "geunal recover v1" followed by the ASCII bytes of `nonce`, the same
@@ -179,13 +198,13 @@ paths:
                     recovery_signature: { $ref: "#/components/schemas/Bytes", description: 64-byte Ed25519 signature by the recovery signing key }
       responses:
         "201": { content: { application/json: { schema: { $ref: "#/components/schemas/Registered" } } } }
-        "400": { description: invalid_request }
+        "400": { description: "invalid_request (bad proof, unknown or reused nonce, a recovery_id that is not 16 bytes)" }
         "401": { description: "recovery_invalid (no such account, a bad signature, or an account linked to Kakao or Apple)" }
         "429": { description: rate_limited }
 
   /auth/replace:
     post:
-      summary: "M1: Finish a device replacement with the ticket of a replace_required sign-in"
+      summary: "Finish a device replacement with the ticket of a replace_required sign-in"
       description: |
         `signature` is by the key the sign-in proved, over the ASCII bytes "geunal replace v1" followed by the ASCII
         bytes of `ticket`, so a leaked ticket alone gets no tokens. Registers that key, revokes the previous device (it
@@ -202,16 +221,17 @@ paths:
                 signature: { $ref: "#/components/schemas/Bytes", description: 64-byte Ed25519 signature }
       responses:
         "201": { content: { application/json: { schema: { $ref: "#/components/schemas/Registered" } } } }
-        "400": { description: "invalid_request (the signature does not verify with the ticket's key)" }
+        "400": { description: "invalid_request (the signature does not verify with the ticket's key; the ticket stays unspent)" }
         "401": { description: "token_expired (unknown, spent or expired ticket)" }
 
   /auth/link:
     post:
-      summary: "M1: Link the guest account to Kakao or Apple"
+      summary: "Link the guest account to Kakao or Apple"
       description: |
         `nonce` comes from GET /auth/nonce and is bound into `id_token` as for sign-in, with the session device's
         registered key as `signature_key`. After linking, the account no longer comes back by recovery code alone; its
-        recovery material and backups stay.
+        recovery material and backups stay. An account links one provider: one that already signs in with Kakao or Apple
+        gets already_linked. Linking the same provider account again after the provider cut the link restores it.
       requestBody:
         content:
           application/json:
@@ -224,13 +244,15 @@ paths:
                 nonce: { type: string }
       responses:
         "200": { content: { application/json: { schema: { type: object, required: [providers], properties: { providers: { $ref: "#/components/schemas/Providers" } } } } } }
+        "400": { description: "invalid_request (a provider other than kakao or apple, an unknown or reused nonce)" }
         "401": { description: provider_token_invalid }
+        "404": { description: not_found (that provider is not configured on this server) }
         "409": { description: "account_exists (that Kakao or Apple account belongs to another account), already_linked" }
 
   /auth/refresh:
     post:
       summary: Trade a refresh token for new tokens; the old refresh token is spent
-      description: "M1: a refresh token that was already spent ends every session of its device (reuse detection)."
+      description: "A refresh token that was already spent ends every session of its device (reuse detection)."
       security: []
       requestBody:
         content:
@@ -257,7 +279,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [user_id, display_name, device, key_packages]
+                required: [user_id, display_name, device, key_packages, providers, recovery]
                 properties:
                   user_id: { $ref: "#/components/schemas/Uuid" }
                   display_name: { type: string }
@@ -269,8 +291,8 @@ paths:
                       platform: { type: string, enum: [ios, android] }
                       created_at: { type: string, format: date-time }
                   key_packages: { type: integer }
-                  providers: { $ref: "#/components/schemas/Providers", description: "M1: required from M1" }
-                  recovery: { type: boolean, description: "M1, required from M1: the server holds recovery material" }
+                  providers: { $ref: "#/components/schemas/Providers" }
+                  recovery: { type: boolean, description: the server holds recovery material }
     delete:
       summary: "M1: Delete the account (protocol §13); only the active device may call this"
       description: |

@@ -1,5 +1,6 @@
 package app.geunal.api.devices
 
+import app.geunal.api.auth.AccountRepository
 import app.geunal.api.auth.Caller
 import app.geunal.api.common.ApiException
 import app.geunal.api.mls.MlsHeader
@@ -17,11 +18,14 @@ import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
 import java.util.UUID
 
+/** [providers]: `kakao`, `apple` the account signs in with, empty for a guest; [recovery]: recovery material is stored. */
 data class MeResponse(
     val userId: UUID,
     val displayName: String,
     val device: DeviceView,
     val keyPackages: Int,
+    val providers: List<String>,
+    val recovery: Boolean,
 )
 
 data class DeviceView(
@@ -60,6 +64,7 @@ data class ClaimResponse(
 @RestController
 class DeviceController(
     private val devices: DeviceRepository,
+    private val accounts: AccountRepository,
     private val jdbc: JdbcClient,
 ) {
     @GetMapping("/me")
@@ -78,6 +83,8 @@ class DeviceController(
             displayName = displayName,
             device = DeviceView(device.id, device.platform, device.createdAt),
             keyPackages = devices.countKeyPackages(caller.deviceId),
+            providers = accounts.providersOf(caller.userId),
+            recovery = accounts.hasRecovery(caller.userId),
         )
     }
 

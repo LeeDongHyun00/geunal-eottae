@@ -14,9 +14,10 @@ import org.springframework.security.web.authentication.AnonymousAuthenticationFi
 import tools.jackson.databind.json.JsonMapper
 
 /**
- * Health, the JWKS and the sign-in endpoints are public; everything else needs a signed-in device, carried as an access
- * JWT that [DeviceAuthFilter] checks. A missing or stale token gets 401 in the protocol §11 body that tells a device to
- * refresh.
+ * Health, the JWKS, the App Links file and the sign-in endpoints are public; everything else needs a signed-in device,
+ * carried as an access JWT that [DeviceAuthFilter] checks (or, for three reads, a replacement ticket). A missing or
+ * stale token gets 401 in the protocol §11 body that tells a device to refresh. `POST /auth/link` is the one `/auth`
+ * call that needs the session.
  */
 @Configuration
 class SecurityConfig {
@@ -25,6 +26,7 @@ class SecurityConfig {
         http: HttpSecurity,
         tokens: AccessTokens,
         devices: DeviceRepository,
+        accounts: AccountRepository,
         mapper: JsonMapper,
     ): SecurityFilterChain {
         http {
@@ -34,11 +36,13 @@ class SecurityConfig {
                 authorize("/actuator/health", permitAll)
                 authorize("/actuator/health/**", permitAll)
                 authorize("/.well-known/jwks.json", permitAll)
+                authorize("/.well-known/assetlinks.json", permitAll)
+                authorize("/auth/link", authenticated)
                 authorize("/auth/**", permitAll)
                 authorize(anyRequest, authenticated)
             }
             exceptionHandling { authenticationEntryPoint = tokenExpired }
-            addFilterBefore<AnonymousAuthenticationFilter>(DeviceAuthFilter(tokens, devices, mapper))
+            addFilterBefore<AnonymousAuthenticationFilter>(DeviceAuthFilter(tokens, devices, accounts, mapper))
         }
         return http.build()
     }
