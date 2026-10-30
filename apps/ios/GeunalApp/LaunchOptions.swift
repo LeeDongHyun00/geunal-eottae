@@ -2,6 +2,7 @@
     import CoreBridge
     import FeatureAccount
     import Foundation
+    import GeunalCore
 
     /// Launch arguments the UI tests pass, debug builds only: start from a fresh install, run on the preview core
     /// instead of the Rust one (whose M1 bodies are still landing), and pick a preview scenario.
@@ -46,6 +47,17 @@
             }
             KeychainSecretStore().deleteAll()
         }
+
+        /// `-GeunalFailFirstOpen` fails the first opening of the core as a store that did not open, so a UI test sees the
+        /// start failure screen and its retry.
+        @MainActor
+        static func failFirstOpenIfAsked() throws {
+            guard arguments.contains("-GeunalFailFirstOpen"), !failedFirstOpen else { return }
+            failedFirstOpen = true
+            throw CoreError.Store(reason: "-GeunalFailFirstOpen")
+        }
+
+        @MainActor private static var failedFirstOpen = false
 
         /// `-GeunalOnboardingFinished` skips onboarding for tests that start on the tabs. It comes after the check for a
         /// new installation, which would take it back on the real core: a reset leaves no store.
