@@ -73,6 +73,11 @@ class DesignTokensTest {
         assertDp("nav.tabBar.bottomInset", Metrics.TabBar.bottomInset)
         assertDp("nav.tabBar.radius", Metrics.TabBar.radius)
         assertDp("nav.tabBar.icon", Metrics.TabBar.icon)
+        assertDp("component.calendar.monthCell", Metrics.Grid.monthCell)
+        assertDp("component.calendar.eventBar", Metrics.Grid.eventBar)
+        assertDp("component.calendar.weekHour", Metrics.Grid.weekHour)
+        val handle = at("component.calendar.selectionHandle").jsonArray.map { it.jsonPrimitive.content.toDouble() }
+        assertEquals(handle, listOf(Metrics.Grid.handleWidth, Metrics.Grid.handleHeight).map { it.value.toDouble() })
         assertDp("nav.nextUpBar.height", Metrics.NextUpBar.height)
         assertDp("nav.nextUpBar.gapAboveTabBar", Metrics.NextUpBar.gapAboveTabBar)
         assertDp("nav.nextUpBar.radius", Metrics.NextUpBar.radius)

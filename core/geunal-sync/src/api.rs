@@ -290,6 +290,47 @@ pub struct BackupDownload {
 /// Bytes moved so far and in all, for a progress bar.
 pub type Progress<'a> = &'a (dyn Fn(u64, u64) + Send + Sync);
 
+/// `DELETE /me`: the account proven again by its kind (protocol §13 "계정 삭제"). A guest fills `nonce` and
+/// `recovery_signature`, a Kakao account `nonce` and `kakao_id_token`, an Apple account `apple_authorization_code`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteAccount {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
+    /// The recovery key's signature over `"geunal delete v1" ‖ nonce`.
+    #[serde(default, with = "b64::option", skip_serializing_if = "Option::is_none")]
+    pub recovery_signature: Option<Vec<u8>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kakao_id_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apple_authorization_code: Option<String>,
+}
+
+/// `GET /holidays` (protocol §14): of the years asked, those the server knows in full, and every holiday of them.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HolidayYears {
+    pub years: Vec<i32>,
+    pub holidays: Vec<HolidayItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HolidayItem {
+    /// `YYYY-MM-DD`.
+    pub day: String,
+    pub name: String,
+    /// 대체공휴일.
+    pub substitute: bool,
+}
+
+/// One Korean day of `POST /me/alpha-stats` (protocol §14).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AlphaDay {
+    pub day: String,
+    pub sessions: u32,
+    pub events: u32,
+    pub suggested: u32,
+    pub crashes: u32,
+}
+
 /// One row of `GET /users/{id}/devices`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeviceInfo {
@@ -504,6 +545,12 @@ pub trait Transport: Send + Sync {
     ) -> impl Future<Output = Result<Option<BackupDownload>, ApiError>> + Send;
     /// `GET` from a presigned URL, reporting the bytes as they arrive.
     fn get_object(&self, url: &str, progress: Progress<'_>) -> impl Future<Output = Result<Vec<u8>, ApiError>> + Send;
+    /// `DELETE /me`. After it the session's tokens no longer work.
+    fn delete_account(&self, req: DeleteAccount) -> impl Future<Output = Result<(), ApiError>> + Send;
+    /// `GET /holidays` for whole years, at most two, without the session.
+    fn holidays(&self, from_year: i32, to_year: i32) -> impl Future<Output = Result<HolidayYears, ApiError>> + Send;
+    /// `POST /me/alpha-stats`; a day sent again replaces what the server had for it.
+    fn post_alpha_stats(&self, days: Vec<AlphaDay>) -> impl Future<Output = Result<(), ApiError>> + Send;
     /// Reuses a session from a previous run.
     fn restore_session(&self, access_token: &str, refresh_token: &str);
     /// Forgets the session: signed out by another device, or the account is gone.
@@ -590,6 +637,15 @@ impl<T: Transport> Transport for std::sync::Arc<T> {
     }
     async fn get_object(&self, url: &str, progress: Progress<'_>) -> Result<Vec<u8>, ApiError> {
         (**self).get_object(url, progress).await
+    }
+    async fn delete_account(&self, req: DeleteAccount) -> Result<(), ApiError> {
+        (**self).delete_account(req).await
+    }
+    async fn holidays(&self, from_year: i32, to_year: i32) -> Result<HolidayYears, ApiError> {
+        (**self).holidays(from_year, to_year).await
+    }
+    async fn post_alpha_stats(&self, days: Vec<AlphaDay>) -> Result<(), ApiError> {
+        (**self).post_alpha_stats(days).await
     }
     fn restore_session(&self, access_token: &str, refresh_token: &str) {
         (**self).restore_session(access_token, refresh_token)
@@ -807,5 +863,34 @@ mod tests {
             (&serde_json::json!(true), &serde_json::json!("tok"))
         );
         assert!(start_over.get("apple_authorization_code").is_none() && start_over.get("proof").is_none());
+    }
+
+    #[test]
+    fn writes_the_deletion_proofs_and_the_alpha_counts_with_the_contract_names() {
+        let guest = DeleteAccount {
+            nonce: Some("n".into()),
+            recovery_signature: Some(vec![1, 2, 3]),
+            ..DeleteAccount::default()
+        };
+        assert_eq!(
+            serde_json::to_value(&guest).unwrap(),
+            serde_json::json!({"nonce": "n", "recovery_signature": "AQID"})
+        );
+        let kakao =
+            DeleteAccount { nonce: Some("n".into()), kakao_id_token: Some("tok".into()), ..DeleteAccount::default() };
+        assert_eq!(serde_json::to_value(&kakao).unwrap(), serde_json::json!({"nonce": "n", "kakao_id_token": "tok"}));
+        let apple = DeleteAccount { apple_authorization_code: Some("code".into()), ..DeleteAccount::default() };
+        assert_eq!(serde_json::to_value(&apple).unwrap(), serde_json::json!({"apple_authorization_code": "code"}));
+
+        let day = AlphaDay { day: "2026-10-29".into(), sessions: 3, events: 2, suggested: 1, crashes: 0 };
+        assert_eq!(
+            serde_json::to_value(&day).unwrap(),
+            serde_json::json!({"day": "2026-10-29", "sessions": 3, "events": 2, "suggested": 1, "crashes": 0})
+        );
+        let answer: HolidayYears = serde_json::from_str(
+            r#"{"years":[2026],"holidays":[{"day":"2026-10-03","name":"개천절","substitute":false}]}"#,
+        )
+        .unwrap();
+        assert_eq!((answer.years, answer.holidays[0].name.as_str()), (vec![2026], "개천절"));
     }
 }
