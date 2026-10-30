@@ -2,7 +2,7 @@
 
 M1 알파 서버(NCP Micro, 1 vCPU·1GB) 위에서 도는 구성입니다([인프라](../../docs/parts/infra.md) 2장). 서버 자체(VPC, ACG, 공인 IP)는 [Terraform](../terraform/README.md)이 만들고, 이 디렉터리는 그 위에 올리는 것을 둡니다.
 
-지금 알파 주소는 `https://geunaleottae.duckdns.org`입니다. 정식 도메인을 정하기 전까지 DuckDNS의 이름을 씁니다(아래 "DuckDNS를 쓰는 동안"). 앱의 서버 주소(안드로이드 `geunalApiBase`, iOS `GEUNAL_API_BASE`)와 App Link 호스트에 이 주소를 넣습니다.
+알파 주소는 `https://api.geunaleottae.com`입니다(아래 "도메인과 DNS"). 앱의 서버 주소(안드로이드 `geunalApiBase`, iOS `GEUNAL_API_BASE`)와 App Link 호스트에 이 주소를 넣습니다.
 
 | 파일 | 하는 일 |
 | --- | --- |
@@ -33,15 +33,14 @@ GEUNAL_ALPHA_SSH=root@<서버 주소> GEUNAL_ALPHA_SSH_KEY=~/.ssh/<키> GEUNAL_A
   - PostgreSQL 볼륨을 둔 채 이 디렉터리를 지우면 새 비밀번호가 기존 DB와 맞지 않습니다.
 - `/var/backups/geunal`: DB 덤프(7일).
 
-## DuckDNS를 쓰는 동안
+## 도메인과 DNS
 
-이 이름을 가리키게 할 수 있는 사람은 유효한 인증서를 받아 API를 흉내 낼 수 있습니다. 일정 내용은 종단간 암호화돼 있고 제공자 토큰은 기기 키에 묶여 있지만, 앱의 액세스·리프레시 토큰과 메타데이터는 보입니다.
+`geunaleottae.com`은 Cloudflare Registrar에서 샀고(2026-10-31, 2027-10-30까지), DNS도 Cloudflare의 무료 요금제에 있습니다. 이 이름을 다른 곳으로 돌릴 수 있는 사람은 유효한 인증서를 받아 API를 흉내 낼 수 있으므로([위협 모델](../../docs/security/threat-model.md) 3.7) 다음을 지킵니다.
 
-- DuckDNS에는 운영자의 GitHub 계정으로 로그인합니다. 그 계정의 2단계 인증이 이 이름을 지킵니다.
-- 서버 IP가 고정이라 DuckDNS 토큰은 쓰지 않습니다. 토큰만 있으면 IP와 TXT 레코드를 바꿔 인증서까지 받을 수 있으니 어디에도 두지 않습니다. 샜다면 DuckDNS의 Account 메뉴에서 다시 만듭니다.
-- CAA 레코드를 걸 수 없고 `duckdns.org`는 DNSSEC 서명이 없습니다. 인증서 투명성 로그로 모르는 인증서가 나오는지 봅니다.
-- 일부 보안 제품과 회사·학교 DNS 필터는 duckdns 하위 도메인을 막습니다. 테스터가 연결하지 못하면 모바일 데이터로 확인합니다.
-- 정식 도메인으로 옮긴 뒤에도, 이 주소가 들어간 빌드가 남아 있는 동안은 이름을 지우지 않습니다. 다른 사람이 같은 이름을 등록하면 옛 빌드의 토큰이 그쪽으로 갑니다.
+- **API 레코드는 프록시 없이 DNS만(회색 구름)입니다.** 프록시를 켜면 Cloudflare가 TLS를 풀어 앱의 요청(토큰, 접속 IP, 메타데이터)을 보고, 개인정보가 국외 망을 거칩니다. 프록시는 약관 같은 정적 페이지에만 씁니다.
+- CAA로 Let's Encrypt만 인증서를 내게 하고, DNSSEC를 켭니다. Cloudflare의 Universal SSL이 켜져 있으면 Cloudflare가 자기 인증 기관들(DigiCert, Google, SSL.com, Comodo)을 CAA에 자동으로 더합니다. 프록시하는 레코드가 없는 동안은 Universal SSL을 꺼서 Let's Encrypt만 남깁니다.
+- Cloudflare 계정의 2단계 인증이 이 이름을 지킵니다. 자동 갱신을 켜 둡니다. 만료되면 다른 사람이 등록해 앱의 요청을 받을 수 있습니다.
+- 처음 며칠 쓴 DuckDNS 이름(`geunaleottae.duckdns.org`)은 그 주소로 만든 빌드가 없어서 지워도 됩니다.
 
 ## 아직 없는 것
 
