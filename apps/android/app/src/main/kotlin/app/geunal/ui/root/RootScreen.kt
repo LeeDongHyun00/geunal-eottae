@@ -38,6 +38,9 @@ import app.geunal.feature.calendar.screen.CalendarCovers
 import app.geunal.feature.calendar.support.KoreanCalendar
 import app.geunal.ui.calendar.CalendarCoversViewModel
 import app.geunal.ui.calendar.CalendarTab
+import app.geunal.ui.me.MeCover
+import app.geunal.ui.me.MeCoverContent
+import app.geunal.ui.me.MeCovers
 import app.geunal.ui.me.MeScreen
 import java.time.Instant
 
@@ -89,9 +92,18 @@ fun RootScreen(
         AppPhase.Main ->
             if (core != null && nextUp != null) {
                 val context = LocalContext.current.applicationContext
-                val covers =
-                    viewModel { CalendarCoversViewModel(core, DeviceContactsReader(context), DeviceNotificationAccess(context)) }.covers
-                CoveredTabs(covers = covers, toasts = model.toasts, modifier = modifier) {
+                val coverModel =
+                    viewModel {
+                        CalendarCoversViewModel(
+                            core,
+                            DeviceContactsReader(context),
+                            DeviceNotificationAccess(context),
+                            container.deviceAuth,
+                        )
+                    }
+                val covers = coverModel.covers
+                val me = coverModel.me
+                CoveredTabs(covers = covers, me = me, toasts = model.toasts, modifier = modifier) {
                     MainScaffold(
                         nextUp = nextUp,
                         toasts = model.toasts,
@@ -120,6 +132,8 @@ fun RootScreen(
                                     onPeople = { covers.people() },
                                     onCalendars = covers::calendars,
                                     onAlerts = covers::alerts,
+                                    onRecoveryCode = me::recoveryCode,
+                                    onBackup = me::backup,
                                     modifier = Modifier.padding(padding),
                                 )
                         }
@@ -133,19 +147,21 @@ fun RootScreen(
 private data object TabsRoute
 
 /**
- * The tabs, with the calendar's covers over them full-screen like iOS's (m1.md screens 9 and 10). Back takes the top
- * cover away; with none, it leaves the app as before.
+ * The tabs, with the covers over them full-screen like iOS's (m1.md screens 9 and 10): the calendar's, then 나's
+ * account screens. Each kind opens only from the tabs, so one never lies over the other. Back takes the top cover away;
+ * with none, it leaves the app as before.
  */
 @Composable
 private fun CoveredTabs(
     covers: CalendarCovers,
+    me: MeCovers,
     toasts: ToastCenter,
     modifier: Modifier = Modifier,
     tabs: @Composable () -> Unit,
 ) {
     NavDisplay(
-        backStack = listOf<Any>(TabsRoute) + covers.stack,
-        onBack = covers::back,
+        backStack = listOf<Any>(TabsRoute) + covers.stack + me.stack,
+        onBack = { if (!me.back()) covers.back() },
         modifier = modifier,
         entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator()),
         entryProvider = { route ->
@@ -154,6 +170,8 @@ private fun CoveredTabs(
                 // iOS's covers.
                 val transitions = if (route.pushed) pushTransitions else coverTransitions
                 NavEntry(route, metadata = transitions) { CalendarCoverContent(route, covers, toasts) }
+            } else if (route is MeCover) {
+                NavEntry(route, metadata = pushTransitions) { MeCoverContent(route, me, toasts) }
             } else {
                 NavEntry(route) { tabs() }
             }
