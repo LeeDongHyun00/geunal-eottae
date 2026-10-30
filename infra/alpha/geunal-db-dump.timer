@@ -1,0 +1,11 @@
+[Unit]
+Description=Dump the geunal database every day
+
+[Timer]
+# Seoul's early morning, when the alpha testers are least likely to be writing.
+OnCalendar=*-*-* 04:00:00 Asia/Seoul
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
