@@ -146,6 +146,8 @@ class AuthService(
         val sub = providers.subject(provider, request.idToken, request.nonce, device.signatureKey)
         accounts.lockIdentity(provider, sub)
         accounts.lock(caller.userId)
+        // A guest's recovery may have replaced this device while the token was checked; it must still be the device.
+        if (!devices.isCurrent(caller.deviceId, caller.userId)) throw devices.revokedError(caller.deviceId)
         val existing = accounts.link(provider, sub)
         val signsInWithProvider = accounts.providersOf(caller.userId).isNotEmpty()
         when {
@@ -166,12 +168,23 @@ class AuthService(
 
     /**
      * Trades a refresh token for new tokens. The token is kept as spent until it would have expired; presenting it a
-     * second time means two holders, so every session of the device ends (reuse detection, api-server.md §4).
+     * second time within that time means two holders, so every session of the device ends (reuse detection,
+     * api-server.md §4). The refreshes and reuse checks of one device take turns on the device row, so a replay cannot
+     * miss a token that a concurrent refresh is minting.
      */
     @Transactional(noRollbackFor = [ApiException::class])
     fun refresh(refreshToken: String): TokenResponse {
         val hash = sha256(refreshToken)
+        val expired = ApiException(HttpStatus.UNAUTHORIZED, "token_expired", "refresh token is unknown or expired")
         val deviceId =
+            jdbc
+                .sql("SELECT device_id FROM sessions WHERE refresh_hash = :hash AND expires_at > now()")
+                .param("hash", hash)
+                .query(UUID::class.java)
+                .optional()
+                .orElse(null) ?: throw expired
+        devices.lock(deviceId)
+        val rotated =
             jdbc
                 .sql(
                     """
@@ -182,17 +195,9 @@ class AuthService(
                 ).param("hash", hash)
                 .query(UUID::class.java)
                 .optional()
-                .orElse(null)
-        if (deviceId == null) {
-            jdbc
-                .sql(
-                    """
-                    DELETE FROM sessions
-                    WHERE device_id = (SELECT device_id FROM sessions WHERE refresh_hash = :hash AND spent_at IS NOT NULL)
-                    """,
-                ).param("hash", hash)
-                .update()
-            throw ApiException(HttpStatus.UNAUTHORIZED, "token_expired", "refresh token is unknown or expired")
+        if (rotated.isEmpty) {
+            jdbc.sql("DELETE FROM sessions WHERE device_id = :device").param("device", deviceId).update()
+            throw expired
         }
         val device = devices.current(deviceId) ?: throw devices.revokedError(deviceId)
         return issue(Caller(device.userId, deviceId))

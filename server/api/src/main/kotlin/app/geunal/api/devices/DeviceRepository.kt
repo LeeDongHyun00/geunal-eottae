@@ -86,6 +86,15 @@ class DeviceRepository(
             .query(UUID::class.java)
             .single()
 
+    /** Holds the device row until the transaction ends: one refresh or reuse check of the device at a time. */
+    fun lock(deviceId: UUID) {
+        jdbc
+            .sql("SELECT id FROM devices WHERE id = :id FOR UPDATE")
+            .param("id", deviceId)
+            .query(UUID::class.java)
+            .optional()
+    }
+
     /** The same device signed in with its provider again: "새로 시작" without the code counts from now. */
     fun markProviderAuth(deviceId: UUID) {
         jdbc.sql("UPDATE devices SET provider_auth_at = now() WHERE id = :id").param("id", deviceId).update()

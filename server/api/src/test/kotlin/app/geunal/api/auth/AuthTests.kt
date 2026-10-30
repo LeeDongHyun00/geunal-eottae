@@ -1,5 +1,6 @@
 package app.geunal.api.auth
 
+import app.geunal.api.ops.Cleanup
 import app.geunal.api.support.ApiTest
 import app.geunal.api.support.Client
 import com.nimbusds.jose.crypto.ECDSAVerifier
@@ -15,6 +16,9 @@ import java.util.UUID
 class AuthTests : ApiTest() {
     @Autowired
     lateinit var tokens: AccessTokens
+
+    @Autowired
+    lateinit var cleanup: Cleanup
 
     @Test
     fun `signs in with a nonce proof and reaches me`() {
@@ -139,6 +143,80 @@ class AuthTests : ApiTest() {
         api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to other)).expectError(401, "token_expired")
         // The access token lives out its 15 minutes; only the refresh tokens end.
         client.get("/me").expect(200)
+    }
+
+    @Test
+    fun `an expired spent token ends nothing`() {
+        val client = signIn()
+        val spent = client.refreshToken
+        client.adopt(api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to spent)).expect(200))
+        jdbc
+            .sql("UPDATE sessions SET expires_at = now() - interval '1 second' WHERE refresh_hash = :hash")
+            .param("hash", AuthService.sha256(spent))
+            .update()
+
+        api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to spent)).expectError(401, "token_expired")
+
+        api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to client.refreshToken)).expect(200)
+    }
+
+    @Test
+    fun `a replay racing a refresh leaves no session behind`() {
+        repeat(8) {
+            val client = signIn()
+            val spent = client.refreshToken
+            val current =
+                api
+                    .send(
+                        HttpMethod.POST,
+                        "/auth/refresh",
+                        body = mapOf("refresh_token" to spent),
+                    ).expect(200)
+                    .string("refresh_token")
+
+            val replies =
+                listOf(current, spent)
+                    .parallelStream()
+                    .map { api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to it)) }
+                    .toList()
+
+            assertThat(replies[1].status).isEqualTo(401)
+            // Whichever went first, a token the refresh minted must not outlive the detected reuse.
+            if (replies[0].status == 200) {
+                api
+                    .send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to replies[0].string("refresh_token")))
+                    .expectError(401, "token_expired")
+            }
+        }
+    }
+
+    @Test
+    fun `the daily cleanup drops expired sessions and tickets`() {
+        val client = signIn("cleanup-subject")
+        val ticket = Client(api, "cleanup-subject").stubSignIn().expect(200).string("ticket")
+        jdbc.sql("UPDATE sessions SET expires_at = now() - interval '1 second' WHERE device_id = :id").param("id", client.deviceId).update()
+        jdbc
+            .sql("UPDATE replace_tickets SET expires_at = now() - interval '1 second' WHERE ticket_hash = :hash")
+            .param("hash", AuthService.sha256(ticket))
+            .update()
+
+        cleanup.daily()
+
+        assertThat(
+            jdbc
+                .sql("SELECT count(*) FROM sessions WHERE device_id = :id")
+                .param("id", client.deviceId)
+                .query(Int::class.java)
+                .single(),
+        ).isZero()
+        assertThat(
+            jdbc
+                .sql(
+                    "SELECT count(*) FROM replace_tickets WHERE ticket_hash = :hash",
+                ).param("hash", AuthService.sha256(ticket))
+                .query(Int::class.java)
+                .single(),
+        ).isZero()
     }
 
     @Test
