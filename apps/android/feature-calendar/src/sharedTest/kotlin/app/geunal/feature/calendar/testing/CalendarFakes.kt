@@ -29,6 +29,7 @@ import app.geunal.core.TimedBlock
 import app.geunal.core.UpNext
 import app.geunal.core.WeekDay
 import app.geunal.core.Weekday
+import app.geunal.core.NotificationSettings
 import app.geunal.feature.calendar.support.KoreanCalendar
 import java.time.DayOfWeek
 import java.util.Collections
@@ -199,6 +200,9 @@ open class CalendarFakeCore : Core(NoHandle) {
 
     @Volatile var writeError: CoreException? = null
 
+    /** 알림 설정 as the core keeps it, with its defaults (rust-core.md §3). */
+    @Volatile var settings: NotificationSettings = NotificationSettings(10, 360, nextUpBar = true, birthdayAlerts = true, leaveSuggestions = true)
+
     /** The month grid from the Sunday on or before the 1st to the Saturday on or after the last day. */
     override fun calendarMonth(month: String): List<DayCell> {
         calls += "month $month"
@@ -348,4 +352,6 @@ open class CalendarFakeCore : Core(NoHandle) {
     }
 
     override fun nextUp(count: UShort): List<UpNext> = emptyList()
+
+    override fun notificationSettings(): NotificationSettings = settings
 }

@@ -6,6 +6,7 @@ import app.geunal.core.DayTime
 import app.geunal.core.EditScope
 import app.geunal.core.EventInput
 import app.geunal.core.Frequency
+import app.geunal.core.Palette
 import app.geunal.core.Recurrence
 import app.geunal.core.Weekday
 import app.geunal.feature.calendar.editor.AlertText
@@ -78,6 +79,42 @@ class EditorModelTest {
         }
 
     @Test
+    fun anEventEndingAtMidnightTurnedAllDayShowsTheDayItKeeps() =
+        runTest(dispatcher) {
+            val late = Samples.event("e2", "야간 근무", "2026-10-26", 1320, 1440)
+            core.details = mapOf("e2" to Samples.detail(late))
+            val model = model(EditorTarget.Existing("e2", null))
+            model.load()
+            // Timed, 24:00 shows as 00:00 of the next day.
+            assertEquals("2026-10-27" to 0, model.state.value.shownEnd)
+
+            model.setAllDay(true)
+
+            assertEquals("2026-10-26" to 1440, model.state.value.shownEnd)
+            assertEquals("2026-10-26", model.input()?.end?.day)
+        }
+
+    @Test
+    fun theInheritedAlertFollowsTheCalendarNotTheOldOverride() =
+        runTest(dispatcher) {
+            val hourly = Samples.calendar("c5", "회사", Palette.SKY).copy(defaultAlert = AlertRule.Before(60))
+            core.calendarList = core.calendarList + hourly
+            val meeting = Samples.event("e3", "회의", "2026-11-03", 600, 660, calendar = hourly)
+            core.details = mapOf("e3" to Samples.detail(meeting).copy(alert = AlertRule.Before(10), effectiveAlert = 10))
+            val model = model(EditorTarget.Existing("e3", null))
+            model.load()
+
+            model.setAlert(AlertRule.Inherit)
+
+            // 회사 rings an hour before, which is what saving now schedules.
+            assertEquals(60, model.state.value.inheritedAlert)
+            model.setCalendar(Samples.personal.id)
+            assertEquals(10, model.state.value.inheritedAlert)
+            model.setAllDay(true)
+            assertEquals(360, model.state.value.inheritedAlert)
+        }
+
+    @Test
     fun opensARepeatingEventAndChangesOnlyThisOccurrence() =
         runTest(dispatcher) {
             val lecture = Samples.event("e1", "전공 수업", "2026-11-02", 600, 720).copy(occurrence = "2026-11-02")
@@ -87,9 +124,10 @@ class EditorModelTest {
 
             assertTrue(model.state.value.wasRepeating)
             assertTrue(model.asksScope)
+            // 개인 follows the settings' 10분 전.
             assertEquals(
-                AlertText.Inherited(AlertText.Hours(1)),
-                AlertText.value(model.state.value.alert, model.state.value.effectiveAlert, allDay = false),
+                AlertText.Inherited(AlertText.Minutes(10)),
+                AlertText.value(model.state.value.alert, model.state.value.inheritedAlert, allDay = false),
             )
 
             model.setTitle("휴강")

@@ -125,6 +125,8 @@ class ShiftStampModel(
      * month has not been read takes no tap, so a tap never stamps over a shift the screen did not show.
      */
     fun tap(day: String) {
+        // The commit sends the days it read when it began; a tap now would show but never be saved.
+        if (_state.value.isSaving) return
         val template = _state.value.selectedTemplateId ?: return
         if (KoreanCalendar.month(day) !in loadedMonths) return
         _state.update { current ->

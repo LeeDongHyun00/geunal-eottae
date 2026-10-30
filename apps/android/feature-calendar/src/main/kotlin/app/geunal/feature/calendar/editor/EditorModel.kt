@@ -11,6 +11,7 @@ import app.geunal.core.EventInput
 import app.geunal.core.EventSource
 import app.geunal.core.Frequency
 import app.geunal.core.InternalException
+import app.geunal.core.NotificationSettings
 import app.geunal.core.Recurrence
 import app.geunal.feature.calendar.support.KoreanCalendar
 import app.geunal.feature.calendar.support.coreRead
@@ -65,8 +66,8 @@ class EditorModel(
         val endMinute: Int = 600,
         val recurrence: Recurrence? = null,
         val alert: AlertRule = AlertRule.Inherit,
-        /** The alert that applies after inheritance, from the core, for the "캘린더 기본 · 1시간 전" label. */
-        val effectiveAlert: Int? = null,
+        /** The alert settings (m1.md screen 19), for what 캘린더 기본 comes to; `null` until read. */
+        val settings: NotificationSettings? = null,
         val calendars: List<CalendarView> = emptyList(),
         val readOnly: Boolean = false,
         val source: EventSource = EventSource.Own,
@@ -81,6 +82,35 @@ class EditorModel(
         val ownCalendars: List<CalendarView> get() = calendars.filter { it.kind == CalendarKind.OWN }
 
         val selectedCalendar: CalendarView? get() = calendars.firstOrNull { it.id == calendarId } ?: ownCalendars.firstOrNull()
+
+        /**
+         * What 캘린더 기본 rings at for the event as it now stands, resolved as the core does (`effective_alert`): an
+         * all-day event takes the all-day setting, a timed one its calendar's default and else the timed setting. It
+         * follows the calendar and 종일 as they change; `null` when nothing rings or the settings are not read yet.
+         */
+        val inheritedAlert: Int?
+            get() {
+                val settings = settings ?: return null
+                if (allDay) return settings.allDayAlert
+                return when (val rule = selectedCalendar?.defaultAlert) {
+                    is AlertRule.Before -> rule.minutes
+                    AlertRule.Off -> null
+                    else -> settings.eventAlert
+                }
+            }
+
+        /**
+         * The end as the chips show it. A timed event's 24:00 reads as 00:00 of the next day, which the pickers can
+         * show; an all-day event's end is its last day as saved, so turning 종일 on for one ending at midnight does not
+         * show a day it will not have.
+         */
+        val shownEnd: Pair<String, Int>
+            get() =
+                if (!allDay && endMinute >= DAY) {
+                    (KoreanCalendar.addDays(endDay, 1) ?: endDay) to endMinute - DAY
+                } else {
+                    endDay to endMinute
+                }
 
         val trimmedTitle: String get() = title.trim()
 
@@ -131,6 +161,8 @@ class EditorModel(
 
     suspend fun load() {
         val calendars = withContext(io) { coreRead { core.calendars() } }.orEmpty()
+        val settings = withContext(io) { coreRead { core.notificationSettings() } }
+        _state.update { it.copy(settings = settings) }
         if (target is EditorTarget.Existing) {
             val detail = withContext(io) { coreRead { core.event(target.eventId, target.occurrence) } }
             if (detail == null) {
@@ -144,7 +176,6 @@ class EditorModel(
                         calendarId = detail.calendarId,
                         recurrence = detail.recurrence,
                         alert = detail.alert,
-                        effectiveAlert = detail.effectiveAlert,
                         note = detail.note,
                         source = detail.source,
                         readOnly = detail.readOnly,

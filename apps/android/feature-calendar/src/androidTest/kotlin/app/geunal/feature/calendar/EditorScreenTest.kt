@@ -46,7 +46,7 @@ class EditorScreenTest {
         show(EditorTarget.Existing("e2", null))
         compose.waitForText("가족 · 저녁")
         // The calendar's default reads as what it comes to.
-        compose.onNodeWithTag("editor.alert").assertTextContains("캘린더 기본 · 1시간 전", substring = true)
+        compose.onNodeWithTag("editor.alert").assertTextContains("캘린더 기본 · 10분 전", substring = true)
         compose.onNodeWithTag("editor.start.time").assertTextContains("19:00", substring = true)
         compose.screenshot("09-editor")
 

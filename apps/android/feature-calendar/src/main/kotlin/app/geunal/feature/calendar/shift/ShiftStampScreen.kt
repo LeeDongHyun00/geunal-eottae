@@ -137,7 +137,7 @@ fun ShiftStampScreen(
                                 day = day,
                                 inMonth = KoreanCalendar.month(day) == state.month,
                                 templates = state.templates(on = day),
-                                enabled = state.selectedTemplate != null,
+                                enabled = state.selectedTemplate != null && !state.isSaving,
                                 onClick = {
                                     model.tap(day)
                                     haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
@@ -350,24 +350,30 @@ private fun TemplatePanel(
                 color = neutrals.secondaryText,
             )
         }
-        // Two columns of templates, then the dashed "새 템플릿".
+        // Two columns of templates, then the dashed "새 템플릿". Past two and a half rows they scroll, so many templates
+        // never squeeze the grid above out of the screen.
         val cells: List<ShiftTemplate?> = state.templates + null
-        cells.chunked(2).forEach { pair ->
-            Row(horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
-                pair.forEach { template ->
-                    if (template == null) {
-                        NewTemplateButton(onClick = { model.editTemplate(null) }, modifier = Modifier.weight(1f))
-                    } else {
-                        TemplateCard(
-                            template = template,
-                            selected = template.id == state.selectedTemplateId,
-                            onSelect = { model.select(template.id) },
-                            onEdit = { model.editTemplate(template) },
-                            modifier = Modifier.weight(1f),
-                        )
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Space.s),
+            modifier = Modifier.heightIn(max = TEMPLATES_MAX_HEIGHT).verticalScroll(rememberScrollState()),
+        ) {
+            cells.chunked(2).forEach { pair ->
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
+                    pair.forEach { template ->
+                        if (template == null) {
+                            NewTemplateButton(onClick = { model.editTemplate(null) }, modifier = Modifier.weight(1f))
+                        } else {
+                            TemplateCard(
+                                template = template,
+                                selected = template.id == state.selectedTemplateId,
+                                onSelect = { model.select(template.id) },
+                                onEdit = { model.editTemplate(template) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                     }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
                 }
-                if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         }
         state.selectedTemplate?.let { state.calendarName(of = it) }?.let { calendar ->
@@ -510,3 +516,6 @@ object ShiftColors {
         return BarColors(ramp[level - 1], if (level >= 4) Color.White else LocalNeutralColors.current.ink)
     }
 }
+
+/** About two and a half rows of template cards. */
+private val TEMPLATES_MAX_HEIGHT = 172.dp

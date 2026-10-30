@@ -373,13 +373,7 @@ private fun TimeCard(
     enabled: Boolean,
 ) {
     val neutrals = LocalNeutralColors.current
-    // An end at 24:00 shows as 00:00 of the next day, which is what the pickers can show.
-    val (endDay, endMinute) =
-        if (state.endMinute >= DAY) {
-            (KoreanCalendar.addDays(state.endDay, 1) ?: state.endDay) to state.endMinute - DAY
-        } else {
-            state.endDay to state.endMinute
-        }
+    val (endDay, endMinute) = state.shownEnd
     EditorCard {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -626,7 +620,7 @@ private fun RepeatCard(
             ) {
                 Text(stringResource(R.string.editor_alert), style = GeunalType.body, color = neutrals.ink, modifier = Modifier.weight(1f))
                 Text(
-                    AlertText.value(state.alert, state.effectiveAlert, state.allDay).text(resources),
+                    AlertText.value(state.alert, state.inheritedAlert, state.allDay).text(resources),
                     style = GeunalType.body,
                     color = neutrals.secondaryText,
                 )
@@ -767,8 +761,6 @@ private fun Chevron() {
 private fun Check(color: Color = LocalNeutralColors.current.ink) {
     Icon(painterResource(DesignR.drawable.ds_ic_check), contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
 }
-
-private const val DAY = 1440
 
 /** "10월 30일 (금)" as boards/Editor writes it, or with the year in another year than today's. */
 internal fun chipDay(

@@ -5,8 +5,11 @@ import app.geunal.core.ShiftDay
 import app.geunal.feature.calendar.shift.ShiftStampModel
 import app.geunal.feature.calendar.testing.CalendarFakeCore
 import app.geunal.feature.calendar.testing.Samples
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,6 +26,30 @@ class ShiftStampModelTest {
         }
 
     private fun TestScope.model(month: String = "2026-11") = ShiftStampModel(month, core, scope = this, io = dispatcher)
+
+    @Test
+    fun takesNoTapWhileTheCommitIsOnItsWay() =
+        runTest(dispatcher) {
+            // The screen's scope starts the commit at once; the write waits on the IO dispatcher.
+            val model = ShiftStampModel("2026-11", core, scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)), io = dispatcher)
+            model.load()
+            model.tap("2026-11-07")
+            var closed: Boolean? = null
+
+            model.launchCommit { closed = it }
+            assertTrue(model.state.value.isSaving)
+            model.tap("2026-11-14")
+            advanceUntilIdle()
+
+            assertEquals(true, closed)
+            assertEquals("setShifts 2026-11-07=t1", core.calls.last())
+            assertTrue(
+                "the tap during the write was not taken",
+                model.state.value
+                    .templates(on = "2026-11-14")
+                    .isEmpty(),
+            )
+        }
 
     @Test
     fun stampsADraftUntilDone() =
