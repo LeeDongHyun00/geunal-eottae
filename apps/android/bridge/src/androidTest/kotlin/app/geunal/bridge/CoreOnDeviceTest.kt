@@ -68,6 +68,16 @@ class CoreOnDeviceTest {
     }
 
     @Test
+    fun runsSqlCipherOnTheOpenSslTheCoreBuilds() {
+        open().use { core ->
+            val provider = core.cipherProvider()
+            assertEquals("openssl", provider.name)
+            // The trimmed libcrypto the core builds, not a stock one: SQLCipher answers with the linked library's text.
+            assertTrue(provider.version, provider.version.startsWith("OpenSSL $OPENSSL_VERSION "))
+        }
+    }
+
+    @Test
     fun refusesTheStoreOnceItsKeyIsGone() {
         open().close()
         File(root, "secrets").deleteRecursively()
@@ -100,6 +110,9 @@ class CoreOnDeviceTest {
     private companion object {
         const val TEST_ALIAS = "app.geunal.secrets.core-test"
         const val TITLE = "저녁 약속"
+
+        // What core/scripts/build-openssl.sh pins; moves with it (docs/security/dependencies.md).
+        const val OPENSSL_VERSION = "3.5.9"
 
         // Nothing here signs in, so the core never sends a request; the discard port makes any slip fail fast.
         const val UNREACHABLE_API = "http://127.0.0.1:9"

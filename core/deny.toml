@@ -1,7 +1,7 @@
 # cargo-deny policy for the Rust core; make lint-core runs it.
 
 [graph]
-# The mobile targets pull in crates of their own (a vendored OpenSSL on Android), so the checks cover them too.
+# The mobile targets pull in crates of their own (JNI glue on Android), so the checks cover them too.
 targets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-linux-android",

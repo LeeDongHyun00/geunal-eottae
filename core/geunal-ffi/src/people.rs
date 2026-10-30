@@ -142,7 +142,7 @@ impl Core {
                 }
             };
             db.put_person(&row)?;
-            mark_changed(db, now)?;
+            mark_changed(db)?;
             Ok::<_, CoreError>(row.id)
         })?;
         self.calendar_changed();
@@ -152,14 +152,13 @@ impl Core {
     /// Removes a person and their birthday from the calendar. A group member's birthday leaves with the group (M2),
     /// so it cannot be removed here.
     pub fn delete_person(&self, person_id: String) -> Result<(), CoreError> {
-        let now = self.now();
         self.store.write(|db| {
             let row = db.person(&person_id)?.ok_or_else(|| not_found(format!("person {person_id}")))?;
             if row.source == GROUP {
                 return Err(invalid("a birthday made public in a group goes away with the group"));
             }
             db.delete_person(&row.id)?;
-            mark_changed(db, now)
+            mark_changed(db)
         })?;
         self.calendar_changed();
         Ok(())
@@ -198,7 +197,7 @@ impl Core {
                 db.put_person(&row)?;
             }
             if result.added + result.updated > 0 {
-                mark_changed(db, now)?;
+                mark_changed(db)?;
             }
             Ok::<_, CoreError>(())
         })?;

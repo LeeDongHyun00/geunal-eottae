@@ -466,7 +466,6 @@ impl Core {
     /// Creates or updates an own calendar and returns its id.
     pub fn save_calendar(&self, input: CalendarInput) -> Result<String, CoreError> {
         let name = name(&input.name, "calendar")?;
-        let now = self.now();
         let id = self.store.write(|db| {
             let row = match &input.id {
                 Some(id) => {
@@ -493,7 +492,7 @@ impl Core {
                 },
             };
             db.put_calendar(&row)?;
-            mark_changed(db, now)?;
+            mark_changed(db)?;
             Ok::<_, CoreError>(row.id)
         })?;
         self.calendar_changed();
@@ -501,11 +500,10 @@ impl Core {
     }
 
     pub fn set_calendar_visible(&self, calendar_id: String, visible: bool) -> Result<(), CoreError> {
-        let now = self.now();
         self.store.write(|db| {
             let row = db.calendar(&calendar_id)?.ok_or_else(|| not_found(format!("calendar {calendar_id}")))?;
             db.put_calendar(&CalendarRow { visible, ..row })?;
-            mark_changed(db, now)
+            mark_changed(db)
         })?;
         self.calendar_changed();
         Ok(())
@@ -513,7 +511,6 @@ impl Core {
 
     /// Deletes an own calendar with its events and shift templates. The last own calendar cannot go (`Invalid`).
     pub fn delete_calendar(&self, calendar_id: String) -> Result<(), CoreError> {
-        let now = self.now();
         self.store.write(|db| {
             own_calendar(db, &calendar_id)?;
             let own = db.calendars()?.iter().filter(|c| c.kind == OWN).count();
@@ -522,7 +519,7 @@ impl Core {
             }
             db.delete_shift_templates_of_calendar(&calendar_id)?;
             db.delete_calendar(&calendar_id)?;
-            mark_changed(db, now)
+            mark_changed(db)
         })?;
         self.calendar_changed();
         Ok(())
@@ -540,7 +537,7 @@ impl Core {
             db.put_event(&row)?;
             let repeat_hint = count_use(db, &row, now)?;
             db.bump_alpha(&day_text(kst_day(now)), 1, i64::from(from_suggestion))?;
-            mark_changed(db, now)?;
+            mark_changed(db)?;
             Ok::<_, CoreError>(AddedEvent { event_id: row.id, repeat_hint })
         })?;
         self.calendar_changed();
@@ -661,7 +658,7 @@ impl Core {
                 }
             }
         })?;
-        self.store.write(|db| mark_changed(db, now))?;
+        self.store.write(mark_changed)?;
         self.calendar_changed();
         Ok(id)
     }
@@ -716,7 +713,7 @@ impl Core {
                     }
                 }
             }
-            mark_changed(db, now)
+            mark_changed(db)
         })?;
         self.calendar_changed();
         Ok(())
@@ -954,7 +951,6 @@ impl Core {
         if input.start_minute == input.end_minute {
             return Err(invalid("a shift has no length"));
         }
-        let now = self.now();
         let id = self.store.write(|db| {
             let calendar = match &input.calendar_id {
                 Some(id) => own_calendar(db, id)?,
@@ -984,7 +980,7 @@ impl Core {
                 },
             };
             db.put_shift_template(&row)?;
-            mark_changed(db, now)?;
+            mark_changed(db)?;
             Ok::<_, CoreError>(row.id)
         })?;
         self.calendar_changed();
@@ -993,12 +989,11 @@ impl Core {
 
     /// Deletes a template; the shifts already stamped stay as ordinary events.
     pub fn delete_shift_template(&self, template_id: String) -> Result<(), CoreError> {
-        let now = self.now();
         self.store.write(|db| {
             db.shift_template(&template_id)?.ok_or_else(|| not_found(format!("template {template_id}")))?;
             db.detach_shift_template(&template_id)?;
             db.delete_shift_template(&template_id)?;
-            mark_changed(db, now)
+            mark_changed(db)
         })?;
         self.calendar_changed();
         Ok(())
@@ -1061,7 +1056,7 @@ impl Core {
             if added > 0 {
                 db.bump_alpha(&day_text(kst_day(now)), added, 0)?;
             }
-            mark_changed(db, now)
+            mark_changed(db)
         })?;
         self.calendar_changed();
         Ok(())
@@ -1146,10 +1141,9 @@ impl Core {
     }
 
     pub fn set_notification_settings(&self, settings: NotificationSettings) -> Result<(), CoreError> {
-        let now = self.now();
         self.store.write(|db| {
             set_notifications(db, &settings)?;
-            mark_changed(db, now)
+            mark_changed(db)
         })?;
         self.calendar_changed();
         Ok(())

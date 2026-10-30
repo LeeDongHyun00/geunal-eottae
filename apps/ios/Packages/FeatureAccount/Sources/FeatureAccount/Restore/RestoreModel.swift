@@ -171,7 +171,7 @@ public final class RestoreModel {
         do {
             switch mode {
             case .deviceChange, .offer:
-                _ = try await core.startFresh()
+                _ = try await core.startFresh(proof: nil)
             case .guestReturn:
                 guard let ageConfirmedAt else { return false }
                 _ = try await core.signInGuest(
@@ -206,7 +206,7 @@ public final class RestoreModel {
         } catch CoreError.Network(_) {
             problem = .offline
             phase = .entering
-        } catch CoreError.Api(401, "token_expired", _) {
+        } catch CoreError.SignInAgain {
             notify(Strings.ticketExpired)
             phase = .ticketExpired
         } catch {

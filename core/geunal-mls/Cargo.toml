@@ -16,6 +16,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 ciborium.workspace = true
+geunal-crypto = { workspace = true, features = ["test-vectors"] }
 geunal-domain.workspace = true
 hex.workspace = true
 serde_json.workspace = true

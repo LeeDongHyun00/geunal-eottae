@@ -11,6 +11,10 @@ use serde::{Deserialize, Serialize};
 pub enum ApiError {
     #[error("{status} {code}: {message}")]
     Api { status: u16, code: String, message: String },
+    /// 403 `device_revoked`: another sign-in made a different device the active one (protocol §13 "기기 해제").
+    /// `replaced` says when, where and how, from M1; `None` from an M0 server or for a revocation of another kind.
+    #[error("403 device_revoked")]
+    Revoked { replaced: Option<Replaced> },
     #[error("network: {0}")]
     Network(String),
     #[error("unexpected response: {0}")]
@@ -19,15 +23,31 @@ pub enum ApiError {
 
 impl ApiError {
     pub fn is(&self, status: u16, code: &str) -> bool {
-        matches!(self, ApiError::Api { status: s, code: c, .. } if *s == status && c == code)
+        match self {
+            ApiError::Api { status: s, code: c, .. } => *s == status && c == code,
+            ApiError::Revoked { .. } => status == 403 && code == "device_revoked",
+            _ => false,
+        }
     }
 
     pub fn code(&self) -> Option<&str> {
         match self {
             ApiError::Api { code, .. } => Some(code),
+            ApiError::Revoked { .. } => Some("device_revoked"),
             _ => None,
         }
     }
+}
+
+/// The extra fields of a 403 `device_revoked` after a device replacement.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Replaced {
+    /// RFC 3339.
+    pub replaced_at: String,
+    /// `ios` or `android`: the account's active device now.
+    pub replaced_by: String,
+    /// `provider` (a Kakao or Apple sign-in) or `recovery` (a guest coming back with the code).
+    pub replaced_via: String,
 }
 
 /// `POST /auth/stub`: a device registering with its Ed25519 key and the proof over the server's nonce. `subject`
@@ -55,6 +75,220 @@ pub struct SessionInfo {
     pub expires_in: i64,
     pub refresh_token: String,
 }
+
+/// What every M1 sign-in proves: this device holds the Ed25519 key it registers (`DeviceProof`, protocol §13).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeviceProof {
+    /// `ios` or `android`.
+    pub platform: String,
+    #[serde(with = "b64")]
+    pub signature_key: Vec<u8>,
+    pub nonce: String,
+    #[serde(with = "b64")]
+    pub signature: Vec<u8>,
+}
+
+/// Read only when the sign-in creates the account (`NewAccount`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NewAccountFields {
+    /// RFC 3339: when the user ticked "만 14세 이상이에요".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub age_confirmed_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+}
+
+/// `POST /auth/kakao` and `POST /auth/apple`: the provider's ID token, whose `nonce` claim binds it to `proof`'s key.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProviderSignIn {
+    #[serde(flatten)]
+    pub proof: DeviceProof,
+    #[serde(flatten)]
+    pub account: NewAccountFields,
+    pub id_token: String,
+}
+
+/// `POST /auth/guest`: always a new account.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GuestSignIn {
+    #[serde(flatten)]
+    pub proof: DeviceProof,
+    pub age_confirmed_at: String,
+    pub display_name: String,
+}
+
+/// `POST /auth/recover`: a guest coming back with the recovery code (protocol §10, §13).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RecoverSignIn {
+    #[serde(flatten)]
+    pub proof: DeviceProof,
+    #[serde(with = "b64")]
+    pub recovery_id: Vec<u8>,
+    #[serde(with = "b64")]
+    pub recovery_signature: Vec<u8>,
+}
+
+/// `POST /auth/replace`: the ticket of a `replace_required` sign-in, signed by the key that sign-in proved.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReplaceRequest {
+    pub ticket: String,
+    #[serde(with = "b64")]
+    pub signature: Vec<u8>,
+}
+
+/// The account's active device when a sign-in needs a replacement.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ActiveDevice {
+    pub platform: String,
+    /// RFC 3339.
+    pub created_at: String,
+}
+
+/// What a sign-in answers (`Registered` or `ReplaceRequired`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuthOutcome {
+    /// This device is the account's active device. `recovery` says the server holds recovery material.
+    Registered { tokens: SessionInfo, new_account: bool, recovery: bool },
+    /// Another device is active; nothing is registered until `POST /auth/replace` with the ticket.
+    ReplaceRequired { user_id: String, ticket: String, expires_in: i64, active_device: ActiveDevice, recovery: bool },
+}
+
+impl<'de> Deserialize<'de> for AuthOutcome {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Wire {
+            #[serde(default)]
+            result: Option<String>,
+            #[serde(default)]
+            new_account: bool,
+            #[serde(default)]
+            recovery: bool,
+            #[serde(default)]
+            ticket: Option<String>,
+            #[serde(default)]
+            expires_in: i64,
+            #[serde(default)]
+            active_device: Option<ActiveDevice>,
+            #[serde(flatten)]
+            rest: serde_json::Map<String, serde_json::Value>,
+        }
+        let wire = Wire::deserialize(d)?;
+        match wire.result.as_deref() {
+            Some("replace_required") => {
+                let user_id = wire.rest.get("user_id").and_then(|v| v.as_str()).map(str::to_owned);
+                Ok(AuthOutcome::ReplaceRequired {
+                    user_id: user_id.ok_or_else(|| serde::de::Error::missing_field("user_id"))?,
+                    ticket: wire.ticket.ok_or_else(|| serde::de::Error::missing_field("ticket"))?,
+                    expires_in: wire.expires_in,
+                    active_device: wire
+                        .active_device
+                        .ok_or_else(|| serde::de::Error::missing_field("active_device"))?,
+                    recovery: wire.recovery,
+                })
+            }
+            // An M0 server answers bare tokens without `result`: registered, and it says nothing about the account.
+            Some("registered") | None => {
+                let mut tokens = wire.rest;
+                tokens.insert("expires_in".into(), wire.expires_in.into());
+                let tokens: SessionInfo =
+                    serde_json::from_value(serde_json::Value::Object(tokens)).map_err(serde::de::Error::custom)?;
+                Ok(AuthOutcome::Registered { tokens, new_account: wire.new_account, recovery: wire.recovery })
+            }
+            Some(other) => Err(serde::de::Error::unknown_variant(other, &["registered", "replace_required"])),
+        }
+    }
+}
+
+/// `POST /auth/link`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LinkRequest {
+    /// `kakao` or `apple`.
+    pub provider: String,
+    pub id_token: String,
+    pub nonce: String,
+}
+
+/// `GET /me`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MeInfo {
+    pub user_id: String,
+    pub display_name: String,
+    #[serde(default)]
+    pub key_packages: i64,
+    /// `kakao`, `apple`; empty for a guest. From M1.
+    #[serde(default)]
+    pub providers: Vec<String>,
+    /// The server holds recovery material. From M1.
+    #[serde(default)]
+    pub recovery: bool,
+}
+
+/// `PUT /me/recovery` (protocol §10).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RecoveryUpload {
+    #[serde(with = "b64")]
+    pub amk_wrapped: Vec<u8>,
+    #[serde(with = "b64")]
+    pub recovery_id: Vec<u8>,
+    #[serde(with = "b64")]
+    pub recovery_public_key: Vec<u8>,
+    /// "백업 없이 새로 시작" without the code: within 30 minutes of a provider sign-in, or with a fresh provider proof
+    /// below. The server deletes the old backups.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub new_key: bool,
+    /// From `GET /auth/nonce`, with `proof` or `kakao_id_token`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
+    /// The current code's signature, to overwrite material already stored.
+    #[serde(default, with = "b64::option", skip_serializing_if = "Option::is_none")]
+    pub proof: Option<Vec<u8>>,
+    /// `new_key` past the 30 minutes, Kakao: an ID token bound to `nonce` and this device's registered key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kakao_id_token: Option<String>,
+    /// `new_key` past the 30 minutes, Apple: a fresh Sign in with Apple authorization code.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apple_authorization_code: Option<String>,
+}
+
+/// `GET /me/recovery`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StoredRecovery {
+    #[serde(with = "b64")]
+    pub amk_wrapped: Vec<u8>,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+/// `POST /me/backups`: where to put a sealed object of `size` bytes. The URL is signed with that length.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BackupUpload {
+    pub id: i64,
+    pub upload_url: String,
+    #[serde(default)]
+    pub expires_in: i64,
+}
+
+/// A completed backup as the server knows it: id, size and time only (protocol §10 "목록").
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BackupInfo {
+    pub id: i64,
+    pub size: u64,
+    /// RFC 3339: when the upload was completed.
+    pub created_at: String,
+}
+
+/// `GET /me/backups/latest`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BackupDownload {
+    #[serde(flatten)]
+    pub backup: BackupInfo,
+    pub download_url: String,
+    #[serde(default)]
+    pub expires_in: i64,
+}
+
+/// Bytes moved so far and in all, for a progress bar.
+pub type Progress<'a> = &'a (dyn Fn(u64, u64) + Send + Sync);
 
 /// One row of `GET /users/{id}/devices`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -228,13 +462,53 @@ pub struct StateBlob {
 /// The largest page of `GET /groups/{id}/log` (api-server.md §5).
 pub const LOG_PAGE: u32 = 500;
 
+/// Told the new tokens as soon as a refresh spends the old refresh token, so they are kept before anything else runs:
+/// the server ends every session of a device that presents a spent refresh token (protocol §13).
+pub type TokenListener = std::sync::Arc<dyn Fn(&SessionInfo) + Send + Sync>;
+
 /// The API as the engine sees it. One implementation speaks HTTP, another is the in-process fake server; both keep
-/// the caller's session after `sign_in`.
+/// the caller's session after a sign-in that registers this device, and both trade an expired access token for a new
+/// one once per call (`POST /auth/refresh`) before they report `token_expired`.
 pub trait Transport: Send + Sync {
     fn nonce(&self) -> impl Future<Output = Result<String, ApiError>> + Send;
-    fn sign_in(&self, req: StubSignIn) -> impl Future<Output = Result<SessionInfo, ApiError>> + Send;
+    /// `POST /auth/stub`, on local and CI servers only. From M1 it follows the Kakao rules: a second device gets a
+    /// replacement ticket.
+    fn sign_in(&self, req: StubSignIn) -> impl Future<Output = Result<AuthOutcome, ApiError>> + Send;
+    /// `POST /auth/kakao` or `POST /auth/apple`; `provider` is `kakao` or `apple`.
+    fn sign_in_provider(
+        &self,
+        provider: &str,
+        req: ProviderSignIn,
+    ) -> impl Future<Output = Result<AuthOutcome, ApiError>> + Send;
+    fn sign_in_guest(&self, req: GuestSignIn) -> impl Future<Output = Result<AuthOutcome, ApiError>> + Send;
+    fn recover(&self, req: RecoverSignIn) -> impl Future<Output = Result<AuthOutcome, ApiError>> + Send;
+    fn replace(&self, req: ReplaceRequest) -> impl Future<Output = Result<AuthOutcome, ApiError>> + Send;
+    /// The account's providers after linking.
+    fn link(&self, req: LinkRequest) -> impl Future<Output = Result<Vec<String>, ApiError>> + Send;
+    fn me(&self) -> impl Future<Output = Result<MeInfo, ApiError>> + Send;
+    fn put_recovery(&self, req: RecoveryUpload) -> impl Future<Output = Result<(), ApiError>> + Send;
+    /// With `ticket`, as the bearer of a replacement in progress; otherwise with the session.
+    fn get_recovery(&self, ticket: Option<&str>) -> impl Future<Output = Result<StoredRecovery, ApiError>> + Send;
+    /// `POST /me/backups`.
+    fn start_backup(&self, size: u64) -> impl Future<Output = Result<BackupUpload, ApiError>> + Send;
+    /// `PUT` to a presigned URL, which carries its own authorization: the session's token never goes there.
+    fn put_object(&self, url: &str, body: Vec<u8>) -> impl Future<Output = Result<(), ApiError>> + Send;
+    /// `POST /me/backups/{id}/complete`.
+    fn complete_backup(&self, id: i64) -> impl Future<Output = Result<BackupInfo, ApiError>> + Send;
+    /// `GET /me/backups`, newest first; with `ticket` as for `get_recovery`.
+    fn backups(&self, ticket: Option<&str>) -> impl Future<Output = Result<Vec<BackupInfo>, ApiError>> + Send;
+    /// `GET /me/backups/latest`; `None` when the account has no completed backup.
+    fn latest_backup(
+        &self,
+        ticket: Option<&str>,
+    ) -> impl Future<Output = Result<Option<BackupDownload>, ApiError>> + Send;
+    /// `GET` from a presigned URL, reporting the bytes as they arrive.
+    fn get_object(&self, url: &str, progress: Progress<'_>) -> impl Future<Output = Result<Vec<u8>, ApiError>> + Send;
     /// Reuses a session from a previous run.
-    fn restore_session(&self, access_token: &str);
+    fn restore_session(&self, access_token: &str, refresh_token: &str);
+    /// Forgets the session: signed out by another device, or the account is gone.
+    fn clear_session(&self);
+    fn set_token_listener(&self, listener: TokenListener);
     fn upload_key_packages(&self, packages: Vec<Vec<u8>>) -> impl Future<Output = Result<(), ApiError>> + Send;
     fn devices(&self, user_id: &str) -> impl Future<Output = Result<Vec<DeviceInfo>, ApiError>> + Send;
     fn claim_key_package(&self, device_id: &str) -> impl Future<Output = Result<Vec<u8>, ApiError>> + Send;
@@ -272,11 +546,59 @@ impl<T: Transport> Transport for std::sync::Arc<T> {
     async fn nonce(&self) -> Result<String, ApiError> {
         (**self).nonce().await
     }
-    async fn sign_in(&self, req: StubSignIn) -> Result<SessionInfo, ApiError> {
+    async fn sign_in(&self, req: StubSignIn) -> Result<AuthOutcome, ApiError> {
         (**self).sign_in(req).await
     }
-    fn restore_session(&self, access_token: &str) {
-        (**self).restore_session(access_token)
+    async fn sign_in_provider(&self, provider: &str, req: ProviderSignIn) -> Result<AuthOutcome, ApiError> {
+        (**self).sign_in_provider(provider, req).await
+    }
+    async fn sign_in_guest(&self, req: GuestSignIn) -> Result<AuthOutcome, ApiError> {
+        (**self).sign_in_guest(req).await
+    }
+    async fn recover(&self, req: RecoverSignIn) -> Result<AuthOutcome, ApiError> {
+        (**self).recover(req).await
+    }
+    async fn replace(&self, req: ReplaceRequest) -> Result<AuthOutcome, ApiError> {
+        (**self).replace(req).await
+    }
+    async fn link(&self, req: LinkRequest) -> Result<Vec<String>, ApiError> {
+        (**self).link(req).await
+    }
+    async fn me(&self) -> Result<MeInfo, ApiError> {
+        (**self).me().await
+    }
+    async fn put_recovery(&self, req: RecoveryUpload) -> Result<(), ApiError> {
+        (**self).put_recovery(req).await
+    }
+    async fn get_recovery(&self, ticket: Option<&str>) -> Result<StoredRecovery, ApiError> {
+        (**self).get_recovery(ticket).await
+    }
+    async fn start_backup(&self, size: u64) -> Result<BackupUpload, ApiError> {
+        (**self).start_backup(size).await
+    }
+    async fn put_object(&self, url: &str, body: Vec<u8>) -> Result<(), ApiError> {
+        (**self).put_object(url, body).await
+    }
+    async fn complete_backup(&self, id: i64) -> Result<BackupInfo, ApiError> {
+        (**self).complete_backup(id).await
+    }
+    async fn backups(&self, ticket: Option<&str>) -> Result<Vec<BackupInfo>, ApiError> {
+        (**self).backups(ticket).await
+    }
+    async fn latest_backup(&self, ticket: Option<&str>) -> Result<Option<BackupDownload>, ApiError> {
+        (**self).latest_backup(ticket).await
+    }
+    async fn get_object(&self, url: &str, progress: Progress<'_>) -> Result<Vec<u8>, ApiError> {
+        (**self).get_object(url, progress).await
+    }
+    fn restore_session(&self, access_token: &str, refresh_token: &str) {
+        (**self).restore_session(access_token, refresh_token)
+    }
+    fn clear_session(&self) {
+        (**self).clear_session()
+    }
+    fn set_token_listener(&self, listener: TokenListener) {
+        (**self).set_token_listener(listener)
     }
     async fn upload_key_packages(&self, packages: Vec<Vec<u8>>) -> Result<(), ApiError> {
         (**self).upload_key_packages(packages).await
@@ -406,5 +728,84 @@ mod tests {
         assert_eq!(welcome.seq, Some(2));
         let welcome: WelcomeItem = serde_json::from_str(r#"{"group_id":"g","data":"AQ=="}"#).unwrap();
         assert_eq!(welcome.seq, None);
+    }
+
+    #[test]
+    fn reads_both_sign_in_results_and_the_bare_tokens_of_an_m0_server() {
+        let tokens = r#""user_id":"u","device_id":"d","access_token":"t","expires_in":900,"refresh_token":"r""#;
+        let registered: AuthOutcome =
+            serde_json::from_str(&format!(r#"{{"result":"registered",{tokens},"new_account":true,"recovery":false}}"#))
+                .unwrap();
+        let AuthOutcome::Registered { tokens: session, new_account, recovery } = registered else { panic!() };
+        assert_eq!((session.device_id.as_str(), session.expires_in, new_account, recovery), ("d", 900, true, false));
+        let m0: AuthOutcome = serde_json::from_str(&format!("{{{tokens}}}")).unwrap();
+        assert!(matches!(m0, AuthOutcome::Registered { new_account: false, recovery: false, .. }));
+
+        let replace: AuthOutcome = serde_json::from_str(
+            r#"{"result":"replace_required","user_id":"u","ticket":"k","expires_in":1800,"active_device":{"platform":"ios","created_at":"2026-10-01T09:00:00Z"},"recovery":true}"#,
+        )
+        .unwrap();
+        let AuthOutcome::ReplaceRequired { user_id, ticket, expires_in, active_device, recovery } = replace else {
+            panic!()
+        };
+        assert_eq!((user_id.as_str(), ticket.as_str(), expires_in, recovery), ("u", "k", 1800, true));
+        assert_eq!(active_device.platform, "ios");
+        assert!(serde_json::from_str::<AuthOutcome>(r#"{"result":"replace_required","user_id":"u"}"#).is_err());
+        assert!(serde_json::from_str::<AuthOutcome>(r#"{"result":"later"}"#).is_err());
+    }
+
+    #[test]
+    fn writes_m1_requests_flat_with_the_contract_names() {
+        let proof =
+            DeviceProof { platform: "ios".into(), signature_key: vec![1, 2, 3], nonce: "n".into(), signature: vec![4] };
+        let new = ProviderSignIn {
+            proof: proof.clone(),
+            account: NewAccountFields {
+                age_confirmed_at: Some("2026-10-26T00:00:00.000Z".into()),
+                display_name: Some("앨리스".into()),
+            },
+            id_token: "tok".into(),
+        };
+        assert_eq!(
+            serde_json::to_value(&new).unwrap(),
+            serde_json::json!({
+                "platform": "ios", "signature_key": "AQID", "nonce": "n", "signature": "BA==",
+                "age_confirmed_at": "2026-10-26T00:00:00.000Z", "display_name": "앨리스", "id_token": "tok",
+            })
+        );
+        let existing = ProviderSignIn { proof, account: NewAccountFields::default(), id_token: "tok".into() };
+        let existing = serde_json::to_value(&existing).unwrap();
+        assert!(existing.get("display_name").is_none() && existing.get("age_confirmed_at").is_none());
+
+        let first = RecoveryUpload {
+            amk_wrapped: vec![1],
+            recovery_id: vec![2],
+            recovery_public_key: vec![3],
+            new_key: false,
+            nonce: None,
+            proof: None,
+            kakao_id_token: None,
+            apple_authorization_code: None,
+        };
+        assert_eq!(
+            serde_json::to_value(&first).unwrap(),
+            serde_json::json!({"amk_wrapped": "AQ==", "recovery_id": "Ag==", "recovery_public_key": "Aw=="})
+        );
+        let rotation = RecoveryUpload { nonce: Some("n".into()), proof: Some(vec![9]), ..first.clone() };
+        let rotation = serde_json::to_value(&rotation).unwrap();
+        assert_eq!((&rotation["nonce"], &rotation["proof"]), (&serde_json::json!("n"), &serde_json::json!("CQ==")));
+        assert!(rotation.get("new_key").is_none());
+        let start_over = RecoveryUpload {
+            new_key: true,
+            nonce: Some("n".into()),
+            kakao_id_token: Some("tok".into()),
+            ..first.clone()
+        };
+        let start_over = serde_json::to_value(&start_over).unwrap();
+        assert_eq!(
+            (&start_over["new_key"], &start_over["kakao_id_token"]),
+            (&serde_json::json!(true), &serde_json::json!("tok"))
+        );
+        assert!(start_over.get("apple_authorization_code").is_none() && start_over.get("proof").is_none());
     }
 }
