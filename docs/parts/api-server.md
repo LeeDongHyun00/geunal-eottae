@@ -375,6 +375,7 @@ CREATE TABLE holidays (
 | --- | --- |
 | `V2__welcome_seq.sql` | `welcomes.seq`: 그 기기를 넣은 Add 커밋의 순번. 새 멤버가 로그를 그 자리부터 읽습니다 |
 | `V3__m1_sign_in.sql` | M1 로그인. `provider_links`: 카카오·Apple 계정과의 연결과 끊긴 시각(`users`의 `kakao_sub`·`apple_sub`를 옮기고 지움, 게스트는 연결이 없음). `replace_tickets`: 교체 티켓의 SHA-256. `devices.provider_auth_at`(제공자 로그인 30분 창)과 `replaced_via`(해제된 기기가 받는 교체 방식). `sessions.spent_at`(리프레시 토큰 재사용 감지). `recovery`는 `kdf_salt`를 빼고 복구 ID·복구 공개키를 더함 |
+| `V4__m1_recovery_backups_deletion.sql` | 백업의 `completed_at`(완료 전에는 목록에 없음)과 크기 제한(64MiB). `object_deletions.bucket`(버킷 짧은 이름). 계정 삭제의 자리표시자: `users.deleted_at`, 닉네임·만 14세 확인 시각을 비울 수 있게 함. `provider_revocations`: 카카오 연결 끊기와 Apple 토큰 철회의 재시도. `deleted_sessions`: 지운 계정 세션의 리프레시 해시와 만료 시각(401 `account_deleted`) |
 
 ## 7. 엔드포인트
 

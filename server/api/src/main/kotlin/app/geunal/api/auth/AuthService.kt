@@ -7,7 +7,6 @@ import app.geunal.api.groups.GroupRepository
 import app.geunal.api.realtime.MembershipEvent
 import app.geunal.api.realtime.RevokeEvent
 import app.geunal.api.realtime.Signals
-import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.HttpStatus
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Service
@@ -28,7 +27,7 @@ import java.util.UUID
 @Service
 class AuthService(
     private val jdbc: JdbcClient,
-    private val redis: StringRedisTemplate,
+    private val nonces: Nonces,
     private val accounts: AccountRepository,
     private val devices: DeviceRepository,
     private val groups: GroupRepository,
@@ -39,13 +38,6 @@ class AuthService(
     private val clock: Clock,
 ) {
     private val random = SecureRandom()
-
-    /** A one-time value the device signs with its Ed25519 key to prove it holds the key it registers. */
-    fun nonce(): String {
-        val nonce = randomToken()
-        redis.opsForValue().set("nonce:$nonce", "1", properties.nonceTtl)
-        return nonce
-    }
 
     /** `POST /auth/kakao` and `POST /auth/apple`. */
     @Transactional
@@ -141,7 +133,7 @@ class AuthService(
     ): LinkResponse {
         val provider = Provider.linkable(request.provider) ?: throw ApiException.invalid("provider must be kakao or apple")
         if (!providers.enabled(provider)) throw ProviderTokens.disabled(provider)
-        consumeNonce(request.nonce)
+        nonces.consume(request.nonce)
         val device = devices.current(caller.deviceId) ?: throw ApiException.notFound("device")
         val sub = providers.subject(provider, request.idToken, request.nonce, device.signatureKey)
         accounts.lockIdentity(provider, sub)
@@ -182,7 +174,7 @@ class AuthService(
                 .param("hash", hash)
                 .query(UUID::class.java)
                 .optional()
-                .orElse(null) ?: throw expired
+                .orElse(null) ?: throw if (accounts.isDeletedSession(hash)) accountDeleted() else expired
         devices.lock(deviceId)
         val rotated =
             jdbc
@@ -308,16 +300,9 @@ class AuthService(
     private fun checkProof(proof: DeviceProof) {
         if (proof.platform !in PLATFORMS) throw ApiException.invalid("platform must be ios or android")
         if (proof.signatureKey.size != Ed25519.PUBLIC_KEY_LENGTH) throw ApiException.invalid("signature_key must be 32 bytes")
-        consumeNonce(proof.nonce)
+        nonces.consume(proof.nonce)
         if (!Ed25519.verify(proof.signatureKey, proof.nonce.toByteArray(Charsets.US_ASCII), proof.signature)) {
             throw ApiException.invalid("signature does not verify over the nonce")
-        }
-    }
-
-    /** Deleting the key is the atomic single use; a replayed nonce finds nothing to delete. */
-    private fun consumeNonce(nonce: String) {
-        if (nonce.isEmpty() || nonce.length > MAX_NONCE || redis.delete("nonce:$nonce") != true) {
-            throw ApiException.invalid("nonce is unknown or was already used")
         }
     }
 
@@ -353,7 +338,6 @@ class AuthService(
         const val RECOVERY_ID_LENGTH = 16
         private const val MAX_SUBJECT = 200
         private const val MAX_DISPLAY_NAME = 40
-        private const val MAX_NONCE = 128
         private val PLATFORMS = setOf("ios", "android")
         val RECOVER_LABEL = "geunal recover v1".toByteArray(Charsets.US_ASCII)
         val REPLACE_LABEL = "geunal replace v1".toByteArray(Charsets.US_ASCII)

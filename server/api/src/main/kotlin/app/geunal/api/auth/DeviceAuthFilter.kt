@@ -19,6 +19,9 @@ import tools.jackson.databind.json.JsonMapper
  * entry point answers 401 `token_expired`. A verified token for a device that has since been revoked gets 403
  * `device_revoked` here, so a replaced phone learns to sign out on its very next request (protocol §11).
  *
+ * A token of a deleted account gets 401 `account_deleted` until it expires, so a device that lost the deletion's 204
+ * finishes the deletion instead of taking it for an ended session (protocol §13).
+ *
  * A live replacement ticket in the same header is a [TicketBearer]: it may read the account's recovery material and
  * backups and gets 403 `replace_required` everywhere else (protocol §13). A ticket that is spent or expired is just an
  * unknown token.
@@ -39,7 +42,12 @@ class DeviceAuthFilter(
         val token = header.substring(BEARER.length).trim()
         val principal =
             tokens.verify(token)?.let { caller ->
-                if (!devices.isCurrent(caller.deviceId, caller.userId)) return reject(response, devices.revokedError(caller.deviceId))
+                if (!devices.isCurrent(caller.deviceId, caller.userId)) {
+                    return reject(
+                        response,
+                        if (accounts.isDeleted(caller.userId)) accountDeleted() else devices.revokedError(caller.deviceId),
+                    )
+                }
                 caller
             } ?: ticketBearer(token)?.let { bearer ->
                 if (request.method != HttpMethod.GET.name() || request.requestURI !in TicketBearer.PATHS) {
