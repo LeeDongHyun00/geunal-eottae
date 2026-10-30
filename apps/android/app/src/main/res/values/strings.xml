@@ -17,10 +17,13 @@
     <string name="me_no_account_detail">이 기기에서만 일정을 쓰고 있어요</string>
     <string name="me_profile_description">%1$s, %2$s</string>
     <string name="me_section_calendar">캘린더</string>
+    <string name="me_calendars">캘린더 관리</string>
     <string name="me_shift_templates">교대 템플릿</string>
     <string name="me_people">사람·생일</string>
     <string name="me_count_items">%1$d개</string>
     <string name="me_count_people">%1$d명</string>
+    <string name="me_section_account">계정</string>
+    <string name="me_alerts">알림</string>
 
     <!-- The core did not open; the kind only, never the core's message. -->
     <string name="start_failure_title">그날어때를 열 수 없어요</string>
