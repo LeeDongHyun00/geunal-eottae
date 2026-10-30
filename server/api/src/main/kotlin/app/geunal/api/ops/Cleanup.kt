@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component
 /**
  * The periodic deletions of api-server.md §8 that M1 needs: queued objects every ten minutes, and once a day the backup
  * uploads nobody completed, the sessions past their expiry, spent or not (a spent refresh token is kept only that long
- * for reuse detection), and replacement tickets.
+ * for reuse detection), replacement tickets, and a deleted account's refresh hashes.
  */
 @Component
 class Cleanup(
@@ -52,6 +52,7 @@ class Cleanup(
         val abandoned = backups.dropAbandoned()
         val sessions = jdbc.sql("DELETE FROM sessions WHERE expires_at < now()").update()
         val tickets = jdbc.sql("DELETE FROM replace_tickets WHERE expires_at < now()").update()
+        jdbc.sql("DELETE FROM deleted_sessions WHERE expires_at < now()").update()
         log.info("dropped {} abandoned backup uploads, {} expired sessions and {} expired tickets", abandoned, sessions, tickets)
     }
 

@@ -32,3 +32,11 @@ CREATE TABLE provider_revocations (
   created_at       timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX ON provider_revocations (next_attempt_at);
+
+-- The refresh tokens of a deleted account's sessions, by SHA-256 and expiry only: until each would have expired it
+-- answers 401 account_deleted, so a device that lost the 204 finishes the deletion (protocol §13). Nothing here leads
+-- back to the account.
+CREATE TABLE deleted_sessions (
+  refresh_hash  bytea PRIMARY KEY,
+  expires_at    timestamptz NOT NULL
+);

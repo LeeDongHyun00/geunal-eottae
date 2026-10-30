@@ -9,7 +9,7 @@
 #   for a device revoked by a replacement also carries replaced_at (date-time), replaced_by (ios | android, the
 #   account's active device) and replaced_via (provider | recovery), so the old device can say when, where and how
 #   the account signed in (protocol §13).
-# - M1: once DELETE /me succeeds, a request with that account's access or refresh token answers 401 account_deleted
+# - Once DELETE /me succeeds, a request with that account's access or refresh token answers 401 account_deleted
 #   until the token would have expired (15 minutes, 30 days), so a device that lost the 204 finishes the deletion
 #   instead of taking it for an ended session (protocol §11, §13).
 # - Sign-in binding: the nonce handed to Kakao or Apple is lowercase hex SHA-256("geunal login v1" ‖ nonce ‖
@@ -263,7 +263,7 @@ paths:
             schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } }
       responses:
         "200": { content: { application/json: { schema: { $ref: "#/components/schemas/Tokens" } } } }
-        "401": { description: "token_expired (unknown, spent or expired refresh token); M1: account_deleted (the token's account was deleted)" }
+        "401": { description: "token_expired (unknown, spent or expired refresh token); account_deleted (the token's account was deleted)" }
         "403": { description: device_revoked }
 
   /.well-known/jwks.json:

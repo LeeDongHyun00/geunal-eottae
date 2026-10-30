@@ -132,6 +132,22 @@ class AccountRepository(
             .list()
             .toMap()
 
+    /** The account was deleted: its row is a placeholder, and its tokens answer 401 `account_deleted`. */
+    fun isDeleted(userId: UUID): Boolean =
+        jdbc
+            .sql("SELECT EXISTS (SELECT 1 FROM users WHERE id = :user AND deleted_at IS NOT NULL)")
+            .param("user", userId)
+            .query(Boolean::class.java)
+            .single()
+
+    /** A refresh token of a deleted account's session, before it would have expired. */
+    fun isDeletedSession(refreshHash: ByteArray): Boolean =
+        jdbc
+            .sql("SELECT EXISTS (SELECT 1 FROM deleted_sessions WHERE refresh_hash = :hash AND expires_at > now())")
+            .param("hash", refreshHash)
+            .query(Boolean::class.java)
+            .single()
+
     fun hasRecovery(userId: UUID): Boolean =
         jdbc
             .sql("SELECT EXISTS (SELECT 1 FROM recovery WHERE user_id = :user)")

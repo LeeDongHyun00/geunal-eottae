@@ -174,7 +174,7 @@ class AuthService(
                 .param("hash", hash)
                 .query(UUID::class.java)
                 .optional()
-                .orElse(null) ?: throw expired
+                .orElse(null) ?: throw if (accounts.isDeletedSession(hash)) accountDeleted() else expired
         devices.lock(deviceId)
         val rotated =
             jdbc

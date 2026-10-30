@@ -1,5 +1,6 @@
 package app.geunal.api.auth
 
+import app.geunal.api.ops.Cleanup
 import app.geunal.api.support.ApiTest
 import app.geunal.api.support.Client
 import app.geunal.api.support.FakeProviders
@@ -16,6 +17,9 @@ import java.util.UUID
 class AccountDeletionTests : ApiTest() {
     @Autowired
     lateinit var revocations: ProviderRevocations
+
+    @Autowired
+    lateinit var cleanup: Cleanup
 
     private fun guest(): Client {
         val device = Client(api, "guest-${UUID.randomUUID()}")
@@ -76,6 +80,7 @@ class AccountDeletionTests : ApiTest() {
             .param("id", account.userId)
             .update()
         val token = account.token
+        val refresh = account.refreshToken
 
         inbox(member.deviceId, account.deviceId).use { signals ->
             delete(account, guestProof(account, code)).expect(204)
@@ -117,7 +122,26 @@ class AccountDeletionTests : ApiTest() {
                 .values()
                 .map { it.path("author_id").stringValue() },
         ).contains(id.toString())
-        api.send(HttpMethod.GET, "/me", token = token).expectError(403, "device_revoked")
+        // A device that lost the 204 learns from its tokens that the deletion went through.
+        api.send(HttpMethod.GET, "/me", token = token).expectError(401, "account_deleted")
+        api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to refresh)).expectError(401, "account_deleted")
+        assertThat(count("SELECT count(*) FROM deleted_sessions WHERE refresh_hash = :id", AuthService.sha256(refresh))).isEqualTo(1)
+    }
+
+    @Test
+    fun `a deleted account's refresh token answers account_deleted only until it would have expired`() {
+        val account = guest()
+        val code = RecoveryCode().also { account.put("/me/recovery", it.upload()).expect(204) }
+        val refresh = account.refreshToken
+        delete(account, guestProof(account, code)).expect(204)
+        jdbc
+            .sql("UPDATE deleted_sessions SET expires_at = now() - interval '1 second' WHERE refresh_hash = :hash")
+            .param("hash", AuthService.sha256(refresh))
+            .update()
+
+        api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to refresh)).expectError(401, "token_expired")
+        cleanup.daily()
+        assertThat(count("SELECT count(*) FROM deleted_sessions WHERE refresh_hash = :id", AuthService.sha256(refresh))).isZero()
     }
 
     @Test

@@ -118,7 +118,10 @@ class AccountDeletion(
     private companion object {
         val DELETE_LABEL = "geunal delete v1".toByteArray(Charsets.US_ASCII)
 
-        /** In order; devices last but one, since their sessions, key packages and Welcomes go with them. */
+        /**
+         * In order; devices last but one, since their sessions, key packages and Welcomes go with them. The sessions'
+         * refresh hashes stay behind in `deleted_sessions` until they would have expired.
+         */
         val ERASE =
             listOf(
                 """
@@ -137,8 +140,17 @@ class AccountDeletion(
                 "DELETE FROM alpha_stats WHERE user_id = :user",
                 "DELETE FROM replace_tickets WHERE user_id = :user",
                 "DELETE FROM provider_links WHERE user_id = :user",
+                """
+                INSERT INTO deleted_sessions (refresh_hash, expires_at)
+                SELECT s.refresh_hash, s.expires_at FROM sessions s JOIN devices d ON d.id = s.device_id
+                WHERE d.user_id = :user AND s.expires_at > now()
+                ON CONFLICT (refresh_hash) DO NOTHING
+                """,
                 "DELETE FROM devices WHERE user_id = :user",
                 "UPDATE users SET display_name = NULL, age_confirmed_at = NULL, deleted_at = now() WHERE id = :user",
             )
     }
 }
+
+/** 401 `account_deleted` (protocol §11): the device treats it like the deletion's 204 and does not refresh. */
+fun accountDeleted() = ApiException(HttpStatus.UNAUTHORIZED, "account_deleted", "this account was deleted")
