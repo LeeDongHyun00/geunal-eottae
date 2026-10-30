@@ -6,9 +6,29 @@ import GeunalCore
 /// How the app opens the Rust core: the store under Application Support, the keychain as the secret store, and a
 /// listener that turns changes into a stream (docs/parts/ios.md §3).
 enum AppCore {
-    /// The API server. The local stack from `make up` publishes it here (README.md); the alpha server comes with its
-    /// deployment.
-    static let apiBase = ProcessInfo.processInfo.environment["GEUNAL_API_BASE"] ?? "http://127.0.0.1:8080"
+    /// The API server. A device or TestFlight build starts without Xcode's environment, so the address it needs comes
+    /// in at build time: `GEUNAL_API_BASE` in Config/Secrets.xcconfig fills the `GeunalAPIBase` Info.plist entry.
+    static let apiBase = resolveAPIBase(
+        environment: ProcessInfo.processInfo.environment, info: Bundle.main.infoDictionary ?? [:],
+        fallback: defaultAPIBase)
+
+    /// Debug builds talk to the local stack that `make up` publishes (README.md). A release build has no server until
+    /// it is given one: like Android's, the calendar works and every call fails.
+    static var defaultAPIBase: String {
+        #if DEBUG
+            return "http://127.0.0.1:8080"
+        #else
+            return ""
+        #endif
+    }
+
+    /// The first address that is set: the `GEUNAL_API_BASE` environment variable, with which a scheme or a UI test
+    /// points the simulator elsewhere, then the `GeunalAPIBase` Info.plist entry, then `fallback`. An empty value
+    /// counts as unset, because Info.plist gets an empty string from a build that has no address.
+    static func resolveAPIBase(environment: [String: String], info: [String: Any], fallback: String) -> String {
+        let candidates = [environment["GEUNAL_API_BASE"], info["GeunalAPIBase"] as? String]
+        return candidates.compactMap { $0 }.first { !$0.isEmpty } ?? fallback
+    }
 
     /// Kept for the life of the process: the core holds it, and the app reads its stream.
     static let listener = ChangeStreamListener()
