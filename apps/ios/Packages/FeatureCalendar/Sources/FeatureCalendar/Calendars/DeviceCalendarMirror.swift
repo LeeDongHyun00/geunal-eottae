@@ -53,6 +53,9 @@ public final class DeviceCalendarMirror {
     @ObservationIgnored private let core: any CoreProtocol
     @ObservationIgnored private let source: any DeviceCalendarSource
     @ObservationIgnored private let coalescer = Coalescer()
+    /// What the core holds since this model last wrote it: coming to the front reads the phone again, and an unchanged
+    /// phone writes nothing, so the views and the alerts are not read again for nothing.
+    @ObservationIgnored private var written: [DeviceCalendarInput]?
 
     public init(core: any CoreProtocol, source: any DeviceCalendarSource) {
         self.core = core
@@ -157,9 +160,14 @@ public final class DeviceCalendarMirror {
         isWorking = true
         defer { isWorking = false }
         let inputs = ids.isEmpty ? [] : await source.read(ids)
+        if inputs == written {
+            failed = false
+            return true
+        }
         let core = self.core
         do {
             _ = try await offMain { try core.mirrorDeviceCalendars(calendars: inputs) }
+            written = inputs
             failed = false
             return true
         } catch {

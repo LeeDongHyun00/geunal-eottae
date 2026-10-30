@@ -153,6 +153,49 @@ final class DeviceCalendarMirrorTests: XCTestCase {
         XCTAssertEqual(try mirroredNames(core), ["회사": 3])
     }
 
+    /// Counts the mirror's writes over a store of its own.
+    private final class CountingCore: Core, @unchecked Sendable {
+        private(set) var writes = 0
+        private var mirrored: [DeviceCalendarInput] = []
+
+        init() {
+            super.init(noHandle: Core.NoHandle())
+        }
+
+        required init(unsafeFromHandle handle: UInt64) {
+            fatalError("a fake core never comes from Rust")
+        }
+
+        override func calendars() throws -> [CalendarView] {
+            mirrored.map {
+                CalendarView(
+                    id: "device:" + $0.sourceId, name: $0.name, color: nil, kind: .device, soft: false, visible: true,
+                    defaultAlert: .inherit, eventCount: UInt32($0.events.count), shiftTemplateCount: 0)
+            }
+        }
+
+        override func mirrorDeviceCalendars(calendars: [DeviceCalendarInput]) throws -> DeviceMirror {
+            writes += 1
+            mirrored = calendars
+            return DeviceMirror(calendars: UInt32(calendars.count), events: 0)
+        }
+    }
+
+    func testRefreshWritesNothingWhileThePhoneIsUnchanged() async {
+        let core = CountingCore()
+        let phone = phone()
+        let mirror = DeviceCalendarMirror(core: core, source: phone)
+        _ = await mirror.importAll()
+
+        await mirror.refresh()
+        await mirror.refresh()
+        XCTAssertEqual(core.writes, 1)
+
+        phone.phone[1] = calendar("family", "가족", events: ["제사", "생신"])
+        await mirror.refresh()
+        XCTAssertEqual(core.writes, 2)
+    }
+
     func testRefreshLeavesAMirrorThatIsOffAlone() async throws {
         let core = try makeCore()
         let phone = phone()
