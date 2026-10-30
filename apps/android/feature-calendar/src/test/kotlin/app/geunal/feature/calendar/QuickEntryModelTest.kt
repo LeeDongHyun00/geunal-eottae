@@ -87,4 +87,28 @@ class QuickEntryModelTest {
             assertEquals(Frequency.WEEKLY, input.recurrence?.frequency)
             assertEquals(1.toUShort(), input.recurrence?.interval)
         }
+
+    @Test
+    fun handsWhatIsTypedToTheEditor() =
+        runTest(dispatcher) {
+            val model = model()
+            model.load()
+
+            // Nothing typed yet is still something to finish in the editor.
+            assertEquals("", model.draft().title)
+            assertTrue(model.draft().allDay)
+
+            model.setTitle(" 스터디 ")
+            model.setRange(18..21)
+            model.setCalendar("c2")
+            model.setRepeat(QuickEntryModel.Repeat.WEEKLY)
+            val draft = model.draft()
+
+            assertEquals("스터디", draft.title)
+            assertEquals("c2", draft.calendarId)
+            assertFalse(draft.allDay)
+            assertEquals(DayTime("2026-10-30", 540u), draft.start)
+            assertEquals(DayTime("2026-10-30", 660u), draft.end)
+            assertEquals(Frequency.WEEKLY, draft.recurrence?.frequency)
+        }
 }

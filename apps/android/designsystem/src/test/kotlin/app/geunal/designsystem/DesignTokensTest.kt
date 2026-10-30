@@ -162,6 +162,17 @@ class DesignTokensTest {
     }
 
     @Test
+    fun groupColorNamesMatch() {
+        // Unit tests run in the module's directory.
+        val xml = File("src/main/res/values/strings.xml").readText()
+        val array = Regex("""<string-array name="ds_group_color_names">(.*?)</string-array>""", RegexOption.DOT_MATCHES_ALL).find(xml)!!
+        val names = Regex("""<item>([^<]*)</item>""").findAll(array.groupValues[1]).map { it.groupValues[1] }.toList()
+        val groups = at("color.group").jsonObject
+        assertEquals(GroupColors.map { text("color.group.${it.name}.name") }, names)
+        assertEquals(groups.size, names.size)
+    }
+
+    @Test
     fun sheetScrimMatches() {
         // rgba(10,10,14,0.32)
         val parts = Regex("""rgba\((\d+),(\d+),(\d+),([\d.]+)\)""").matchEntire(text("sheet.scrim"))!!.groupValues

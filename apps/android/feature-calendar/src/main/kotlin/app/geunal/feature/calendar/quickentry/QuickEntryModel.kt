@@ -105,10 +105,14 @@ class QuickEntryModel(
     }
 
     /** What "저장" saves, or `null` while the title is empty. */
-    fun typedEvent(): EventInput? {
+    fun typedEvent(): EventInput? = if (_state.value.canSave) draft() else null
+
+    /**
+     * What "자세히" hands to the editor: the typed title (or none yet), the range or all day, the calendar and the
+     * repeat rule. An empty calendar id leaves the choice to the editor, which takes the first own calendar.
+     */
+    fun draft(): EventInput {
         val current = _state.value
-        val calendar = current.selectedCalendar ?: return null
-        if (!current.canSave) return null
         val range = current.range
         val (start, end) =
             if (range != null) {
@@ -117,7 +121,7 @@ class QuickEntryModel(
                 DayTime(day, 0u) to DayTime(day, 0u)
             }
         return EventInput(
-            calendarId = calendar.id,
+            calendarId = current.selectedCalendar?.id.orEmpty(),
             title = current.trimmedTitle,
             allDay = range == null,
             start = start,

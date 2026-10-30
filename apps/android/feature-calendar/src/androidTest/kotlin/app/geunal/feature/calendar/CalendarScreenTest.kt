@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
@@ -15,6 +16,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performCustomAccessibilityActionWithLabel
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -24,6 +26,7 @@ import app.geunal.core.AddedEvent
 import app.geunal.core.AlertRule
 import app.geunal.core.DayTime
 import app.geunal.core.EventInput
+import app.geunal.core.LeaveBridge
 import app.geunal.core.RepeatHint
 import app.geunal.core.Suggestion
 import app.geunal.core.SuggestionSource
@@ -33,6 +36,7 @@ import app.geunal.designsystem.components.ProposalHost
 import app.geunal.designsystem.components.ToastCenter
 import app.geunal.designsystem.components.ToastHost
 import app.geunal.designsystem.components.ToastStyle
+import app.geunal.feature.calendar.editor.EditorTarget
 import app.geunal.feature.calendar.quickentry.ResourceEventTexts
 import app.geunal.feature.calendar.screen.CalendarScreen
 import app.geunal.feature.calendar.screen.CalendarViewKind
@@ -42,6 +46,7 @@ import app.geunal.feature.calendar.testing.CalendarFakeCore
 import app.geunal.feature.calendar.testing.Samples
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.emptyFlow
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -98,6 +103,10 @@ class CalendarScreenTest {
 
     private val toasts = ToastCenter(MainScope())
 
+    /** What the screen asked to open over the tabs. */
+    private val edits = mutableListOf<EditorTarget>()
+    private val stamps = mutableListOf<String>()
+
     private class MemoryStore : ViewKindStore {
         var saved = CalendarViewKind.MONTH
 
@@ -123,7 +132,7 @@ class CalendarScreenTest {
         compose.setContent {
             GeunalTheme {
                 Box(Modifier.fillMaxSize()) {
-                    CalendarScreen(model = model)
+                    CalendarScreen(model = model, onEdit = { edits += it }, onStamp = { stamps += it })
                     // Where the tabs put them: the card 8 above the toast, the toast in the next-up bar's place.
                     Column(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp)) {
                         ProposalHost(center = toasts, modifier = Modifier.padding(bottom = 8.dp))
@@ -170,9 +179,10 @@ class CalendarScreenTest {
     fun savesATypedTitleOverAnHourPickedOnTheStrip() {
         core.added = Result.success(AddedEvent("e10", null))
         show()
-        compose.waitForTag("calendar.add")
+        compose.waitForTag("month.day.2026-10-26")
 
-        compose.onNodeWithTag("calendar.add").performClick()
+        // Below the day's bar: the bar opens its event in the editor, the rest of the day the quick entry.
+        compose.onNodeWithTag("month.day.2026-10-26").performTouchInput { click(percentOffset(0.5f, 0.9f)) }
         compose.waitForTag("quickEntry.strip")
         // The strip before the title: the keyboard the title brings up shrinks the sheet, which can scroll the strip out
         // of view. A tap at 39% of the strip lands in the 09:30 slot and takes the hour from 09:00.
@@ -182,6 +192,52 @@ class CalendarScreenTest {
         compose.waitForText("스터디를 추가했어요")
 
         assertTrue(core.calls.toString(), "add 스터디 2026-10-26 540-600" in core.calls)
+    }
+
+    // The custom-action helper is still marked experimental; it is how TalkBack reaches a day's events.
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun opensTheEditorAndTheShiftStampFromEachView() {
+        core.leaveBridges = mapOf("2026-10-02" to LeaveBridge("2026-10-02", "2026-10-02", "2026-10-05", 4u))
+        show()
+        compose.waitForTag("month.day.2026-10-29")
+
+        // ＋ is a menu: a new event today, or the shift stamp screen on the month on screen.
+        compose.onNodeWithTag("calendar.add").performClick()
+        compose.onNodeWithTag("calendar.add.event").performClick()
+        compose.onNodeWithTag("calendar.add").performClick()
+        compose.onNodeWithTag("calendar.add.shifts").performClick()
+        assertEquals(EditorTarget.New("2026-10-26"), edits.removeAt(0))
+        assertEquals(listOf("2026-10"), stamps)
+
+        // A day is one button for TalkBack; its events and the leave mark are its actions.
+        compose.onNodeWithTag("month.day.2026-10-29").performCustomAccessibilityActionWithLabel("치과")
+        assertEquals(EditorTarget.Existing("e5", null), edits.removeAt(0))
+        compose.onNodeWithTag("month.day.2026-10-02").performCustomAccessibilityActionWithLabel("연차 넣기")
+        val leave = edits.removeAt(0) as EditorTarget.New
+        assertEquals("2026-10-02", leave.day)
+        assertEquals("연차", leave.input?.title)
+        assertTrue(leave.input!!.allDay)
+
+        // "자세히" hands what is typed to the editor.
+        compose.onNodeWithTag("month.day.2026-10-30").performClick()
+        compose.waitForTag("quickEntry.title")
+        compose.onNodeWithTag("quickEntry.title").performTextInput("스터디")
+        compose.onNodeWithTag("quickEntry.more").performClick()
+        val more = edits.removeAt(0) as EditorTarget.New
+        assertEquals("2026-10-30", more.day)
+        assertEquals("스터디", more.input?.title)
+
+        segment("주").performClick()
+        compose.waitForTag("week.event.e5")
+        compose.onNodeWithTag("week.event.e5").performClick()
+        assertEquals(EditorTarget.Existing("e5", null), edits.removeAt(0))
+
+        segment("목록").performClick()
+        compose.waitForTag("agenda.event.e5")
+        compose.onNodeWithTag("agenda.event.e5").performClick()
+        assertEquals(EditorTarget.Existing("e5", null), edits.removeAt(0))
+        assertTrue(edits.toString(), edits.isEmpty())
     }
 
     private fun segment(label: String) = compose.onNode(hasText(label) and hasAnyAncestor(hasTestTag("calendar.segment")))
