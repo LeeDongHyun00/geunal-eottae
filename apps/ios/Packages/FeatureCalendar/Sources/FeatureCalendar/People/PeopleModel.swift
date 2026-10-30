@@ -43,9 +43,25 @@ public final class PeopleModel {
         people.first { $0.id == id }
     }
 
+    /// Whether the Korean day moved on since `day`: the 30-day window and the D-days count from today.
+    public func isNewDay(since day: String) -> Bool {
+        today != day
+    }
+
     /// Any part of the name, ignoring case and width: "민" finds 민수 and 김민지.
     private func matches(_ person: Person) -> Bool {
         let query = self.query.trimmingCharacters(in: .whitespaces)
         return query.isEmpty || person.name.localizedStandardContains(query)
+    }
+}
+
+/// A person to open in 사람·생일, once per request: tapping the same birthday again is a new request, which a route
+/// holding only the person's id would not tell apart from the one already on screen.
+public struct PersonFocus: Hashable, Sendable {
+    public let personId: String
+    private let request = UUID()
+
+    public init(personId: String) {
+        self.personId = personId
     }
 }

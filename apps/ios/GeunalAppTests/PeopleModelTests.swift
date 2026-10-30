@@ -125,6 +125,42 @@ final class PeopleModelTests: XCTestCase {
         XCTAssertEqual(PeopleText.birthday(try XCTUnwrap(saved.birthday)), "음력 10월 3일")
     }
 
+    func testSaysThisSolarYearsDayForABirthdayLateInTheLunarYear() async throws {
+        let core = try makeCore()
+        let model = PersonEditModel(core: core, now: { [boardDay] in boardDay })
+        model.setKind(.lunar)
+        model.setMonth(12)
+        model.setDay(3)
+
+        await model.refreshNote()
+
+        // Lunar 2026's twelfth month runs into January 2027; this solar year's 12/3 is lunar 2025's.
+        XCTAssertEqual(try core.birthdayInYear(birthday: try XCTUnwrap(model.birthday), year: 2026), "2027-01-10")
+        XCTAssertEqual(model.solarThisYear, "2026-01-21")
+    }
+
+    func testPicksTheComingDayWhenALunarBirthdayFallsTwiceInTheSolarYear() {
+        XCTAssertEqual(
+            PersonEditModel.solarDay(in: 2026, of: ["2026-01-02", "2026-12-22"], today: "2026-10-26"), "2026-12-22")
+        XCTAssertEqual(
+            PersonEditModel.solarDay(in: 2026, of: ["2026-01-02", "2027-01-10"], today: "2026-10-26"), "2026-01-02")
+        XCTAssertNil(PersonEditModel.solarDay(in: 2026, of: ["2027-01-10"], today: "2026-10-26"))
+    }
+
+    func testTellsANewDayAndEachFocusRequestApart() {
+        final class Clock: @unchecked Sendable {
+            var now = Date(timeIntervalSince1970: 1_793_011_200)  // 2026-10-26 19:40 in Korea
+        }
+        let clock = Clock()
+        let model = PeopleModel(core: FakeCore(), now: { clock.now })
+        let day = model.today
+        XCTAssertFalse(model.isNewDay(since: day))
+        clock.now += 10 * 3600
+        XCTAssertTrue(model.isNewDay(since: day))
+
+        XCTAssertNotEqual(PersonFocus(personId: "p1"), PersonFocus(personId: "p1"))
+    }
+
     func testFitsTheDayToTheMonthAndKeepsTheTwentyNinthOfFebruary() throws {
         let model = PersonEditModel(core: try makeCore())
 

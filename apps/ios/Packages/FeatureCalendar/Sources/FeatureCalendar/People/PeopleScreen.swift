@@ -1,6 +1,7 @@
 import DesignSystem
 import GeunalCore
 import SwiftUI
+import UIKit
 
 /// 사람·생일 (m1.md screen 11, boards/People): the name search, the birthdays of the next 30 days with their D-day and
 /// where they came from, everyone by name, and the contacts import with its note. A person opens screen 17.
@@ -21,16 +22,22 @@ public struct PeopleScreen: View {
 
     @State private var model: PeopleModel
     @State private var sheet: Sheet?
-    @State private var focused = false
+    /// The focus request whose sheet already opened, so coming back to the screen does not open it again.
+    @State private var handled: PersonFocus?
+    /// The Korean day the list was read for; the window and the D-days move at midnight.
+    @State private var shownDay: String
+    @Environment(\.scenePhase) private var scenePhase
     private let core: any CoreProtocol
     private let contacts: any ContactBook
     private let toasts: ToastCenter
-    private let focus: String?
+    private let focus: PersonFocus?
 
     /// `focus` opens that person's sheet once the list is in: a birthday on the next-up bar or in an alert leads to
-    /// the person (m1.md §2.6).
-    public init(core: any CoreProtocol, contacts: any ContactBook, toasts: ToastCenter, focus: String? = nil) {
-        _model = State(initialValue: PeopleModel(core: core))
+    /// the person (m1.md §2.6). Each request opens it once.
+    public init(core: any CoreProtocol, contacts: any ContactBook, toasts: ToastCenter, focus: PersonFocus? = nil) {
+        let model = PeopleModel(core: core)
+        _model = State(initialValue: model)
+        _shownDay = State(initialValue: model.today)
         self.core = core
         self.contacts = contacts
         self.toasts = toasts
@@ -98,12 +105,21 @@ public struct PeopleScreen: View {
                 .accessibilityIdentifier("people.add")
             }
         }
-        .task {
+        .task(id: focus) {
             await model.load()
-            if !focused, let focus, let person = model.person(focus) {
-                focused = true
+            if let focus, focus != handled, let person = model.person(focus.personId) {
+                handled = focus
                 sheet = .edit(person)
             }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                readAgainOnANewDay()
+            }
+        }
+        // Midnight while the app is in front.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            readAgainOnANewDay()
         }
         .sheet(item: $sheet, onDismiss: { Task { await model.load() } }) { sheet in
             switch sheet {
@@ -213,6 +229,12 @@ public struct PeopleScreen: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private func readAgainOnANewDay() {
+        guard model.isNewDay(since: shownDay) else { return }
+        shownDay = model.today
+        Task { await model.load() }
     }
 }
 

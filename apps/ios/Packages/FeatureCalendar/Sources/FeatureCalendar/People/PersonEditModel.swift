@@ -123,11 +123,23 @@ public final class PersonEditModel {
             return
         }
         let core = self.core
-        let year = Int32(thisYear)
-        let solar = (try? await offMain { try core.birthdayInYear(birthday: birthday, year: year) }) ?? nil
+        let year = thisYear
+        // The core reads the year as a lunar one, and a birthday late in the lunar year falls in the next solar year:
+        // this solar year's day comes from last lunar year or this one.
+        let days =
+            (try? await offMain {
+                try [year - 1, year].compactMap { try core.birthdayInYear(birthday: birthday, year: Int32($0)) }
+            }) ?? []
         // The person may have picked another date while the core looked.
         guard birthday == self.birthday else { return }
-        solarThisYear = solar
+        solarThisYear = Self.solarDay(in: year, of: days, today: KoreanCalendar.day(of: now()))
+    }
+
+    /// The day in solar year `year`: the coming one when a lunar birthday falls twice in it (early January and late
+    /// December), else the one there is.
+    public static func solarDay(in year: Int, of days: [String], today: String) -> String? {
+        let inYear = days.filter { KoreanCalendar.parse($0)?.year == year }.sorted()
+        return inYear.first { $0 >= today } ?? inYear.last
     }
 
     /// The person's id, or `nil` when the core refused.

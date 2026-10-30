@@ -7,7 +7,7 @@ import SwiftUI
 /// deletion) follows with those screens.
 struct MeTab: View {
     private enum Route: Hashable {
-        case people(focus: String?)
+        case people(focus: PersonFocus?)
         #if DEBUG
             case coreStatus
         #endif
@@ -68,7 +68,7 @@ struct MeTab: View {
         }
         .onChange(of: openPerson, initial: true) { _, id in
             guard let id else { return }
-            path = [.people(focus: id)]
+            path = [.people(focus: PersonFocus(personId: id))]
             openPerson = nil
         }
     }
