@@ -95,6 +95,15 @@ pub(crate) fn revoked_error() -> CoreError {
     CoreError::Api { status: 403, code: "device_revoked".into(), detail: String::new() }
 }
 
+/// What a call answers when the server says the session's account was deleted (protocol §13 "답을 잃은 삭제"): the
+/// device has finished the deletion as on the 204, and the app shows the signed-out start.
+pub(crate) fn account_deleted_error() -> CoreError {
+    CoreError::Api { status: 401, code: ACCOUNT_DELETED.into(), detail: String::new() }
+}
+
+/// 401 for a token whose account was deleted: the device treats it as the deletion's 204 and does not refresh.
+pub(crate) const ACCOUNT_DELETED: &str = "account_deleted";
+
 impl From<ApiError> for CoreError {
     fn from(e: ApiError) -> Self {
         CoreError::from(SyncError::Api(e))
@@ -738,7 +747,7 @@ impl Core {
     }
 
     /// One engine operation at a time, under the state lock. A 403 `device_revoked` on the way signs this device out
-    /// (protocol §13 "기기 해제").
+    /// (protocol §13 "기기 해제"), and a 401 `account_deleted` finishes a deletion whose answer was lost.
     async fn engine<R>(&self, f: EngineOp<'_, R>) -> Result<R, CoreError> {
         let mut state = self.state.lock().await;
         let State::SignedIn(engine) = &mut *state else { return Err(CoreError::NotSignedIn) };
@@ -748,6 +757,12 @@ impl Core {
                 drop(state);
                 self.signed_out_by_another(replaced).await?;
                 Err(revoked_error())
+            }
+            Err(SyncError::Api(e)) if e.is(401, ACCOUNT_DELETED) => {
+                *state = State::SignedOut;
+                drop(state);
+                self.account_deleted().await?;
+                Err(account_deleted_error())
             }
             other => other.map_err(CoreError::from),
         }

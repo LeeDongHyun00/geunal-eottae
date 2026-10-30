@@ -11,7 +11,7 @@ use geunal_ffi::{
     SecretStore,
 };
 use geunal_sync::fake::FakeServer;
-use phones::{MemorySecrets, Quiet, kakao, keys_of, new_account, phone, user_id};
+use phones::{MemorySecrets, Quiet, kakao, kakao_deletion, keys_of, new_account, phone, user_id};
 
 #[test]
 fn a_kakao_sign_in_makes_the_account_and_uploads_the_code_it_shows() {
@@ -183,6 +183,61 @@ fn a_guest_deletes_with_its_code_once_the_material_the_server_lacked_goes_up() {
         a.core.clone().delete_account(DeletionProof::Guest).await.unwrap();
         assert!(!server.has_account(&session.user_id));
         assert!(a.core.session().is_none() && !a.secrets.has("recovery_entropy"));
+    });
+}
+
+#[test]
+fn a_deletion_whose_answer_was_lost_finishes_when_tried_again() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let a = phone(&server);
+        let user = user_id(&kakao(&a.core, "erin", "에린").await.unwrap());
+        a.core.set_alpha_stats(true).unwrap();
+
+        // The server deletes the account, and the answer never comes back.
+        server.lose_next("delete_account");
+        let lost = a.core.clone().delete_account(kakao_deletion(&a.core, "erin").await).await;
+        assert!(matches!(lost, Err(CoreError::Network { .. })), "{lost:?}");
+        assert!(!server.has_account(&user));
+        assert!(a.core.session().is_some(), "the phone does not know yet");
+
+        // The same tokens now get 401 account_deleted, which finishes the deletion as the 204 would have.
+        a.core.clone().delete_account(kakao_deletion(&a.core, "erin").await).await.unwrap();
+        assert!(a.core.session().is_none() && a.core.revocation().unwrap().is_none());
+        for secret in ["session", "device_signing_key", "recovery_entropy", "account_master_key"] {
+            assert!(!a.secrets.has(secret), "{secret} is gone");
+        }
+        assert!(!a.core.alpha_stats_enabled().unwrap());
+    });
+}
+
+#[test]
+fn a_deleted_accounts_tokens_finish_the_deletion_until_they_would_have_run_out() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let t0 = chrono::Utc::now();
+        server.set_now(t0);
+        let (a, b) = (phone(&server), phone(&server));
+        kakao(&a.core, "finn", "핀").await.unwrap();
+        kakao(&b.core, "gail", "게일").await.unwrap();
+        for (phone, subject) in [(&a, "finn"), (&b, "gail")] {
+            server.lose_next("delete_account");
+            assert!(phone.core.clone().delete_account(kakao_deletion(&phone.core, subject).await).await.is_err());
+        }
+
+        // Past the access token's 15 minutes the transport refreshes, and the refresh token answers the same: any
+        // call finishes the deletion and says so.
+        server.set_now(t0 + chrono::Duration::minutes(20));
+        let error = a.core.clone().sync().await.unwrap_err();
+        assert!(matches!(&error, CoreError::Api { status: 401, code, .. } if code == "account_deleted"), "{error:?}");
+        assert!(a.core.session().is_none() && !a.secrets.has("device_signing_key"));
+        a.core.clone().sync().await.unwrap();
+
+        // After 30 days the server cannot tell any more, and a session that merely ended is no deletion.
+        server.set_now(t0 + chrono::Duration::days(31));
+        let error = b.core.clone().sync().await.unwrap_err();
+        assert!(matches!(&error, CoreError::Api { status: 401, code, .. } if code == "token_expired"), "{error:?}");
+        assert!(b.core.session().is_some() && b.secrets.has("device_signing_key"));
     });
 }
 

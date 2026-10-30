@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use geunal_crypto::recovery::{self, RecoveryKeys};
-use geunal_ffi::{AuthResult, Change, Core, CoreError, CoreListener, NewAccount, SecretStore};
+use geunal_ffi::{AuthResult, Change, Core, CoreError, CoreListener, DeletionProof, NewAccount, SecretStore};
 use geunal_sync::fake::FakeServer;
 
 #[derive(Default)]
@@ -61,6 +61,12 @@ pub async fn kakao(core: &Arc<Core>, subject: &str, name: &str) -> Result<AuthRe
     let nonce = core.clone().sign_in_nonce().await?;
     let id_token = FakeServer::id_token("kakao", subject, &nonce.provider_nonce);
     core.clone().sign_in_kakao(nonce.nonce, id_token, new_account(name)).await
+}
+
+/// A fresh Kakao proof for `delete_account`, as the app gets one from the Kakao SDK.
+pub async fn kakao_deletion(core: &Arc<Core>, subject: &str) -> DeletionProof {
+    let nonce = core.clone().sign_in_nonce().await.unwrap();
+    DeletionProof::Kakao { id_token: FakeServer::id_token("kakao", subject, &nonce.provider_nonce), nonce: nonce.nonce }
 }
 
 /// The keys the words on screen derive: the uploaded recovery material must be theirs.

@@ -117,6 +117,10 @@ struct State {
     /// Access tokens past their 15 minutes.
     expired: std::collections::BTreeSet<String>,
     refresh: BTreeMap<String, Refresh>,
+    /// A deleted account's access and refresh tokens, until they would have run out (15 minutes, 30 days): they get
+    /// 401 `account_deleted` (protocol §13 "답을 잃은 삭제").
+    deleted_access: BTreeMap<String, DateTime<Utc>>,
+    deleted_refresh: BTreeMap<String, DateTime<Utc>>,
     tickets: BTreeMap<String, Ticket>,
     nonces: std::collections::BTreeSet<String>,
     groups: BTreeMap<String, Group>,
@@ -522,6 +526,18 @@ impl FakeClient {
     fn who(&self) -> Result<(String, String), ApiError> {
         let mut session = self.session.lock().ok().and_then(|s| s.clone()).ok_or_else(|| err(401, "token_expired"))?;
         let mut state = self.lock();
+        if state.deleted_access.contains_key(&session.access_token) {
+            // The access token answers so for its 15 minutes; past them, the refresh the transport tries next meets
+            // the refresh token, which does for 30 days.
+            let now = state.now();
+            let live = |until: Option<&DateTime<Utc>>| until.is_some_and(|until| *until > now);
+            let access =
+                live(state.deleted_access.get(&session.access_token)) && !state.expired.contains(&session.access_token);
+            if access || live(state.deleted_refresh.get(&session.refresh_token)) {
+                return Err(err(401, "account_deleted"));
+            }
+            return Err(err(401, "token_expired"));
+        }
         if !state.tokens.contains_key(&session.access_token) {
             return Err(err(401, "token_expired"));
         }
@@ -928,9 +944,17 @@ impl Transport for FakeClient {
             return Err(err(403, "reauth_required"));
         }
         // One transaction: the account with its device, sessions, recovery material, backups, memberships and alpha
-        // counts. The members left in its groups hear of the membership change.
+        // counts. The members left in its groups hear of the membership change. The sessions' tokens are kept apart
+        // until they would have run out, so a device that lost this answer learns of the deletion.
         state.users.remove(&user);
         state.subjects.retain(|_, u| *u != user);
+        let now = state.now();
+        let access: Vec<String> =
+            state.tokens.iter().filter(|(_, (u, _))| *u == user).map(|(token, _)| token.clone()).collect();
+        let refresh: Vec<String> =
+            state.refresh.iter().filter(|(_, r)| r.user_id == user).map(|(token, _)| token.clone()).collect();
+        state.deleted_access.extend(access.into_iter().map(|token| (token, now + Duration::minutes(15))));
+        state.deleted_refresh.extend(refresh.into_iter().map(|token| (token, now + Duration::days(30))));
         state.tokens.retain(|_, (u, _)| *u != user);
         state.refresh.retain(|_, r| r.user_id != user);
         state.tickets.retain(|_, t| t.user_id != user);
