@@ -117,8 +117,10 @@ struct State {
     /// Access tokens past their 15 minutes.
     expired: std::collections::BTreeSet<String>,
     refresh: BTreeMap<String, Refresh>,
-    /// A deleted account's access and refresh tokens, until they would have run out (15 minutes, 30 days): they get
-    /// 401 `account_deleted` (protocol §13 "답을 잃은 삭제").
+    /// When each access and refresh token was handed out, which is when its 15 minutes or 30 days start.
+    issued: BTreeMap<String, DateTime<Utc>>,
+    /// A deleted account's access and refresh tokens, until they would have run out: they get 401 `account_deleted`
+    /// (protocol §13 "답을 잃은 삭제").
     deleted_access: BTreeMap<String, DateTime<Utc>>,
     deleted_refresh: BTreeMap<String, DateTime<Utc>>,
     tickets: BTreeMap<String, Ticket>,
@@ -263,6 +265,9 @@ impl State {
         let recovery = self.users.get(user_id).is_some_and(|u| u.recovery.is_some());
         let access_token = self.next_id("tok-");
         let refresh_token = self.next_id("refresh-");
+        let issued = self.now();
+        self.issued.insert(access_token.clone(), issued);
+        self.issued.insert(refresh_token.clone(), issued);
         self.tokens.insert(access_token.clone(), (user_id.to_owned(), device_id.clone()));
         self.refresh.insert(
             refresh_token.clone(),
@@ -554,6 +559,9 @@ impl FakeClient {
             let (user_id, device_id) = (refresh.user_id.clone(), refresh.device_id.clone());
             let access_token = state.next_id("tok-");
             let refresh_token = state.next_id("refresh-");
+            let issued = state.now();
+            state.issued.insert(access_token.clone(), issued);
+            state.issued.insert(refresh_token.clone(), issued);
             state.tokens.insert(access_token.clone(), (user_id.clone(), device_id.clone()));
             state.refresh.insert(
                 refresh_token.clone(),
@@ -948,13 +956,23 @@ impl Transport for FakeClient {
         // until they would have run out, so a device that lost this answer learns of the deletion.
         state.users.remove(&user);
         state.subjects.retain(|_, u| *u != user);
+        // Until each token's own end, counted from when it was handed out, not from the deletion.
         let now = state.now();
-        let access: Vec<String> =
-            state.tokens.iter().filter(|(_, (u, _))| *u == user).map(|(token, _)| token.clone()).collect();
-        let refresh: Vec<String> =
-            state.refresh.iter().filter(|(_, r)| r.user_id == user).map(|(token, _)| token.clone()).collect();
-        state.deleted_access.extend(access.into_iter().map(|token| (token, now + Duration::minutes(15))));
-        state.deleted_refresh.extend(refresh.into_iter().map(|token| (token, now + Duration::days(30))));
+        let ends = |token: &String, life: Duration| state.issued.get(token).copied().unwrap_or(now) + life;
+        let access: Vec<(String, DateTime<Utc>)> = state
+            .tokens
+            .iter()
+            .filter(|(_, (u, _))| *u == user)
+            .map(|(token, _)| (token.clone(), ends(token, Duration::minutes(15))))
+            .collect();
+        let refresh: Vec<(String, DateTime<Utc>)> = state
+            .refresh
+            .iter()
+            .filter(|(_, r)| r.user_id == user)
+            .map(|(token, _)| (token.clone(), ends(token, Duration::days(30))))
+            .collect();
+        state.deleted_access.extend(access);
+        state.deleted_refresh.extend(refresh);
         state.tokens.retain(|_, (u, _)| *u != user);
         state.refresh.retain(|_, r| r.user_id != user);
         state.tickets.retain(|_, t| t.user_id != user);

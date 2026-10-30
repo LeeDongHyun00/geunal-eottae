@@ -264,11 +264,14 @@ fn a_deleted_accounts_tokens_read_as_expired_once_they_would_have_run_out() {
         server.set_now(t0);
         let a = phone(&server);
         kakao(&a.core, "hugo", "휴고").await.unwrap();
+        // Signed in at t0, the account is deleted ten minutes later and the answer is lost.
+        server.set_now(t0 + chrono::Duration::minutes(10));
         server.lose_next("delete_account");
         assert!(a.core.clone().delete_account(kakao_deletion(&a.core, "hugo").await).await.is_err());
 
-        // After 30 days the server cannot tell any more, and a session that merely ended is no deletion.
-        server.set_now(t0 + chrono::Duration::days(31));
+        // The refresh token handed out at t0 ends 30 days on, whenever the deletion came. Past that the server cannot
+        // tell any more, and a session that merely ended is no deletion.
+        server.set_now(t0 + chrono::Duration::days(30) + chrono::Duration::minutes(5));
         let error = a.core.clone().sync().await.unwrap_err();
         assert!(matches!(&error, CoreError::Api { status: 401, code, .. } if code == "token_expired"), "{error:?}");
         assert!(a.core.session().is_some() && a.secrets.has("device_signing_key"));
