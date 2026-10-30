@@ -27,8 +27,8 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::calendar::ensure_default_calendar;
 use crate::local::{changes, day_text, kst_day, parse_stored, stored_utc, system_time};
 use crate::{
-    Change, Core, CoreError, KEY_PACKAGES, SESSION, SIGNING_KEY, STORE_RESET, Session, State, build_engine,
-    revoked_error, signing_secret,
+    ACCOUNT_DELETED, Change, Core, CoreError, KEY_PACKAGES, SESSION, SIGNING_KEY, STORE_RESET, Session, State,
+    account_deleted_error, build_engine, revoked_error, signing_secret,
 };
 
 // The code's entropy and the master key live in the app's secret store; what follows the code on this device lives in
@@ -531,6 +531,9 @@ impl Core {
     /// A guest's recovery material that never reached the server (409 `recovery_missing`) goes up first, and the
     /// deletion is tried once more (m1.md screen 22); `RecoveryMissing` when it still cannot be. A device with no code
     /// to sign with is `Invalid` for `DeletionProof::Guest`.
+    ///
+    /// A try whose answer was lost leaves the device as it was. The next call with the deleted account's tokens gets
+    /// 401 `account_deleted` and finishes the deletion: this one returns `Ok`, any other its error.
     pub async fn delete_account(self: Arc<Self>, proof: DeletionProof) -> Result<(), CoreError> {
         let this = self.clone();
         self.run(async move {
@@ -540,6 +543,8 @@ impl Core {
                 let req = this.deletion_request(&proof).await?;
                 match this.checked(this.api.delete_account(req).await).await {
                     Ok(()) => break,
+                    // An earlier try deleted the account and its answer was lost; `checked` has finished the deletion.
+                    Err(CoreError::Api { status: 401, code, .. }) if code == ACCOUNT_DELETED => return Ok(()),
                     Err(CoreError::Api { status: 403, code, .. }) if code == "reauth_required" => {
                         return Err(CoreError::ReauthRequired);
                     }
@@ -553,16 +558,7 @@ impl Core {
                     Err(e) => return Err(e),
                 }
             }
-            // The counts stop with the account, before the app hears this device left it.
-            this.store.write(|db| {
-                db.clear_alpha()?;
-                for key in [ALPHA_SINCE, ALPHA_SENT_ON] {
-                    db.delete_setting(key)?;
-                }
-                Ok::<_, CoreError>(())
-            })?;
-            *this.state.lock().await = State::SignedOut;
-            this.leave_account(None).await
+            this.account_deleted().await
         })
         .await
     }
@@ -826,8 +822,14 @@ fn view_of_note(note: &BackupRecordRow) -> Result<BackupView, CoreError> {
     })
 }
 
-fn is_revoked(e: &CoreError) -> bool {
-    matches!(e, CoreError::Api { status: 403, code, .. } if code == "device_revoked")
+/// The answers after which this device has no session left: another device's sign-in (403 `device_revoked`) or the
+/// account's deletion (401 `account_deleted`). Unlike other failures, they end the call rather than wait for a retry.
+fn ends_session(e: &CoreError) -> bool {
+    match e {
+        CoreError::Api { status: 403, code, .. } => code == "device_revoked",
+        CoreError::Api { status: 401, code, .. } => code == ACCOUNT_DELETED,
+        _ => false,
+    }
 }
 
 fn provider_of(name: &str) -> Option<Provider> {
@@ -1105,7 +1107,7 @@ impl Core {
         self.recovery_checked.store(false, Ordering::Relaxed);
         self.store.write(|db| Ok::<_, CoreError>(db.set_setting(KEY_PACKAGES_DUE, "1")?))?;
         if let Err(e) = self.publish_due_key_packages().await
-            && is_revoked(&e)
+            && ends_session(&e)
         {
             return Err(e);
         }
@@ -1256,7 +1258,7 @@ impl Core {
             self.keep_recovery(user_id, &recovery::new_entropy(), &geunal_crypto::random_key(), false, new_key)?;
         }
         match self.upload_recovery(new_key, proof).await {
-            Err(e) if !new_key && !is_revoked(&e) => Ok(()),
+            Err(e) if !new_key && !ends_session(&e) => Ok(()),
             other => other,
         }
     }
@@ -1409,13 +1411,18 @@ impl Core {
         Ok(keys)
     }
 
-    /// A call made outside the engine: a 403 `device_revoked` signs this device out here too.
+    /// A call made outside the engine: a 403 `device_revoked` signs this device out here too, and a 401
+    /// `account_deleted` finishes the deletion.
     pub(crate) async fn checked<R>(&self, result: Result<R, ApiError>) -> Result<R, CoreError> {
         match result {
             Err(ApiError::Revoked { replaced }) => {
                 *self.state.lock().await = State::SignedOut;
                 self.signed_out_by_another(replaced).await?;
                 Err(revoked_error())
+            }
+            Err(e) if e.is(401, ACCOUNT_DELETED) => {
+                self.account_deleted().await?;
+                Err(account_deleted_error())
             }
             other => other.map_err(CoreError::from),
         }
@@ -1428,6 +1435,7 @@ impl Core {
         let replaced = match self.api.me().await {
             Ok(_) => return Ok(()),
             Err(ApiError::Revoked { replaced }) => replaced,
+            Err(e) if e.is(401, ACCOUNT_DELETED) => return self.account_deleted().await,
             Err(_) => None,
         };
         *self.state.lock().await = State::SignedOut;
@@ -1480,7 +1488,7 @@ impl Core {
         let sent = match self.checked(self.api.post_alpha_stats(days).await).await {
             Ok(()) => true,
             Err(CoreError::Network { .. }) => return Ok(()),
-            Err(e) if is_revoked(&e) => return Err(e),
+            Err(e) if ends_session(&e) => return Err(e),
             Err(_) => false,
         };
         let sent_at = stored_utc(now);
@@ -1492,6 +1500,22 @@ impl Core {
             }
             Ok::<_, CoreError>(db.set_setting(ALPHA_SENT_ON, &today)?)
         })
+    }
+
+    /// The account is gone: `DELETE /me` answered 204, or a 401 `account_deleted` told a device that lost that answer
+    /// (protocol §13 "답을 잃은 삭제"). The device leaves it as on a revocation, without the note, and the alpha counts
+    /// stop with it: the server deleted them too, so a new account agrees again.
+    pub(crate) async fn account_deleted(&self) -> Result<(), CoreError> {
+        // Before the app hears this device left the account.
+        self.store.write(|db| {
+            db.clear_alpha()?;
+            for key in [ALPHA_SINCE, ALPHA_SENT_ON] {
+                db.delete_setting(key)?;
+            }
+            Ok::<_, CoreError>(())
+        })?;
+        *self.state.lock().await = State::SignedOut;
+        self.leave_account(None).await
     }
 
     /// Another device's sign-in signed this one out (protocol §13 "기기 해제"); `replaced` says when, where and how.
