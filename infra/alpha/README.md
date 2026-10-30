@@ -38,7 +38,10 @@ GEUNAL_ALPHA_SSH=root@<서버 주소> GEUNAL_ALPHA_SSH_KEY=~/.ssh/<키> GEUNAL_A
 `geunaleottae.com`은 Cloudflare Registrar에서 샀고(2026-10-31, 2027-10-30까지), DNS도 Cloudflare의 무료 요금제에 있습니다. 이 이름을 다른 곳으로 돌릴 수 있는 사람은 유효한 인증서를 받아 API를 흉내 낼 수 있으므로([위협 모델](../../docs/security/threat-model.md) 3.7) 다음을 지킵니다.
 
 - **API 레코드는 프록시 없이 DNS만(회색 구름)입니다.** 프록시를 켜면 Cloudflare가 TLS를 풀어 앱의 요청(토큰, 접속 IP, 메타데이터)을 보고, 개인정보가 국외 망을 거칩니다. 프록시는 약관 같은 정적 페이지에만 씁니다.
-- CAA로 Let's Encrypt만 인증서를 내게 하고, DNSSEC를 켭니다. Cloudflare의 Universal SSL이 켜져 있으면 Cloudflare가 자기 인증 기관들(DigiCert, Google, SSL.com, Comodo)을 CAA에 자동으로 더합니다. 프록시하는 레코드가 없는 동안은 Universal SSL을 꺼서 Let's Encrypt만 남깁니다.
+- CAA로 Let's Encrypt만 인증서를 내게 하고, DNSSEC를 켭니다. Cloudflare의 Universal SSL이 켜져 있으면 Cloudflare가 자기 인증 기관들(DigiCert, Google, SSL.com, Comodo)을 CAA에 자동으로 더합니다. 그래서 프록시하는 레코드가 없는 동안은 Universal SSL을 꺼 둡니다. 정적 페이지를 프록시할 때 다시 켭니다.
+- 암호화 모드는 Full (strict)입니다. 프록시하는 레코드가 생기면 Cloudflare가 우리 서버의 인증서를 확인합니다.
+- Cloudflare의 인증서 투명성 감시를 켜 두어, 이 도메인으로 인증서가 나오면 메일이 옵니다.
+- 2026-10-31 기준으로 위 설정을 모두 해 두었습니다. CAA에는 `letsencrypt.org`만 있고, `.com` 레지스트리에 DS가 올라 있습니다.
 - Cloudflare 계정의 2단계 인증이 이 이름을 지킵니다. 자동 갱신을 켜 둡니다. 만료되면 다른 사람이 등록해 앱의 요청을 받을 수 있습니다.
 - 처음 며칠 쓴 DuckDNS 이름(`geunaleottae.duckdns.org`)은 그 주소로 만든 빌드가 없어서 지워도 됩니다.
 
