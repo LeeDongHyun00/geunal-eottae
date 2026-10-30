@@ -62,6 +62,8 @@ final class AppModel {
     @ObservationIgnored private var startedInFront = false
     /// MetricKit's crash counts that came before the core opened.
     @ObservationIgnored private var pendingCrashes: [String: UInt32] = [:]
+    /// A background task learned the account was deleted: the toast waits for someone to open the app.
+    @ObservationIgnored private var deletionUnannounced = false
 
     /// The scene's start: the core, then what coming to the front does, once.
     func start() async {
@@ -152,6 +154,10 @@ final class AppModel {
     func appBecameActive() {
         guard let core else { return }
         try? core.recordAppForeground()
+        if deletionUnannounced {
+            deletionUnannounced = false
+            toasts.show(String(localized: "계정을 삭제했어요"))
+        }
         let online = connectivity.isOnline
         let state = onboardingState
         Task {
@@ -190,7 +196,11 @@ final class AppModel {
         guard let core else { return }
         await mirror?.refresh()
         if !Task.isCancelled {
-            try? await core.sync()
+            do {
+                try await core.sync()
+            } catch let error as CoreError where error.isAccountDeleted {
+                accountDeletedInBackground()
+            } catch {}
         }
         if !Task.isCancelled {
             await alerts?.refresh()
@@ -202,7 +212,18 @@ final class AppModel {
     func backUpInBackground() async {
         await prepare()
         guard let core, connectivity.isUnmetered else { return }
-        _ = try? await core.autoBackup()
+        do {
+            _ = try await core.autoBackup()
+        } catch let error as CoreError where error.isAccountDeleted {
+            accountDeletedInBackground()
+        } catch {}
+    }
+
+    /// A background call learned the account is gone (m1.md decision 36): the app ends as after a deletion, and says so
+    /// when it is next opened.
+    private func accountDeletedInBackground() {
+        accountDeleted(announce: false)
+        deletionUnannounced = true
     }
 
     /// The system's notification tap; the tabs take it when they are there.
@@ -260,7 +281,7 @@ final class AppModel {
 
     /// m1.md screen 22: the start screen and the toast after a deletion. The calendar stays on the device, and
     /// onboarding comes back for the next account.
-    func accountDeleted() {
+    func accountDeleted(announce: Bool = true) {
         alerts?.removeAll()
         onboardingState.isFinished = false
         onboardingResumes = false
@@ -268,7 +289,9 @@ final class AppModel {
         recoveryUnsaved = false
         recoveryPending = false
         phase = .onboarding
-        toasts.show(String(localized: "계정을 삭제했어요"))
+        if announce {
+            toasts.show(String(localized: "계정을 삭제했어요"))
+        }
     }
 
     /// A revocation the sheet has not shown, and whether the recovery code still waits for the paper.
