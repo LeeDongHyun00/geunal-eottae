@@ -27,6 +27,9 @@ public final class EditorModel {
     public private(set) var endDay: String
     public private(set) var endMinute = 600
     public var recurrence: Recurrence?
+    /// The rule the editor opened with. Its chip stays while the editor is open, so tapping another rule can be taken
+    /// back without rebuilding it in 직접 정하기 (as the Android editor does, #73).
+    public private(set) var openedRecurrence: Recurrence?
     public var alert: AlertRule = .inherit
     /// The alert that applies after inheritance, from the core, for the "1시간 전" label of an event that inherits.
     public private(set) var effectiveAlert: Int32?
@@ -101,6 +104,7 @@ public final class EditorModel {
             calendarId = detail.calendarId
             setTimes(allDay: detail.allDay, start: detail.start, end: detail.end)
             recurrence = detail.recurrence
+            openedRecurrence = detail.recurrence
             alert = detail.alert
             effectiveAlert = detail.effectiveAlert
             note = detail.note
@@ -214,6 +218,28 @@ public final class EditorModel {
         return (KoreanCalendar.adding(days: days, to: Self.epoch) ?? day, minute)
     }
 
+    /// The repeat chips (m1.md screen 9): 안 함 and the four plain rules, with the event's own rules after 매주: the one
+    /// it opened with, and the one 직접 정하기 made.
+    public var repeatChoices: [(label: String, recurrence: Recurrence?)] {
+        func rule(_ frequency: Frequency) -> Recurrence {
+            Recurrence(frequency: frequency, interval: 1, weekdays: [], until: nil, count: nil)
+        }
+        var choices: [(label: String, recurrence: Recurrence?)] = [
+            (String(localized: "안 함", bundle: .module), nil)
+        ]
+        for frequency in [Frequency.weekly, .daily, .monthly, .yearly] {
+            let recurrence = rule(frequency)
+            choices.append((RecurrenceText.describe(recurrence, startDay: startDay), recurrence))
+        }
+        var position = 2
+        for own in [openedRecurrence, recurrence].compactMap({ $0 })
+        where !choices.contains(where: { $0.recurrence == own }) {
+            choices.insert((RecurrenceText.describe(own, startDay: startDay), own), at: position)
+            position += 1
+        }
+        return choices
+    }
+
     private static let epoch = "2000-01-01"
 
     private func apply(_ input: EventInput) {
@@ -221,6 +247,7 @@ public final class EditorModel {
         calendarId = input.calendarId
         setTimes(allDay: input.allDay, start: input.start, end: input.end)
         recurrence = input.recurrence
+        openedRecurrence = input.recurrence
         alert = input.alert
         note = input.note
     }
