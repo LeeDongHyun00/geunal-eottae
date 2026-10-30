@@ -138,4 +138,22 @@ class CalendarViewModelTest {
             assertEquals("2026-10-27", model.agenda.state.value.today)
             assertEquals("2026-10-27", model.month.state.value.today)
         }
+
+    @Test
+    fun startsANewEventAndTheShiftStampOnTheMonthOnScreen() =
+        runTest(dispatcher) {
+            val model = viewModel()
+
+            assertEquals("2026-10-26", model.newEventDay())
+            assertEquals("2026-10", model.stampMonth())
+
+            model.month.show("2026-12")
+            assertEquals("2026-12-01", model.newEventDay())
+            assertEquals("2026-12", model.stampMonth())
+
+            // The other views start from today and this month, wherever the month view was left.
+            model.select(CalendarViewKind.LIST)
+            assertEquals("2026-10-26", model.newEventDay())
+            assertEquals("2026-10", model.stampMonth())
+        }
 }

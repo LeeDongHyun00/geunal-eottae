@@ -35,6 +35,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -71,6 +72,8 @@ fun AgendaView(
     model: AgendaModel,
     onDay: (AgendaDay) -> Unit,
     onAddToday: () -> Unit,
+    /** A tap on an event row opens the editor. */
+    onEvent: (EventItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
@@ -98,13 +101,13 @@ fun AgendaView(
             }
         }
         past.forEach { day ->
-            item(key = day.day) { AgendaSection(day, state.today, past = true, onDay = onDay) }
+            item(key = day.day) { AgendaSection(day, state.today, past = true, onDay = onDay, onEvent = onEvent) }
         }
         if (state.hasLoaded && state.isEmpty) {
             item(key = "empty") { EmptyAgenda(onAddToday) }
         }
         upcoming.forEach { day ->
-            item(key = day.day) { AgendaSection(day, state.today, past = false, onDay = onDay) }
+            item(key = day.day) { AgendaSection(day, state.today, past = false, onDay = onDay, onEvent = onEvent) }
         }
         if (state.hasLoaded && state.canLoadMore) {
             item(key = "more") {
@@ -143,6 +146,7 @@ private fun AgendaSection(
     today: String,
     past: Boolean,
     onDay: (AgendaDay) -> Unit,
+    onEvent: (EventItem) -> Unit,
 ) {
     val neutrals = LocalNeutralColors.current
     val resources = LocalResources.current
@@ -181,6 +185,8 @@ private fun AgendaSection(
                 caption = caption(event, resources),
                 time = if (event.allDay) stringResource(R.string.calendar_all_day) else DayText.clock(event.start.minute.toInt()),
                 past = past,
+                onClick = { onEvent(event) },
+                modifier = Modifier.testTag("agenda.event.${event.eventId}"),
             )
         }
     }
@@ -229,6 +235,9 @@ private fun AgendaRow(
     caption: String,
     time: String,
     past: Boolean,
+    modifier: Modifier = Modifier,
+    /** An event row opens the editor; a birthday row has nowhere to go until 사람·생일 arrives. */
+    onClick: (() -> Unit)? = null,
 ) {
     val neutrals = LocalNeutralColors.current
     val label = "$title, $caption, $time"
@@ -236,10 +245,12 @@ private fun AgendaRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Space.s),
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 .heightIn(min = 52.dp)
                 .drawBehind { drawLine(neutrals.fill, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx()) }
+                // The whole row takes the tap, the gap between the title and the time included.
+                .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
                 .clearAndSetSemantics { contentDescription = label },
     ) {
         Box(Modifier.size(10.dp).alpha(if (past) 0.4f else 1f)) {

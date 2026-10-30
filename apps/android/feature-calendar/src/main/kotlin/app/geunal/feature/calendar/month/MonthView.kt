@@ -41,9 +41,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,6 +82,10 @@ fun MonthView(
     model: MonthModel,
     pager: PagerState,
     onDay: (DayCell) -> Unit,
+    /** A tap on an event bar opens the editor. */
+    onEvent: (EventItem) -> Unit,
+    /** A tap on the "연차" mark of a long weekend's leave day. */
+    onLeave: (DayCell) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
@@ -99,6 +105,8 @@ fun MonthView(
                 today = state.today,
                 showsHint = month == state.currentMonth && state.showsFirstRunHint,
                 onDay = onDay,
+                onEvent = onEvent,
+                onLeave = onLeave,
             )
         }
     }
@@ -126,6 +134,8 @@ private fun MonthPage(
     today: String,
     showsHint: Boolean,
     onDay: (DayCell) -> Unit,
+    onEvent: (EventItem) -> Unit,
+    onLeave: (DayCell) -> Unit,
 ) {
     val neutrals = LocalNeutralColors.current
     Column(Modifier.padding(horizontal = Space.xs)) {
@@ -139,7 +149,7 @@ private fun MonthPage(
             ) {
                 week.forEach { cell ->
                     Box(Modifier.weight(1f)) {
-                        MonthCell(cell = cell, today = today, onClick = { onDay(cell) })
+                        MonthCell(cell = cell, today = today, onClick = { onDay(cell) }, onEvent = onEvent, onLeave = { onLeave(cell) })
                         if (showsHint && cell.day == today) FirstRunHint(Modifier.align(Alignment.BottomCenter))
                     }
                 }
@@ -230,18 +240,22 @@ sealed interface CellLine {
 /**
  * One day of the month grid (components.md §8): the date (today in an ink circle), the holiday in red, birthdays, and
  * up to three lines of event bars with "+N". The whole cell is one button that TalkBack reads as a sentence ("10월 30일
- * 금요일, 일정 2개, 민수 생일"); the bars are not read one by one (m1.md screen 4 "접근성").
+ * 금요일, 일정 2개, 민수 생일"); the bars are not read one by one (m1.md screen 4 "접근성"). A bar and the leave mark take
+ * their own taps before the cell's quick entry, and TalkBack reaches them as the cell's actions.
  */
 @Composable
 private fun MonthCell(
     cell: DayCell,
     today: String,
     onClick: () -> Unit,
+    onEvent: (EventItem) -> Unit,
+    onLeave: () -> Unit,
 ) {
     val neutrals = LocalNeutralColors.current
     val resources = LocalResources.current
     val isToday = cell.day == today
     val label = cellLabel(cell, today, resources)
+    val leaveLabel = stringResource(R.string.calendar_add_leave)
     val interaction = remember { MutableInteractionSource() }
     Column(
         verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -258,6 +272,21 @@ private fun MonthCell(
                 .clearAndSetSemantics {
                     contentDescription = label
                     role = Role.Button
+                    customActions =
+                        cell.events.map { event ->
+                            CustomAccessibilityAction(event.title) {
+                                onEvent(event)
+                                true
+                            }
+                        } +
+                        listOfNotNull(
+                            cell.leaveBridge?.let {
+                                CustomAccessibilityAction(leaveLabel) {
+                                    onLeave()
+                                    true
+                                }
+                            },
+                        )
                 }.padding(top = 4.dp, start = 1.dp, end = 1.dp),
     ) {
         DateMark(cell, isToday)
@@ -270,11 +299,11 @@ private fun MonthCell(
                 overflow = TextOverflow.Clip,
             )
         }
-        if (cell.leaveBridge != null) LeaveMark()
+        if (cell.leaveBridge != null) LeaveMark(onClick = onLeave)
         CellLine.of(cell).forEach { line ->
             when (line) {
                 is CellLine.Birthday -> BirthdayLine(line.item.name)
-                is CellLine.Event -> EventBar(line.item)
+                is CellLine.Event -> EventBar(line.item, onClick = { onEvent(line.item) })
                 is CellLine.More ->
                     Text(
                         stringResource(R.string.calendar_more, line.count),
@@ -329,7 +358,7 @@ private fun DateMark(
 
 /** The leave day of a long weekend (rust-core.md §6 "공휴일과 연차 다리"), a dashed "연차" mark. */
 @Composable
-private fun LeaveMark() {
+private fun LeaveMark(onClick: () -> Unit) {
     val sunday = LocalNeutralColors.current.sunday
     Text(
         stringResource(R.string.calendar_leave),
@@ -337,6 +366,7 @@ private fun LeaveMark() {
         color = sunday,
         modifier =
             Modifier
+                .clickable(onClick = onClick)
                 .height(14.dp)
                 .drawBehind {
                     drawRoundRect(
@@ -349,11 +379,14 @@ private fun LeaveMark() {
 }
 
 @Composable
-fun BirthdayLine(name: String) {
+fun BirthdayLine(
+    name: String,
+    modifier: Modifier = Modifier,
+) {
     val neutrals = LocalNeutralColors.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().heightIn(min = Metrics.Grid.eventBar).padding(horizontal = 2.dp),
+        modifier = modifier.fillMaxWidth().heightIn(min = Metrics.Grid.eventBar).padding(horizontal = 2.dp),
     ) {
         Icon(painterResource(DesignR.drawable.ds_ic_gift), contentDescription = null, tint = neutrals.ink, modifier = Modifier.size(9.dp))
         Spacer(Modifier.width(2.dp))
@@ -361,14 +394,25 @@ fun BirthdayLine(name: String) {
     }
 }
 
-/** An event bar (components.md §8): 16 high, radius 4, the calendar's second tint with ink text in 11. */
+/**
+ * An event bar (components.md §8): 16 high, radius 4, the calendar's second tint with ink text in 11. [onClick] opens
+ * the event; the bar is a button of its own wherever its row does not speak for it.
+ */
 @Composable
-fun EventBar(event: EventItem) {
+fun EventBar(
+    event: EventItem,
+    onClick: (() -> Unit)? = null,
+) {
     val dark = LocalDarkTheme.current
     val ink = LocalNeutralColors.current.ink
     Box(
         contentAlignment = Alignment.CenterStart,
-        modifier = Modifier.fillMaxWidth().height(Metrics.Grid.eventBar).clip(RoundedCornerShape(Radius.strip)),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(Metrics.Grid.eventBar)
+                .clip(RoundedCornerShape(Radius.strip))
+                .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier),
     ) {
         EventFill(event.color, event.soft)
         Text(

@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.geunal.core.EventItem
 import app.geunal.core.TimedBlock
 import app.geunal.core.WeekDay
 import app.geunal.designsystem.GeunalType
@@ -91,6 +92,8 @@ fun WeekView(
     onDay: (WeekDay) -> Unit,
     /** A long press on an empty hour: the day and the hour. */
     onSlot: (WeekDay, Int) -> Unit,
+    /** A tap on a block or an all-day bar opens the editor. */
+    onEvent: (EventItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
@@ -113,7 +116,7 @@ fun WeekView(
         if (days == null) {
             Spacer(Modifier.fillMaxSize())
         } else {
-            WeekPage(days, state.today, nowMinute, onDay, onSlot)
+            WeekPage(days, state.today, nowMinute, onDay, onSlot, onEvent)
         }
     }
 }
@@ -125,13 +128,14 @@ private fun WeekPage(
     nowMinute: Int?,
     onDay: (WeekDay) -> Unit,
     onSlot: (WeekDay, Int) -> Unit,
+    onEvent: (EventItem) -> Unit,
 ) {
     val hourPx = with(LocalDensity.current) { Metrics.Grid.weekHour.toPx() }
     val scroll = rememberScrollState()
     LaunchedEffect(Unit) { scroll.scrollTo((OPENING_HOUR * hourPx).roundToInt()) }
     Column(Modifier.fillMaxSize()) {
         DateRow(days, today, onDay)
-        AllDayRow(days)
+        AllDayRow(days, onEvent)
         Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
             BoxWithConstraints(Modifier.fillMaxWidth().height(Metrics.Grid.weekHour * 24)) {
                 val column = (maxWidth - GUTTER) / 7
@@ -140,7 +144,11 @@ private fun WeekPage(
                 days.forEachIndexed { index, day ->
                     day.timed.forEach { block ->
                         val rect = BlockRect.of(block, index, column)
-                        TimedBlockView(block, Modifier.offset(rect.x, rect.y).size(rect.width, rect.height))
+                        TimedBlockView(
+                            block,
+                            onClick = { onEvent(block.event) },
+                            modifier = Modifier.offset(rect.x, rect.y).size(rect.width, rect.height),
+                        )
                     }
                 }
                 val todayIndex = days.indexOfFirst { it.day == today }
@@ -253,11 +261,14 @@ private fun dateLabel(
 }
 
 /**
- * Birthdays and all-day events above the axis, with the "+N" of timed events that did not fit three columns. TalkBack
- * hears all of it from the date buttons above, so the row is quiet.
+ * Birthdays and all-day events above the axis, with the "+N" of timed events that did not fit three columns. The date
+ * buttons above already say what each day holds; the bars are buttons of their own because they open the editor.
  */
 @Composable
-private fun AllDayRow(days: List<WeekDay>) {
+private fun AllDayRow(
+    days: List<WeekDay>,
+    onEvent: (EventItem) -> Unit,
+) {
     val neutrals = LocalNeutralColors.current
     Row(
         Modifier
@@ -267,25 +278,24 @@ private fun AllDayRow(days: List<WeekDay>) {
                 val line = 1.dp.toPx()
                 drawLine(neutrals.separator, Offset(0f, 0f), Offset(size.width, 0f), line)
                 drawLine(neutrals.separator, Offset(0f, size.height), Offset(size.width, size.height), line)
-            }.padding(vertical = 4.dp)
-            .clearAndSetSemantics {},
+            }.padding(vertical = 4.dp),
     ) {
         Text(
             stringResource(R.string.calendar_all_day),
             style = GeunalType.micro.copy(fontWeight = FontWeight.Normal),
             color = neutrals.tertiaryText,
-            modifier = Modifier.width(GUTTER).padding(start = Space.xs, top = 1.dp),
+            modifier = Modifier.width(GUTTER).padding(start = Space.xs, top = 1.dp).clearAndSetSemantics {},
         )
         days.forEach { day ->
             Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f).padding(horizontal = 1.dp)) {
-                day.birthdays.forEach { BirthdayLine(it.name) }
-                day.allDay.forEach { EventBar(it) }
+                day.birthdays.forEach { BirthdayLine(it.name, Modifier.clearAndSetSemantics {}) }
+                day.allDay.forEach { event -> EventBar(event, onClick = { onEvent(event) }) }
                 if (day.hidden > 0u) {
                     Text(
                         stringResource(R.string.calendar_more, day.hidden.toInt()),
                         style = GeunalType.micro,
                         color = neutrals.secondaryText,
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                        modifier = Modifier.align(Alignment.CenterHorizontally).clearAndSetSemantics {},
                     )
                 }
             }
@@ -365,6 +375,7 @@ private fun SlotTargets(
 @Composable
 private fun TimedBlockView(
     block: TimedBlock,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val event = block.event
@@ -378,6 +389,9 @@ private fun TimedBlockView(
     Box(
         modifier
             .clip(RoundedCornerShape(Radius.cell))
+            .clickable(role = Role.Button, onClick = onClick)
+            // Ahead of clearAndSetSemantics, which drops whatever comes after it in the chain, a tag included.
+            .testTag("week.event.${event.eventId}")
             .clearAndSetSemantics { contentDescription = label },
     ) {
         EventFill(event.color, event.soft)
