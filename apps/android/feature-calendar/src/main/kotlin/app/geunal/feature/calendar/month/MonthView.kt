@@ -253,11 +253,12 @@ private fun MonthCell(
                 .pressScale(interaction)
                 .clipToBounds()
                 .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+                // Ahead of clearAndSetSemantics, which drops whatever comes after it in the chain, a tag included.
+                .testTag("month.day.${cell.day}")
                 .clearAndSetSemantics {
                     contentDescription = label
                     role = Role.Button
-                }.padding(top = 4.dp, start = 1.dp, end = 1.dp)
-                .testTag("month.day.${cell.day}"),
+                }.padding(top = 4.dp, start = 1.dp, end = 1.dp),
     ) {
         DateMark(cell, isToday)
         cell.holidays.firstOrNull()?.let {

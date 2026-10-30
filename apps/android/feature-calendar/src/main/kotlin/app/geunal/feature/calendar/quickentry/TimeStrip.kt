@@ -73,6 +73,8 @@ fun TimeStrip(
         verticalArrangement = Arrangement.spacedBy(6.dp),
         modifier =
             modifier
+                // Ahead of clearAndSetSemantics, which drops whatever comes after it in the chain, a tag included.
+                .testTag("quickEntry.strip")
                 // One control for TalkBack: swiping up and down moves the range by half an hour, like iOS's adjustable.
                 .clearAndSetSemantics {
                     contentDescription = label
@@ -98,7 +100,7 @@ fun TimeStrip(
                                 true
                             },
                         )
-                }.testTag("quickEntry.strip"),
+                },
     ) {
         BoxWithConstraints(
             Modifier

@@ -210,10 +210,12 @@ private fun DateRow(
                         .heightIn(min = 56.dp)
                         .pressScale(interaction)
                         .clickable(interactionSource = interaction, indication = null) { onDay(day) }
+                        // Ahead of clearAndSetSemantics, which drops whatever comes after it in the chain, a tag included.
+                        .testTag("week.day.${day.day}")
                         .clearAndSetSemantics {
                             contentDescription = label
                             role = Role.Button
-                        }.testTag("week.day.${day.day}"),
+                        },
             ) {
                 Text(
                     weekdayShort(resources, weekday),
