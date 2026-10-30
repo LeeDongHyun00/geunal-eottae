@@ -19,6 +19,9 @@ private struct PressableBody: View {
 
     var body: some View {
         configuration.label
+            // The whole frame takes the tap: a row leaves empty space between its title and its time, and a tap there
+            // must open it too (the list view's rows did nothing when tapped in the middle).
+            .contentShape(Rectangle())
             .scaleEffect(configuration.isPressed && !reduceMotion ? Motion.Press.scale : 1)
             .animation(.easeOut(duration: Motion.Press.duration), value: configuration.isPressed)
     }

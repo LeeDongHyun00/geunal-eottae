@@ -7,11 +7,14 @@ import SwiftUI
 struct CalendarTab: View {
     let model: AppModel
     let core: any CoreProtocol
+    @Binding var openEvent: EventItem?
 
     var body: some View {
         NavigationStack {
-            CalendarScreen(core: core, toasts: model.toasts, changes: model.calendarChanges)
-                .toolbar(.hidden, for: .navigationBar)
+            CalendarScreen(
+                core: core, toasts: model.toasts, changes: model.calendarChanges, openEvent: $openEvent
+            )
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 }

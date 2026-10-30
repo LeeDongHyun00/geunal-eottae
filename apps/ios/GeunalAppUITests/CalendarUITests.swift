@@ -1,10 +1,12 @@
 import XCTest
 
 /// The calendar tab on the real core: the month, the quick entry and its toast, the week and the list, one screenshot
-/// each (docs/design/screens/m1 04–08), with the demo week (`-GeunalDemoCalendar`) in place.
+/// each (docs/design/screens/m1 04–08), with the demo week (`-GeunalDemoCalendar`) in place. Both tests tap a toast,
+/// so the toasts wait for them (`-GeunalToastsWait`): on a slow runner the undo was tapped six seconds after its toast
+/// appeared, when the five-second toast was already leaving.
 final class CalendarUITests: GeunalUITestCase {
     func testMonthQuickEntryWeekAndList() {
-        let app = launch(realCore: true, ["-GeunalOnboardingFinished", "-GeunalDemoCalendar"])
+        let app = launch(realCore: true, ["-GeunalOnboardingFinished", "-GeunalDemoCalendar", "-GeunalToastsWait"])
         let today = app.buttons["month.day.\(koreanToday)"]
         waitFor(today)
         XCTAssertTrue(today.label.contains("오늘"), "today's cell reads as today, got '\(today.label)'")
@@ -33,7 +35,7 @@ final class CalendarUITests: GeunalUITestCase {
     }
 
     func testTypesATitleDragsATimeAndUndoes() {
-        let app = launch(realCore: true, ["-GeunalOnboardingFinished"])
+        let app = launch(realCore: true, ["-GeunalOnboardingFinished", "-GeunalToastsWait"])
         let today = app.buttons["month.day.\(koreanToday)"]
         waitFor(today)
         tapDate(today)
