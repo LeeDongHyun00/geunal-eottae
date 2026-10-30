@@ -126,6 +126,67 @@ fn a_guest_gets_a_code_at_once_and_links_kakao_later() {
 }
 
 #[test]
+fn deleting_an_account_takes_a_fresh_proof_of_it_and_leaves_the_calendar() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let a = phone(&server);
+        let user = user_id(&kakao(&a.core, "dana", "다나").await.unwrap());
+        let person =
+            PersonInput { id: None, name: "엄마".into(), birthday: None, alert: AlertRule::Inherit, suggest: true };
+        a.core.save_person(person).unwrap();
+        a.core.set_alpha_stats(true).unwrap();
+
+        // Another Kakao account's token, or a proof of the wrong kind, deletes nothing and keeps the session.
+        let nonce = a.core.clone().sign_in_nonce().await.unwrap();
+        let other = DeletionProof::Kakao {
+            id_token: FakeServer::id_token("kakao", "someone-else", &nonce.provider_nonce),
+            nonce: nonce.nonce,
+        };
+        assert!(matches!(a.core.clone().delete_account(other).await, Err(CoreError::ReauthRequired)));
+        assert!(matches!(a.core.clone().delete_account(DeletionProof::Guest).await, Err(CoreError::ReauthRequired)));
+        assert!(server.has_account(&user) && a.core.session().is_some());
+
+        let nonce = a.core.clone().sign_in_nonce().await.unwrap();
+        let proof = DeletionProof::Kakao {
+            id_token: FakeServer::id_token("kakao", "dana", &nonce.provider_nonce),
+            nonce: nonce.nonce,
+        };
+        a.core.clone().delete_account(proof).await.unwrap();
+        assert!(!server.has_account(&user));
+        assert!(a.core.session().is_none() && a.core.account().unwrap().is_none());
+        assert!(a.core.revocation().unwrap().is_none(), "no other device signed this one out");
+        for secret in ["session", "device_signing_key", "recovery_entropy", "account_master_key"] {
+            assert!(!a.secrets.has(secret), "{secret} is gone");
+        }
+        assert!(a.secrets.has("db_key"), "the calendar still opens");
+        assert_eq!(a.core.people().unwrap().len(), 1);
+        assert!(!a.core.alpha_stats_enabled().unwrap(), "a new account agrees again");
+        a.core.clone().sync().await.unwrap();
+
+        // The same Kakao account signs up anew and is asked about what the deleted account left on this device.
+        let again = kakao(&a.core, "dana", "다나").await.unwrap();
+        assert!(matches!(again, AuthResult::Registered { new_account: true, .. }), "{again:?}");
+        assert!(a.core.local_data_of_other_account().unwrap().is_some());
+    });
+}
+
+#[test]
+fn a_guest_deletes_with_its_code_once_the_material_the_server_lacked_goes_up() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let a = phone(&server);
+        // The code's upload drops at the sign-in, so the server has nothing to check a guest's proof against.
+        server.fail_next("put_recovery");
+        let session = a.core.clone().sign_in_guest(new_account("게스트")).await.unwrap();
+        assert!(server.recovery_of(&session.user_id).is_none());
+
+        a.core.clone().delete_account(DeletionProof::Guest).await.unwrap();
+        assert!(!server.has_account(&session.user_id));
+        assert!(a.core.session().is_none() && !a.secrets.has("recovery_entropy"));
+    });
+}
+
+#[test]
 fn a_new_account_without_a_name_takes_the_default_and_a_long_one_is_cut() {
     pollster::block_on(async {
         let server = FakeServer::new();

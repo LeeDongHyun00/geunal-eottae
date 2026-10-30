@@ -163,6 +163,7 @@ M1부터 계정을 다른 기기로 옮기는 길이 둘입니다([공통 계약
 | 세션(리프레시 토큰) 탈취 | 세션으로 할 수 있는 것 | 복구 자료를 덮어쓰려면 지금 코드의 서명이 필요(10장). 계정 삭제에는 다시 증명이 필요(게스트는 복구 서명, 카카오는 새 ID 토큰, Apple은 새 인가 코드, 13장). 이미 교체된 리프레시 토큰이 다시 오면 그 기기의 세션을 모두 끊음(재사용 감지, [API](../parts/api-server.md) 4장) | 재사용 감지가 끊기 전까지 세션으로 할 수 있는 나머지(그룹 나가기, 방장이면 강퇴)는 남습니다. 되돌릴 수 없는 것은 막았습니다 | API ＋`refuses to overwrite recovery material without the current code's signature`, ＋`refuses to delete an account without a fresh proof and deletes nothing`, ＋`a reused refresh token signs the device out` |
 | 카카오·Apple 계정 탈취 | 교체 티켓으로 백업 암호문과 래핑된 AMK(풀지 못함). `POST /auth/replace`로 계정. M2부터 그룹의 새 대화. 제공자 로그인 30분 안이나 새 제공자 증명으로 "백업 없이 새로 시작"을 고르면 서버의 백업을 모두 지움(10장 "새 키로 시작") | 백업은 12단어 없이는 못 풂. 원래 기기는 `replaced_via`가 `provider`인 것을 보고 알아챔 | 계정과 그룹 접근은 넘어갑니다. 그룹 멤버에게 "새 기기에서 들어왔어요"를 보일지는 3.1의 검토할 결정입니다. 지운 백업은 되돌릴 수 없지만, 원래 기기의 일정과 사람은 해제 뒤에도 남습니다. 원래 사용자가 다시 로그인해 새로 시작하면 그 기기에서 다시 백업합니다 | 코어 ＋`a second device restores with a replacement ticket and only then becomes the active device`, API ＋`allows a new recovery key only within 30 minutes of a provider sign-in or with a fresh provider proof` |
 | 제공자 토큰이나 nonce 가로채기 | 다른 기기 키로 먼저 로그인 | 제공자에게 넘기는 nonce가 `SHA-256("geunal login v1" ‖ nonce ‖ signature_key)`라, 토큰이 그 기기의 키에 묶임(13장). 카카오 SDK 2.29.0은 카카오톡 로그인과 웹 로그인 모두 인가 코드에 PKCE(S256)를 씀(2026-10-26 소스로 확인) | 없음 | API ＋`refuses a provider token bound to another device key`, 벡터 `login_nonce.json` |
+| 기기 백업에 남은 카카오 토큰 | 이 앱이 동의받은 항목(별명, openid)으로 카카오 API를 부름. 그날어때의 로그인과 삭제·새로 시작 증명은 만들지 못함. 제공자 토큰이 서버의 nonce와 기기 키에 묶이기 때문(13장) | 카카오 SDK의 기본 토큰 저장소(iOS `UserDefaults`, 안드로이드 SharedPreferences)는 기기 백업과 기기 이전으로 옮겨짐. 그래서 앱은 SDK를 초기화한 직후 저장소를 메모리 구현으로 바꾸고, 로그인 뒤에는 늘 로그아웃함([앱 PR 보안 점검표](app-review.md) 4장). 안드로이드 백업 규칙은 앱의 설정 파일만 이름으로 넣음(2026-10-30, #49 검토에서 찾음) | 없음 | 앱 ＋`keeps Kakao tokens in memory only` |
 | 키보드 앱(iOS 제3자 키보드, 안드로이드 입력기) | 복원할 때 치는 12단어 | 12칸은 자동 고침·추천·키보드 학습을 끔([앱 PR 보안 점검표](app-review.md) 3장). iOS 제3자 키보드는 "전체 접근"을 받지 않으면 네트워크를 쓰지 못함 | **받아들입니다.** iOS가 제3자 키보드를 막는 곳은 보안 입력 칸뿐인데, 보안 입력 칸은 글자를 가리고 한글 조합 입력에 맞지 않아 12칸에 쓸 수 없습니다. 앱 전체에서 제3자 키보드를 막으면 일정 제목도 그 키보드로 못 칩니다. 안드로이드는 앱이 입력기를 고를 수 없습니다. 전체 접근을 준 키보드는 이미 모든 입력을 봅니다 | 해당 없음 |
 | 교체 티켓 가로채기 | 새 기기의 토큰 | 교체 요청에 기기 키의 서명이 필요하고, 서버는 티켓의 SHA-256만 저장(13장) | 없음 | API ＋`refuses a replacement without the device key's signature` |
 | 요청 기록의 복구 서명(3.2) | 없음 | 서명은 그 요청의 nonce에만 맞고, 서버에는 공개키만 있음 | 없음 | API `logs no request body, ciphertext or token at any level` |
@@ -204,6 +205,7 @@ M1부터 계정을 다른 기기로 옮기는 길이 둘입니다([공통 계약
 | `asks for the device owner before starting fresh` | iOS, 안드로이드 | M1 | 3.6 |
 | `asks for the device owner before deleting the account` | iOS, 안드로이드 | M1 | 3.6 |
 | `wipes the previous installation's keychain items on first launch` | iOS | M1 | 3.6 |
+| `keeps Kakao tokens in memory only` | iOS, 안드로이드 | M1 | 3.6 |
 | `does not merge a backup into a store that belongs to another account` | 코어 | M1 | 3.6 |
 | `refuses to overwrite recovery material without the current code's signature` | API | M1 | 3.6 |
 | `a reused refresh token signs the device out` | API | M1 | 3.6 |
