@@ -184,6 +184,84 @@
     <string name="template_plus_badge">플러스</string>
     <string name="template_delete">템플릿 삭제 · 이미 찍은 근무는 남아요</string>
 
+    <!-- 11. 사람·생일 -->
+    <string name="people_title">사람·생일</string>
+    <string name="people_back">나</string>
+    <string name="people_add">사람 추가</string>
+    <string name="people_search">이름 검색</string>
+    <string name="people_upcoming">다가오는 생일</string>
+    <string name="people_all">모든 사람 · %1$d명</string>
+    <string name="people_day">%1$d월 %2$d일</string>
+    <string name="people_lunar_day">음력 %1$d월 %2$d일</string>
+    <string name="people_lunar_leap_day">음력 윤%1$d월 %2$d일</string>
+    <string name="people_lunar_next">%1$s · %2$s</string>
+    <string name="people_this_year">올해는 %1$d월 %2$d일 %3$s</string>
+    <string name="people_next_year">내년은 %1$d월 %2$d일 %3$s</string>
+    <string name="people_today">오늘</string>
+    <string name="people_d_day">D-%1$d</string>
+    <string name="people_source_manual">직접 등록</string>
+    <string name="people_source_contacts">연락처에서</string>
+    <string name="people_source_group">그룹에서 공개</string>
+    <string name="people_no_birthday">생일 없음</string>
+    <string name="people_import">연락처에서 생일 가져오기</string>
+    <string name="people_import_note">선택 기능이에요. 가져온 이름과 생일은 이 기기와 암호화 백업에만 있어요.</string>
+    <string name="people_empty">아직 아무도 없어요</string>
+    <string name="people_empty_body">생일을 넣어 두면 캘린더와 다음 할 일에 보이고, 날짜 잡기 추천에도 써요.</string>
+    <string name="people_add_by_hand">직접 추가</string>
+    <string name="people_empty_contacts">연락처에서 가져오기</string>
+    <string name="people_no_match">찾는 이름이 없어요</string>
+    <string name="people_imported">%1$d명을 가져왔어요</string>
+    <string name="people_updated">%1$d명의 생일을 고쳤어요</string>
+    <string name="people_imported_updated">%1$d명을 새로 가져오고 %2$d명을 고쳤어요</string>
+    <string name="people_imported_none">새로 가져올 생일이 없었어요</string>
+
+    <!-- 연락처에서 생일 가져오기 (m1.md §2.4) -->
+    <string name="contacts_count">생일이 있는 연락처 %1$d명</string>
+    <string name="contacts_choose_all">모두 고르기</string>
+    <string name="contacts_choose_none">모두 빼기</string>
+    <string name="contacts_without_birthday">생일이 없는 연락처 %1$d명은 빼고 보여 줘요.</string>
+    <string name="contacts_none">생일이 적힌 연락처가 없어요.</string>
+    <string name="contacts_import">%1$d명 가져오기</string>
+    <string name="contacts_choose_first">가져올 사람을 골라 주세요</string>
+    <string name="contacts_failed">가져오지 못했어요. 다시 시도해 주세요</string>
+    <string name="contacts_denied">연락처 권한이 꺼져 있어요. 설정에서 켜면 생일이 있는 연락처를 골라 가져올 수 있어요.</string>
+    <string name="contacts_settings">설정에서 켜기</string>
+    <string name="contacts_close">닫기</string>
+
+    <!-- 17. 사람 추가·편집 -->
+    <string name="person_add">사람 추가</string>
+    <string name="person_note">이름과 생일은 이 기기와 암호화 백업에만 있어요.</string>
+    <string name="person_shared">그룹에서 공개한 생일이에요. 알림만 바꿀 수 있어요.</string>
+    <string name="person_name">이름</string>
+    <string name="person_solar">양력</string>
+    <string name="person_lunar">음력</string>
+    <string name="person_birthday">생일</string>
+    <string name="person_pick">선택</string>
+    <string name="person_year">태어난 해</string>
+    <string name="person_year_note">몰라도 돼요. 나이는 보여 주지 않아요.</string>
+    <string name="person_year_none">선택 안 함</string>
+    <string name="person_year_value">%1$s년</string>
+    <string name="person_leap">윤달</string>
+    <string name="person_leap_note">그해에 윤달이 없으면 같은 숫자의 달에 넣어요.</string>
+    <string name="person_lunar_note">매년 양력으로 바꿔서 넣어요. 올해는 %1$d월 %2$d일 %3$s이에요.</string>
+    <string name="person_lunar_note_plain">매년 양력으로 바꿔서 넣어요.</string>
+    <string name="person_alert">알림</string>
+    <string name="person_alert_inherit_choice">%1$s · 알림 설정을 따름</string>
+    <string name="person_suggest">날짜 잡기 추천에 쓰기</string>
+    <string name="person_suggest_note">생일 7일 안이면 추천 칩에 ‘%1$s 생일 약속’이 떠요</string>
+    <string name="person_suggest_someone">OO</string>
+    <string name="person_from_contacts">연락처에서 가져오기</string>
+    <string name="person_save">저장</string>
+    <string name="person_needs_name">이름을 적어 주세요</string>
+    <string name="person_delete">이 사람 지우기</string>
+    <string name="person_delete_after_consonant">%1$s을 지울까요?</string>
+    <string name="person_delete_after_vowel">%1$s를 지울까요?</string>
+    <string name="person_delete_body">캘린더와 알림에서도 빠져요.</string>
+    <string name="person_delete_confirm">지우기</string>
+    <string name="person_close">닫기</string>
+    <string name="person_month">월</string>
+    <string name="person_day">일</string>
+
     <!-- The next-up bar (docs/design/README.md §5). -->
     <string name="next_up_all_day">%1$s · 종일</string>
     <string name="next_up_timed">%1$s %2$s · %3$s</string>

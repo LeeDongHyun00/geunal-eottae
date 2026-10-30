@@ -51,6 +51,7 @@ androidComponents {
 dependencies {
     api(project(":core"))
     implementation(project(":designsystem"))
+    implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

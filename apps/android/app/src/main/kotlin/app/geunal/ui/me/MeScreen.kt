@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import app.geunal.R
 import app.geunal.core.AccountView
 import app.geunal.core.CoreInterface
@@ -39,24 +40,36 @@ import app.geunal.designsystem.LocalDarkTheme
 import app.geunal.designsystem.LocalNeutralColors
 import app.geunal.designsystem.Radius
 import app.geunal.designsystem.Space
+import app.geunal.designsystem.components.SettingsDivider
+import app.geunal.designsystem.components.SettingsGroup
+import app.geunal.designsystem.components.SettingsRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * The 나 tab's account card. The rest of the screen (m1.md screen 12: calendars, recovery code, backup, deletion)
- * follows with those screens.
+ * The 나 tab (m1.md screen 12): the account card, then the calendar group with the shift templates and 사람·생일. The
+ * rest of the screen (calendars, recovery code, backup, deletion) follows with those screens.
  */
 @Composable
 fun MeScreen(
     core: CoreInterface,
     pendingGuest: Boolean,
+    onShifts: () -> Unit,
+    onPeople: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val neutrals = LocalNeutralColors.current
     var account by remember { mutableStateOf<AccountView?>(null) }
     var loaded by remember { mutableStateOf(false) }
+    var templates by remember { mutableStateOf<Int?>(null) }
+    var people by remember { mutableStateOf<Int?>(null) }
+    // Read again each time the tab comes back, so the counts follow what the covers over it changed.
     LaunchedEffect(core) {
-        account = withContext(Dispatchers.IO) { runCatching { core.account() }.getOrNull() }
+        withContext(Dispatchers.IO) {
+            account = runCatching { core.account() }.getOrNull()
+            templates = runCatching { core.shiftTemplates().size }.getOrNull()
+            people = runCatching { core.people().size }.getOrNull()
+        }
         loaded = true
     }
     Column(
@@ -76,6 +89,27 @@ fun MeScreen(
             modifier = Modifier.padding(top = Space.xl).semantics { heading() },
         )
         if (loaded) Profile(account, pendingGuest)
+        Text(
+            stringResource(R.string.me_section_calendar),
+            style = GeunalType.caption.copy(fontWeight = FontWeight.SemiBold),
+            color = neutrals.secondaryText,
+            modifier = Modifier.padding(start = Space.m).semantics { heading() },
+        )
+        SettingsGroup(Modifier.background(neutrals.background, RoundedCornerShape(Radius.card))) {
+            SettingsRow(
+                title = stringResource(R.string.me_shift_templates),
+                value = templates?.let { stringResource(R.string.me_count_items, it) },
+                onClick = onShifts,
+                modifier = Modifier.testTag("me.shifts"),
+            )
+            SettingsDivider()
+            SettingsRow(
+                title = stringResource(R.string.me_people),
+                value = people?.let { stringResource(R.string.me_count_people, it) },
+                onClick = onPeople,
+                modifier = Modifier.testTag("me.people"),
+            )
+        }
     }
 }
 

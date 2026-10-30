@@ -3,6 +3,7 @@ package app.geunal.ui.calendar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.geunal.core.CoreInterface
+import app.geunal.feature.calendar.people.ContactsReader
 import app.geunal.feature.calendar.screen.CalendarCovers
 
 /**
@@ -11,6 +12,7 @@ import app.geunal.feature.calendar.screen.CalendarCovers
  */
 class CalendarCoversViewModel(
     core: CoreInterface,
+    contacts: ContactsReader,
 ) : ViewModel() {
-    val covers = CalendarCovers(core, viewModelScope)
+    val covers = CalendarCovers(core, viewModelScope, contacts)
 }
