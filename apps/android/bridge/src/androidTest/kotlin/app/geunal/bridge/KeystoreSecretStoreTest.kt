@@ -1,5 +1,6 @@
 package app.geunal.bridge
 
+import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.geunal.core.SecretStoreException
@@ -7,6 +8,7 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -77,12 +79,26 @@ class KeystoreSecretStoreTest {
     }
 
     @Test
-    fun aSecretSealedUnderAKeystoreKeyThatIsGoneIsLost() {
+    fun aSecretWhoseKeystoreKeyIsGoneIsLostOnKeystore2() {
+        assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
         store.put("db_key", byteArrayOf(1, 2, 3))
         KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(TEST_ALIAS)
 
-        // The store makes a new Keystore key, under which the old file fails its tag: lost for good, not unavailable.
         assertThrows(SecretStoreException.Lost::class.java) { store.get("db_key") }
+        // Reading made no key, and a write starts over with a new one.
+        store.put("amk", byteArrayOf(4))
+        assertArrayEquals(byteArrayOf(4), store.get("amk"))
+    }
+
+    @Test
+    fun aSecretWhoseKeystoreKeyIsGoneIsUnavailableBeforeKeystore2() {
+        assumeTrue(Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+        store.put("db_key", byteArrayOf(1, 2, 3))
+        KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(TEST_ALIAS)
+
+        // This keystore returns no key also when its daemon does not answer, so neither a read nor a write replaces it.
+        assertThrows(SecretStoreException.Unavailable::class.java) { store.get("db_key") }
+        assertThrows(SecretStoreException.Unavailable::class.java) { store.put("amk", byteArrayOf(4)) }
     }
 
     private companion object {

@@ -1,5 +1,6 @@
 package app.geunal.bridge
 
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.AtomicFile
@@ -33,8 +34,9 @@ class KeystoreSecretStore(
     private val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
 
     /**
-     * `null` only when nothing is kept under [name]. A value that fails its tag throws [SecretStoreException.Lost]; any
-     * other failure, a Keystore error say, reaches the core as one it may get past later.
+     * `null` only when nothing is kept under [name]. A value that will never open, its Keystore key gone or its tag
+     * failed, throws [SecretStoreException.Lost]; any other failure, a Keystore error say, throws for the core to take
+     * as one it may get past later.
      */
     @Synchronized
     override fun get(name: String): ByteArray? {
@@ -46,15 +48,21 @@ class KeystoreSecretStore(
             } catch (e: FileNotFoundException) {
                 return null
             }
+        // Reading never makes a key: one made under the alias would replace the key that sealed this for good.
+        val key =
+            storedKey() ?: when (missingKey(Build.VERSION.SDK_INT, reading = true, sealedValues = true)) {
+                MissingKey.LOST -> throw SecretStoreException.Lost("the Keystore key that sealed $name is gone")
+                else -> throw SecretStoreException.Unavailable("the Keystore returned no key for $name")
+            }
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_BITS, sealed, 0, IV_BYTES))
+        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, sealed, 0, IV_BYTES))
         // The name is authenticated with the value, so a file moved under another secret's name fails to open.
         cipher.updateAAD(name.toByteArray())
         return try {
             cipher.doFinal(sealed, IV_BYTES, sealed.size - IV_BYTES)
         } catch (e: AEADBadTagException) {
-            // Sealed under a Keystore key that is gone, which key() has since replaced, or damaged: it will never open.
-            // The core sets the store aside for a lost database key rather than failing every launch.
+            // Sealed under another key, or damaged: it will never open. The core sets the store aside for a lost
+            // database key rather than failing every launch.
             throw SecretStoreException.Lost("$name fails its tag")
         }
     }
@@ -66,7 +74,7 @@ class KeystoreSecretStore(
     ) {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         // The Keystore picks a fresh random IV for every encryption; a caller-supplied IV is refused by default.
-        cipher.init(Cipher.ENCRYPT_MODE, key())
+        cipher.init(Cipher.ENCRYPT_MODE, keyForWriting())
         cipher.updateAAD(name.toByteArray())
         val iv = cipher.iv
         check(iv.size == IV_BYTES) { "unexpected GCM IV length ${iv.size}" }
@@ -95,8 +103,17 @@ class KeystoreSecretStore(
         return File(dir, encoded)
     }
 
-    private fun key(): SecretKey {
-        (keyStore.getKey(alias, null) as? SecretKey)?.let { return it }
+    private fun storedKey(): SecretKey? = keyStore.getKey(alias, null) as? SecretKey
+
+    /**
+     * The key to seal with. A new one orphans every value sealed under the old, so [missingKey] decides when to make it.
+     */
+    private fun keyForWriting(): SecretKey {
+        storedKey()?.let { return it }
+        val sealedValues = dir.listFiles().orEmpty().isNotEmpty()
+        if (missingKey(Build.VERSION.SDK_INT, reading = false, sealedValues) != MissingKey.MAKE) {
+            throw SecretStoreException.Unavailable("the Keystore returned no key, and values are sealed under one")
+        }
         val spec =
             KeyGenParameterSpec
                 .Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
@@ -117,5 +134,35 @@ class KeystoreSecretStore(
         private const val KEY_BITS = 256
         private const val TAG_BITS = 128
         private const val IV_BYTES = 12
+    }
+}
+
+/** What it means that the Keystore returned no key, as [KeystoreSecretStore] acts on it. */
+internal enum class MissingKey {
+    /** Make one: nothing is sealed yet, or keystore2 has said the key is gone. */
+    MAKE,
+
+    /** Keystore2 has said the key is gone, so a value sealed under it will never open. */
+    LOST,
+
+    /** The keystore before API 31 may only have failed to answer, and a new key would replace the real one for good. */
+    UNAVAILABLE,
+}
+
+/**
+ * Keystore2 (API 31) returns no key only for one that is not there and throws on any other failure. The keystore before
+ * it also returns none when its daemon does not answer (`KeyStore.contains` on API 26-30), which cannot be told from a
+ * key that is gone. There a key is made only before anything is sealed, and a sealed value reads as unavailable.
+ */
+internal fun missingKey(
+    sdk: Int,
+    reading: Boolean,
+    sealedValues: Boolean,
+): MissingKey {
+    val gone = sdk >= Build.VERSION_CODES.S
+    return when {
+        reading -> if (gone) MissingKey.LOST else MissingKey.UNAVAILABLE
+        gone || !sealedValues -> MissingKey.MAKE
+        else -> MissingKey.UNAVAILABLE
     }
 }

@@ -1,5 +1,6 @@
 package app.geunal.bridge
 
+import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.geunal.core.AlertRule
@@ -16,6 +17,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -101,17 +103,29 @@ class CoreOnDeviceTest {
     }
 
     @Test
-    fun setsTheStoreAsideOnceTheKeystoreKeyIsGone() {
+    fun setsTheStoreAsideOnceKeystore2SaysItsKeyIsGone() {
+        assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
         open().close()
         KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(TEST_ALIAS)
 
-        // Every sealed file now fails its tag; the lost database key sets the store aside and the rest goes with it.
+        // The database key reads as lost, so the store goes aside and the secrets sealed with it go too.
         open().use { core ->
             assertNotNull(core.storeReset())
             assertNull(core.session())
         }
         // The new key opens the new store.
         open().use { core -> assertNotNull(core.storeReset()) }
+    }
+
+    @Test
+    fun keepsTheStoreWhenTheOlderKeystoreReturnsNoKey() {
+        assumeTrue(Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+        open().close()
+        KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(TEST_ALIAS)
+
+        // Before API 31 that is also what a keystore daemon that did not answer looks like, so nothing goes aside.
+        assertThrows(CoreException.SecretStore::class.java) { open().close() }
+        assertFalse(File(root, "store/unreadable").exists())
     }
 
     private fun open(): Core =
