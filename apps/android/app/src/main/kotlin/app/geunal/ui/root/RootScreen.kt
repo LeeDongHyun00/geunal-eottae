@@ -27,7 +27,13 @@ fun RootScreen(
 ) {
     val model =
         viewModel {
-            AppViewModel(container::openCore, container.onboarding, container.changes.changes, container.connectivity.isOnline)
+            AppViewModel(
+                openCore = container::openCore,
+                onboarding = container.onboarding,
+                changes = container.changes.changes,
+                isOnline = container.connectivity.isOnline,
+                screenReaderRunning = container.screenReaderRunning,
+            )
         }
     val phase by model.phase.collectAsStateWithLifecycle()
     LifecycleStartEffect(model) {
@@ -62,7 +68,7 @@ fun RootScreen(
             if (core != null && nextUp != null) {
                 MainScaffold(nextUp = nextUp, toasts = model.toasts, modifier = modifier) { tab, padding ->
                     when (tab) {
-                        MainTab.CALENDAR -> CalendarTab(core, container.changes.changes, Modifier.padding(padding))
+                        MainTab.CALENDAR -> CalendarTab(core, container.changes.changes, model.toasts, Modifier.padding(padding))
                         MainTab.ME ->
                             MeScreen(
                                 core = core,

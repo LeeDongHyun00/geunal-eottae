@@ -39,6 +39,10 @@ uniffi::setup_scaffolding!();
 const DB_KEY: &str = "db_key";
 const SIGNING_KEY: &str = "device_signing_key";
 const SESSION: &str = "session";
+/// When `open` last set an unreadable store aside, until the next sign-in (`store_reset`).
+const STORE_RESET: &str = "store_reset";
+/// How long `open` waits for the notification extension's write lock before it gives up on a store without its key.
+const RESET_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 /// Key packages uploaded at sign-in; others consume one each time they add this device.
 const KEY_PACKAGES: usize = 10;
 
@@ -138,13 +142,43 @@ impl From<geunal_mls::Error> for CoreError {
     }
 }
 
+impl From<SecretStoreError> for CoreError {
+    fn from(e: SecretStoreError) -> Self {
+        CoreError::SecretStore { reason: e.to_string() }
+    }
+}
+
+/// Why the app's secret store did not answer. The core never reads a failure as "nothing there": it would make a new
+/// key and write it over the one it could not read. Swift sees `SecretStoreError`, Kotlin `SecretStoreException`.
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum SecretStoreError {
+    /// The store cannot answer now but may later: the keychain before the first unlock, a keystore that failed. The
+    /// core fails the call and changes nothing.
+    #[error("unavailable: {reason}")]
+    Unavailable { reason: String },
+    /// The value is there but will never open again: the Android Keystore key that sealed it is gone, or the file
+    /// fails its check. Without its database key the store is set aside (docs/parts/rust-core.md §4).
+    #[error("lost: {reason}")]
+    Lost { reason: String },
+}
+
+impl From<uniffi::UnexpectedUniFFICallbackError> for SecretStoreError {
+    /// A callback that threw something other than `SecretStoreError`. Nobody said the value is gone, so it must not
+    /// count as lost. Kotlin sends the whole stack trace; its first line, the exception and its message, is the reason.
+    fn from(e: uniffi::UnexpectedUniFFICallbackError) -> Self {
+        SecretStoreError::Unavailable { reason: e.reason.lines().next().unwrap_or_default().to_owned() }
+    }
+}
+
 /// Implemented by the app over the iOS keychain or the Android keystore. The core keeps its secrets (device signing
 /// key, session, database key) only here, never in SQLite (docs/parts/rust-core.md §3).
 #[uniffi::export(with_foreign)]
 pub trait SecretStore: Send + Sync {
-    fn get(&self, name: String) -> Option<Vec<u8>>;
-    fn put(&self, name: String, value: Vec<u8>);
-    fn delete(&self, name: String);
+    /// `None` only when nothing is kept under `name`; any failure to read is an error.
+    fn get(&self, name: String) -> Result<Option<Vec<u8>>, SecretStoreError>;
+    fn put(&self, name: String, value: Vec<u8>) -> Result<(), SecretStoreError>;
+    /// Deleting what is not there succeeds.
+    fn delete(&self, name: String) -> Result<(), SecretStoreError>;
 }
 
 /// What changed, so the app knows which screens to redraw.
@@ -186,6 +220,14 @@ impl Listener for Forward {
 pub struct Session {
     pub user_id: String,
     pub device_id: String,
+}
+
+/// `open` found the store but not the key that opens it, so it set the store aside and started an empty one
+/// (docs/parts/rust-core.md §4 "열 수 없는 저장소"). The device is signed out; what the account kept on the server comes
+/// back with a sign-in and a restore.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StoreReset {
+    pub at: std::time::SystemTime,
 }
 
 /// The crypto library under SQLCipher.
@@ -362,9 +404,17 @@ impl Core {
         Ok(CipherProvider { name, version })
     }
 
-    /// The signed-in account, if any.
+    /// The signed-in account, if any. A secret store that cannot answer reads as none here, since this only tells the
+    /// screens where to go; every call that acts on the account reads the store itself and fails instead.
     pub fn session(&self) -> Option<Session> {
-        saved_session(self.secrets.as_ref()).map(|s| Session { user_id: s.user_id, device_id: s.device_id })
+        self.current_session().ok().flatten()
+    }
+
+    /// Set when `open` found the store without the key that opens it and started an empty one, until the next
+    /// sign-in. The app then tells the person why the calendar is empty and offers the sign-in that restores it.
+    pub fn store_reset(&self) -> Result<Option<StoreReset>, CoreError> {
+        let Some(at) = self.store.read(|db| db.setting(STORE_RESET))? else { return Ok(None) };
+        Ok(Some(StoreReset { at: local::system_time(local::parse_stored(&at)?) }))
     }
 
     /// Signs in through the auth stub (`POST /auth/stub`, only on local and CI servers): `subject` stands for the
@@ -394,7 +444,7 @@ impl Core {
     /// `GET /me` tells it, key packages, and recovery material (protocol §10 "올리는 때"); a refusal from the server
     /// comes back as this call's error.
     pub async fn sync(self: Arc<Self>) -> Result<(), CoreError> {
-        if saved_session(self.secrets.as_ref()).is_none() {
+        if saved_session(self.secrets.as_ref())?.is_none() {
             return Ok(());
         }
         let this = self.clone();
@@ -591,7 +641,7 @@ impl Core {
     pub async fn connect_realtime(self: Arc<Self>, gateway_base: String) -> Result<(), CoreError> {
         let this = self.clone();
         self.run(async move {
-            let session = saved_session(this.secrets.as_ref()).ok_or(CoreError::NotSignedIn)?;
+            let session = saved_session(this.secrets.as_ref())?.ok_or(CoreError::NotSignedIn)?;
             let realtime = Realtime::connect(&gateway_base, &session.access_token, &session.device_id).await?;
             *this.realtime.lock().await = Some(realtime);
             Ok(())
@@ -628,9 +678,15 @@ impl Core {
         listener: Arc<dyn CoreListener>,
         secrets: Arc<dyn SecretStore>,
     ) -> Result<Arc<Self>, CoreError> {
-        let db_key = database_key(secrets.as_ref())?;
         let store_dir = PathBuf::from(store_dir);
-        let store = Store::open(&store_dir.join(DB_FILE), &db_key)?;
+        let db_path = store_dir.join(DB_FILE);
+        let db_key = database_key(secrets.as_ref(), &db_path)?;
+        let store = Store::open(&db_path, &db_key)?;
+        if Store::reset_pending(&db_path) {
+            let at = local::stored_utc(chrono::Utc::now());
+            store.write(|db| Ok::<_, CoreError>(db.set_setting(STORE_RESET, &at)?))?;
+            Store::clear_reset(&db_path)?;
+        }
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
@@ -641,14 +697,16 @@ impl Core {
         // A refresh spends the old refresh token at once, so the new one is kept before anything else can run.
         let kept = secrets.clone();
         api.set_token_listener(Arc::new(move |tokens| {
-            if let Some(mut session) = saved_session(kept.as_ref()) {
+            // Nothing here can fail the request. A store that fails keeps the old pair: this run goes on with the new
+            // one in memory, and the next run finds its refresh token spent.
+            if let Ok(Some(mut session)) = saved_session(kept.as_ref()) {
                 session.access_token = tokens.access_token.clone();
                 session.refresh_token = tokens.refresh_token.clone();
-                kept.put(SESSION.to_owned(), serde_json::to_vec(&session).expect("a session serializes"));
+                let _ = kept.put(SESSION.to_owned(), serde_json::to_vec(&session).expect("a session serializes"));
             }
         }));
         calendar::ensure_default_calendar(&store)?;
-        let state = match saved_session(secrets.as_ref()) {
+        let state = match saved_session(secrets.as_ref())? {
             Some(session) => {
                 api.restore_session(&session.access_token, &session.refresh_token);
                 let engine = build_engine(
@@ -726,6 +784,12 @@ impl Core {
     #[doc(hidden)]
     pub fn set_clock(&self, now: Option<chrono::DateTime<chrono::Utc>>) {
         *self.clock.lock().unwrap_or_else(|p| p.into_inner()) = now;
+    }
+
+    /// The signed-in account as the secret store keeps it, for the calls that act on it: a store that cannot answer
+    /// is an error here, not "signed out", so nothing that follows makes a new code over one it could not read.
+    pub(crate) fn current_session(&self) -> Result<Option<Session>, CoreError> {
+        Ok(saved_session(self.secrets.as_ref())?.map(|s| Session { user_id: s.user_id, device_id: s.device_id }))
     }
 
     pub(crate) fn now(&self) -> chrono::DateTime<chrono::Utc> {
@@ -846,27 +910,55 @@ fn build_engine(
     Ok(Engine::new(store.clone(), mls, api, Arc::new(Forward(listener))))
 }
 
-fn saved_session(secrets: &dyn SecretStore) -> Option<SyncSession> {
-    secrets.get(SESSION.to_owned()).and_then(|bytes| serde_json::from_slice(&bytes).ok())
+/// The session the secret store keeps. Bytes that do not read as a session count as none, and the next sign-in writes
+/// over them; a store that fails is an error.
+fn saved_session(secrets: &dyn SecretStore) -> Result<Option<SyncSession>, CoreError> {
+    Ok(secrets.get(SESSION.to_owned())?.and_then(|bytes| serde_json::from_slice(&bytes).ok()))
 }
 
-fn database_key(secrets: &dyn SecretStore) -> Result<[u8; 32], CoreError> {
-    if let Some(stored) = secrets.get(DB_KEY.to_owned()) {
-        return stored.try_into().map_err(|_| CoreError::SecretStore { reason: format!("{DB_KEY} is not 32 bytes") });
+/// The key of the store at `db_path`, made at the first open. A key that is gone, or lost for good, leaves a database
+/// nothing can open: it goes aside, the secrets made with it go too, and an empty store starts (docs/parts/rust-core.md
+/// §4 "열 수 없는 저장소"). A store that cannot answer now fails the open, so a key it only failed to read is never
+/// written over.
+fn database_key(secrets: &dyn SecretStore, db_path: &Path) -> Result<[u8; 32], CoreError> {
+    if let Some(key) = stored_database_key(secrets)? {
+        return Ok(key);
     }
+    // Asked again under the store's write lock: the notification extension may have made the key a moment ago.
+    let _lock = Store::lock_unopened(db_path, RESET_LOCK_TIMEOUT)?;
+    if let Some(key) = stored_database_key(secrets)? {
+        return Ok(key);
+    }
+    // The session and the device key belong to the MLS state inside the old file, and the code to its settings.
+    for name in account::ACCOUNT_SECRETS {
+        secrets.delete(name.to_owned())?;
+    }
+    Store::set_aside(db_path)?;
     let mut key = [0u8; 32];
     OsRng.fill_bytes(&mut key);
-    secrets.put(DB_KEY.to_owned(), key.to_vec());
+    secrets.put(DB_KEY.to_owned(), key.to_vec())?;
     Ok(key)
+}
+
+/// The database key the secret store keeps. One lost for good reads as none: nothing can open its store any more.
+fn stored_database_key(secrets: &dyn SecretStore) -> Result<Option<[u8; 32]>, CoreError> {
+    match secrets.get(DB_KEY.to_owned()) {
+        Ok(Some(stored)) => stored
+            .try_into()
+            .map(Some)
+            .map_err(|_| CoreError::SecretStore { reason: format!("{DB_KEY} is not 32 bytes") }),
+        Ok(None) | Err(SecretStoreError::Lost { .. }) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// The device's Ed25519 signing secret, made once and kept in the secret store (kickoff §6).
 fn signing_secret(secrets: &dyn SecretStore) -> Result<Vec<u8>, CoreError> {
-    if let Some(stored) = secrets.get(SIGNING_KEY.to_owned()) {
+    if let Some(stored) = secrets.get(SIGNING_KEY.to_owned())? {
         return Ok(stored);
     }
     let (secret, _) = MlsClient::generate_signing_key()?;
-    secrets.put(SIGNING_KEY.to_owned(), secret.clone());
+    secrets.put(SIGNING_KEY.to_owned(), secret.clone())?;
     Ok(secret)
 }
 

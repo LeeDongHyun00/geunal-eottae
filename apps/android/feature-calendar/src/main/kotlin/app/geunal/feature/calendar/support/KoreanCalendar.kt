@@ -38,4 +38,28 @@ object KoreanCalendar {
     }
 
     fun weekday(of: String): DayOfWeek? = parse(of)?.dayOfWeek
+
+    /** Midnight at the start of the Korean day. */
+    fun startOf(day: String): Instant? = parse(day)?.atStartOfDay(zone)?.toInstant()
+
+    /** The day [count] days after [day]; a negative count goes back. */
+    fun addDays(
+        day: String,
+        count: Long,
+    ): String? = parse(day)?.plusDays(count)?.toString()
+
+    /** `"YYYY-MM"` of a day. */
+    fun month(of: String): String = of.take(7)
+
+    /** The month [count] months after [month] (`"YYYY-MM"`); a negative count goes back. */
+    fun addMonths(
+        month: String,
+        count: Long,
+    ): String? = parse("$month-01")?.plusMonths(count)?.toString()?.take(7)
+
+    /** The Sunday that starts the week [day] falls in; weeks run Sunday to Saturday like the month grid. */
+    fun weekStart(of: String): String? {
+        val date = parse(of) ?: return null
+        return date.minusDays((date.dayOfWeek.value % 7).toLong()).toString()
+    }
 }

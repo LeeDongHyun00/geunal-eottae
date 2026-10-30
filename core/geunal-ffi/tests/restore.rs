@@ -216,7 +216,7 @@ fn starting_over_forgets_the_deleted_backups() {
         assert!(a.core.backup_status().unwrap().last.is_some());
         // Starting over is for a lost code: the code is gone from this phone, and the server keeps the material.
         for secret in ["recovery_entropy", "account_master_key"] {
-            a.secrets.delete(secret.to_owned());
+            a.secrets.delete(secret.to_owned()).unwrap();
         }
         a.core.clone().start_fresh(None).await.unwrap();
         assert!(server.backups_of(&user).is_empty());

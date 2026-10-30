@@ -31,6 +31,8 @@ pub enum StoreError {
     SchemaTooNew(i64),
     #[error("stored data is malformed: {0}")]
     Malformed(String),
+    #[error("moving the store aside: {0}")]
+    SetAside(std::io::Error),
 }
 
 /// Numbered migrations, applied in order and recorded in `schema_migrations`. Never edit a shipped file; add the next
@@ -147,6 +149,55 @@ impl Store {
     pub fn write_lock(&self, timeout: std::time::Duration) -> Result<WriteLock, StoreError> {
         WriteLock::acquire(&self.inner.lock_path, timeout)
     }
+
+    /// The write lock of the store at `path`, taken before it is opened: deciding which key opens the store must not
+    /// run in the app and the notification extension at once.
+    pub fn lock_unopened(path: &Path, timeout: std::time::Duration) -> Result<WriteLock, StoreError> {
+        WriteLock::acquire(&path.with_extension("lock"), timeout)
+    }
+
+    /// Moves the database at `path` and its WAL files into `unreadable/<unix millis>/` beside it. For a store whose
+    /// key is gone: nothing can open it any more, but it is kept rather than deleted in case the key turns up. The WAL
+    /// files go first, so a new database never starts next to an old one's log.
+    ///
+    /// A marker beside the database goes down before anything moves, for [`Store::reset_pending`]: the move is then
+    /// reported by whichever open succeeds next, even when the one that moved the files fails after it.
+    pub fn set_aside(path: &Path) -> Result<(), StoreError> {
+        let files: Vec<PathBuf> =
+            ["-wal", "-shm", ""].into_iter().map(|suffix| suffixed(path, suffix)).filter(|f| f.exists()).collect();
+        if files.is_empty() {
+            return Ok(());
+        }
+        std::fs::write(path.with_extension("reset"), b"").map_err(StoreError::SetAside)?;
+        let millis = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+        let dir = path.with_file_name("unreadable").join(millis.to_string());
+        std::fs::create_dir_all(&dir).map_err(StoreError::SetAside)?;
+        for file in files {
+            let name = file.file_name().expect("a path built from the database file");
+            std::fs::rename(&file, dir.join(name)).map_err(StoreError::SetAside)?;
+        }
+        Ok(())
+    }
+
+    /// Whether [`Store::set_aside`] moved a database that no open has reported yet.
+    pub fn reset_pending(path: &Path) -> bool {
+        path.with_extension("reset").exists()
+    }
+
+    /// Clears the marker of [`Store::set_aside`], once the move is reported.
+    pub fn clear_reset(path: &Path) -> Result<(), StoreError> {
+        match std::fs::remove_file(path.with_extension("reset")) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(StoreError::SetAside(e)),
+            _ => Ok(()),
+        }
+    }
+}
+
+/// `geunal.db` with SQLite's suffix for its WAL (`-wal`) or shared memory (`-shm`).
+fn suffixed(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(suffix);
+    PathBuf::from(name)
 }
 
 fn hex(bytes: &[u8]) -> String {

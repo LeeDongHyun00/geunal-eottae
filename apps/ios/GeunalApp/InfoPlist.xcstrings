@@ -20,6 +20,16 @@
           }
         }
       }
+    },
+    "NSContactsUsageDescription" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연락처의 이름과 생일을 사람·생일 목록에 가져와요. 이 기기와 암호화 백업에만 저장돼요."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
