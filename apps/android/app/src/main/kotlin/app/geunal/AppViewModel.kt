@@ -99,8 +99,8 @@ class AppViewModel(
 
     /**
      * Each time the app comes to the front: the day's session count for the alpha statistics (protocol §14), the guest
-     * account an offline start still owes (m1.md decision 16), a sync, and a fresh next-up bar. The sync also finishes
-     * what a sign-in left undone, such as uploading the recovery material (protocol §10 "올리는 때").
+     * account an offline start still owes (m1.md decision 16), a sync when online, and a fresh next-up bar. The sync also
+     * finishes what a sign-in left undone, such as uploading the recovery material (protocol §10 "올리는 때").
      */
     fun appBecameActive() {
         val core = core
@@ -119,12 +119,15 @@ class AppViewModel(
                 }
                 if (isOnline.value) PendingGuest.complete(core, onboarding)
             }
-            try {
-                core.sync()
-            } catch (e: CoreException) {
-                // Offline or refused: the next time in front tries again, and the calendar works without it.
-            } catch (e: InternalException) {
-                // As above; a panic in the core must not take the app down.
+            // Offline it could only fail; the next time in front with a connection tries again, as on iOS.
+            if (isOnline.value) {
+                try {
+                    core.sync()
+                } catch (e: CoreException) {
+                    // Refused or cut off: the calendar works without it, and the next time in front tries again.
+                } catch (e: InternalException) {
+                    // As above; a panic in the core must not take the app down.
+                }
             }
             nextUp?.refresh()
         }

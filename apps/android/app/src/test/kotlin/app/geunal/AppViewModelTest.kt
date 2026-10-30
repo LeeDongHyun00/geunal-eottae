@@ -117,7 +117,7 @@ class AppViewModelTest {
         }
 
     @Test
-    fun syncsEachTimeTheAppComesToTheFrontAndShrugsOffAFailure() =
+    fun syncsEachTimeTheAppComesToTheFrontOnlineAndShrugsOffAFailure() =
         runTest(dispatcher) {
             val core = FakeCore()
             val viewModel = viewModel { core }
@@ -135,6 +135,11 @@ class AppViewModelTest {
             assertEquals(2, core.syncs)
             // The next-up bar still comes fresh after a sync that failed.
             assertEquals(reads + 1, core.nextUpReads)
+
+            online.value = false
+            viewModel.appBecameActive()
+            advanceUntilIdle()
+            assertEquals(2, core.syncs)
         }
 
     @Test
