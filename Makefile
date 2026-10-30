@@ -8,7 +8,7 @@ SHELL := /bin/bash
 	lint-gateway test-gateway image-gateway scan-gateway lint-android test-android connected-android up down e2e \
 	audit audit-core audit-apps \
 	lint-ios project-ios app-ios test-ios uitest-ios lock-ios \
-	lint-terraform lock-terraform
+	lint-terraform lock-terraform deploy-alpha
 
 # Providers download once into .tools (gitignored, cached in CI) instead of once per root.
 export TF_PLUGIN_CACHE_DIR ?= $(CURDIR)/.tools/terraform-plugins
@@ -148,6 +148,9 @@ lock-terraform: ## Terraform: rewrite each root's lock file with checksums for L
 	  "$$terraform" -chdir="$$root" providers lock \
 	    -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_amd64 -platform=darwin_arm64; \
 	done
+
+deploy-alpha: ## Alpha server: copy infra/alpha, bootstrap it, ship the API image, restart (GEUNAL_ALPHA_SSH=root@<address>)
+	infra/alpha/deploy.sh
 
 up: image-api image-gateway ## Local stack in Docker: PostgreSQL, Redis, S3, API, gateway (infra/docker-compose.yml)
 	docker compose -f infra/docker-compose.yml up --detach --wait --wait-timeout 180

@@ -1,0 +1,75 @@
+# infra/alpha/compose.yml: the alpha server (docs/parts/infra.md §2), one Micro VM with 1 GB of memory. The API,
+# PostgreSQL and Valkey run here; the gateway joins at M2. deploy.sh copies this directory to /opt/geunal and writes
+# the API's image tag and host name into /opt/geunal/.env. The secrets are root-only files under /etc/geunal that
+# bootstrap.sh creates on the server, so none of them is in the repository.
+name: geunal
+
+services:
+  postgres:
+    image: postgres:16.15
+    # Memory is what a Micro runs out of first (infra.md §2): 128 MB of shared buffers, and few connections because one
+    # API with a small pool is the only client.
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=30"]
+    env_file: /etc/geunal/postgres.env
+    environment:
+      POSTGRES_DB: geunal
+      POSTGRES_USER: geunal
+    volumes: [postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geunal -d geunal"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Valkey rather than Redis, whose licence changed after 7.4. The API keeps only pub/sub signals and rate limits here
+  # (infra.md §2), so nothing is persisted and the oldest keys give way when the cap is reached.
+  valkey:
+    image: valkey/valkey:8.1.11-alpine
+    command: ["valkey-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # deploy.sh loads this image over SSH; there is no registry yet.
+  api:
+    image: geunal/api:${GEUNAL_API_TAG:?deploy.sh writes GEUNAL_API_TAG into /opt/geunal/.env}
+    pull_policy: never
+    read_only: true
+    tmpfs: [/tmp]
+    env_file: /etc/geunal/api.env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/geunal
+      SPRING_DATASOURCE_USERNAME: geunal
+      SPRING_DATA_REDIS_HOST: valkey
+      # The 256 MB heap of infra.md §2; -Xmx wins over the image's MaxRAMPercentage.
+      JAVA_TOOL_OPTIONS: -Xmx256m
+    # Loopback only: the internet reaches the API through Caddy, and the operator through SSH.
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      valkey: { condition: service_healthy }
+    restart: unless-stopped
+
+  # TLS for the API once it has a host name (GEUNAL_API_HOST): deploy.sh starts this with --profile https only then.
+  # Certificates stay in the caddy-data volume, so a restart does not ask Let's Encrypt again.
+  caddy:
+    image: caddy:2.11.7
+    profiles: [https]
+    environment:
+      GEUNAL_API_HOST: ${GEUNAL_API_HOST:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports: ["80:80", "443:443"]
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+
+volumes:
+  postgres:
+  caddy-data:
+  caddy-config:

@@ -66,6 +66,7 @@
 | `make scan-gateway` | 게이트웨이: 이미지와 `mix.lock`의 Trivy 검사 |
 | `make lint-terraform` | Terraform: `fmt` 검사와 `infra/terraform/envs/*` 루트의 `init`(백엔드 없이)·`validate` |
 | `make lock-terraform` | Terraform: 제공자 버전을 올린 뒤 루트의 잠금 파일에 Linux·macOS 체크섬을 다시 기록 |
+| `make deploy-alpha` | 알파 서버: `infra/alpha`를 서버에 복사해 준비하고, API 이미지를 보내 스택을 다시 띄움. 운영자 PC에서 `GEUNAL_ALPHA_SSH=root@<주소>`와 함께([infra/alpha](infra/alpha/README.md)) |
 | `make up` | 로컬 스택(`infra/docker-compose.yml`): 이미지를 빌드하고 PostgreSQL·Redis·S3·API·게이트웨이를 띄움 |
 | `make down` | 로컬 스택을 멈추고 데이터를 지움 |
 | `make e2e` | 로컬 스택을 띄우고 `core/geunal-e2e`의 헤드리스 종단 시험을 돌림. 스택은 그대로 둠 |
