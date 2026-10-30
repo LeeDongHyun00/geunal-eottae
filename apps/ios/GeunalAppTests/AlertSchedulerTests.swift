@@ -1,3 +1,4 @@
+import CoreBridge
 import FeatureCalendar
 import Foundation
 import GeunalCore
@@ -52,7 +53,8 @@ final class AlertSchedulerTests: XCTestCase {
     private func dinner(_ title: String = "가족 · 저녁") -> ScheduledAlert {
         ScheduledAlert(
             id: "event:e1:k:60", fireAt: evening, target: .event(eventId: "e1", occurrence: nil), title: title,
-            start: DayTime(day: "2026-10-30", minute: 18 * 60), allDay: false)
+            start: DayTime(day: "2026-10-30", minute: 18 * 60), allDay: false,
+            end: DayTime(day: "2026-10-30", minute: 20 * 60))
     }
 
     private func birthday(_ personId: String) -> ScheduledAlert {
@@ -72,9 +74,32 @@ final class AlertSchedulerTests: XCTestCase {
             center.pending,
             [
                 PlannedAlert(
-                    id: "alert.event:e1:k:60", fireAt: evening, title: "가족 · 저녁", body: "1시간 뒤 · 18:00",
+                    id: "alert.event:e1:k:60", fireAt: evening, title: "가족 · 저녁", body: "1시간 뒤 · 18:00–20:00",
                     route: .event(eventId: "e1", occurrence: nil))
             ])
+    }
+
+    /// The real core gives an event's alert its end (core #55), so the body names the whole time.
+    func testTheCoresAlertNamesTheEventsEnd() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let core = try Core.open(
+            storeDir: directory.path(percentEncoded: false), apiBase: "http://127.0.0.1:8080",
+            listener: ChangeStreamListener(), secrets: MemorySecretStore())
+        let calendar = try XCTUnwrap(core.calendars().first { $0.kind == .own }?.id)
+        let tomorrow = try XCTUnwrap(KoreanCalendar.adding(days: 1, to: KoreanCalendar.day(of: Date())))
+        _ = try core.addEvent(
+            input: EventInput(
+                calendarId: calendar, title: "저녁", allDay: false, start: DayTime(day: tomorrow, minute: 18 * 60),
+                end: DayTime(day: tomorrow, minute: 20 * 60), recurrence: nil, alert: .before(minutes: 60), note: nil),
+            fromSuggestion: false)
+        let center = FakeCenter()
+
+        await AlertScheduler(core: core, center: center).refresh()
+
+        XCTAssertEqual(center.pending.map(\.body), ["1시간 뒤 · 18:00–20:00"])
     }
 
     func testRemovesEveryAlertOnASignOut() async {

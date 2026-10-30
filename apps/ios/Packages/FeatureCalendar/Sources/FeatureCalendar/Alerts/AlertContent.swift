@@ -14,17 +14,16 @@ public enum AlertContent {
         }
     }
 
-    /// `end` is the event's end (the last day of an all-day event), when known; `lunarBirthday` is "음력 10월 3일" for a
-    /// person whose birthday is lunar.
-    public static func text(for alert: ScheduledAlert, end: DayTime? = nil, lunarBirthday: String? = nil) -> Text {
+    /// `lunarBirthday` is "음력 10월 3일" for a person whose birthday is lunar.
+    public static func text(for alert: ScheduledAlert, lunarBirthday: String? = nil) -> Text {
         let fireDay = KoreanCalendar.day(of: alert.fireAt)
         switch alert.target {
         case .event:
             return Text(
                 title: alert.title,
                 body: alert.allDay
-                    ? allDayBody(start: alert.start.day, end: end?.day, fireDay: fireDay)
-                    : timedBody(alert, end: end, fireDay: fireDay))
+                    ? allDayBody(start: alert.start.day, end: alert.end?.day, fireDay: fireDay)
+                    : timedBody(alert, fireDay: fireDay))
         case .birthday:
             return Text(
                 title: String(localized: "\(alert.title) 생일", bundle: .module),
@@ -39,8 +38,9 @@ public enum AlertContent {
         }
     }
 
-    /// "1시간 뒤 · 18:00–20:00" on the day itself, "내일 · 18:00–20:00" from the day before.
-    static func timedBody(_ alert: ScheduledAlert, end: DayTime?, fireDay: String) -> String {
+    /// "1시간 뒤 · 18:00–20:00" on the day itself, "내일 · 18:00–20:00" from the day before. An alert without an end
+    /// (from a core older than #55) says only its start.
+    static func timedBody(_ alert: ScheduledAlert, fireDay: String) -> String {
         let lead: String
         if alert.start.day == fireDay, let start = KoreanCalendar.start(of: alert.start.day) {
             let startsAt = start.addingTimeInterval(TimeInterval(alert.start.minute) * 60)
@@ -49,7 +49,8 @@ public enum AlertContent {
             lead = near(alert.start.day, from: fireDay)
         }
         let time =
-            end.map { DayText.range(start: alert.start.minute, end: $0.minute) } ?? DayText.clock(alert.start.minute)
+            alert.end.map { DayText.range(start: alert.start.minute, end: $0.minute) }
+            ?? DayText.clock(alert.start.minute)
         return String(localized: "\(lead) · \(time)", bundle: .module)
     }
 
