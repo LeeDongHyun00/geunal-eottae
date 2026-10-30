@@ -1,16 +1,28 @@
 import DesignSystem
+import FeatureCalendar
 import GeunalCore
 import SwiftUI
 
-/// The 나 tab's account card. The rest of the screen (m1.md screen 12: calendars, recovery code, backup, deletion)
-/// follows with those screens.
+/// The 나 tab's account card and 사람·생일. The rest of the screen (m1.md screen 12: calendars, recovery code, backup,
+/// deletion) follows with those screens.
 struct MeTab: View {
+    private enum Route: Hashable {
+        case people(focus: String?)
+        #if DEBUG
+            case coreStatus
+        #endif
+    }
+
     let core: any CoreProtocol
+    let toasts: ToastCenter
+    /// A person to open in 사람·생일, from a birthday on the next-up bar.
+    @Binding var openPerson: String?
     @State private var account: AccountView?
     @State private var loaded = false
+    @State private var path: [Route] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.l) {
                     Text("나")
@@ -19,11 +31,15 @@ struct MeTab: View {
                         .padding(.top, Space.xl)
                         .accessibilityAddTraits(.isHeader)
                     profile
+                    NavigationLink(value: Route.people(focus: nil)) {
+                        SettingsRow(Text("사람·생일"))
+                            .background(GeunalColor.background, in: RoundedRectangle(cornerRadius: Radius.card))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("me.people")
                     #if DEBUG
                         // The M0 check that the core opens and syncs on the device, kept for the UI test.
-                        NavigationLink {
-                            CoreStatusScreen()
-                        } label: {
+                        NavigationLink(value: Route.coreStatus) {
                             SettingsRow(Text("코어 상태"))
                                 .background(GeunalColor.background, in: RoundedRectangle(cornerRadius: Radius.card))
                         }
@@ -34,11 +50,26 @@ struct MeTab: View {
                 .padding(.horizontal, Space.m)
             }
             .background(GeunalColor.groupedBackground)
+            .navigationDestination(for: Route.self) { route in
+                switch route {
+                case .people(let focus):
+                    PeopleScreen(core: core, contacts: DeviceContacts(), toasts: toasts, focus: focus)
+                #if DEBUG
+                    case .coreStatus:
+                        CoreStatusScreen()
+                #endif
+                }
+            }
             .task {
                 let core = self.core
                 account = await Task.detached { (try? core.account()) ?? nil }.value
                 loaded = true
             }
+        }
+        .onChange(of: openPerson, initial: true) { _, id in
+            guard let id else { return }
+            path = [.people(focus: id)]
+            openPerson = nil
         }
     }
 

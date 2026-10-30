@@ -92,10 +92,14 @@ public struct GeunalToggle: View {
 public struct SegmentedControl<Value: Hashable>: View {
     @Binding private var selection: Value
     private let options: [(value: Value, label: Text)]
+    private let fillsWidth: Bool
 
-    public init(selection: Binding<Value>, options: [(value: Value, label: Text)]) {
+    /// `fillsWidth` splits the width evenly, for a choice that spans a sheet (양력·음력); otherwise each option is as
+    /// wide as its label.
+    public init(selection: Binding<Value>, options: [(value: Value, label: Text)], fillsWidth: Bool = false) {
         _selection = selection
         self.options = options
+        self.fillsWidth = fillsWidth
     }
 
     public var body: some View {
@@ -110,7 +114,7 @@ public struct SegmentedControl<Value: Hashable>: View {
                         .typeStyle(.pillLabel)
                         .foregroundStyle(selected ? GeunalColor.ink : GeunalColor.secondaryText)
                         .padding(.horizontal, Space.m)
-                        .frame(maxHeight: .infinity)
+                        .frame(maxWidth: fillsWidth ? .infinity : nil, maxHeight: .infinity)
                         .background {
                             if selected {
                                 Capsule()
