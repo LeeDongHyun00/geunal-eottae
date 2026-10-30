@@ -35,13 +35,13 @@ struct SnapshotTimeline: TimelineProvider {
         SnapshotEntry(date: Date(), content: Self.sample(Date()))
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (SnapshotEntry) -> Void) {
+    func getSnapshot(in context: Context, completion: @escaping @Sendable (SnapshotEntry) -> Void) {
         let now = Date()
         // The widget gallery shows the board's example rather than the person's day.
         completion(SnapshotEntry(date: now, content: context.isPreview ? Self.sample(now) : Self.content(at: now)))
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<SnapshotEntry>) -> Void) {
+    func getTimeline(in context: Context, completion: @escaping @Sendable (Timeline<SnapshotEntry>) -> Void) {
         let now = Date()
         let midnight = WidgetDays.nextMidnight(after: now)
         let source = Self.source()

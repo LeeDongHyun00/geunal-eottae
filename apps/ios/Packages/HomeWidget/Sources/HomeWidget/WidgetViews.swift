@@ -58,47 +58,72 @@ public struct MediumWidgetView: View {
     }
 
     public var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(verbatim: WidgetText.heading(content.day))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(WidgetText.weekdayColor(content.day))
-                    .padding(.bottom, 4)
-                switch content.state {
-                case .events(let today, _):
-                    if today.isEmpty {
-                        Note(text: Text("오늘은 비어 있어요", bundle: .module))
-                    } else {
-                        ForEach(Array(today.prefix(3).enumerated()), id: \.offset) { _, event in
-                            LinkedEventLine(event: event)
-                        }
-                    }
-                case .start:
-                    Note(text: Text("그날어때를 열어 시작하세요", bundle: .module))
-                case .openApp:
-                    Note(text: Text("그날어때를 열어 주세요", bundle: .module))
+        // The board's columns: 1 to 1.15 across a 16-point gap.
+        GeometryReader { proxy in
+            let columns = max(0, proxy.size.width - 16)
+            HStack(alignment: .top, spacing: 16) {
+                today
+                    .frame(width: tomorrow == nil ? proxy.size.width : columns / 2.15, alignment: .topLeading)
+                if let tomorrow {
+                    TomorrowCard(events: tomorrow)
+                        .frame(width: columns * 1.15 / 2.15)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            if case .events(_, let tomorrow?) = content.state {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("내일", bundle: .module)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(GeunalColor.secondaryText)
-                    if tomorrow.isEmpty {
-                        Note(text: Text("내일은 비어 있어요", bundle: .module))
-                    } else {
-                        ForEach(Array(tomorrow.prefix(2).enumerated()), id: \.offset) { _, event in
-                            LinkedEventLine(event: event)
-                        }
+            .frame(maxHeight: .infinity, alignment: .top)
+        }
+    }
+
+    private var tomorrow: [WidgetSnapshot.Event]? {
+        if case .events(_, let tomorrow) = content.state {
+            return tomorrow
+        }
+        return nil
+    }
+
+    private var today: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(verbatim: WidgetText.heading(content.day))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(WidgetText.weekdayColor(content.day))
+                .padding(.bottom, 4)
+            switch content.state {
+            case .events(let today, _):
+                if today.isEmpty {
+                    Note(text: Text("오늘은 비어 있어요", bundle: .module))
+                } else {
+                    ForEach(Array(today.prefix(3).enumerated()), id: \.offset) { _, event in
+                        LinkedEventLine(event: event)
                     }
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(WidgetColors.card, in: RoundedRectangle(cornerRadius: 16))
-                .layoutPriority(1.15)
+            case .start:
+                Note(text: Text("그날어때를 열어 시작하세요", bundle: .module))
+            case .openApp:
+                Note(text: Text("그날어때를 열어 주세요", bundle: .module))
             }
         }
+    }
+}
+
+/// The right card: "다음 약속" from M2, tomorrow's events in M1 (m1.md screen 14 "다음 약속 없음(M1)").
+private struct TomorrowCard: View {
+    let events: [WidgetSnapshot.Event]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("내일", bundle: .module)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(GeunalColor.secondaryText)
+            if events.isEmpty {
+                Note(text: Text("내일은 비어 있어요", bundle: .module))
+            } else {
+                ForEach(Array(events.prefix(2).enumerated()), id: \.offset) { _, event in
+                    LinkedEventLine(event: event)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(WidgetColors.card, in: RoundedRectangle(cornerRadius: 16))
     }
 }
 
