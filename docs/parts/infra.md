@@ -269,7 +269,7 @@ services:
 | App Store Server API 키, Play 서비스 계정(구독 검증) | API | 연 1회 |
 | NCP 배포용 Sub Account 키 | CI(Terraform, 배포) | 분기 1회 |
 
-**비밀이 아닌 식별자:** 위 비밀값과 함께 쓰는 값입니다. 앱 바이너리와 `assetlinks.json`으로 어차피 드러나므로 여기 적습니다. 2026년 10월 30일에 콘솔에서 만들었습니다.
+**비밀이 아닌 식별자:** 위 비밀값과 함께 쓰는 값입니다. 대부분 앱 바이너리와 `assetlinks.json`으로 어차피 드러나고, 드러나지 않는 콘솔 쪽 ID(Play Console 앱 ID, 카카오 앱 ID, SKU)도 콘솔 권한 없이는 쓸 수 없어서 여기 적습니다. 2026년 10월 30일에 콘솔에서 만들거나 확인했습니다.
 
 | 항목 | 값 | 쓰는 곳 |
 | --- | --- | --- |
@@ -288,9 +288,9 @@ services:
 | 양자 컴퓨팅 대비 항목의 기존 키 | `B2:68:52:E7:81:4C:98:D4:7A:A8:9B:9E:4B:D3:C5:F5:D0:17:4F:93:07:E4:19:C2:B3:65:D2:0D:83:B5:F7:56` | `LlWqBXcpOnm3IrBdbiFoc0lOjYQ=` |
 | 같은 항목의 양자 내성 키 | `8B:F4:2D:D7:47:39:95:0B:F9:19:CC:85:74:F7:5F:4F:F1:6F:B1:33:80:92:CF:AD:29:BB:73:5C:EB:6A:37:B1` | `z9R88P9Q/yIk1PXjfk75xSVpIYg=` |
 
-- **디버그 빌드:** 빌드한 기기의 디버그 키로 서명됩니다. 그래서 카카오 로그인을 시험하는 PC와 CI마다 그 키 해시를 카카오 디벨로퍼스 › 앱 › 플랫폼 키 › 네이티브 앱 키에 더합니다. 키 해시는 `keytool -exportcert -alias androiddebugkey -keystore ~/.android/debug.keystore -storepass android | openssl sha1 -binary | openssl base64`로 구합니다.
+- **디버그 빌드:** 빌드한 PC의 디버그 키(`~/.android/debug.keystore`)로 서명됩니다. 그래서 디버그 빌드로 카카오 로그인을 시험하는 PC마다 그 키 해시를 카카오 디벨로퍼스 › 앱 › 플랫폼 키 › 네이티브 앱 키에 더합니다. 키 해시는 `keytool -exportcert -alias androiddebugkey -keystore ~/.android/debug.keystore -storepass android | openssl sha1 -binary | openssl base64`로 구합니다. CI는 더하지 않습니다. 러너마다 디버그 키가 새로 생기고, CI의 테스트는 카카오 서버에 묻지 않습니다.
 - **업로드 키로 서명한 릴리스 빌드:** Play를 거치지 않고 설치해 시험할 때만 업로드 키의 키 해시도 더합니다.
-- **도메인을 정한 뒤 콘솔에 등록할 것:** Apple 서비스 ID의 웹 인증 구성(도메인, 반환 주소 `https://<API 호스트>/auth/apple/callback`), App ID의 Sign in with Apple 서버 간 알림 주소, 카카오 연결 해제 웹훅 주소입니다. 알림과 웹훅의 경로는 백엔드가 [API 서버](api-server.md) 7장에 정합니다.
+- **도메인을 정한 뒤 콘솔에 등록할 것:** Apple 서비스 ID의 웹 인증 구성(도메인, 반환 주소 `https://<API 호스트>/auth/apple/callback`), App ID의 Sign in with Apple 서버 간 알림 주소(동의 철회 알림 등), 카카오 연결 끊기 알림 주소입니다. 두 알림의 경로는 백엔드가 [API 서버](api-server.md) 7장에 정합니다.
 
 ## 11. 완료 조건
 
