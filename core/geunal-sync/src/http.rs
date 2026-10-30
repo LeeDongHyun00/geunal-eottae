@@ -310,6 +310,20 @@ impl Transport for HttpTransport {
         Ok(body)
     }
 
+    async fn delete_account(&self, req: DeleteAccount) -> Result<(), ApiError> {
+        self.send_empty(|t| t.request(Method::DELETE, "/me").json(&req)).await
+    }
+
+    async fn holidays(&self, from_year: i32, to_year: i32) -> Result<HolidayYears, ApiError> {
+        let path = format!("/holidays?from_year={from_year}&to_year={to_year}");
+        Self::once(self.anonymous(Method::GET, &path)).await
+    }
+
+    async fn post_alpha_stats(&self, days: Vec<AlphaDay>) -> Result<(), ApiError> {
+        let body = serde_json::json!({ "stats": days });
+        self.send_empty(|t| t.request(Method::POST, "/me/alpha-stats").json(&body)).await
+    }
+
     fn restore_session(&self, access_token: &str, refresh_token: &str) {
         if let Ok(mut tokens) = self.tokens.lock() {
             *tokens = Some((access_token.to_owned(), refresh_token.to_owned()));

@@ -132,8 +132,11 @@ pub struct HolidayRow {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AlphaDayRow {
     pub day: String,
+    pub sessions: i64,
     pub events: i64,
     pub suggested: i64,
+    pub crashes: i64,
+    /// `None` until the day goes to the server, and again whenever a count of it changes.
     pub sent_at: Option<String>,
 }
 
@@ -538,18 +541,47 @@ impl Db<'_> {
         Ok(())
     }
 
-    pub fn alpha_days(&self) -> Result<Vec<AlphaDayRow>> {
-        self.all("SELECT day, events, suggested, sent_at FROM alpha_stats ORDER BY day", [], |r| {
-            Ok(AlphaDayRow { day: r.get(0)?, events: r.get(1)?, suggested: r.get(2)?, sent_at: r.get(3)? })
-        })
-    }
-
-    pub fn mark_alpha_sent(&self, day: &str, sent_at: &str) -> Result<()> {
-        self.conn.execute("UPDATE alpha_stats SET sent_at = ?2 WHERE day = ?1", params![day, sent_at])?;
+    /// Adds foreground sessions or the crashes the OS reported to a day, which then goes to the server again.
+    pub fn count_alpha(&self, day: &str, sessions: i64, crashes: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO alpha_stats (day, sessions, crashes) VALUES (?1, ?2, ?3)
+             ON CONFLICT (day) DO UPDATE SET sessions = sessions + ?2, crashes = crashes + ?3, sent_at = NULL",
+            params![day, sessions, crashes],
+        )?;
         Ok(())
     }
 
-    /// Days before `day` are dropped once sent: the server takes at most the last 14 days (protocol §14).
+    pub fn alpha_days(&self) -> Result<Vec<AlphaDayRow>> {
+        self.all("SELECT day, sessions, events, suggested, crashes, sent_at FROM alpha_stats ORDER BY day", [], |r| {
+            Ok(AlphaDayRow {
+                day: r.get(0)?,
+                sessions: r.get(1)?,
+                events: r.get(2)?,
+                suggested: r.get(3)?,
+                crashes: r.get(4)?,
+                sent_at: r.get(5)?,
+            })
+        })
+    }
+
+    /// Marks a day sent with the counts it went with. One that changed while the request was out stays unsent, so its
+    /// newer counts go next time.
+    pub fn mark_alpha_sent(&self, sent: &AlphaDayRow, sent_at: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE alpha_stats SET sent_at = ?6
+             WHERE day = ?1 AND sessions = ?2 AND events = ?3 AND suggested = ?4 AND crashes = ?5",
+            params![sent.day, sent.sessions, sent.events, sent.suggested, sent.crashes, sent_at],
+        )?;
+        Ok(())
+    }
+
+    /// Every day's counts go: the tester stopped sending, or the account is gone.
+    pub fn clear_alpha(&self) -> Result<()> {
+        self.conn.execute("DELETE FROM alpha_stats", [])?;
+        Ok(())
+    }
+
+    /// Days before `day` are dropped, sent or not: the server takes the last 14 days only (protocol §14).
     pub fn prune_alpha(&self, before_day: &str) -> Result<()> {
         self.conn.execute("DELETE FROM alpha_stats WHERE day < ?1", [before_day])?;
         Ok(())

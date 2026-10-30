@@ -17,7 +17,9 @@ use geunal_domain::ics::{self, IcsEvent};
 use geunal_domain::layout;
 use geunal_domain::recurrence::{Rule, weekday_index};
 use geunal_domain::suggest::{self, Candidate};
-use geunal_store::{CalendarRow, Db, EventRow, ShiftTemplateRow, Store, SuggestionStatRow};
+use geunal_store::{CalendarRow, Db, EventRow, HolidayRow, ShiftTemplateRow, Store, SuggestionStatRow};
+use geunal_sync::Transport as _;
+use geunal_sync::api::HolidayYears;
 use serde::Serialize;
 
 use crate::local::*;
@@ -1263,6 +1265,73 @@ impl Core {
     }
 }
 
+impl Core {
+    /// This year's and next year's public holidays from the server, once a day (protocol §14). Each year the server
+    /// knows in full replaces what the device had for it, the built-in table or an earlier answer; a year it does
+    /// not know yet (next year before it is announced) stays. The calendar never waits on this: a network error tries
+    /// again at the next `sync()`, and any other answer tomorrow.
+    pub(crate) async fn refresh_holidays(&self) -> Result<(), CoreError> {
+        let today = kst_day(self.now());
+        let today_text = day_text(today);
+        if self.store.read(|db| db.setting(HOLIDAYS_FETCHED_ON))?.as_deref() == Some(today_text.as_str()) {
+            return Ok(());
+        }
+        let year = today.year();
+        let answer = match self.api.holidays(year, year + 1).await {
+            Err(geunal_sync::ApiError::Network(_)) => return Ok(()),
+            answer => answer.ok(),
+        };
+        let updated_at = stored_utc(self.now());
+        let replaced = self.store.write(|db| {
+            let years = answer.as_ref().map(|a| holiday_years(a, year)).unwrap_or_default();
+            for (y, rows) in &years {
+                db.replace_holiday_year(i64::from(*y), rows, &updated_at)?;
+            }
+            db.set_setting(HOLIDAYS_FETCHED_ON, &today_text)?;
+            Ok::<_, CoreError>(!years.is_empty())
+        })?;
+        if replaced {
+            self.calendar_changed();
+        }
+        Ok(())
+    }
+}
+
+/// The years of an answer the device takes, with their holidays: of the two it asked for (`from` and the next), those
+/// the server says it knows in full. An answer with a day that is not a date or a holiday without a name is taken
+/// not at all, and a year without any holiday is not taken either: a broken answer would otherwise wipe a year's
+/// holidays that the built-in table had right.
+fn holiday_years(answer: &HolidayYears, from: i32) -> Vec<(i32, Vec<HolidayRow>)> {
+    let mut parsed = Vec::with_capacity(answer.holidays.len());
+    for h in &answer.holidays {
+        match NaiveDate::parse_from_str(&h.day, "%Y-%m-%d") {
+            Ok(day) if !h.name.trim().is_empty() => parsed.push((day, h)),
+            _ => return Vec::new(),
+        }
+    }
+    answer
+        .years
+        .iter()
+        .copied()
+        .filter(|y| (from..=from + 1).contains(y))
+        .map(|y| {
+            let rows: Vec<HolidayRow> = parsed
+                .iter()
+                .filter(|(day, _)| day.year() == y)
+                .map(|(day, h)| HolidayRow {
+                    day: day_text(*day),
+                    name: h.name.trim().to_owned(),
+                    substitute: h.substitute,
+                })
+                .collect();
+            (y, rows)
+        })
+        .filter(|(_, rows)| !rows.is_empty())
+        .collect()
+}
+
+/// The Korean day the holidays were last fetched: once a day at most (protocol §14).
+const HOLIDAYS_FETCHED_ON: &str = "holidays_fetched_on";
 /// How far ahead the next-up bar looks.
 const NEXT_UP_DAYS: i64 = 62;
 /// A birthday alert that follows the setting fires at 09:00 of the day ("당일 09:00").

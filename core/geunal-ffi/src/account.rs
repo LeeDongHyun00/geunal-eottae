@@ -17,17 +17,17 @@ use geunal_mls::MlsClient;
 use geunal_store::archive::{self, Restored};
 use geunal_store::{BackupRecordRow, Counted, Db};
 use geunal_sync::api::{
-    AuthOutcome, DeviceProof, GuestSignIn, LinkRequest, NewAccountFields, ProviderSignIn, RecoverSignIn,
-    RecoveryUpload, ReplaceRequest, Replaced,
+    AlphaDay, AuthOutcome, DeleteAccount, DeviceProof, GuestSignIn, LinkRequest, NewAccountFields, ProviderSignIn,
+    RecoverSignIn, RecoveryUpload, ReplaceRequest, Replaced,
 };
 use geunal_sync::{ApiError, Transport as _};
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::calendar::ensure_default_calendar;
-use crate::local::{changes, parse_stored, stored_utc, system_time};
+use crate::local::{changes, day_text, kst_day, parse_stored, stored_utc, system_time};
 use crate::{
-    Change, Core, CoreError, KEY_PACKAGES, SESSION, SIGNING_KEY, Session, State, build_engine, not_yet, revoked_error,
+    Change, Core, CoreError, KEY_PACKAGES, SESSION, SIGNING_KEY, Session, State, build_engine, revoked_error,
     signing_secret,
 };
 
@@ -54,6 +54,12 @@ const BACKED_UP_CHANGES: &str = "backed_up_changes";
 const KEY_PACKAGES_DUE: &str = "key_packages_due";
 /// The account as stored is the sign-in's guess, as `GET /me` did not answer then; `sync()` asks again.
 const ACCOUNT_STALE: &str = "account_stale";
+/// The Korean day the tester agreed to send the alpha counts; days before it never go. Absent while they are off.
+const ALPHA_SINCE: &str = "alpha_stats_since";
+/// The Korean day the counts last went to the server, which takes them once a day.
+const ALPHA_SENT_ON: &str = "alpha_stats_sent_on";
+/// The alpha counts cover the last 14 Korean days, today included (protocol §14).
+const ALPHA_DAYS: i64 = 14;
 /// The platform a sign-in names.
 const PLATFORM: &str = if cfg!(target_os = "ios") { "ios" } else { "android" };
 const KAKAO: &str = "kakao";
@@ -516,12 +522,46 @@ impl Core {
 
     /// Deletes the account on the server (`DELETE /me` with `proof`), then the session, the device signing key, the
     /// master key and the code's entropy, and the group state on this device. Events, calendars and people stay, and
-    /// the app keeps working as a calendar without groups (m1.md 2.5). `ReauthRequired` leaves everything as it was
-    /// and the session valid: ask for the proof again. `RecoveryMissing` means a guest's recovery material is not on
-    /// the server yet; the core uploads it on the next `sync()`, and then the deletion can be tried again.
+    /// the app keeps working as a calendar without groups (m1.md 2.5). The alpha statistics go off: a new account
+    /// agrees again. `ReauthRequired` leaves everything as it was and the session valid: ask for the proof again.
+    ///
+    /// A guest's recovery material that never reached the server (409 `recovery_missing`) goes up first, and the
+    /// deletion is tried once more (m1.md screen 22); `RecoveryMissing` when it still cannot be. A device with no code
+    /// to sign with is `Invalid` for `DeletionProof::Guest`.
     pub async fn delete_account(self: Arc<Self>, proof: DeletionProof) -> Result<(), CoreError> {
-        let _ = proof;
-        Err(not_yet("delete_account"))
+        let this = self.clone();
+        self.run(async move {
+            this.session().ok_or(CoreError::NotSignedIn)?;
+            let mut uploaded = false;
+            loop {
+                let req = this.deletion_request(&proof).await?;
+                match this.checked(this.api.delete_account(req).await).await {
+                    Ok(()) => break,
+                    Err(CoreError::Api { status: 403, code, .. }) if code == "reauth_required" => {
+                        return Err(CoreError::ReauthRequired);
+                    }
+                    Err(CoreError::Api { status: 409, code, .. }) if code == "recovery_missing" => {
+                        if uploaded || this.recovery_secrets()?.is_none() {
+                            return Err(CoreError::RecoveryMissing);
+                        }
+                        uploaded = true;
+                        this.upload_recovery(false, None).await?;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            // The counts stop with the account, before the app hears this device left it.
+            this.store.write(|db| {
+                db.clear_alpha()?;
+                for key in [ALPHA_SINCE, ALPHA_SENT_ON] {
+                    db.delete_setting(key)?;
+                }
+                Ok::<_, CoreError>(())
+            })?;
+            *this.state.lock().await = State::SignedOut;
+            this.leave_account(None).await
+        })
+        .await
     }
 
     /// Set when another device's sign-in signed this one out (403 `device_revoked` with `replaced_at`, protocol §13),
@@ -680,30 +720,60 @@ impl Core {
 
     // ----- alpha statistics (protocol §14) -----
 
-    /// Whether this device sends the daily counts. Alpha builds only, and only for a tester who agreed.
+    /// Whether this device sends the daily counts. Alpha builds only, and only for a tester who agreed; off until then.
     pub fn alpha_stats_enabled(&self) -> Result<bool, CoreError> {
-        Err(not_yet("alpha_stats_enabled"))
+        Ok(self.store.read(|db| db.setting(ALPHA_SINCE))?.is_some())
     }
 
-    /// Turns the daily counts on or off. `sync()` sends them at most once a day while on.
+    /// Turns the daily counts on or off. `sync()` sends them at most once a day while on, from the day the tester
+    /// agreed: what was counted before goes nowhere. Off drops every count this device kept.
     pub fn set_alpha_stats(&self, enabled: bool) -> Result<(), CoreError> {
-        let _ = enabled;
-        Err(not_yet("set_alpha_stats"))
+        let today = day_text(kst_day(self.now()));
+        self.store.write(|db| {
+            match enabled {
+                true if db.setting(ALPHA_SINCE)?.is_none() => db.set_setting(ALPHA_SINCE, &today)?,
+                true => {}
+                false => {
+                    db.clear_alpha()?;
+                    db.delete_setting(ALPHA_SINCE)?;
+                    db.delete_setting(ALPHA_SENT_ON)?;
+                }
+            }
+            Ok::<_, CoreError>(())
+        })?;
+        self.listener.on_change(Change::Account);
+        Ok(())
     }
 
     /// The app came to the foreground: one more of the day's `sessions`, the count the calendar-activity and
     /// crash-free-session gates use (protocol §14). Kept only while the alpha statistics are on.
     pub fn record_app_foreground(&self) -> Result<(), CoreError> {
-        Err(not_yet("record_app_foreground"))
+        let today = day_text(kst_day(self.now()));
+        self.store.write(|db| {
+            if db.setting(ALPHA_SINCE)?.is_some() {
+                db.count_alpha(&today, 1, 0)?;
+            }
+            Ok::<_, CoreError>(())
+        })
     }
 
     /// Crashes the OS reported for a Korean `day`, learned on a later launch: iOS MetricKit `MXCrashDiagnostic`,
     /// Android `ApplicationExitInfo` with `REASON_CRASH` or `REASON_CRASH_NATIVE` only. They add to that day, and the
     /// day goes to the server again, which keeps the newest copy. The app reports each crash once (Android remembers
-    /// the newest exit it has counted).
+    /// the newest exit it has counted). Kept only while the alpha statistics are on; a day older than the 14 the
+    /// server takes is dropped.
     pub fn record_crashes(&self, day: String, count: u32) -> Result<(), CoreError> {
-        let _ = (day, count);
-        Err(not_yet("record_crashes"))
+        let crashed = crate::local::day(&day)?;
+        let today = kst_day(self.now());
+        if count == 0 || crashed > today || (today - crashed).num_days() >= ALPHA_DAYS {
+            return Ok(());
+        }
+        self.store.write(|db| {
+            if db.setting(ALPHA_SINCE)?.is_some() {
+                db.count_alpha(&day_text(crashed), 0, i64::from(count))?;
+            }
+            Ok::<_, CoreError>(())
+        })
     }
 }
 
@@ -1293,6 +1363,33 @@ impl Core {
         Ok(())
     }
 
+    /// The body of `DELETE /me` for `proof`. A guest's is signed here with the recovery key of this device's code over
+    /// a fresh nonce, without asking the user (protocol §13 "계정 삭제").
+    async fn deletion_request(&self, proof: &DeletionProof) -> Result<DeleteAccount, CoreError> {
+        Ok(match proof {
+            DeletionProof::Guest => {
+                let (entropy, _) = self.recovery_secrets()?.ok_or_else(|| CoreError::Invalid {
+                    reason: "this device holds no recovery code to sign with".into(),
+                })?;
+                let keys = self.keys_of(entropy).await?;
+                let nonce = self.checked(self.api.nonce().await).await?;
+                DeleteAccount {
+                    recovery_signature: Some(keys.sign_deletion(&nonce).to_vec()),
+                    nonce: Some(nonce),
+                    ..DeleteAccount::default()
+                }
+            }
+            DeletionProof::Kakao { nonce, id_token } => DeleteAccount {
+                nonce: Some(nonce.clone()),
+                kakao_id_token: Some(id_token.clone()),
+                ..DeleteAccount::default()
+            },
+            DeletionProof::Apple { authorization_code } => {
+                DeleteAccount { apple_authorization_code: Some(authorization_code.clone()), ..DeleteAccount::default() }
+            }
+        })
+    }
+
     /// The keys of `entropy`, from memory after the first derivation of this run.
     pub(crate) async fn keys_of(&self, entropy: Entropy) -> Result<Arc<RecoveryKeys>, CoreError> {
         let cached = self.recovery_keys.lock().unwrap_or_else(|p| p.into_inner()).clone();
@@ -1341,21 +1438,74 @@ impl Core {
         }
     }
 
-    /// Another device's sign-in signed this one out (protocol §13 "기기 해제"). The same secrets go as with an account
-    /// deletion: the session, the device signing key, the code's entropy and the master key, and the group state.
-    /// Events, people, birthdays and the database key that opens them stay. A stolen phone then cannot take a guest
-    /// account back with its `E` or open a backup it downloaded.
+    /// Once a day while the tester agrees: the days since they agreed whose counts changed since they last went, of
+    /// the last 14 (protocol §14). Today goes as it stands and again tomorrow with its final counts, so the last day a
+    /// tester opened the app reaches the server even if they never open it again. Nothing here fails `sync()` but a
+    /// revocation: a network error tries again at the next `sync()`, and any other answer waits for tomorrow.
+    pub(crate) async fn send_alpha_stats(&self) -> Result<(), CoreError> {
+        let now = self.now();
+        let today = kst_day(now);
+        let first = day_text(today - chrono::Duration::days(ALPHA_DAYS - 1));
+        let today = day_text(today);
+        let due = self.store.write(|db| {
+            let Some(since) = db.setting(ALPHA_SINCE)? else { return Ok::<_, CoreError>(Vec::new()) };
+            if db.setting(ALPHA_SENT_ON)?.as_deref() == Some(today.as_str()) {
+                return Ok(Vec::new());
+            }
+            db.prune_alpha(&first)?;
+            Ok(db.alpha_days()?.into_iter().filter(|d| d.sent_at.is_none() && d.day >= since).collect())
+        })?;
+        if due.is_empty() {
+            return Ok(());
+        }
+        let count = |n: i64| u32::try_from(n).unwrap_or(0);
+        let days = due
+            .iter()
+            .map(|d| AlphaDay {
+                day: d.day.clone(),
+                sessions: count(d.sessions),
+                events: count(d.events),
+                suggested: count(d.suggested),
+                crashes: count(d.crashes),
+            })
+            .collect();
+        let sent = match self.checked(self.api.post_alpha_stats(days).await).await {
+            Ok(()) => true,
+            Err(CoreError::Network { .. }) => return Ok(()),
+            Err(e) if is_revoked(&e) => return Err(e),
+            Err(_) => false,
+        };
+        let sent_at = stored_utc(now);
+        self.store.write(|db| {
+            if sent {
+                for day in &due {
+                    db.mark_alpha_sent(day, &sent_at)?;
+                }
+            }
+            Ok::<_, CoreError>(db.set_setting(ALPHA_SENT_ON, &today)?)
+        })
+    }
+
+    /// Another device's sign-in signed this one out (protocol §13 "기기 해제"); `replaced` says when, where and how.
     pub(crate) async fn signed_out_by_another(&self, replaced: Option<Replaced>) -> Result<(), CoreError> {
+        let revocation = replaced
+            .map(|r| StoredRevocation { at: r.replaced_at, by: r.replaced_by, via: r.replaced_via })
+            .map(|r| serde_json::to_string(&r).map_err(malformed))
+            .transpose()?;
+        self.leave_account(revocation).await
+    }
+
+    /// What goes when this device leaves its account, signed out by another or deleting it: the session, the device
+    /// signing key, the code's entropy and the master key, and the group state. Events, people, birthdays and the
+    /// database key that opens them stay. A stolen phone then cannot take a guest account back with its `E` or open a
+    /// backup it downloaded.
+    async fn leave_account(&self, revocation: Option<String>) -> Result<(), CoreError> {
         self.api.clear_session();
         *self.realtime.lock().await = None;
         for name in [SESSION, SIGNING_KEY, ENTROPY, AMK] {
             self.secrets.delete(name.to_owned());
         }
         *self.recovery_keys.lock().unwrap_or_else(|p| p.into_inner()) = None;
-        let revocation = replaced
-            .map(|r| StoredRevocation { at: r.replaced_at, by: r.replaced_by, via: r.replaced_via })
-            .map(|r| serde_json::to_string(&r).map_err(malformed))
-            .transpose()?;
         self.store.write(|db| {
             db.wipe_group_state()?;
             // The notes of backups this device can no longer open. The store's owner stays, so another account
