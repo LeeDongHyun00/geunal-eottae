@@ -15,10 +15,12 @@ struct MainTabView: View {
     let model: AppModel
     let core: any CoreProtocol
     @State private var tab: Tab = .calendar
+    /// The event the next-up bar asked to open; the calendar tab takes it.
+    @State private var openEvent: EventItem?
 
     var body: some View {
         TabView(selection: $tab) {
-            CalendarTab(model: model, core: core)
+            CalendarTab(model: model, core: core, openEvent: $openEvent)
                 .toastProposal(model.toasts)
                 .nextUpInset { slot }
                 .tabItem {
@@ -49,9 +51,12 @@ struct MainTabView: View {
     @ViewBuilder
     private var slot: some View {
         if let nextUp = model.nextUp {
-            NextUpBar(model: nextUp, chrome: Self.drawsOwnChrome) { _ in
-                // The event editor opens from here once it exists (m1.md §2.6); until then the bar leads to the calendar.
+            NextUpBar(model: nextUp, chrome: Self.drawsOwnChrome) { item in
+                // An event opens in the editor (m1.md §2.6); a birthday leads to the calendar until 사람·생일 exists.
                 tab = .calendar
+                if case .event(let event, _, _) = item {
+                    openEvent = event
+                }
             }
             .toastSlot(model.toasts, chrome: Self.drawsOwnChrome)
         }

@@ -7,6 +7,10 @@ import SwiftUI
 struct MonthView: View {
     @Bindable var model: MonthModel
     let onDay: (DayCell) -> Void
+    /// A tap on an event bar opens the editor.
+    let onEvent: (EventItem) -> Void
+    /// A tap on the "연차" mark of a long weekend's leave day.
+    let onLeave: (DayCell) -> Void
     @ScaledMetric(relativeTo: .caption2) private var cellHeight: CGFloat = Metrics.Grid.monthCell
 
     var body: some View {
@@ -19,7 +23,7 @@ struct MonthView: View {
                         MonthPage(
                             weeks: model.weeks(of: month), today: model.today,
                             showsHint: month == model.currentMonth && model.showsFirstRunHint,
-                            cellHeight: cellHeight, onDay: onDay
+                            cellHeight: cellHeight, onDay: onDay, onEvent: onEvent, onLeave: onLeave
                         )
                         .containerRelativeFrame(.horizontal)
                         .task { await model.load(month) }
@@ -58,6 +62,8 @@ private struct MonthPage: View {
     let showsHint: Bool
     let cellHeight: CGFloat
     let onDay: (DayCell) -> Void
+    let onEvent: (EventItem) -> Void
+    let onLeave: (DayCell) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -66,9 +72,10 @@ private struct MonthPage: View {
                 let hasToday = week.contains { $0.day == today }
                 HStack(spacing: 0) {
                     ForEach(week, id: \.day) { cell in
-                        MonthCellView(cell: cell, today: today, height: cellHeight) {
-                            onDay(cell)
-                        }
+                        MonthCellView(
+                            cell: cell, today: today, height: cellHeight, action: { onDay(cell) },
+                            onEvent: onEvent, onLeave: { onLeave(cell) }
+                        )
                         .overlay(alignment: .bottom) {
                             if showsHint && cell.day == today {
                                 FirstRunHint()

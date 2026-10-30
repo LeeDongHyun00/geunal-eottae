@@ -65,7 +65,7 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 | `suggestions(day)` | `suggestions(day:)` | `suggestions(day)` | 입력 추천 칩 5개. 칩을 누르면 `add_event(칩의 event, true)` | M1 |
 | `shift_templates()`, `save_shift_template(input)`, `delete_shift_template(template_id)`, `shift_days(month)`, `set_shift_days(days)` | `shiftTemplates()` 등 | `shiftTemplates()` 등 | 교대 템플릿과 찍기. 찍기 화면은 초안을 들고 있다가 "완료"에 `set_shift_days`로 한 번에 적용 | M1 |
 | `mirror_device_calendars(calendars)` | `mirrorDeviceCalendars(calendars:)` | `mirrorDeviceCalendars(calendars)` | 고른 기기 캘린더와 그 일정으로 미러를 바꿈. 빈 목록이면 끔 | M1 |
-| `notification_settings()`, `set_notification_settings(settings)`, `scheduled_alerts(limit)` | `notificationSettings()` 등 | `notificationSettings()` 등 | 알림 설정과, 앱이 예약할 가까운 알림(iOS는 64개) | M1 |
+| `notification_settings()`, `set_notification_settings(settings)`, `scheduled_alerts(limit)` | `notificationSettings()` 등 | `notificationSettings()` 등 | 알림 설정과, 앱이 예약할 가까운 알림(iOS는 64개). 일정 알림의 `end`는 `EventItem.end`와 같은 끝(시간 일정은 끝 시각, 종일 일정은 마지막 날)이라, 본문의 "18:00–20:00"과 "11/9(월)까지"를 앱이 일정을 다시 읽지 않고 씁니다([디자인](../design/m1.md) 결정 33). 생일과 연차 다리는 `nil`/`null` | M1 |
 | `export_ics()` | `exportIcs()` | `exportIcs()` | 내 일정의 iCalendar 내보내기. 기기 캘린더는 뺌 | M1 |
 | `people()`, `upcoming_birthdays(days)`, `save_person(input)`, `delete_person(person_id)`, `import_contacts(contacts)` | `people()` 등 | `people()` 등 | 사람·생일(11·17번 화면) | M1 |
 | `birthday_in_year(birthday, year)`, `lunar_to_solar(year, month, day, leap_month)` | `birthdayInYear(birthday:year:)` 등 | `birthdayInYear(birthday, year)` 등 | 음력 생일의 그해 양력 날짜(6장의 윤달·30일 규칙 적용), 음력 날짜 그대로의 변환. 표 범위 밖은 `nil`/`null` | M1 |
@@ -130,17 +130,18 @@ UniFFI는 Rust 쪽 객체 없이 만드는 생성자(Swift `Core(noHandle: Core.
   "v": 1,
   "day": "2026-10-25",
   "today": [
-    { "title": "가족 · 저녁", "color": "blossom", "all_day": false, "start": "18:00", "end": "20:00" }
+    { "event_id": "019a1f2e-…", "occurrence": null, "title": "가족 · 저녁", "color": "blossom", "all_day": false, "start": "18:00", "end": "20:00" }
   ],
   "tomorrow": [
-    { "title": "전공 수업", "color": "sea", "all_day": false, "start": "10:00", "end": "12:00" }
+    { "event_id": "019a1f30-…", "occurrence": "2026-10-26T10:00", "title": "전공 수업", "color": "sea", "all_day": false, "start": "10:00", "end": "12:00" }
   ],
   "next_appointment": null
 }
 ```
 
-- `v`는 형식 버전입니다. 위젯은 모르는 버전이면 "그날어때를 열어 주세요"로 둡니다.
+- `v`는 형식 버전입니다. 위젯은 모르는 버전이면 "그날어때를 열어 주세요"로 둡니다. 같은 버전 안에서는 키가 늘어나기만 하므로, 위젯은 모르는 키를 무시합니다(안드로이드 `kotlinx.serialization`은 `ignoreUnknownKeys`).
 - `today`, `tomorrow`는 표시 중인 캘린더의 일정을 종일 먼저, 그다음 시작 순으로 5개까지 담습니다. 전날 시작해 그날까지 이어지는 일정도 들어갑니다.
+- `event_id`와 `occurrence`는 위젯의 일정을 눌렀을 때 앱이 `event(event_id, occurrence)`로 그 일정을 여는 값입니다([디자인](../design/m1.md) 2.6). 뜻은 `EventItem`·`AlertTarget::Event`와 같아서, `occurrence`는 반복 일정에만 있고 나머지는 `null`입니다. 키의 모양은 앱이 해석하지 않습니다.
 - `color`는 [`tokens.json`](../design/tokens.json) `color.group`의 키이고, 기기 캘린더 일정은 `null`(기기 캘린더 색)입니다. `start`·`end`는 `"HH:MM"`이고 종일 일정은 둘 다 `null`입니다.
 - `next_appointment`는 M1에서 늘 `null`이고, M2에서 그룹 약속의 모양을 정합니다.
 - 자정이 지났는데 앱이 아직 다시 쓰지 않았으면 `day`가 어제입니다. 위젯은 그때 `tomorrow`를 오늘로 보여 줍니다.

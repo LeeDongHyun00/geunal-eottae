@@ -9,6 +9,7 @@ struct AgendaView: View {
     let model: AgendaModel
     let onDay: (AgendaDay) -> Void
     let onAddToday: () -> Void
+    let onEvent: (EventItem) -> Void
     /// The top edge loads earlier weeks only after the list has moved to today, or it would load at once.
     @State private var settled = false
 
@@ -28,7 +29,7 @@ struct AgendaView: View {
                             }
                     }
                     ForEach(model.days.filter { model.isPast($0) }, id: \.day) { day in
-                        AgendaSection(day: day, today: model.today, past: true, onDay: onDay)
+                        AgendaSection(day: day, today: model.today, past: true, onDay: onDay, onEvent: onEvent)
                             .id(day.day)
                     }
                     // Nothing in the next four weeks still keeps the weeks before and after within reach.
@@ -37,7 +38,7 @@ struct AgendaView: View {
                             .id(Self.emptyID)
                     }
                     ForEach(model.days.filter { !model.isPast($0) }, id: \.day) { day in
-                        AgendaSection(day: day, today: model.today, past: false, onDay: onDay)
+                        AgendaSection(day: day, today: model.today, past: false, onDay: onDay, onEvent: onEvent)
                             .id(day.day)
                     }
                     if model.canLoadMore {
@@ -96,6 +97,7 @@ private struct AgendaSection: View {
     let today: String
     let past: Bool
     let onDay: (AgendaDay) -> Void
+    let onEvent: (EventItem) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -120,9 +122,14 @@ private struct AgendaSection: View {
                     time: String(localized: "종일", bundle: .module), past: past)
             }
             ForEach(day.events, id: \.self) { event in
-                AgendaRow(
-                    dot: event.soft ? .soft(event.color) : .color(event.color), title: event.title,
-                    caption: Self.caption(event), time: Self.time(event), past: past)
+                Button {
+                    onEvent(event)
+                } label: {
+                    AgendaRow(
+                        dot: event.soft ? .soft(event.color) : .color(event.color), title: event.title,
+                        caption: Self.caption(event), time: Self.time(event), past: past)
+                }
+                .buttonStyle(.pressable)
             }
         }
     }

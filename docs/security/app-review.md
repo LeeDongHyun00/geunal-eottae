@@ -11,13 +11,13 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 | 비밀은 코어의 `SecretStore` 콜백으로만 읽고 씀 | `KeychainSecretStore` | `KeystoreSecretStore` |
 | 다른 곳에 복사하지 않음 | UserDefaults, 파일, 클립보드 기록에 두지 않음 | SharedPreferences, DataStore, 파일에 두지 않음 |
 | 기기를 떠나지 않음 | `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`. `kSecAttrSynchronizable`은 넣지 않음(iCloud 키체인 동기화 안 함) | `noBackupFilesDir/secrets`에 두고, 내보낼 수 없는 Keystore의 AES-256-GCM 키로 봉인 |
-| 백업에서 빠짐 | ThisDeviceOnly 항목은 백업으로 다른 기기에 넘어가지 않음 | `noBackupFilesDir`는 자동 백업과 기기 간 이전에서 빠짐. 백업 규칙 파일은 `sharedpref`만 넣음 |
+| 백업에서 빠짐 | ThisDeviceOnly 항목은 백업으로 다른 기기에 넘어가지 않음 | `noBackupFilesDir`는 자동 백업과 기기 간 이전에서 빠짐. 백업 규칙 파일은 앱의 설정 파일만 이름으로 넣음. `sharedpref` 전체를 넣으면 라이브러리가 둔 파일(카카오 SDK의 토큰 등)까지 따라감 |
 | 함께 쓰는 곳 | 키체인 접근 그룹은 앱과 알림 확장만 | 해당 없음 |
 | 다시 설치 | 저장소가 없을 때(이 기기에 처음 설치됐을 때) 이 앱의 키체인 항목을 모두 지움. 앱을 지워도 키체인 항목은 남기 때문. UserDefaults의 실행 표시는 기준으로 쓰지 않음. 표시는 기기 이전으로 따라오고, 표시가 생기기 전 버전에서 올린 설치에는 없기 때문 | 앱을 지우면 Keystore 키와 파일이 함께 지워짐 |
-| 기기 이전 | iCloud 백업 복원과 빠른 시작은 UserDefaults만 옮기고, ThisDeviceOnly 항목과 백업에서 뺀 저장소는 옮기지 않음. 그래서 온보딩을 마쳤는지도 저장소가 있는지로 판단하고, 없으면 온보딩 상태를 비움. 표시만 믿으면 새 기기가 세션 없이 탭으로 가서 복원할 길을 잃음 | 자동 백업과 기기 간 이전은 `sharedpref`만 옮김. 온보딩 상태를 SharedPreferences에 두면 iOS와 같은 기준으로 비움 |
+| 기기 이전 | iCloud 백업 복원과 빠른 시작은 UserDefaults만 옮기고, ThisDeviceOnly 항목과 백업에서 뺀 저장소는 옮기지 않음. 그래서 온보딩을 마쳤는지도 저장소가 있는지로 판단하고, 없으면 온보딩 상태를 비움. 표시만 믿으면 새 기기가 세션 없이 탭으로 가서 복원할 길을 잃음 | 자동 백업과 기기 간 이전은 백업 규칙에 이름을 적은 설정 파일만 옮김. 온보딩 상태는 저장소와 같은 `noBackupFilesDir`에 둬서 저장소와 늘 함께 남거나 함께 사라짐(#49). 그래서 iOS 같은 비우기 기준이 필요 없음 |
 | 해제와 계정 삭제 | 403 `device_revoked`·`revoke` 이벤트를 받거나 계정을 지우면 세션, 기기 서명 키, `E`, AMK, 그룹 상태를 지우고 일정과 DB 키만 남김. 도난 기기에 남은 `E`로 게스트 계정을 다시 가져가지 못하게 하려는 것([공통 계약](../parts/protocol.md) 13장) | 같음 |
 
-- SharedPreferences와 UserDefaults는 기기 백업에 들어갑니다. 비밀과 개인정보를 두지 않습니다. "종이에 적었어요" 같은 표시는 괜찮습니다.
+- SharedPreferences와 UserDefaults는 기기 백업에 들어갑니다. 비밀과 개인정보를 두지 않습니다. 라이브러리가 두는 것도 같습니다(4장 "제공자 SDK의 토큰"). "종이에 적었어요" 같은 표시는 괜찮습니다.
 - 2026-10-25 `main` 기준으로 두 `SecretStore`는 위 설정과 맞습니다(`apps/ios/Packages/CoreBridge/Sources/CoreBridge/KeychainSecretStore.swift`, `apps/android/bridge/src/main/kotlin/app/geunal/bridge/KeystoreSecretStore.kt`, `AppStorage.kt`). `E`와 AMK도 이 콜백으로만 다니면 같은 보호를 받습니다. 첫 실행 키체인 정리만 아직 없습니다(iOS #36에서 더하는 중).
 
 ## 2. 그 밖에 평문이 남는 곳
@@ -49,6 +49,7 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 | 백업 없이 새로 시작 | 기기 인증(3장)을 받은 뒤 지움. 제공자 로그인으로 세션을 받은 지 30분이 지났으면, 계정 삭제와 같은 새 제공자 증명을 `PUT /me/recovery`에 붙임([공통 계약](../parts/protocol.md) 10장). 다시 로그인하지 않음. 다른 카카오 계정으로 로그인하면 이 기기가 그 계정에 등록되기 때문 |
 | 재인증 실패 | 403 `reauth_required`는 세션이 유효하다는 뜻이라, 로그아웃하지 않고 증명만 다시 받음. 409 `recovery_missing`이면 복구 자료를 먼저 올린 뒤 다시 지움 |
 | 받은 토큰과 코드 | 삭제에 쓴 ID 토큰과 인가 코드는 저장하거나 로그에 남기지 않음 |
+| 제공자 SDK의 토큰 | 카카오 SDK는 로그인 때 받은 액세스·리프레시 토큰을 기본으로 iOS는 `UserDefaults`, 안드로이드는 SharedPreferences에 둠. 둘 다 기기 백업과 기기 이전으로 옮겨짐. 앱은 이 토큰을 같은 프로세스 안에서 별명 읽기와 로그아웃에만 쓰므로, SDK를 초기화한 직후 토큰 저장소를 메모리 구현으로 바꿈(iOS `Auth.shared.setTokenManager`, 안드로이드 `TokenManagerProvider.instance.manager`). 로그인한 뒤에는 ID 토큰이 없거나 도중에 취소돼도 늘 로그아웃해 카카오 쪽 토큰도 만료시킴 |
 
 ## 5. 로그와 크래시
 
@@ -67,7 +68,7 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 PR의 앱 변경에서 아래 줄을 찾아 하나씩 봅니다.
 
 ```sh
-git diff origin/main... -- apps/ | grep -nE '^\+.*(print\(|NSLog|debugPrint|Log\.[vdiwe]\(|println\(|privacy: \.public|UserDefaults|SharedPreferences|DataStore|kSecAttr|FLAG_SECURE|UIPasteboard|ClipboardManager|allowBackup|dataExtractionRules)'
+git diff origin/main... -- apps/ | grep -nE '^\+.*(print\(|NSLog|debugPrint|Log\.[vdiwe]\(|println\(|privacy: \.public|UserDefaults|SharedPreferences|DataStore|kSecAttr|FLAG_SECURE|UIPasteboard|ClipboardManager|allowBackup|dataExtractionRules|TokenManager)'
 ```
 
 PR 설명에는 다음을 적습니다.
