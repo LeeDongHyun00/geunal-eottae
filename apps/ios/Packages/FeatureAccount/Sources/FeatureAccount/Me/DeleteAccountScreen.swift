@@ -80,7 +80,7 @@ public struct DeleteAccountScreen: View {
         .toolbar {
             ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
         }
-        .sheet(isPresented: $confirming) {
+        .sheet(isPresented: $confirming, onDismiss: { model.sheetClosed() }) {
             DeleteConfirmSheet(model: model, online: online) {
                 confirming = false
                 onDeleted()
@@ -171,11 +171,7 @@ private struct DeleteConfirmSheet: View {
                 NoticeCard(systemImage: "exclamationmark.circle", text: Self.text(problem), tone: .problem)
             }
             Button {
-                Task {
-                    if await model.delete(online: online) {
-                        onDeleted()
-                    }
-                }
+                Task { _ = await model.delete(online: online) }
             } label: {
                 confirmLabel
             }
@@ -187,6 +183,18 @@ private struct DeleteConfirmSheet: View {
         .padding(.top, Space.l)
         .padding(.bottom, Space.s)
         .sheetChrome(height: nil)
+        // A lost answer is checked as soon as there is a connection, now or when it comes back (decision 36).
+        .task(id: online && model.problem == .answerLost) {
+            if online && model.problem == .answerLost {
+                await model.checkLostAnswer()
+            }
+        }
+        // Deleted by the press or found deleted by the check: the same end as a 204.
+        .onChange(of: model.deleted) { _, deleted in
+            if deleted {
+                onDeleted()
+            }
+        }
     }
 
     private var providerReason: Text? {
@@ -210,6 +218,9 @@ private struct DeleteConfirmSheet: View {
     }
 
     private var confirmLabel: Text {
+        if model.problem == .answerLost {
+            return model.checking ? Text("확인하는 중…", bundle: .module) : Text("연결되면 확인할게요", bundle: .module)
+        }
         if model.preparing {
             return Text("준비하는 중…", bundle: .module)
         }
@@ -242,6 +253,8 @@ private struct DeleteConfirmSheet: View {
         case .offline: Text("연결되면 지울 수 있어요.", bundle: .module)
         case .reauthRequired, .failed: Text("지우지 못했어요. 다시 시도해 주세요.", bundle: .module)
         case .recoveryMissing: Text("지울 준비가 아직 끝나지 않았어요. 잠시 뒤에 다시 시도해 주세요.", bundle: .module)
+        case .answerLost: Text("연결이 끊겨 삭제를 마쳤는지 확인하지 못했어요.", bundle: .module)
+        case .notDeleted: Text("연결이 끊겨 삭제하지 못했어요. 다시 눌러 주세요.", bundle: .module)
         }
     }
 }
