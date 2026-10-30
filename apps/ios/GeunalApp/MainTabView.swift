@@ -17,6 +17,8 @@ struct MainTabView: View {
     @State private var tab: Tab = .calendar
     /// The event the next-up bar asked to open; the calendar tab takes it.
     @State private var openEvent: EventItem?
+    /// The person whose birthday the next-up bar asked to open; the 나 tab takes it.
+    @State private var openPerson: String?
 
     var body: some View {
         TabView(selection: $tab) {
@@ -31,7 +33,7 @@ struct MainTabView: View {
                     }
                 }
                 .tag(Tab.calendar)
-            MeTab(core: core)
+            MeTab(core: core, toasts: model.toasts, openPerson: $openPerson)
                 .toastProposal(model.toasts)
                 .nextUpInset { slot }
                 .tabItem {
@@ -52,10 +54,14 @@ struct MainTabView: View {
     private var slot: some View {
         if let nextUp = model.nextUp {
             NextUpBar(model: nextUp, chrome: Self.drawsOwnChrome) { item in
-                // An event opens in the editor (m1.md §2.6); a birthday leads to the calendar until 사람·생일 exists.
-                tab = .calendar
-                if case .event(let event, _, _) = item {
+                // An event opens in the editor, a birthday the person in 사람·생일 (m1.md §2.6).
+                switch item {
+                case .event(let event, _, _):
+                    tab = .calendar
                     openEvent = event
+                case .birthday(let birthday):
+                    tab = .me
+                    openPerson = birthday.personId
                 }
             }
             .toastSlot(model.toasts, chrome: Self.drawsOwnChrome)

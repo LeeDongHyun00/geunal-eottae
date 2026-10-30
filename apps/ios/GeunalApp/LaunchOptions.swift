@@ -13,6 +13,9 @@
         /// `-GeunalDemoCalendar` writes the design's example week into the core after it opens (`DemoCalendar`).
         static var seedsDemoCalendar: Bool { arguments.contains("-GeunalDemoCalendar") }
 
+        /// `-GeunalDemoPeople` writes the design's people and birthdays (`DemoCalendar.seedPeople`).
+        static var seedsDemoPeople: Bool { arguments.contains("-GeunalDemoPeople") }
+
         /// `-GeunalToastsWait` keeps a toast and its repeat card until they are answered or replaced. A UI test that
         /// taps one cannot promise to do so within five seconds on a slow simulator; `ToastCenterTests` covers the
         /// timing itself.

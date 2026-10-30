@@ -43,6 +43,44 @@
             }
         }
 
+        /// The people of docs/design/screens/m1/11-people: three birthdays in the next weeks, one of them lunar, and
+        /// four further off.
+        static func seedPeople(_ core: any CoreProtocol, now: Date = Date()) throws {
+            let today = KoreanCalendar.day(of: now)
+            func solar(_ offset: Int) -> Birthday? {
+                guard let day = KoreanCalendar.adding(days: offset, to: today).flatMap(KoreanCalendar.parse) else {
+                    return nil
+                }
+                return Birthday(month: UInt8(day.month), day: UInt8(day.day), year: nil, calendar: .solar)
+            }
+            // The lunar date of a solar day, from the system's Chinese calendar, whose month and day numbers the
+            // core's Korean table shares nearly always: close enough for a picture.
+            func lunar(_ offset: Int) -> Birthday? {
+                guard let day = KoreanCalendar.adding(days: offset, to: today), let date = KoreanCalendar.start(of: day)
+                else { return nil }
+                var chinese = Calendar(identifier: .chinese)
+                chinese.timeZone = KoreanCalendar.timeZone
+                let parts = chinese.dateComponents([.month, .day], from: date)
+                guard let month = parts.month, let dayOfMonth = parts.day else { return nil }
+                return Birthday(
+                    month: UInt8(month), day: UInt8(dayOfMonth), year: nil,
+                    calendar: .lunar(leapMonth: parts.isLeapMonth == true))
+            }
+            let people: [(String, Birthday?)] = [
+                ("민수", solar(5)),
+                ("엄마", lunar(17)),
+                ("서연", solar(25)),
+                ("가영", Birthday(month: 3, day: 14, year: nil, calendar: .solar)),
+                ("도윤", Birthday(month: 6, day: 2, year: 1998, calendar: .solar)),
+                ("아빠", Birthday(month: 1, day: 3, year: nil, calendar: .lunar(leapMonth: false))),
+                ("할머니", Birthday(month: 8, day: 20, year: nil, calendar: .lunar(leapMonth: false))),
+            ]
+            for (name, birthday) in people {
+                _ = try core.savePerson(
+                    input: PersonInput(id: nil, name: name, birthday: birthday, alert: .inherit, suggest: true))
+            }
+        }
+
         private static func calendar(
             _ core: any CoreProtocol, _ name: String, _ color: Palette, soft: Bool = false
         ) throws -> String {

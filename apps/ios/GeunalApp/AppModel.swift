@@ -43,6 +43,9 @@ final class AppModel {
                 if LaunchOptions.seedsDemoCalendar {
                     try await Task.detached { try DemoCalendar.seed(core) }.value
                 }
+                if LaunchOptions.seedsDemoPeople {
+                    try await Task.detached { try DemoCalendar.seedPeople(core) }.value
+                }
             #endif
             self.core = core
             nextUp = NextUpModel(core: core)
