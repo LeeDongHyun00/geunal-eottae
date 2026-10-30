@@ -31,20 +31,22 @@ final class CoreSmokeTests: XCTestCase {
         try await core.sync()
     }
 
-    func testRefusesAStoreWhoseKeyIsGone() throws {
-        let path = try makeDirectory().path(percentEncoded: false)
+    func testSetsAStoreWhoseKeyIsGoneAsideAndStartsAnEmptyOne() throws {
+        let directory = try makeDirectory()
+        let path = directory.path(percentEncoded: false)
         _ = try Core.open(
             storeDir: path, apiBase: "http://127.0.0.1:8080", listener: ChangeStreamListener(),
             secrets: MemorySecretStore())
 
-        XCTAssertThrowsError(
-            try Core.open(
-                storeDir: path, apiBase: "http://127.0.0.1:8080", listener: ChangeStreamListener(),
-                secrets: MemorySecretStore())
-        ) { error in
-            guard case CoreError.Store = error else {
-                return XCTFail("expected CoreError.Store, got \(error)")
-            }
-        }
+        // A secret store without the database key, as after the keychain items went: the old file can never open.
+        let core = try Core.open(
+            storeDir: path, apiBase: "http://127.0.0.1:8080", listener: ChangeStreamListener(),
+            secrets: MemorySecretStore())
+
+        XCTAssertNotNil(try core.storeReset())
+        XCTAssertNil(core.session())
+        let aside = try FileManager.default.contentsOfDirectory(
+            at: directory.appendingPathComponent("unreadable"), includingPropertiesForKeys: nil)
+        XCTAssertEqual(aside.count, 1)
     }
 }

@@ -75,7 +75,8 @@ class AppViewModel(
                     _phase.value = AppPhase.Failed(if (e is CoreException.SecretStore) StartFailure.SECRETS else StartFailure.STORE)
                     return@launch
                 } catch (e: InternalException) {
-                    // A Rust panic, which UniFFI turns into this; a SecretStore callback that threw also ends up here.
+                    // A Rust panic, which UniFFI turns into this. A SecretStore callback that throws arrives as
+                    // CoreException.SecretStore instead.
                     _phase.value = AppPhase.Failed(StartFailure.OTHER)
                     return@launch
                 }

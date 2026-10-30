@@ -4,10 +4,12 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.AtomicFile
 import app.geunal.core.SecretStore
+import app.geunal.core.SecretStoreException
 import java.io.File
 import java.io.FileNotFoundException
 import java.security.KeyStore
 import java.util.Base64
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -30,6 +32,10 @@ class KeystoreSecretStore(
 ) : SecretStore {
     private val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
 
+    /**
+     * `null` only when nothing is kept under [name]. A value that fails its tag throws [SecretStoreException.Lost]; any
+     * other failure, a Keystore error say, reaches the core as one it may get past later.
+     */
     @Synchronized
     override fun get(name: String): ByteArray? {
         // Read through AtomicFile rather than testing for the file: on API 26-29 a write in progress has already
@@ -44,7 +50,13 @@ class KeystoreSecretStore(
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_BITS, sealed, 0, IV_BYTES))
         // The name is authenticated with the value, so a file moved under another secret's name fails to open.
         cipher.updateAAD(name.toByteArray())
-        return cipher.doFinal(sealed, IV_BYTES, sealed.size - IV_BYTES)
+        return try {
+            cipher.doFinal(sealed, IV_BYTES, sealed.size - IV_BYTES)
+        } catch (e: AEADBadTagException) {
+            // Sealed under a Keystore key that is gone, which key() has since replaced, or damaged: it will never open.
+            // The core sets the store aside for a lost database key rather than failing every launch.
+            throw SecretStoreException.Lost("$name fails its tag")
+        }
     }
 
     @Synchronized

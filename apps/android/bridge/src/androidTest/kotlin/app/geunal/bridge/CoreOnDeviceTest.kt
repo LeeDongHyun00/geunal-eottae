@@ -11,6 +11,9 @@ import app.geunal.core.EventInput
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -78,12 +81,37 @@ class CoreOnDeviceTest {
     }
 
     @Test
-    fun refusesTheStoreOnceItsKeyIsGone() {
-        open().close()
+    fun setsTheStoreAsideOnceItsKeyIsGone() {
+        val eventId =
+            open().use { core ->
+                assertNull(core.storeReset())
+                val calendar = core.calendars().first { it.kind == CalendarKind.OWN }
+                core.addEvent(dinner(calendar.id), fromSuggestion = false).eventId
+            }
         File(root, "secrets").deleteRecursively()
 
-        // The core makes a new key, and the database written under the old one must not open: proof it is encrypted.
-        assertThrows(CoreException.Store::class.java) { open().close() }
+        // Nothing can open the old file without its key, so the core starts an empty store instead of failing.
+        open().use { core ->
+            assertNotNull(core.storeReset())
+            assertThrows(CoreException.NotFound::class.java) { core.event(eventId, null) }
+        }
+        // The file kept aside is still ciphertext: SQLCipher encrypts the header too, so it is not a plain SQLite file.
+        val aside = File(root, "store/unreadable").walk().first { it.name == "geunal.db" }
+        assertFalse(aside.readBytes().decodeToString(0, SQLITE_HEADER.length) == SQLITE_HEADER)
+    }
+
+    @Test
+    fun setsTheStoreAsideOnceTheKeystoreKeyIsGone() {
+        open().close()
+        KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(TEST_ALIAS)
+
+        // Every sealed file now fails its tag; the lost database key sets the store aside and the rest goes with it.
+        open().use { core ->
+            assertNotNull(core.storeReset())
+            assertNull(core.session())
+        }
+        // The new key opens the new store.
+        open().use { core -> assertNotNull(core.storeReset()) }
     }
 
     private fun open(): Core =
@@ -110,6 +138,7 @@ class CoreOnDeviceTest {
     private companion object {
         const val TEST_ALIAS = "app.geunal.secrets.core-test"
         const val TITLE = "저녁 약속"
+        const val SQLITE_HEADER = "SQLite format 3"
 
         // What core/scripts/build-openssl.sh pins; moves with it (docs/security/dependencies.md).
         const val OPENSSL_VERSION = "3.5.9"

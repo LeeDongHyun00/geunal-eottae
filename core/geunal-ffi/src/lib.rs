@@ -155,9 +155,9 @@ pub enum SecretStoreError {
 
 impl From<uniffi::UnexpectedUniFFICallbackError> for SecretStoreError {
     /// A callback that threw something other than `SecretStoreError`. Nobody said the value is gone, so it must not
-    /// count as lost.
+    /// count as lost. Kotlin sends the whole stack trace; its first line, the exception and its message, is the reason.
     fn from(e: uniffi::UnexpectedUniFFICallbackError) -> Self {
-        SecretStoreError::Unavailable { reason: e.reason }
+        SecretStoreError::Unavailable { reason: e.reason.lines().next().unwrap_or_default().to_owned() }
     }
 }
 

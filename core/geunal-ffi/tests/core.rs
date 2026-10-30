@@ -161,8 +161,14 @@ fn rejects_a_stored_key_of_the_wrong_length() {
 fn takes_any_other_callback_failure_for_a_store_that_cannot_answer() {
     // What UniFFI hands over when the app's callback throws something other than SecretStoreError: it must never
     // count as lost, or the store would go aside for a keychain that only failed once.
-    let error = SecretStoreError::from(uniffi::UnexpectedUniFFICallbackError::new("KeyStoreException: busy"));
-    assert!(matches!(error, SecretStoreError::Unavailable { .. }), "{error:?}");
+    let trace =
+        "android.security.KeyStoreException: busy\n\tat android.security.KeyStore2.getKeyEntry(KeyStore2.java:1)";
+    let error = SecretStoreError::from(uniffi::UnexpectedUniFFICallbackError::new(trace));
+    // Kotlin hands over the whole stack trace; the reason keeps its first line.
+    assert!(
+        matches!(&error, SecretStoreError::Unavailable { reason } if reason == "android.security.KeyStoreException: busy"),
+        "{error:?}"
+    );
 }
 
 #[test]

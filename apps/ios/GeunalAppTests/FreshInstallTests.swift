@@ -26,25 +26,25 @@ final class FreshInstallTests: XCTestCase {
 
     func testWipesThePreviousInstallsSecretsWhenThereIsNoStore() throws {
         let directory = try makeStoreDirectory(withDatabase: false)
-        keychain.put(name: "db_key", value: Data([1, 2, 3]))
-        keychain.put(name: "session", value: Data([4]))
+        try keychain.put(name: "db_key", value: Data([1, 2, 3]))
+        try keychain.put(name: "session", value: Data([4]))
 
         let wiped = FreshInstall.wipeLeftovers(storeDirectory: directory, keychain: keychain)
 
         XCTAssertTrue(wiped)
-        XCTAssertNil(keychain.get(name: "db_key"))
-        XCTAssertNil(keychain.get(name: "session"))
+        XCTAssertNil(try keychain.get(name: "db_key"))
+        XCTAssertNil(try keychain.get(name: "session"))
     }
 
     func testKeepsTheKeysOfAnInstallationThatHasAStore() throws {
         // An upgrade from an earlier build: its database needs this key, or the store can never be opened again.
         let directory = try makeStoreDirectory(withDatabase: true)
-        keychain.put(name: "db_key", value: Data([1, 2, 3]))
+        try keychain.put(name: "db_key", value: Data([1, 2, 3]))
 
         let wiped = FreshInstall.wipeLeftovers(storeDirectory: directory, keychain: keychain)
 
         XCTAssertFalse(wiped)
-        XCTAssertEqual(keychain.get(name: "db_key"), Data([1, 2, 3]))
+        XCTAssertEqual(try keychain.get(name: "db_key"), Data([1, 2, 3]))
     }
 
     func testShowsOnboardingWhenTheDefaultsCameFromAnotherDevice() throws {
