@@ -47,6 +47,13 @@ val DarkNeutrals =
         saturday = Color(0xFF7AA2FF),
     )
 
+/**
+ * The background behind a problem: a cell whose word is not in the list and the red notice card (docs/design/m1.md
+ * screen 21). The light value is the one the design gives; the dark one is the dark `sunday` at the same weight over
+ * the black background, which the design leaves open.
+ */
+fun problemBackground(dark: Boolean): Color = if (dark) Color(0xFF2A1311) else Color(0xFFFBECEB)
+
 /** Brand colors (docs/design/README.md §2.3): the tab bar and the app icon only. */
 object BrandColors {
     val grape = Color(0xFF7D63CB)
@@ -157,4 +164,13 @@ fun freeCountTint(
     }
 }
 
+/**
+ * Events mirrored from the device's calendars all take this one color, whatever their source (m1.md screen 15): cocoa's
+ * second tint, the same in both modes.
+ */
+val DeviceCalendarColor = Color(0xFFD5B9AA)
+
 val LocalNeutralColors = staticCompositionLocalOf { LightNeutrals }
+
+/** Whether the theme is drawing dark; components that pick between two token sets read it. */
+val LocalDarkTheme = staticCompositionLocalOf { false }

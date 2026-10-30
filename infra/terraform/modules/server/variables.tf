@@ -45,6 +45,17 @@ variable "spec_code" {
   type        = string
 }
 
+variable "fee_system_type_code" {
+  description = "Billing plan: MTRAT (hourly) or FXSUM (monthly). null leaves NCP's default, hourly. Micro specs are monthly only."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.fee_system_type_code == null || contains(["MTRAT", "FXSUM"], coalesce(var.fee_system_type_code, "MTRAT"))
+    error_message = "fee_system_type_code must be MTRAT, FXSUM or null."
+  }
+}
+
 variable "inbound_rules" {
   description = "Inbound ACG rules. Everything not listed is dropped."
   type = list(object({

@@ -84,14 +84,10 @@ pub enum CoreError {
     /// again, which brings a new ticket.
     #[error("sign in again")]
     SignInAgain,
-    /// A function of the M1 surface whose body has not landed yet. Gone by the end of M1.
+    /// A function of the M1 surface whose body had not landed yet. No function returns it any more; it stays while the
+    /// apps still match it, and goes with them.
     #[error("not implemented yet: {what}")]
     NotImplemented { what: String },
-}
-
-/// The error of an M1 function whose body comes in a later pull request; the signature is final already.
-pub(crate) fn not_yet(what: &str) -> CoreError {
-    CoreError::NotImplemented { what: what.to_owned() }
 }
 
 /// What every call answers once another device's sign-in signed this one out; `revocation()` says how.
@@ -384,8 +380,10 @@ impl Core {
 
     /// Catches every group up from its cursor and sends what is waiting in the outbox. Before a sign-in there is
     /// nothing to catch up, so this returns at once: the apps' first screen opens the core and syncs without an account.
-    /// Then what the sign-in could not finish is done: the account as `GET /me` tells it, key packages, and recovery
-    /// material (protocol §10 "올리는 때"); a refusal from the server comes back as this call's error.
+    /// Once a day it also fetches this year's and next year's holidays and, for a tester who agreed, sends the alpha
+    /// counts (protocol §14); neither fails this call. Then what the sign-in could not finish is done: the account as
+    /// `GET /me` tells it, key packages, and recovery material (protocol §10 "올리는 때"); a refusal from the server
+    /// comes back as this call's error.
     pub async fn sync(self: Arc<Self>) -> Result<(), CoreError> {
         if saved_session(self.secrets.as_ref()).is_none() {
             return Ok(());
@@ -393,6 +391,8 @@ impl Core {
         let this = self.clone();
         self.run(async move {
             this.engine(Box::new(|e| Box::pin(async move { e.sync().await }))).await?;
+            this.refresh_holidays().await?;
+            this.send_alpha_stats().await?;
             // After the groups, so what the server keeps refusing does not hold up the calendar.
             this.refresh_account().await?;
             this.publish_due_key_packages().await?;

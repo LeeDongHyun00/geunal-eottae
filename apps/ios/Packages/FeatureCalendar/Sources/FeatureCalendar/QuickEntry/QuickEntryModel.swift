@@ -93,6 +93,17 @@ public final class QuickEntryModel {
             recurrence: Self.recurrence(repeatChoice), alert: .inherit, note: nil)
     }
 
+    /// What "자세히" hands to the editor: the typed title (or none yet), the range or all day, the calendar and the
+    /// repeat rule.
+    public func draft() -> EventInput {
+        let range = self.range ?? 18..<20
+        return EventInput(
+            calendarId: selectedCalendar?.id ?? "", title: trimmedTitle, allDay: self.range == nil,
+            start: Self.time(slot: self.range == nil ? 0 : range.lowerBound, on: day),
+            end: self.range == nil ? DayTime(day: day, minute: 0) : Self.time(slot: range.upperBound, on: day),
+            recurrence: Self.recurrence(repeatChoice), alert: .inherit, note: nil)
+    }
+
     /// A half-hour step as a day and minute; step 48 is midnight at the start of the next day (rust-core.md §3).
     static func time(slot: Int, on day: String) -> DayTime {
         let minutes = slot * 30

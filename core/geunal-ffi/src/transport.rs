@@ -70,6 +70,15 @@ impl Transport for Api {
     async fn get_object(&self, url: &str, progress: Progress<'_>) -> Result<Vec<u8>, ApiError> {
         each!(self, t => t.get_object(url, progress).await)
     }
+    async fn delete_account(&self, req: DeleteAccount) -> Result<(), ApiError> {
+        each!(self, t => t.delete_account(req).await)
+    }
+    async fn holidays(&self, from_year: i32, to_year: i32) -> Result<HolidayYears, ApiError> {
+        each!(self, t => t.holidays(from_year, to_year).await)
+    }
+    async fn post_alpha_stats(&self, days: Vec<AlphaDay>) -> Result<(), ApiError> {
+        each!(self, t => t.post_alpha_stats(days).await)
+    }
     fn restore_session(&self, access_token: &str, refresh_token: &str) {
         each!(self, t => t.restore_session(access_token, refresh_token))
     }

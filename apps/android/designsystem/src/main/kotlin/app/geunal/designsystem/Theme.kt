@@ -51,7 +51,7 @@ fun GeunalTheme(
                 onError = Color.White,
             )
         }
-    CompositionLocalProvider(LocalNeutralColors provides neutrals) {
+    CompositionLocalProvider(LocalNeutralColors provides neutrals, LocalDarkTheme provides darkTheme) {
         MaterialTheme(colorScheme = scheme, typography = GeunalTypography, content = content)
     }
 }

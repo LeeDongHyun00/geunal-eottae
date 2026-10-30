@@ -18,4 +18,10 @@ class AppStorage(
 
     /** The sealed secrets of [KeystoreSecretStore]. */
     val secretsDir: File = File(root, "secrets").apply { mkdirs() }
+
+    /**
+     * What onboarding remembers. Next to the store on purpose: a copy of it on a new phone without the store would skip
+     * onboarding there with nothing to open (docs/security/app-review.md §1 "기기 이전").
+     */
+    val onboardingDir: File = File(root, "onboarding").apply { mkdirs() }
 }

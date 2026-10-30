@@ -4,22 +4,33 @@ import Foundation
 @preconcurrency import KakaoSDKUser
 
 /// Kakao Login through the Kakao SDK, KakaoTalk first and the web login when KakaoTalk is not installed. The SDK sends
-/// the authorization code with PKCE (S256) on both paths. The app needs only the OIDC ID token: right after reading the
-/// nickname it logs out of the SDK, which deletes Kakao's access and refresh tokens from the standard defaults.
+/// the authorization code with PKCE (S256) on both paths. The app needs only the OIDC ID token: the SDK's tokens stay in
+/// memory (`MemoryTokenManager`), and every sign-in that got them ends with a logout, which also expires them on
+/// Kakao's side.
 @MainActor
 final class KakaoSignIn {
     func signIn(providerNonce: String) async throws -> ProviderCredential {
         guard KakaoSetup.isConfigured else { throw ProviderSignInError.unavailable }
-        let idToken: String = try await withCheckedThrowingContinuation { continuation in
+        let idToken = try await login(providerNonce: providerNonce)
+        // An app without OpenID Connect turned on in the Kakao console gets no ID token, and logs out all the same.
+        var nickname: String?
+        if idToken != nil {
+            nickname = await self.nickname()
+        }
+        await logout()
+        guard let idToken else { throw ProviderSignInError.unavailable }
+        return ProviderCredential(idToken: idToken, displayName: nickname)
+    }
+
+    /// The ID token, `nil` when the Kakao console has no OpenID Connect; the SDK keeps the other tokens.
+    private func login(providerNonce: String) async throws -> String? {
+        try await withCheckedThrowingContinuation { continuation in
             // Sendable closures, so none inherits the main actor if the SDK answers on another queue.
             let completion: @Sendable (OAuthToken?, (any Error)?) -> Void = { token, error in
                 if let error {
                     continuation.resume(throwing: Self.map(error))
-                } else if let idToken = token?.idToken {
-                    continuation.resume(returning: idToken)
                 } else {
-                    // An app without OpenID Connect turned on in the Kakao console gets no ID token.
-                    continuation.resume(throwing: ProviderSignInError.unavailable)
+                    continuation.resume(returning: token?.idToken)
                 }
             }
             if UserApi.isKakaoTalkLoginAvailable() {
@@ -29,9 +40,13 @@ final class KakaoSignIn {
                     prompts: nil, loginHint: nil, nonce: providerNonce, completion: completion)
             }
         }
-        let nickname = await nickname()
-        UserApi.shared.logout { @Sendable _ in }
-        return ProviderCredential(idToken: idToken, displayName: nickname)
+    }
+
+    /// Waits for the SDK, which drops the tokens from its manager whether or not Kakao answered.
+    private func logout() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            UserApi.shared.logout { @Sendable _ in continuation.resume() }
+        }
     }
 
     private func nickname() async -> String? {
@@ -61,10 +76,16 @@ public enum KakaoSetup {
     /// Without a key the Kakao button stays, and pressing it says the sign-in did not work.
     static var isConfigured: Bool { appKey != nil }
 
+    /// The SDK keeps its tokens in memory from the start, with or without a key: its own manager writes them to the
+    /// standard defaults, which iCloud backups and Quick Start carry to another phone (QA D12). A token an earlier
+    /// build left there goes too.
     @MainActor
     public static func configure() {
-        guard let appKey else { return }
-        KakaoSDK.initSDK(appKey: appKey, loggingEnable: false)
+        if let appKey {
+            KakaoSDK.initSDK(appKey: appKey, loggingEnable: false)
+        }
+        Auth.shared.setTokenManager(MemoryTokenManager())
+        TokenManager.manager.deleteToken()
     }
 
     /// Hands the KakaoTalk login redirect to the SDK; `false` for any other URL.
@@ -74,3 +95,26 @@ public enum KakaoSetup {
         return AuthController.handleOpenUrl(url: url)
     }
 }
+
+#if DEBUG
+    extension KakaoSetup {
+        /// QA D12 for the app's tests, which do not link the SDK themselves: the SDK's token manager is this app's,
+        /// and a token handed to it leaves the SDK's slot in the standard defaults (`TokenManager.OAuthTokenKey`) as
+        /// it was. It puts a stand-in token through the manager and gives back the one it held.
+        @MainActor
+        public static var keepsTokensInMemory: Bool {
+            let manager = Auth.shared.tokenManager
+            guard manager is MemoryTokenManager else { return false }
+            let key = "com.kakao.sdk.oauth_token"
+            let before = UserDefaults.standard.data(forKey: key)
+            let held = manager.getToken()
+            manager.setToken(
+                OAuthToken(
+                    accessToken: "stand-in", tokenType: "bearer", refreshToken: "stand-in", scope: nil, scopes: nil))
+            let kept = manager.getToken()?.accessToken == "stand-in"
+            let after = UserDefaults.standard.data(forKey: key)
+            manager.setToken(held)
+            return kept && before == after
+        }
+    }
+#endif

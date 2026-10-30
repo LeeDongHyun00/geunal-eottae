@@ -10,6 +10,8 @@ struct WeekView: View {
     let onDay: (WeekDay) -> Void
     /// A long press on an empty hour: the day and the hour.
     let onSlot: (WeekDay, Int) -> Void
+    /// A tap on a block or an all-day bar opens the editor.
+    let onEvent: (EventItem) -> Void
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -17,7 +19,7 @@ struct WeekView: View {
                 ForEach(model.weeks, id: \.self) { week in
                     WeekPage(
                         days: model.pages[week], today: model.today, nowMinute: model.nowMinute(on: week),
-                        onDay: onDay, onSlot: onSlot
+                        onDay: onDay, onSlot: onSlot, onEvent: onEvent
                     )
                     .containerRelativeFrame(.horizontal)
                     .task { await model.load(week) }
@@ -40,13 +42,14 @@ private struct WeekPage: View {
     let nowMinute: Int?
     let onDay: (WeekDay) -> Void
     let onSlot: (WeekDay, Int) -> Void
+    let onEvent: (EventItem) -> Void
     private let hourHeight = Metrics.Grid.weekHour
 
     var body: some View {
         VStack(spacing: 0) {
             if let days {
                 DateRow(days: days, today: today, onDay: onDay)
-                AllDayRow(days: days)
+                AllDayRow(days: days, onEvent: onEvent)
                 ScrollViewReader { proxy in
                     ScrollView(.vertical) {
                         ZStack(alignment: .topLeading) {
@@ -58,9 +61,14 @@ private struct WeekPage: View {
                                     ForEach(days[index].timed, id: \.self) { block in
                                         let rect = Self.rect(
                                             of: block, day: index, column: column, hourHeight: hourHeight)
-                                        TimedBlockView(block: block, hourHeight: hourHeight)
-                                            .frame(width: rect.width, height: rect.height)
-                                            .offset(x: rect.minX, y: rect.minY)
+                                        Button {
+                                            onEvent(block.event)
+                                        } label: {
+                                            TimedBlockView(block: block, hourHeight: hourHeight)
+                                        }
+                                        .buttonStyle(.pressable)
+                                        .frame(width: rect.width, height: rect.height)
+                                        .offset(x: rect.minX, y: rect.minY)
                                     }
                                 }
                                 if let nowMinute, let index = days.firstIndex(where: { $0.day == today }) {
@@ -156,6 +164,7 @@ private struct DateRow: View {
 /// Birthdays and all-day events above the axis, with the "+N" of timed events that did not fit three columns.
 private struct AllDayRow: View {
     let days: [WeekDay]
+    let onEvent: (EventItem) -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -171,7 +180,12 @@ private struct AllDayRow: View {
                         BirthdayLine(name: birthday.name)
                     }
                     ForEach(day.allDay, id: \.self) { event in
-                        EventBar(event: event)
+                        Button {
+                            onEvent(event)
+                        } label: {
+                            EventBar(event: event)
+                        }
+                        .buttonStyle(.pressable)
                     }
                     if day.hidden > 0 {
                         Text(verbatim: "+\(day.hidden)")
@@ -187,7 +201,6 @@ private struct AllDayRow: View {
         .frame(minHeight: 26)
         .overlay(alignment: .top) { Rectangle().fill(GeunalColor.separator).frame(height: 1) }
         .overlay(alignment: .bottom) { Rectangle().fill(GeunalColor.separator).frame(height: 1) }
-        .accessibilityHidden(true)
     }
 }
 

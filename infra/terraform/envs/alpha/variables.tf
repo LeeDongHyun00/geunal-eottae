@@ -42,8 +42,15 @@ variable "server_hypervisor" {
 }
 
 variable "server_spec_code" {
-  description = "Server spec code, as data.ncloud_server_specs lists it. No default: the Micro code is confirmed in M1."
+  description = "Server spec code, as data.ncloud_server_specs lists it. mi1-g3 is the KVM Micro (1 vCPU, 1 GB) confirmed in M1."
   type        = string
+  default     = "mi1-g3"
+}
+
+variable "server_fee_system_type_code" {
+  description = "Billing plan of the server: FXSUM (monthly), which Micro requires, or MTRAT (hourly) for the 2 vCPU spec in M2."
+  type        = string
+  default     = "FXSUM"
 }
 
 variable "buckets" {
