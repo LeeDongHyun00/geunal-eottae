@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
@@ -147,7 +146,8 @@ class CalendarScreenTest {
 
         compose.onNodeWithTag("quickEntry.chip.1").performClick()
         compose.waitForTag("proposal.accept")
-        compose.onNodeWithTag("toast").assertTextContains("카페 마감을 추가했어요", substring = true)
+        // The toast's row does not merge its text, so the message is a node of its own inside it.
+        compose.onNode(hasText("카페 마감을 추가했어요") and hasAnyAncestor(hasTestTag("toast")), useUnmergedTree = true).assertExists()
         compose.screenshot("06-added")
 
         compose.onNodeWithTag("proposal.accept").performClick()
