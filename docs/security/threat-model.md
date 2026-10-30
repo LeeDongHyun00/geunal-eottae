@@ -47,6 +47,7 @@ flowchart LR
 - **경계 2: 기기 ↔ 다른 멤버.** 같은 그룹의 멤버는 그룹 안의 모든 내용을 봅니다. 이것은 설계입니다. 멤버가 할 수 없어야 하는 것은 **남을 사칭하는 것**과 **주도자·업로더 전용 규칙을 깨는 것**입니다.
 - **경계 3: 기기 안.** 앱, 알림 확장(iOS), 위젯이 같은 저장소와 키체인을 씁니다. 기기가 공격자 손에 있으면 이 경계는 OS가 지킵니다.
 - **경계 4: 개발·배포 경로.** 저장소, CI, 의존성, 컨테이너 이미지. 여기가 뚫리면 위 셋이 모두 무의미하므로 [의존성 취약점 검사](dependencies.md)와 CI 규칙([QA](../qa.md) 5장)으로 다룹니다.
+- **경계 5: 이름과 인증서.** 앱이 서버를 찾는 DNS 이름과, 그 이름의 인증서를 내주는 쪽입니다. 이름이 가리키는 곳을 바꿀 수 있는 사람은 서버 자리에 설 수 있으므로 경계 1의 "믿지 않는 곳"에 함께 듭니다. 알파의 DuckDNS 이름은 3.7에서 다룹니다.
 
 ## 3. 공격자
 
@@ -172,6 +173,31 @@ M1부터 계정을 다른 기기로 옮기는 길이 둘입니다([공통 계약
 - PR #26 리뷰의 제안은 대부분 계약에 들어갔습니다([공통 계약](../parts/protocol.md) 10·13장). 복구 코드 화면의 기기 인증은 2026-10-26에 정했고, 새로 시작과 계정 삭제 앞에도 둡니다(위 "잠금이 풀린 기기" 줄).
 - 보안 안내 페이지(M4)에 적을 것: 게스트의 12단어는 계정과 백업을 여는 유일한 열쇠이고, 본 사람은 계정을 가져갈 수 있습니다.
 
+### 3.7 알파 주소의 이름: DuckDNS
+
+M1 알파는 정식 도메인을 정하기 전까지 DuckDNS의 `geunaleottae.duckdns.org`를 API 주소로 씁니다([알파 서버](../../infra/alpha/README.md)). 앱의 서버 주소, 안드로이드 App Link 호스트, Apple 웹 로그인의 반환 주소가 모두 이 이름입니다. 이 이름이 가리키는 곳을 바꿀 수 있는 사람은 Let's Encrypt에서 유효한 인증서를 받아 서버 자리에 섭니다. 그런 사람은 셋입니다.
+
+- DuckDNS 운영사, 또는 그 운영사를 침해한 사람.
+- 운영자의 GitHub 계정을 가진 사람. DuckDNS에는 GitHub으로 로그인합니다.
+- DuckDNS 토큰을 가진 사람. 토큰만으로 IP와 TXT 레코드를 바꿀 수 있어서, 서버를 건드리지 않고 인증서를 받습니다.
+
+정식 도메인에서도 레지스트라와 DNS 계정이 같은 자리에 섭니다. 다른 점은 CAA와 DNSSEC로 인증서 발급을 좁힐 수 있다는 것입니다. 이름을 가진 사람은 경계 1의 "믿지 않는 곳"에 들기 때문에, 설계가 이미 막는 것이 많습니다.
+
+| 경로 | 얻는 것 | 막는 것 | 남는 것 | 확인 |
+| --- | --- | --- | --- | --- |
+| 이름을 가져감 | 이름을 다른 IP로 돌리고 유효한 인증서를 받음. 아래 줄들의 출발점 | 운영자 GitHub 계정의 2단계 인증. 서버 IP가 고정이라 토큰을 어디에도 쓰지 않고, 새면 DuckDNS에서 다시 만듦. 인증서 투명성 로그로 모르는 인증서를 감시 | DuckDNS 운영사와 그 침해는 막지 못합니다. CAA를 걸 수 없고 `duckdns.org`는 DNSSEC 서명이 없습니다(2026-10-31 확인). 감시는 알아챌 뿐 막지 못합니다. **알파 동안 받아들입니다** | 사용자: GitHub 2단계 인증, 인증서 투명성 감시 등록 |
+| 앱과 API 사이에 끼기 | 그 기기의 액세스 토큰(15분)과 리프레시 토큰, 요청의 메타데이터와 암호문. 응답을 바꾸거나 버리기 | 경계 1: 서버로 가는 것은 암호문이고, 서버에서 오는 것은 모두 검증(MLS 서명, AEAD, 순번). 가로챈 리프레시 토큰을 따로 쓰면 재사용 감지가 그 기기의 세션을 끊음(3.6) | 3.2 "JWT 서명 키" 줄과 같은 능력을 그 기기에 대해 가집니다. 내용은 못 읽습니다 | API `a reused refresh token signs the device out` |
+| 제공자 로그인 가로채기 | 카카오 ID 토큰, Apple 아이덴티티 토큰 | 토큰이 그 기기의 키에 묶임(3.6) | 없음 | API `refuses a provider token bound to another device key` |
+| 안드로이드 Apple 웹 로그인의 콜백(`/auth/apple/callback`)과 App Link | Apple이 보내는 `code`·`id_token`·`state`, 처음 로그인이면 `user`(이름과 이메일 또는 릴레이 주소). 가짜 `assetlinks.json`으로 다른 앱이 App Link를 열게 함 | `id_token`은 위처럼 기기 키에 묶임. `code`는 우리 client secret 없이는 바꾸지 못함([공통 계약](../parts/protocol.md) 13장). 앱이 `state`를 확인 | 처음 로그인한 사람의 이름과 이메일 | 해당 없음 |
+| 카카오 연결 끊기 알림 주소 | 카카오는 이 요청의 `Authorization` 헤더에 **앱 어드민 키**를 실어 보냅니다. 어드민 키로는 앱의 모든 사용자에 대한 관리 API(연결 끊기, 사용자 정보 조회)를 부를 수 있습니다 | 없음 | 그래서 **정식 도메인 전에는 이 주소를 등록하지 않습니다.** 알파 동안 끊김 알림을 받지 못하는 것은 받아들입니다. 같은 제공자로 다시 로그인하면 원래 계정으로 돌아옵니다(3.6). 이미 등록했다면 도메인을 옮길 때 어드민 키를 다시 발급합니다 | 사용자·백엔드: 콘솔에 등록하기 전에 확인 |
+| Apple 서버 간 알림 주소 | 동의 철회·계정 삭제·이메일 변경 알림의 내용 | Apple이 서명한 JWT라 위조하지 못함 | 알림을 받지 못하는 것과, 알림에 든 메타데이터 | 해당 없음 |
+| 이름을 버린 뒤 | 같은 이름을 다시 등록한 사람이 옛 빌드의 요청(토큰 포함)을 받음 | 이 이름이 든 빌드가 테스터 기기에서 모두 사라질 때까지 이름을 지우지 않음 | 없음(지키는 동안) | 해당 없음 |
+| 차단과 장애 | 일부 보안 제품과 회사·학교 DNS 필터가 duckdns 하위 도메인을 막음. DuckDNS의 DNS가 멈추면 모든 기기가 서버에 붙지 못함 | 1장 "서비스 가용성"대로 받아들임 | 일부 네트워크의 테스터가 연결하지 못합니다 | 해당 없음 |
+
+**검토할 결정(사용자·백엔드):**
+- 카카오 연결 끊기 알림은 정식 도메인이 생긴 뒤에 등록합니다(위 표).
+- 정식 도메인은 테스터를 넓히기 전, 늦어도 M3 스토어 비공개 테스트 전에 정합니다. 그때 레지스트라 계정의 2단계 인증, CAA(Let's Encrypt와 우리 ACME 계정만), DNSSEC를 켜고 Apple 반환 주소와 앱 빌드를 새 이름으로 바꿉니다.
+
 ## 4. 가로지르는 것
 
 - **푸시 경로.** APNs·FCM에는 암호문(≤3KB)이나 신호만 갑니다. `cat`(`chat`/`plan`)은 종류별 알림 끄기를 위해 서버가 아는 유일한 내용 정보이고 6장 표에 있습니다. 알림 확장이 복호화한 문구는 알림 센터에 평문으로 남습니다(3.3).
@@ -206,9 +232,9 @@ M1부터 계정을 다른 기기로 옮기는 길이 둘입니다([공통 계약
 | `wipes the previous installation's keychain items on first launch` | iOS | M1 | 3.6 |
 | `does not merge a backup into a store that belongs to another account` | 코어 | M1 | 3.6 |
 | `refuses to overwrite recovery material without the current code's signature` | API | M1 | 3.6 |
-| `a reused refresh token signs the device out` | API | M1 | 3.6 |
+| `a reused refresh token signs the device out` | API | M1 | 3.6, 3.7 |
 | `refuses to delete an account without a fresh proof and deletes nothing` | API | M1 | 3.6 |
-| `refuses a provider token bound to another device key` | API | M1 | 3.6 |
+| `refuses a provider token bound to another device key` | API | M1 | 3.6, 3.7 |
 | `refuses a replacement without the device key's signature` | API | M1 | 3.6 |
 | `allows a new recovery key only within 30 minutes of a provider sign-in or with a fresh provider proof` | API | M1 | 3.6 |
 | `tells the revoked device whether a provider sign-in or the recovery code replaced it` | API | M1 | 3.6 |
@@ -230,7 +256,7 @@ M1부터 계정을 다른 기기로 옮기는 길이 둘입니다([공통 계약
 | 단계 | 할 일 | 절 |
 | --- | --- | --- |
 | M0 | 위협 모델, 의존성 취약점 검사 | 이 문서, [의존성 취약점 검사](dependencies.md) |
-| M1 | 백업 암호 구조 검토, 키체인·키스토어 설정, 로그 점검 | 3.2(복구 자료), 3.3(가)(나), 3.6, 4, [앱 PR 보안 점검표](app-review.md) |
+| M1 | 백업 암호 구조 검토, 키체인·키스토어 설정, 로그 점검 | 3.2(복구 자료), 3.3(가)(나), 3.6, 3.7(알파 주소), 4, [앱 PR 보안 점검표](app-review.md) |
 | M2 | 초대 코드 남용, 그룹 메타 남용 | 3.4(초대 코드, 숨은 멤버), 3.5 |
 | M3 | 신고 경로, 첨부 암호화, 의존성 점검, 외부 리뷰어 섭외 | 3.1(신고 봉인), 3.4(악성 첨부), 3.2(미디어) |
 | M4 | 외부 리뷰 반영, 출시 전 점검, 보안 안내 페이지 | 1장 표와 3장의 "남는 것"이 안내 페이지의 내용 |
