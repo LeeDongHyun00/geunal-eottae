@@ -68,6 +68,8 @@ public protocol AlertCenter: AnyObject {
     func scheduled() async -> [PlannedAlert]
     func schedule(_ alert: PlannedAlert) async throws
     func cancel(_ ids: [String])
+    /// Every scheduled alert and every one already in the notification center.
+    func removeAll()
 }
 
 /// Keeps the nearest alerts scheduled (docs/parts/ios.md §5: iOS keeps 64 at most). The core says what fires when;
@@ -91,6 +93,13 @@ public final class AlertScheduler {
     /// wrote it and schedule the same alert twice.
     public func refresh() async {
         await coalescer.run { [self] in await refreshOnce() }
+    }
+
+    /// A sign-out or a deleted account (docs/security/app-review.md §2 "로컬 알림"): the OS keeps the scheduled and the
+    /// shown alerts with their titles, so all of them go. The next refresh schedules what the core still lists for the
+    /// events that stay on the device.
+    public func removeAll() {
+        center.removeAll()
     }
 
     private func refreshOnce() async {

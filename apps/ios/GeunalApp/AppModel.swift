@@ -247,6 +247,7 @@ final class AppModel {
     /// m1.md screen 22: the start screen and the toast after a deletion. The calendar stays on the device, and
     /// onboarding comes back for the next account.
     func accountDeleted() {
+        alerts?.removeAll()
         onboardingState.isFinished = false
         onboardingResumes = false
         accountChanges += 1
@@ -261,6 +262,10 @@ final class AppModel {
         guard let core else { return }
         let read = await Task.detached { (try? core.revocation(), try? core.recoveryStatus(), core.session()) }.value
         if let revoked = read.0, revoked.at != onboardingState.revocationShownAt {
+            if revocation == nil {
+                // Signed out from another device: the alerts with their titles go, as on a deletion.
+                alerts?.removeAll()
+            }
             revocation = revoked
         }
         recoveryUnsaved = read.0 == nil && read.1.map { $0.created && !$0.saved } == true
