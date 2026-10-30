@@ -8,12 +8,13 @@ final class RestoreModelTests: XCTestCase {
     @MainActor
     private struct Fixture {
         let core = AccountFakeCore()
+        let owner = FakeDeviceOwner()
         let toasts = ToastLog()
 
         func model(_ mode: RestoreModel.Mode = .deviceChange, ageConfirmedAt: Date? = nil) -> RestoreModel {
             let toasts = self.toasts
             return RestoreModel(
-                mode: mode, core: core, ageConfirmedAt: ageConfirmedAt, notify: { toasts.append($0) })
+                mode: mode, core: core, owner: owner, ageConfirmedAt: ageConfirmedAt, notify: { toasts.append($0) })
         }
     }
 
@@ -187,15 +188,53 @@ final class RestoreModelTests: XCTestCase {
         XCTAssertEqual(f.toasts.messages, ["시간이 지나 처음부터 다시 로그인해 주세요"])
     }
 
-    func testStartsFreshWithoutTheCode() async {
+    func testStartsFreshWithoutTheCodeOnceTheOwnerPasses() async {
         let f = Fixture()
         let model = f.model(.deviceChange)
 
         let started = await model.startWithoutCode()
 
         XCTAssertTrue(started)
+        XCTAssertEqual(f.owner.asked, [.startFresh])
         XCTAssertEqual(f.core.calls.current, ["startFresh"])
         XCTAssertEqual(model.phase, .startedFresh)
+    }
+
+    func testCancellingTheOwnerPromptDeletesNoBackup() async {
+        let f = Fixture()
+        f.owner.passes = false
+        let model = f.model(.offer)
+
+        let started = await model.startWithoutCode()
+
+        XCTAssertFalse(started)
+        XCTAssertEqual(f.core.calls.current, [])
+        XCTAssertEqual(model.phase, .entering)
+        XCTAssertFalse(model.isWorking)
+    }
+
+    func testANewGuestAccountDeletesNothingSoTheOwnerIsNotAsked() async {
+        let f = Fixture()
+        let model = f.model(.guestReturn, ageConfirmedAt: Date())
+
+        let started = await model.startWithoutCode()
+
+        XCTAssertTrue(started)
+        XCTAssertEqual(f.owner.asked, [])
+        XCTAssertEqual(f.core.calls.current, ["guest"])
+    }
+
+    func testADeviceWithoutAScreenLockStartsFreshAndSaysSo() async {
+        let f = Fixture()
+        f.owner.hasScreenLock = false
+        f.owner.passes = false
+        let model = f.model(.deviceChange)
+
+        XCTAssertFalse(model.screenLocked)
+        let started = await model.startWithoutCode()
+
+        XCTAssertTrue(started)
+        XCTAssertEqual(f.core.calls.current, ["startFresh"])
     }
 
     func testANewGuestNeedsTheAgeTickFirst() async {

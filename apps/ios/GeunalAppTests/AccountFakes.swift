@@ -41,6 +41,21 @@ final class AccountFakeCore: Core, @unchecked Sendable {
             events: 3, people: 1, calendars: 1, shiftTemplates: 0, backupAt: Date(), replacedDevice: true, groups: 0))
     var alphaStats = false
     var alphaStatsError: CoreError?
+    var summary = MeSummary(
+        account: AccountView(userId: "u1", displayName: "하린", providers: []), calendars: 3, shiftTemplates: 2,
+        people: 12, deviceCalendars: 0, recoverySaved: false, lastBackupAt: nil)
+    var revoked: Revocation?
+    /// The account's code; `nil` before one exists, which the core answers with `NotFound`.
+    var code: [String]? = ["바람", "연필", "구름", "달력", "열쇠", "우산", "단추", "마당", "편지", "소풍", "거울", "하늘"]
+    var recovery = RecoveryStatus(created: true, saved: false, uploaded: true)
+    var backupState = BackupStatus(last: nil, auto: true, changed: true, ready: true)
+    var backupList: [BackupView] = []
+    var backupResult: Result<BackupView, CoreError> = .success(
+        BackupView(id: 1, createdAt: Date(), size: 1_000, automatic: false, events: 3, people: 1))
+    /// What `deleteAccount` throws, one error per call in turn; once empty it deletes.
+    let deleteErrors = Locked<[CoreError]>([])
+    let lastProof = Locked<DeletionProof?>(nil)
+    var linkResult: Result<[Provider], CoreError> = .success([.kakao])
 
     init() {
         super.init(noHandle: Core.NoHandle())
@@ -117,6 +132,65 @@ final class AccountFakeCore: Core, @unchecked Sendable {
     override func setAlphaStats(enabled: Bool) throws {
         if let alphaStatsError { throw alphaStatsError }
         record("alphaStats \(enabled)")
+    }
+
+    // MARK: 나 and the account (m1.md screens 12, 13, 20, 22)
+
+    override func sync() async throws { record("sync") }
+    override func meSummary() throws -> MeSummary { summary }
+    override func revocation() throws -> Revocation? { revoked }
+
+    override func recoveryWords() throws -> [String] {
+        guard let code else { throw CoreError.NotFound(what: "recovery code") }
+        return code
+    }
+
+    override func recoveryStatus() throws -> RecoveryStatus { recovery }
+    override func markRecoverySaved() throws { record("markSaved") }
+    override func backupStatus() throws -> BackupStatus { backupState }
+    override func backups() async throws -> [BackupView] { backupList }
+
+    override func backupNow(progress: ProgressListener?) async throws -> BackupView {
+        record("backupNow")
+        progress?.onProgress(done: 1, total: 2)
+        return try backupResult.get()
+    }
+
+    override func setAutoBackup(enabled: Bool) throws { record("auto \(enabled)") }
+
+    override func deleteAccount(proof: DeletionProof) async throws {
+        record("delete")
+        lastProof.update { $0 = proof }
+        var next: CoreError?
+        deleteErrors.update { errors in
+            if !errors.isEmpty {
+                next = errors.removeFirst()
+            }
+        }
+        if let next { throw next }
+    }
+
+    override func linkKakao(nonce: String, idToken: String) async throws -> [Provider] {
+        record("linkKakao \(nonce) \(idToken)")
+        return try linkResult.get()
+    }
+
+    override func linkApple(nonce: String, idToken: String) async throws -> [Provider] {
+        record("linkApple \(nonce) \(idToken)")
+        return try linkResult.get()
+    }
+}
+
+/// The OS prompt as the test sets it: passed or cancelled, on a device with or without a screen lock.
+@MainActor
+final class FakeDeviceOwner: DeviceOwnerCheck {
+    var hasScreenLock = true
+    var passes = true
+    private(set) var asked: [DeviceOwnerReason] = []
+
+    func confirm(_ reason: DeviceOwnerReason) async -> Bool {
+        asked.append(reason)
+        return passes || !hasScreenLock
     }
 }
 

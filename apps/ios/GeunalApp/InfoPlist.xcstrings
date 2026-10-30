@@ -30,6 +30,16 @@
           }
         }
       }
+    },
+    "NSFaceIDUsageDescription" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "복구 코드를 보거나 백업과 계정을 지우기 전에 본인인지 확인해요."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

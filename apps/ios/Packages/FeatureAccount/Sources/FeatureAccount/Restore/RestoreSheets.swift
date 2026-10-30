@@ -6,6 +6,7 @@ import SwiftUI
 /// change) or the old guest account (guest return).
 struct NoCodeSheet: View {
     let mode: RestoreModel.Mode
+    let screenLocked: Bool
     let onStartOver: () -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -25,6 +26,13 @@ struct NoCodeSheet: View {
             .lineSpacing(4)
             .foregroundStyle(GeunalColor.ink.opacity(0.85))
             .fixedSize(horizontal: false, vertical: true)
+            if asksOwner && !screenLocked {
+                Text("화면 잠금을 켜 두면 다른 사람이 지우지 못해요.", bundle: .module)
+                    .typeStyle(.caption)
+                    .foregroundStyle(GeunalColor.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("restore.noScreenLock")
+            }
             Spacer(minLength: 0)
             VStack(spacing: Space.xs) {
                 Button(action: onStartOver) {
@@ -43,8 +51,11 @@ struct NoCodeSheet: View {
         .padding(.horizontal, Metrics.Sheet.Padding.side)
         .padding(.top, Space.l)
         .padding(.bottom, Space.s)
-        .sheetChrome(height: 412)
+        .sheetChrome(height: asksOwner && !screenLocked ? 448 : 412)
     }
+
+    /// Starting fresh deletes the account's backups and passes the OS prompt; a new guest account deletes nothing.
+    private var asksOwner: Bool { mode != .guestReturn }
 
     private var title: Text {
         mode == .guestReturn
