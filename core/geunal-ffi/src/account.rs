@@ -303,9 +303,10 @@ impl Core {
     }
 
     /// Own events and people on this device that may belong to someone else, so the app can ask before a restore
-    /// whether to bring them along (`LocalDataChoice`): the store was another account's, no sign-in has claimed it
-    /// yet, or the account is not known before the code is checked (a guest coming back). `None` when there is
-    /// nothing to ask, such as a store that is the signing-in account's own.
+    /// whether to bring them along (`LocalDataChoice`): the store is another account's, or it has an owner and the
+    /// account is not known before the code is checked (a guest coming back). `None` when there is nothing to ask: the
+    /// store is the signing-in account's own, or nobody owns it yet (used before any sign-in), which makes it the
+    /// first account's to register.
     pub fn local_data_of_other_account(&self) -> Result<Option<LocalData>, CoreError> {
         // The account to compare with: the signed-in one, or the one a replacement is for. Before a guest's code is
         // checked there is none, and then a store with an owner is someone else's as far as this question goes.

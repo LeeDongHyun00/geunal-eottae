@@ -22,6 +22,21 @@ pub struct HttpTransport {
     refreshing: tokio::sync::Mutex<()>,
 }
 
+/// A failure to reach or read the server, in words without the URL. reqwest ends its text with the whole URL, and a
+/// presigned one carries its signature (`X-Amz-Signature`), which would then ride the app's exception message into a
+/// crash report.
+fn network(e: reqwest::Error) -> ApiError {
+    ApiError::Network(e.without_url().to_string())
+}
+
+fn malformed(e: reqwest::Error) -> ApiError {
+    ApiError::Malformed(e.without_url().to_string())
+}
+
+/// The contract's limit for one sealed object (protocol §10, 64 MiB). A longer download is not one of ours, and its
+/// claimed length must not size an allocation that fails and aborts the app.
+const MAX_OBJECT: u64 = 64 << 20;
+
 /// What a failed response stands for. Bodies never reach a log (api-server.md §10); the code and status are enough to
 /// act on.
 fn api_error(status: u16, body: &str) -> ApiError {
@@ -72,7 +87,7 @@ impl HttpTransport {
             .https_only(https_only)
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .map_err(|e| ApiError::Network(e.to_string()))?;
+            .map_err(network)?;
         Ok(Self {
             base: base.trim_end_matches('/').to_owned(),
             client,
@@ -114,17 +129,17 @@ impl HttpTransport {
     /// for the second try so the request carries the new token.
     async fn execute(&self, build: impl Fn(&Self) -> RequestBuilder) -> Result<Response, ApiError> {
         let used = self.access_token();
-        match Self::check(build(self).send().await.map_err(|e| ApiError::Network(e.to_string()))?).await {
+        match Self::check(build(self).send().await.map_err(network)?).await {
             Err(e) if used.is_some() && e.is(401, "token_expired") => {
                 self.refresh(used.as_deref()).await?;
-                Self::check(build(self).send().await.map_err(|e| ApiError::Network(e.to_string()))?).await
+                Self::check(build(self).send().await.map_err(network)?).await
             }
             other => other,
         }
     }
 
     async fn send<T: DeserializeOwned>(&self, build: impl Fn(&Self) -> RequestBuilder) -> Result<T, ApiError> {
-        self.execute(build).await?.json().await.map_err(|e| ApiError::Malformed(e.to_string()))
+        self.execute(build).await?.json().await.map_err(malformed)
     }
 
     async fn send_empty(&self, build: impl Fn(&Self) -> RequestBuilder) -> Result<(), ApiError> {
@@ -133,8 +148,8 @@ impl HttpTransport {
 
     /// A call that never refreshes: the `/auth` calls, and reads under a replacement ticket.
     async fn once<T: DeserializeOwned>(req: RequestBuilder) -> Result<T, ApiError> {
-        let response = req.send().await.map_err(|e| ApiError::Network(e.to_string()))?;
-        Self::check(response).await?.json().await.map_err(|e| ApiError::Malformed(e.to_string()))
+        let response = req.send().await.map_err(network)?;
+        Self::check(response).await?.json().await.map_err(malformed)
     }
 
     /// Trades the refresh token for new tokens, unless another call already did while this one waited.
@@ -270,7 +285,7 @@ impl Transport for HttpTransport {
 
     async fn put_object(&self, url: &str, body: Vec<u8>) -> Result<(), ApiError> {
         // The signature covers Content-Length, which reqwest sets from the body.
-        let response = self.client.put(url).body(body).send().await.map_err(|e| ApiError::Network(e.to_string()))?;
+        let response = self.client.put(url).body(body).send().await.map_err(network)?;
         Self::check(response).await.map(|_| ())
     }
 
@@ -299,11 +314,17 @@ impl Transport for HttpTransport {
     }
 
     async fn get_object(&self, url: &str, progress: Progress<'_>) -> Result<Vec<u8>, ApiError> {
-        let network = |e: reqwest::Error| ApiError::Network(e.to_string());
         let mut response = Self::check(self.client.get(url).send().await.map_err(network)?).await?;
         let total = response.content_length().unwrap_or(0);
+        let too_large = || ApiError::Malformed("an object over 64 MiB".into());
+        if total > MAX_OBJECT {
+            return Err(too_large());
+        }
         let mut body = Vec::with_capacity(usize::try_from(total).unwrap_or(0));
         while let Some(chunk) = response.chunk().await.map_err(network)? {
+            if (body.len() + chunk.len()) as u64 > MAX_OBJECT {
+                return Err(too_large());
+            }
             body.extend_from_slice(&chunk);
             progress(body.len() as u64, total.max(body.len() as u64));
         }
@@ -440,6 +461,16 @@ mod tests {
         ] {
             assert!(matches!(HttpTransport::new(base), Err(ApiError::Malformed(_))), "{base}");
         }
+    }
+
+    #[tokio::test]
+    async fn a_failed_download_keeps_the_signed_url_out_of_its_error() {
+        // Nothing listens on the discard port, so the request fails before any answer.
+        let api = HttpTransport::new("http://127.0.0.1:9").unwrap();
+        let url = "http://127.0.0.1:9/backups/1?X-Amz-Signature=secret";
+        let err = api.get_object(url, &|_, _| {}).await.unwrap_err();
+        let ApiError::Network(text) = err else { panic!("{err:?}") };
+        assert!(!text.contains("X-Amz-Signature") && !text.contains("secret"), "{text}");
     }
 
     #[test]
