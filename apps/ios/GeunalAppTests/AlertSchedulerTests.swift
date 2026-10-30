@@ -41,6 +41,10 @@ final class AlertSchedulerTests: XCTestCase {
             cancelled += ids
             pending.removeAll { ids.contains($0.id) }
         }
+
+        func removeAll() {
+            pending = []
+        }
     }
 
     private let evening = KoreanCalendar.start(of: "2026-10-30")!.addingTimeInterval(17 * 3600)
@@ -71,6 +75,18 @@ final class AlertSchedulerTests: XCTestCase {
                     id: "alert.event:e1:k:60", fireAt: evening, title: "가족 · 저녁", body: "1시간 뒤 · 18:00",
                     route: .event(eventId: "e1", occurrence: nil))
             ])
+    }
+
+    func testRemovesEveryAlertOnASignOut() async {
+        let core = AlertFakeCore()
+        core.alerts = [dinner()]
+        let center = FakeCenter()
+        let scheduler = AlertScheduler(core: core, center: center)
+        await scheduler.refresh()
+
+        scheduler.removeAll()
+
+        XCTAssertEqual(center.pending, [])
     }
 
     func testRefreshesAskedForTogetherScheduleEachAlertOnce() async {

@@ -35,6 +35,12 @@ public final class SystemAlertCenter: AlertCenter {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ids)
     }
 
+    public func removeAll() {
+        let center = UNUserNotificationCenter.current()
+        center.removeAllPendingNotificationRequests()
+        center.removeAllDeliveredNotifications()
+    }
+
     /// The instant as the phone's own calendar and time zone name it, down to the second, which is what a calendar
     /// trigger matches. A phone that moves to another time zone reads its triggers back as other instants, and the
     /// next refresh schedules them again.
