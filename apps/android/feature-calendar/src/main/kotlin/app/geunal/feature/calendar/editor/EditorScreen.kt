@@ -770,7 +770,7 @@ private fun Check(color: Color = LocalNeutralColors.current.ink) {
 
 private const val DAY = 1440
 
-/** "10월 30일(금)", or with the year in another year than today's. */
+/** "10월 30일 (금)" as boards/Editor writes it, or with the year in another year than today's. */
 internal fun chipDay(
     day: String,
     resources: Resources,
@@ -779,7 +779,7 @@ internal fun chipDay(
     val date = KoreanCalendar.parse(day) ?: return day
     val weekday = weekdayShort(resources, date.dayOfWeek)
     return if (KoreanCalendar.parse(today)?.year == date.year) {
-        resources.getString(R.string.calendar_day_this_year, date.monthValue, date.dayOfMonth, weekday)
+        resources.getString(R.string.editor_day, date.monthValue, date.dayOfMonth, weekday)
     } else {
         // The year as text: a localized integer would read "2,027년".
         resources.getString(R.string.calendar_day_other_year, date.year.toString(), date.monthValue, date.dayOfMonth)

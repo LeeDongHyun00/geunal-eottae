@@ -59,7 +59,6 @@ import app.geunal.designsystem.label
 import app.geunal.feature.calendar.R
 import app.geunal.feature.calendar.editor.AlertText
 import app.geunal.feature.calendar.editor.MinutePickerDialog
-import app.geunal.feature.calendar.editor.PickerChip
 import app.geunal.feature.calendar.editor.text
 import app.geunal.feature.calendar.support.DayText
 import app.geunal.feature.calendar.support.groupColor
@@ -328,6 +327,7 @@ private fun Rows(
 
 private enum class TemplateTime { START, END }
 
+/** "시작 08:00 ›", a row like the calendar and alert below it (boards/TemplateEdit). */
 @Composable
 private fun TimeRow(
     label: String,
@@ -335,25 +335,12 @@ private fun TimeRow(
     onClick: () -> Unit,
     tag: String,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = Metrics.Row.setting)
-                .padding(horizontal = Space.m),
-    ) {
-        Text(label, style = GeunalType.body, color = LocalNeutralColors.current.ink, modifier = Modifier.weight(1f))
-        val time = DayText.clock(minute)
-        PickerChip(
-            text = time,
-            description = "$label $time",
-            clickLabel = stringResource(R.string.editor_change_time),
-            enabled = true,
-            onClick = onClick,
-            modifier = Modifier.testTag(tag),
-        )
-    }
+    SettingsRow(
+        title = label,
+        value = DayText.clock(minute),
+        onClick = onClick,
+        modifier = Modifier.testTag(tag),
+    )
 }
 
 @Composable

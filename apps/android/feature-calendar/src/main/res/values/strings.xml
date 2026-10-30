@@ -123,6 +123,7 @@
     <string name="editor_all_day">종일</string>
     <string name="editor_start">시작</string>
     <string name="editor_end">끝</string>
+    <string name="editor_day">%1$d월 %2$d일 (%3$s)</string>
     <string name="editor_change_day">날짜 바꾸기</string>
     <string name="editor_change_time">시각 바꾸기</string>
     <string name="editor_repeat">반복</string>
