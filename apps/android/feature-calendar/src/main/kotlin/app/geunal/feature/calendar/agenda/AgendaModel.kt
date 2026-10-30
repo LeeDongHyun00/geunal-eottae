@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.Instant
 
@@ -41,59 +43,73 @@ class AgendaModel(
     val state: StateFlow<State> = _state.asStateFlow()
     private var firstDay = _state.value.today
     private var nextDay = _state.value.today
-    private var loading = false
+
+    /**
+     * One read at a time: a page that finished after a reload would be spliced onto the new list, leaving a gap or
+     * a day twice (and the list's keys must be unique).
+     */
+    private val mutex = Mutex()
 
     /** The first page from today, and the page before it so scrolling up has somewhere to go. */
     suspend fun reload() {
-        val today = KoreanCalendar.day(now())
-        val start = KoreanCalendar.addDays(today, -PAGE_DAYS) ?: today
-        val end = KoreanCalendar.addDays(today, PAGE_DAYS) ?: today
-        val found = read(start, 2 * PAGE_DAYS) ?: return
-        firstDay = start
-        nextDay = end
-        val probe = State(today, found)
-        // A holiday alone is not an event: the empty state still says there is nothing planned.
-        val empty = probe.upcoming.none { it.events.isNotEmpty() || it.birthdays.isNotEmpty() }
-        _state.value = State(today, found, isEmpty = empty, hasLoaded = true)
-    }
-
-    /** The next four weeks, when the list reaches its end. */
-    suspend fun loadMore() {
-        val current = _state.value
-        if (!current.hasLoaded || !current.canLoadMore || loading) return
-        val start = nextDay
-        val ahead = KoreanCalendar.days(from = current.today, to = start) ?: return
-        if (ahead >= LATEST_DAYS) {
-            _state.update { it.copy(canLoadMore = false) }
-            return
-        }
-        loading = true
-        try {
-            val found = read(start, PAGE_DAYS) ?: return
-            nextDay = KoreanCalendar.addDays(start, PAGE_DAYS) ?: start
-            _state.update { it.copy(days = it.days + found) }
-        } finally {
-            loading = false
-        }
-    }
-
-    /** The four weeks before, when the list reaches its top. */
-    suspend fun loadEarlier() {
-        val current = _state.value
-        if (!current.hasLoaded || !current.canLoadEarlier || loading) return
-        val start = KoreanCalendar.addDays(firstDay, -PAGE_DAYS) ?: return
-        val back = KoreanCalendar.days(from = start, to = current.today) ?: return
-        if (back > EARLIEST_DAYS) {
-            _state.update { it.copy(canLoadEarlier = false) }
-            return
-        }
-        loading = true
-        try {
-            val found = read(start, PAGE_DAYS) ?: return
+        mutex.withLock {
+            val today = KoreanCalendar.day(now())
+            val start = KoreanCalendar.addDays(today, -PAGE_DAYS) ?: today
+            val end = KoreanCalendar.addDays(today, PAGE_DAYS) ?: today
+            val found = read(start, 2 * PAGE_DAYS) ?: return
             firstDay = start
-            _state.update { it.copy(days = found + it.days) }
-        } finally {
-            loading = false
+            nextDay = end
+            val probe = State(today, found)
+            // A holiday alone is not an event: the empty state still says there is nothing planned.
+            val empty = probe.upcoming.none { it.events.isNotEmpty() || it.birthdays.isNotEmpty() }
+            _state.value = State(today, found, isEmpty = empty, hasLoaded = true)
+        }
+    }
+
+    /**
+     * The next four weeks with something on them, when the list reaches its end. Weeks with nothing on them add no
+     * rows, so the list's end would stay put and never ask again: they are passed over here.
+     */
+    suspend fun loadMore() {
+        mutex.withLock {
+            while (true) {
+                val current = _state.value
+                if (!current.hasLoaded || !current.canLoadMore) return
+                val start = nextDay
+                val ahead = KoreanCalendar.days(from = current.today, to = start) ?: return
+                if (ahead >= LATEST_DAYS) {
+                    _state.update { it.copy(canLoadMore = false) }
+                    return
+                }
+                val found = read(start, PAGE_DAYS) ?: return
+                nextDay = KoreanCalendar.addDays(start, PAGE_DAYS) ?: return
+                if (found.isNotEmpty()) {
+                    _state.update { it.copy(days = it.days + found) }
+                    return
+                }
+            }
+        }
+    }
+
+    /** The four weeks before with something on them, when the list reaches its top; empty weeks as in [loadMore]. */
+    suspend fun loadEarlier() {
+        mutex.withLock {
+            while (true) {
+                val current = _state.value
+                if (!current.hasLoaded || !current.canLoadEarlier) return
+                val start = KoreanCalendar.addDays(firstDay, -PAGE_DAYS) ?: return
+                val back = KoreanCalendar.days(from = start, to = current.today) ?: return
+                if (back > EARLIEST_DAYS) {
+                    _state.update { it.copy(canLoadEarlier = false) }
+                    return
+                }
+                val found = read(start, PAGE_DAYS) ?: return
+                firstDay = start
+                if (found.isNotEmpty()) {
+                    _state.update { it.copy(days = found + it.days) }
+                    return
+                }
+            }
         }
     }
 
