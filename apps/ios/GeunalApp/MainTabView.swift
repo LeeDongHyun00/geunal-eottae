@@ -16,8 +16,8 @@ struct MainTabView: View {
     let model: AppModel
     let core: any CoreProtocol
     @State private var tab: Tab = .calendar
-    /// The event the next-up bar asked to open; the calendar tab takes it.
-    @State private var openEvent: EventItem?
+    /// What the next-up bar or an alert asked the calendar tab to open.
+    @State private var opening: CalendarScreen.Opening?
     /// The person whose birthday the next-up bar asked to open; the 나 tab takes it.
     @State private var openPerson: String?
     /// A screen of 나 to open from elsewhere: the recovery code, from the month view's banner.
@@ -26,7 +26,7 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $tab) {
             CalendarTab(
-                model: model, core: core, openEvent: $openEvent,
+                model: model, core: core, opening: $opening,
                 recoveryBanner: recoveryBanner
             )
             .toastProposal(model.toasts)
@@ -53,6 +53,27 @@ struct MainTabView: View {
         }
         .tint(GeunalColor.tabText)
         .nextUpAccessory(isEnabled: slotIsEnabled) { slot }
+        .onChange(of: model.route, initial: true) { _, route in
+            guard let route else { return }
+            model.routeTaken()
+            open(route)
+        }
+    }
+
+    /// A tapped alert (m1.md §2.6): an event opens in the editor, a birthday its person in 사람·생일, a leave
+    /// suggestion the month view on its week.
+    private func open(_ route: AlertRoute) {
+        switch route {
+        case .event(let eventId, let occurrence):
+            tab = .calendar
+            opening = .event(eventId: eventId, occurrence: occurrence)
+        case .person(let personId):
+            tab = .me
+            openPerson = personId
+        case .week(let day):
+            tab = .calendar
+            opening = .week(day: day)
+        }
     }
 
     /// The slot stays while the bar is on, and otherwise only while a toast takes its place.
@@ -71,7 +92,7 @@ struct MainTabView: View {
                         switch item {
                         case .event(let event, _, _):
                             tab = .calendar
-                            openEvent = event
+                            opening = .event(eventId: event.eventId, occurrence: event.occurrence)
                         case .birthday(let birthday):
                             tab = .me
                             openPerson = birthday.personId

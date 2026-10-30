@@ -7,7 +7,7 @@ import SwiftUI
 /// Onboarding until the person reaches the calendar once, the tabs afterwards. Over the tabs come the "기기
 /// 로그아웃됨" sheet and the sign-in that follows it.
 struct RootView: View {
-    @State private var model = AppModel()
+    @State private var model = AppModel.shared
     /// "이 기기에서 다시 로그인" waits for the sheet to go: SwiftUI drops a cover asked for while a sheet is closing.
     @State private var signInAfterSheet = false
     @Environment(\.scenePhase) private var scenePhase
@@ -57,8 +57,10 @@ struct RootView: View {
         }
         .task { await model.start() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                model.appBecameActive()
+            switch phase {
+            case .active: model.appBecameActive()
+            case .background: BackgroundWork.schedule()
+            default: break
             }
         }
     }
@@ -67,7 +69,7 @@ struct RootView: View {
         OnboardingDependencies(
             core: core, providers: AppCore.providers(), permissions: DevicePermissions(), owner: model.owner,
             connectivity: model.connectivity, toasts: model.toasts, state: model.onboardingState,
-            timeText: { MeText.time($0) })
+            timeText: { MeText.time($0) }, importDeviceCalendars: { await model.mirror?.importAll() })
     }
 
     /// The sheet only closes with an answer.

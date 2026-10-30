@@ -1,5 +1,6 @@
 import CoreBridge
 import FeatureAccount
+import FeatureCalendar
 import Foundation
 import GeunalCore
 
@@ -56,6 +57,23 @@ enum AppCore {
         if FreshInstall.wipeLeftovers(storeDirectory: storeDirectory, keychain: keychain) {
             onboarding.reset()
         }
+    }
+
+    /// The system's notification center, in the UI tests too: nothing they schedule comes due while they run.
+    @MainActor
+    static func alertCenter() -> any AlertCenter {
+        SystemAlertCenter()
+    }
+
+    /// The phone's calendars; the UI tests' preview core comes with a made-up phone that already said yes.
+    @MainActor
+    static func deviceCalendars() -> any DeviceCalendarSource {
+        #if DEBUG
+            if LaunchOptions.usesPreviewCore {
+                return PreviewDeviceCalendars()
+            }
+        #endif
+        return DeviceCalendars()
     }
 
     static func open() throws -> any CoreProtocol {

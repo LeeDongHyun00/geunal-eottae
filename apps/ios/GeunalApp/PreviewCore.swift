@@ -42,6 +42,8 @@
         /// Another account's events were answered for, by a restore or `settleLocalData`.
         private var localSettled = false
         private var autoBackup = true
+        /// The phone's calendars the device calendar mirror took (m1.md screen 15).
+        private var mirrored: [DeviceCalendarInput] = []
         private var alphaStats = false
         private var settings = NotificationSettings(
             eventAlert: 10, allDayAlert: 360, nextUpBar: true, birthdayAlerts: true, leaveSuggestions: true)
@@ -295,7 +297,22 @@
                     id: "preview-personal", name: "개인", color: .tangerine, kind: .own, soft: false, visible: true,
                     defaultAlert: .inherit, eventCount: 0, shiftTemplateCount: 0)
             ]
+                + locked { mirrored }.map {
+                    CalendarView(
+                        id: "device:" + $0.sourceId, name: $0.name, color: nil, kind: .device, soft: false,
+                        visible: true, defaultAlert: .inherit, eventCount: UInt32($0.events.count),
+                        shiftTemplateCount: 0)
+                }
         }
+
+        override func mirrorDeviceCalendars(calendars: [DeviceCalendarInput]) throws -> DeviceMirror {
+            locked { mirrored = calendars }
+            return DeviceMirror(
+                calendars: UInt32(calendars.count), events: UInt32(calendars.map(\.events.count).reduce(0, +)))
+        }
+
+        /// The alerts wait for the system's permission, which a UI test may give; the preview schedules none.
+        override func scheduledAlerts(limit: UInt32) throws -> [ScheduledAlert] { [] }
 
         override func suggestions(day: String) throws -> [Suggestion] { [] }
 

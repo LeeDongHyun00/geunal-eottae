@@ -16,12 +16,14 @@ public struct OnboardingDependencies {
     public let channel: BuildChannel
     /// A backup's time on the start-fresh confirmation ("10월 20일 18:20"), in the app's Korean-time style.
     public let timeText: (Date) -> String
+    /// The permissions card's "가져오기" after a yes: every calendar of the phone into the mirror, and how many.
+    public let importDeviceCalendars: @MainActor () async -> Int?
 
     public init(
         core: any CoreProtocol, providers: any ProviderSignIn, permissions: any SystemPermissions,
         owner: any DeviceOwnerCheck, connectivity: ConnectivityMonitor, toasts: ToastCenter,
         state: OnboardingState = OnboardingState(), channel: BuildChannel = .current,
-        timeText: @escaping (Date) -> String
+        timeText: @escaping (Date) -> String, importDeviceCalendars: @escaping @MainActor () async -> Int? = { nil }
     ) {
         self.core = core
         self.providers = providers
@@ -32,6 +34,7 @@ public struct OnboardingDependencies {
         self.state = state
         self.channel = channel
         self.timeText = timeText
+        self.importDeviceCalendars = importDeviceCalendars
     }
 }
 
@@ -72,7 +75,7 @@ public struct OnboardingFlow: View {
         _permissions = State(
             initialValue: PermissionsModel(
                 core: dependencies.core, permissions: dependencies.permissions, channel: dependencies.channel,
-                notify: { toasts.show($0) }))
+                importCalendars: dependencies.importDeviceCalendars, notify: { toasts.show($0) }))
         _localData = State(initialValue: LocalDataQuestion(core: dependencies.core, notify: { toasts.show($0) }))
     }
 
