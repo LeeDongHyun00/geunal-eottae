@@ -48,7 +48,7 @@ class AppViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun viewModel(open: () -> CoreInterface) = AppViewModel(open, onboarding, changes, online, dispatcher)
+    private fun viewModel(open: () -> CoreInterface) = AppViewModel(open, onboarding, changes, online, io = dispatcher)
 
     @Test
     fun startsWithOnboardingOnAFreshInstall() =
@@ -117,6 +117,27 @@ class AppViewModelTest {
         }
 
     @Test
+    fun syncsEachTimeTheAppComesToTheFrontAndShrugsOffAFailure() =
+        runTest(dispatcher) {
+            val core = FakeCore()
+            val viewModel = viewModel { core }
+            advanceUntilIdle()
+
+            viewModel.appBecameActive()
+            advanceUntilIdle()
+            assertEquals(1, core.syncs)
+
+            core.syncError = CoreException.Network("offline")
+            val reads = core.nextUpReads
+            viewModel.appBecameActive()
+            advanceUntilIdle()
+
+            assertEquals(2, core.syncs)
+            // The next-up bar still comes fresh after a sync that failed.
+            assertEquals(reads + 1, core.nextUpReads)
+        }
+
+    @Test
     fun makesTheGuestAccountAnOfflineStartOwesOnceOnline() =
         runTest(dispatcher) {
             onboarding.pendingGuestAgeConfirmedAt = Instant.ofEpochSecond(1_793_000_000)
@@ -154,6 +175,13 @@ class AppViewModelTest {
         var foregrounds = 0
         var guests = 0
         var nextUpReads = 0
+        var syncs = 0
+        var syncError: CoreException? = null
+
+        override suspend fun sync() {
+            syncs++
+            syncError?.let { throw it }
+        }
 
         override fun recordAppForeground() {
             foregrounds++

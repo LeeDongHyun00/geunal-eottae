@@ -1,28 +1,37 @@
 package app.geunal.ui.calendar
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
-import app.geunal.BuildConfig
 import app.geunal.core.Change
 import app.geunal.core.CoreInterface
-import app.geunal.ui.corestatus.CoreStatusScreen
-import app.geunal.ui.corestatus.CoreStatusViewModel
+import app.geunal.designsystem.components.ToastCenter
+import app.geunal.feature.calendar.quickentry.ResourceEventTexts
+import app.geunal.feature.calendar.screen.CalendarScreen
+import app.geunal.feature.calendar.screen.CalendarViewModel
+import app.geunal.feature.calendar.screen.PreferencesViewKindStore
 import kotlinx.coroutines.flow.Flow
 
-/**
- * The calendar tab. Until the month, week and list views land (docs/design/m1.md screens 4, 7, 8), it keeps the M0
- * check that the core runs and syncs on the device.
- */
+/** The calendar tab: the month, week and list views with the quick entry (docs/design/m1.md screens 4–8). */
 @Composable
 fun CalendarTab(
     core: CoreInterface,
     changes: Flow<Change>,
+    toasts: ToastCenter,
     modifier: Modifier = Modifier,
 ) {
-    val model = viewModel { CoreStatusViewModel(core, changes) }
-    val status by model.status.collectAsStateWithLifecycle()
-    CoreStatusScreen(status = status, apiBase = BuildConfig.API_BASE, modifier = modifier)
+    // The application's, not the activity's: the view model outlives a rotation.
+    val context = LocalContext.current.applicationContext
+    val model =
+        viewModel {
+            CalendarViewModel(
+                core = core,
+                toasts = toasts,
+                texts = ResourceEventTexts(context.resources),
+                changes = changes,
+                store = PreferencesViewKindStore(context),
+            )
+        }
+    CalendarScreen(model = model, modifier = modifier)
 }
