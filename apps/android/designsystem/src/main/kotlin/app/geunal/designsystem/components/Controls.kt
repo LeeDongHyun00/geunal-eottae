@@ -3,7 +3,6 @@ package app.geunal.designsystem.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -131,7 +130,8 @@ fun GeunalSwitch(
 /**
  * 월 · 주 · 목록 and the like: the fill track with the chosen segment on white and a small shadow (components.md §4).
  * Drawn here rather than with Material's segmented buttons, which have a different shape; TalkBack reads each segment
- * as a tab that is selected or not.
+ * as a tab that is selected or not. Each segment is its label and 12 either side (boards/Month), and the label stays
+ * on one line: a fixed share of a narrow track split "목록" over two lines on a 320dp phone.
  */
 @Composable
 fun SegmentedControl(
@@ -150,7 +150,6 @@ fun SegmentedControl(
                 .background(neutrals.fill)
                 .padding(Metrics.Segment.padding)
                 .selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         options.forEachIndexed { index, label ->
             val isSelected = index == selected
@@ -158,7 +157,6 @@ fun SegmentedControl(
                 contentAlignment = Alignment.Center,
                 modifier =
                     Modifier
-                        .weight(1f)
                         .heightIn(min = Metrics.Segment.height - Metrics.Segment.padding * 2)
                         .then(
                             if (isSelected) {
@@ -177,6 +175,8 @@ fun SegmentedControl(
                     style = GeunalType.pill,
                     color = if (isSelected) neutrals.ink else neutrals.secondaryText,
                     textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
                 )
             }
         }
