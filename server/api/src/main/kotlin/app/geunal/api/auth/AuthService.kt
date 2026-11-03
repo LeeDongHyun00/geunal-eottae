@@ -174,11 +174,13 @@ class AuthService(
     fun refresh(refreshToken: String): TokenResponse {
         val hash = sha256(refreshToken)
         val expired = ApiException(HttpStatus.UNAUTHORIZED, "token_expired", "refresh token is unknown or expired")
-        val deviceId =
+        // An expired session is looked up too: a replaced device that stayed off past its refresh token's life still
+        // learns it was replaced. The daily cleanup keeps a replaced device's sessions a year past their expiry.
+        val (deviceId, live) =
             jdbc
-                .sql("SELECT device_id FROM sessions WHERE refresh_hash = :hash AND expires_at > now()")
+                .sql("SELECT device_id, expires_at > now() AS live FROM sessions WHERE refresh_hash = :hash")
                 .param("hash", hash)
-                .query(UUID::class.java)
+                .query { rs, _ -> rs.getObject("device_id", UUID::class.java) to rs.getBoolean("live") }
                 .optional()
                 .orElse(null) ?: throw if (accounts.isDeletedSession(hash)) accountDeleted() else expired
         devices.lock(deviceId)
@@ -186,6 +188,7 @@ class AuthService(
         // signed out (403 device_revoked with how) instead of a bare token_expired. Checked before rotating, so a
         // retried refresh answers the same.
         devices.current(deviceId) ?: throw devices.revokedError(deviceId)
+        if (!live) throw expired
         val rotated =
             jdbc
                 .sql(

@@ -1,13 +1,18 @@
 package app.geunal.api.auth
 
+import app.geunal.api.ops.Cleanup
 import app.geunal.api.support.ApiTest
 import app.geunal.api.support.Client
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpMethod
 
 /** Replacement tickets (protocol §13 "로그인 결과"): what they open, how they are spent, and when they end. */
 class ReplaceTests : ApiTest() {
+    @Autowired
+    lateinit var cleanup: Cleanup
+
     /** An account with an active device and a second device holding a ticket for it. */
     private fun ticket(subject: String): Pair<Client, String> {
         signIn(subject)
@@ -99,5 +104,27 @@ class ReplaceTests : ApiTest() {
             assertThat(answer.string("replaced_via")).isEqualTo("provider")
             assertThat(answer.string("replaced_by")).isEqualTo("android")
         }
+    }
+
+    @Test
+    fun `a replaced device kept off past its refresh token's life still learns it was replaced, for a year`() {
+        val first = signIn("revoked-long-off")
+        replaceDevice("revoked-long-off")
+        val age = { interval: String ->
+            jdbc
+                .sql("UPDATE sessions SET expires_at = now() - CAST(:age AS interval) WHERE device_id = :id")
+                .param("age", interval)
+                .param("id", first.deviceId)
+                .update()
+        }
+        val refresh = { api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to first.refreshToken)) }
+
+        age("40 days")
+        cleanup.daily()
+        refresh().expectError(403, "device_revoked")
+
+        age("366 days")
+        cleanup.daily()
+        refresh().expectError(401, "token_expired")
     }
 }

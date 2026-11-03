@@ -11,7 +11,7 @@ import java.time.Duration
 
 /**
  * The periodic deletions of api-server.md §8 that M1 needs: queued objects every ten minutes, and once a day the backup
- * uploads nobody completed, the sessions past their expiry, spent or not (a spent refresh token is kept only that long
+ * uploads nobody completed, the sessions past their expiry (a replaced device's a year later), spent or not (a spent refresh token is kept only that long
  * for reuse detection), replacement tickets, a deleted account's refresh hashes, and access log rows that never reached
  * their bucket within the three months they are kept.
  */
@@ -61,7 +61,15 @@ class Cleanup(
     @Scheduled(cron = "0 15 0 * * *", zone = "UTC")
     fun daily() {
         val abandoned = backups.dropAbandoned()
-        val sessions = jdbc.sql("DELETE FROM sessions WHERE expires_at < now()").update()
+        // A replaced device's sessions stay a year past expiry, so a phone kept off that long still hears device_revoked.
+        val sessions =
+            jdbc
+                .sql(
+                    """
+                    DELETE FROM sessions s USING devices d WHERE d.id = s.device_id
+                      AND s.expires_at < now() - CASE WHEN d.revoked_at IS NULL THEN interval '0' ELSE interval '1 year' END
+                    """,
+                ).update()
         val tickets = jdbc.sql("DELETE FROM replace_tickets WHERE expires_at < now()").update()
         jdbc.sql("DELETE FROM deleted_sessions WHERE expires_at < now()").update()
         accessLog.expire()
