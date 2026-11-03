@@ -32,16 +32,22 @@ services:
     command: server -s3 -dir=/data -master.volumeSizeLimitMB=64
     ports: ["127.0.0.1:8333:8333"]
 
-  # SeaweedFS will not create a bucket for an upload it cannot tie to an admin key, so the backups bucket is made once,
-  # before the API starts handing out upload URLs for it. Making one that exists fails harmlessly.
+  # SeaweedFS will not create a bucket for an upload it cannot tie to an admin key, so the API's buckets (backups, and
+  # access logs every five minutes) are made before the API starts. A bucket that exists from an earlier `up` is left
+  # alone, so the stack comes up again over its own data.
   s3-buckets:
     image: chrislusf/seaweedfs:4.50
     entrypoint:
       - sh
       - -c
       - |
-        until echo cluster.ps | weed shell -master=s3:9333 >/dev/null 2>&1; do sleep 1; done
-        echo "s3.bucket.create -name backups" | weed shell -master=s3:9333 -filer=s3:8888
+        set -e
+        shell() { weed shell -master=s3:9333 -filer=s3:8888; }
+        until echo cluster.ps | shell >/dev/null 2>&1; do sleep 1; done
+        for bucket in backups access-logs; do
+          echo s3.bucket.list | shell | grep -qw "$$bucket" || echo "s3.bucket.create -name $$bucket" | shell
+          echo s3.bucket.list | shell | grep -qw "$$bucket"
+        done
     depends_on:
       s3: { condition: service_started }
 
