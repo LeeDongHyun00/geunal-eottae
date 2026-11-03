@@ -27,8 +27,23 @@ services:
   # MinIO stopped publishing community images in 2025; SeaweedFS serves the S3 API locally.
   s3:
     image: chrislusf/seaweedfs:4.50
-    command: server -s3 -dir=/data
+    # Small volumes: by default a volume reserves 30 GB, and a laptop or CI disk with less free space than that leaves
+    # no writable volume for the first backup.
+    command: server -s3 -dir=/data -master.volumeSizeLimitMB=64
     ports: ["127.0.0.1:8333:8333"]
+
+  # SeaweedFS will not create a bucket for an upload it cannot tie to an admin key, so the backups bucket is made once,
+  # before the API starts handing out upload URLs for it. Making one that exists fails harmlessly.
+  s3-buckets:
+    image: chrislusf/seaweedfs:4.50
+    entrypoint:
+      - sh
+      - -c
+      - |
+        until echo cluster.ps | weed shell -master=s3:9333 >/dev/null 2>&1; do sleep 1; done
+        echo "s3.bucket.create -name backups" | weed shell -master=s3:9333 -filer=s3:8888
+    depends_on:
+      s3: { condition: service_started }
 
   # These two images come from make image-api and make image-gateway rather than a compose build: the API image
   # packages a boot jar built outside it, and cloud sessions need scripts/docker-build.sh to reach package archives.
@@ -43,12 +58,14 @@ services:
       SPRING_DATASOURCE_PASSWORD: geunal-local
       SPRING_DATA_REDIS_HOST: redis
       GEUNAL_S3_ENDPOINT: http://s3:8333
+      # Presigned backup URLs are for the devices, which reach the store on the published port, not by service name.
+      GEUNAL_S3_PUBLIC_ENDPOINT: http://127.0.0.1:8333
       GEUNAL_AUTH_STUB: "true" # M0: sign in without Kakao or Apple
     ports: ["127.0.0.1:8080:8080"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
-      s3: { condition: service_started }
+      s3-buckets: { condition: service_completed_successfully }
 
   gateway:
     image: geunal/gateway:local
