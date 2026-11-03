@@ -1,0 +1,9 @@
+[{"file":"Permissions.dc.html","w":390,"h":844,"scale":2,"out":"m1/03-permissions@2x.png"},
+ {"file":"Permissions.dc.html","w":390,"h":844,"scale":2,"out":"m1/03-permissions--stats-on@2x.png","clicks":["button:has-text('보낼게요')"]},
+ {"file":"Me.dc.html","w":390,"h":844,"scale":2,"out":"m1/12-me--account@2x.png","scroll":"[data-scroll='settings']"},
+ {"file":"DA_apple.dc.html","w":390,"h":844,"scale":2,"out":"m1/22-delete-account--apple@2x.png","clicks":["button:has-text('계정 삭제')"]},
+ {"file":"DeleteAccount.dc.html","w":390,"h":844,"scale":2,"out":"m1/22-delete-account@2x.png"},
+ {"file":"DeleteAccount.dc.html","w":390,"h":844,"scale":2,"out":"m1/22-delete-account--confirm@2x.png","clicks":["button:has-text('계정 삭제')"]},
+ {"file":"Revoked.dc.html","w":390,"h":844,"scale":2,"out":"m1/23-revoked@2x.png"},
+ {"file":"RK_recovery.dc.html","w":390,"h":844,"scale":2,"out":"m1/23-revoked--recovery@2x.png"},
+ {"file":"KeepLocal.dc.html","w":390,"h":844,"scale":2,"out":"m1/24-keep-local@2x.png"}]

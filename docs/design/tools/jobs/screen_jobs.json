@@ -1,0 +1,389 @@
+[
+ {
+  "file": "Main.dc.html",
+  "w": 1440,
+  "h": 1880,
+  "scale": 1,
+  "out": "basis/01-principles.png"
+ },
+ {
+  "file": "Color.dc.html",
+  "w": 1440,
+  "h": 2040,
+  "scale": 1,
+  "out": "basis/02-color.png"
+ },
+ {
+  "file": "Type.dc.html",
+  "w": 1440,
+  "h": 2340,
+  "scale": 1,
+  "out": "basis/03-type.png"
+ },
+ {
+  "file": "Flow.dc.html",
+  "w": 1440,
+  "h": 1240,
+  "scale": 1,
+  "out": "basis/04-flow.png"
+ },
+ {
+  "file": "AppIcon.dc.html",
+  "w": 1440,
+  "h": 1660,
+  "scale": 1,
+  "out": "basis/05-app-icon.png"
+ },
+ {
+  "file": "Welcome.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/01-welcome@2x.png"
+ },
+ {
+  "file": "SignIn.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/02-sign-in@2x.png"
+ },
+ {
+  "file": "Permissions.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/03-permissions@2x.png"
+ },
+ {
+  "file": "Month.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/04-month@2x.png"
+ },
+ {
+  "file": "QuickEntry.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/05-quick-entry@2x.png"
+ },
+ {
+  "file": "Added.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/06-added@2x.png"
+ },
+ {
+  "file": "Week.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/07-week@2x.png"
+ },
+ {
+  "file": "List.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/08-list@2x.png"
+ },
+ {
+  "file": "Editor.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/09-editor@2x.png"
+ },
+ {
+  "file": "Shift.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/10-shift@2x.png"
+ },
+ {
+  "file": "People.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/11-people@2x.png"
+ },
+ {
+  "file": "Me.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/12-me@2x.png"
+ },
+ {
+  "file": "Recovery.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/13-recovery@2x.png"
+ },
+ {
+  "file": "Widgets.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/14-widgets@2x.png"
+ },
+ {
+  "file": "Groups.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m2/01-groups@2x.png"
+ },
+ {
+  "file": "Invite.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m2/02-invite@2x.png"
+ },
+ {
+  "file": "Join.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m2/03-join@2x.png"
+ },
+ {
+  "file": "GroupCal.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m2/04-group-calendar@2x.png"
+ },
+ {
+  "file": "DayTable.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m2/05-day-table@2x.png"
+ },
+ {
+  "file": "DateSheet.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m2/06-date-sheet@2x.png"
+ },
+ {
+  "file": "Appointment.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m2/07-appointment@2x.png"
+ },
+ {
+  "file": "Respond.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m2/08-respond@2x.png"
+ },
+ {
+  "file": "Vote.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m2/09-vote@2x.png"
+ },
+ {
+  "file": "Decided.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m2/10-decided@2x.png"
+ },
+ {
+  "file": "GroupSettings.dc.html",
+  "w": 390,
+  "h": 2080,
+  "scale": 2,
+  "out": "m2/11-group-settings@2x.png"
+ },
+ {
+  "file": "GroupCalDark.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m2/12-group-calendar-dark@2x.png"
+ },
+ {
+  "file": "Chat.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/01-chat@2x.png"
+ },
+ {
+  "file": "Gallery.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/02-gallery@2x.png"
+ },
+ {
+  "file": "Notify.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/03-notifications@2x.png"
+ },
+ {
+  "file": "Plus.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/04-plus@2x.png"
+ },
+ {
+  "file": "ChatList.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/05-chat-list@2x.png"
+ },
+ {
+  "file": "Attach.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/06-attach@2x.png"
+ },
+ {
+  "file": "Report.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/07-report@2x.png"
+ },
+ {
+  "file": "ChatList.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/05-chat-list--dm-filter@2x.png",
+  "clicks": [
+   "button:has-text('1:1')"
+  ]
+ },
+ {
+  "file": "ChatList.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/05-chat-list--search@2x.png",
+  "clicks": [
+   "button[aria-label='대화 검색']"
+  ]
+ },
+ {
+  "file": "ChatList.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/05-chat-list--start-dm@2x.png",
+  "clicks": [
+   "button[aria-label='1:1 시작']"
+  ]
+ },
+ {
+  "file": "Attach.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/06-attach--limit@2x.png",
+  "clicks": [
+   "button[aria-label^='사진 3,']",
+   "button[aria-label^='사진 5,']"
+  ]
+ },
+ {
+  "file": "Attach.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/06-attach--files@2x.png",
+  "clicks": [
+   "button[role='tab']:has-text('파일')"
+  ]
+ },
+ {
+  "file": "Report.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/07-report--2-pick@2x.png",
+  "clicks": [
+   "button[role='menuitem']:has-text('신고')",
+   "button[aria-label^='태오의 메시지, 사진']",
+   "button[aria-label^='태오의 메시지, 답 없으면']"
+  ]
+ },
+ {
+  "file": "Report.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/07-report--3-reason@2x.png",
+  "clicks": [
+   "button[role='menuitem']:has-text('신고')",
+   "button[aria-label^='태오의 메시지, 사진']",
+   "button[aria-label^='태오의 메시지, 답 없으면']",
+   "button:has-text('다음')",
+   "button[role='radio']:has-text('스팸·광고')",
+   "button[role='switch']"
+  ]
+ },
+ {
+  "file": "Report.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/07-report--4-done@2x.png",
+  "clicks": [
+   "button[role='menuitem']:has-text('신고')",
+   "button[aria-label^='태오의 메시지, 사진']",
+   "button[aria-label^='태오의 메시지, 답 없으면']",
+   "button:has-text('다음')",
+   "button[role='radio']:has-text('스팸·광고')",
+   "button[role='switch']",
+   "button:has-text('신고하기')"
+  ]
+ },
+ {
+  "file": "Report.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/07-report--5-blocked@2x.png",
+  "clicks": [
+   "button[role='menuitem']:has-text('신고')",
+   "button[aria-label^='태오의 메시지, 사진']",
+   "button[aria-label^='태오의 메시지, 답 없으면']",
+   "button:has-text('다음')",
+   "button[role='radio']:has-text('스팸·광고')",
+   "button[role='switch']",
+   "button:has-text('신고하기')",
+   "button:has-text('확인')"
+  ]
+ },
+ {
+  "file": "Report.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m3/07-report--block-sheet@2x.png",
+  "clicks": [
+   "button[role='menuitem']:has-text('태오 차단')"
+  ]
+ }
+]

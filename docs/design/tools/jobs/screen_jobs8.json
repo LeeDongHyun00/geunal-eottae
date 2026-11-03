@@ -1,0 +1,4 @@
+[{"file":"DeleteAccount.dc.html","w":390,"h":844,"scale":2,"out":"m1/22-delete-account@2x.png"},
+ {"file":"DeleteAccount.dc.html","w":390,"h":844,"scale":2,"out":"m1/22-delete-account--confirm@2x.png","clicks":["button:has-text('계정 삭제')"]},
+ {"file":"DA_fail.dc.html","w":390,"h":844,"scale":2,"out":"m1/22-delete-account--reauth-failed@2x.png"},
+ {"file":"DA_guest.dc.html","w":390,"h":844,"scale":2,"out":"m1/22-delete-account--guest@2x.png","clicks":["button:has-text('계정 삭제')"]}]

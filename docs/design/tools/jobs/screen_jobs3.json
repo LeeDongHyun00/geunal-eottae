@@ -1,0 +1,157 @@
+[
+ {
+  "file": "SignIn.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/02-sign-in@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "Permissions.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/03-permissions@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "Permissions.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/03-permissions--stats-on@2x.png",
+  "clicks": [
+   "button:has-text('보낼게요')"
+  ]
+ },
+ {
+  "file": "Me.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/12-me@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "Recovery.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/13-recovery@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "Restore.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "Restore.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore--ready@2x.png",
+  "clicks": [
+   "button:has-text('붙여넣기')"
+  ]
+ },
+ {
+  "file": "Restore.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore--done@2x.png",
+  "clicks": [
+   "button:has-text('붙여넣기')",
+   "button:has-text('백업 가져오기')"
+  ]
+ },
+ {
+  "file": "Restore.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore--no-code@2x.png",
+  "clicks": [
+   "button:has-text('복구 코드가 없어요')"
+  ]
+ },
+ {
+  "file": "RV_guest.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore--guest@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "RV_guest.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore--guest-no-code@2x.png",
+  "clicks": [
+   "button:has-text('복구 코드가 없어요')"
+  ]
+ },
+ {
+  "file": "RV_word.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore--error-word@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "RV_checksum.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore--error-checksum@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "RV_amk.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore--error-locked@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "RV_guest_amk.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore--guest-error-not-found@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "RV_nobackup.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore--no-backup@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "RV_guest_nobackup.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore--guest-no-backup@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "Revoked.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/23-revoked@2x.png",
+  "clicks": []
+ }
+]

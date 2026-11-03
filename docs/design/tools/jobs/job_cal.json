@@ -1,0 +1,3 @@
+[{"file":"Month.dc.html","w":390,"h":844,"scale":2,"out":"m1/04-month@2x.png"},
+ {"file":"Added.dc.html","w":390,"h":844,"scale":2,"out":"m1/06-added@2x.png"},
+ {"file":"Added.dc.html","w":390,"h":844,"scale":2,"out":"m1/06-added--applied@2x.png","clicks":["button:has-text('반복으로 바꾸기')"]}]

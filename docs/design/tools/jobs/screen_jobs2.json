@@ -1,0 +1,151 @@
+[
+ {
+  "file": "Me.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/12-me@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "People.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/11-people@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "Shift.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/10-shift@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "Calendars.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/15-calendars@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "CalendarEdit.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/16-calendar-edit@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "PersonEdit.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/17-person-edit@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "PersonEdit.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/17-person-edit--lunar@2x.png",
+  "clicks": [
+   "button:has-text('음력')"
+  ]
+ },
+ {
+  "file": "TemplateEdit.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/18-template-edit@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "NotifySettings.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/19-notifications@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "Backup.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/20-backup@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "Backup.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/20-backup--running@2x.png",
+  "clicks": [
+   "button:has-text('지금 백업')"
+  ]
+ },
+ {
+  "file": "Restore.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "Restore.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore--ready@2x.png",
+  "clicks": [
+   "button:has-text('붙여넣기')"
+  ]
+ },
+ {
+  "file": "Restore.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore--done@2x.png",
+  "clicks": [
+   "button:has-text('붙여넣기')",
+   "button:has-text('백업 가져오기')"
+  ]
+ },
+ {
+  "file": "Restore.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/21-restore--no-code@2x.png",
+  "clicks": [
+   "button:has-text('복구 코드가 없어요')"
+  ]
+ },
+ {
+  "file": "DeleteAccount.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/22-delete-account@2x.png",
+  "clicks": []
+ },
+ {
+  "file": "DeleteAccount.dc.html",
+  "w": 390,
+  "h": 844,
+  "scale": 2,
+  "out": "m1/22-delete-account--confirm@2x.png",
+  "clicks": [
+   "button:has-text('계정 삭제')"
+  ]
+ }
+]
