@@ -57,7 +57,8 @@ final class CalendarUITests: GeunalUITestCase {
         XCTAssertEqual(title.value as? String, "치과")
     }
 
-    // The same day at an accessibility text size: the sheet passes its height and scrolls inside.
+    // The same day at an accessibility text size: the sheet passes its height and scrolls inside. The list view's day
+    // heading opens it, since at this size the event bars fill the month cell's top.
     func testTheQuickEntryDayListAtALargeTextSize() {
         let app = launch(
             realCore: true,
@@ -65,9 +66,12 @@ final class CalendarUITests: GeunalUITestCase {
                 "-GeunalOnboardingFinished", "-GeunalDemoBusyDay", "-UIPreferredContentSizeCategoryName",
                 "UICTContentSizeCategoryAccessibilityL",
             ])
-        let today = app.buttons["month.day.\(koreanToday)"]
-        waitFor(today)
-        tapDate(today)
+        let list = labeled(app.buttons, "목록")
+        waitFor(list)
+        list.tap()
+        let heading = labeled(app.buttons, "오늘 · ", prefix: true)
+        waitFor(heading)
+        heading.tap()
         waitFor(app.buttons["quickEntry.moreEvents"])
         snapshot(app, "05-quick-entry--day-large")
     }
