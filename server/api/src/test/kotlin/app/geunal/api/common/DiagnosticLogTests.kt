@@ -40,6 +40,26 @@ class DiagnosticLogTests : ApiTest() {
     }
 
     @Test
+    fun `a code from another Apple account is told apart from a refused exchange`(output: CapturedOutput) {
+        val sub = "diag-apple-${UUID.randomUUID()}"
+        val other = "diag-other-${UUID.randomUUID()}"
+        val account = Client(api, sub)
+        account.providerSignIn("apple") { FakeProviders.appleToken(sub, it) }.expect(201)
+        val nonce = account.nonce()
+        val body =
+            mapOf(
+                "nonce" to nonce,
+                "device_signature" to account.sign("geunal delete v1$nonce".toByteArray()),
+                "apple_authorization_code" to FakeProviders.appleCode(other),
+            )
+
+        api.send(HttpMethod.DELETE, "/me", account.token, body).expectError(403, "reauth_required")
+
+        assertThat(output.out).contains("Apple's code names another Apple account than the one linked")
+        assertThat(output.out).doesNotContain(sub).doesNotContain(other)
+    }
+
+    @Test
     fun `each request is one line with its route pattern, status and time`(output: CapturedOutput) {
         val account = signIn()
 
