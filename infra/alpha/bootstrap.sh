@@ -37,6 +37,11 @@ if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>
   apt-get update -q
   DEBIAN_FRONTEND=noninteractive apt-get install -y -q docker.io docker-compose-v2 >/dev/null
 fi
+# age encrypts the copy of the daily dump that leaves the server (db-dump.sh).
+if ! command -v age >/dev/null 2>&1; then
+  apt-get update -q
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q age >/dev/null
+fi
 # Installed packages' downloads (about 200 MB after Docker) have no further use on a 10 GB disk.
 apt-get clean
 # Rotated, compressed container logs: json-file, the default, grows without bound on a 10 GB disk.
@@ -72,6 +77,12 @@ print(json.dumps({"keys": [key]}, separators=(",", ":")))
   echo "GEUNAL_AUTH_JWT_KEYS='$keys'" >>/etc/geunal/api.env
 fi
 umask 022
+# The Object Storage keys are made in the NCP console, so the operator adds them by hand (README.md). Say what is
+# missing rather than stop: the API refuses only backup calls without them, and the dump stays local.
+for name in GEUNAL_S3_ACCESS_KEY GEUNAL_S3_SECRET_KEY; do
+  grep -q "^$name=." /etc/geunal/api.env || echo "warning: $name is not in /etc/geunal/api.env; backups will fail" >&2
+done
+[ -f /etc/geunal/dump.env ] || echo "warning: /etc/geunal/dump.env is missing; the daily dump stays on this server" >&2
 
 # The daily database dump (db-dump.sh).
 install -m 644 /opt/geunal/geunal-db-dump.service /opt/geunal/geunal-db-dump.timer /etc/systemd/system/

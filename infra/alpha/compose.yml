@@ -44,6 +44,10 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/geunal
       SPRING_DATASOURCE_USERNAME: geunal
       SPRING_DATA_REDIS_HOST: valkey
+      # NCP Object Storage for backups; the keys are in api.env. Devices reach the same public endpoint, so presigned
+      # URLs need no separate address.
+      GEUNAL_S3_ENDPOINT: https://kr.object.ncloudstorage.com
+      GEUNAL_S3_BACKUPS_BUCKET: geunal-alpha-backups
       # The 256 MB heap of infra.md §2; -Xmx wins over the image's MaxRAMPercentage.
       JAVA_TOOL_OPTIONS: -Xmx256m
     # Loopback only: the internet reaches the API through Caddy, and the operator through SSH.

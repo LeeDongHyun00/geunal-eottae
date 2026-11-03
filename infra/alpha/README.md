@@ -9,7 +9,7 @@ M1 알파 서버(NCP Micro, 1 vCPU·1GB) 위에서 도는 구성입니다([인�
 | `compose.yml` | API·PostgreSQL·Valkey. 호스트 이름이 있으면 Caddy(TLS)도 띄움. 게이트웨이는 M2부터 |
 | `Caddyfile` | `GEUNAL_API_HOST`의 Let's Encrypt 인증서를 받아 API로 넘김 |
 | `bootstrap.sh` | 서버 준비: 스왑 2GB, 쓰지 않는 서비스 끄기, Docker와 로그 회전, 비밀값 파일, 매일 DB 덤프 타이머. 배포할 때마다 다시 돌아도 안전 |
-| `db-dump.sh`, `geunal-db-dump.*` | 매일 04:00(서울) `pg_dump`, 7일 보관 |
+| `db-dump.sh`, `geunal-db-dump.*` | 매일 04:00(서울) `pg_dump`, 서버에 7일 보관. 암호화한 사본을 `geunal-alpha-backups` 버킷에 7일 |
 | `deploy.sh` | 운영자 PC에서 하는 배포(`make deploy-alpha`) |
 
 ## 배포
@@ -29,9 +29,27 @@ GEUNAL_ALPHA_SSH=root@<서버 주소> GEUNAL_ALPHA_SSH_KEY=~/.ssh/<키> GEUNAL_A
 - `/opt/geunal`: 이 디렉터리의 복사본과 `.env`(이미지 태그, 호스트 이름).
 - `/etc/geunal`(root 전용): `postgres.env`(DB 비밀번호), `api.env`(DB 비밀번호, JWT 서명 키의 JWK Set).
   - 처음 부트스트랩할 때 서버에서 만들어서 서버 밖으로 나가지 않습니다.
-  - M1의 제공자 키(카카오, Apple)도 `api.env`에 줄로 더합니다. 부트스트랩은 없는 줄만 더하므로 손으로 넣은 줄은 남습니다.
+  - M1의 제공자 키(카카오, Apple)와 백업용 Object Storage 키(`GEUNAL_S3_ACCESS_KEY`, `GEUNAL_S3_SECRET_KEY`)도 `api.env`에 줄로 더합니다. 부트스트랩은 없는 줄만 더하므로 손으로 넣은 줄은 남습니다. 백업 키가 없으면 부트스트랩이 경고합니다.
+  - `dump.env`: 덤프를 서버 밖으로 올리는 설정(아래 "서버 밖 DB 덤프").
   - PostgreSQL 볼륨을 둔 채 이 디렉터리를 지우면 새 비밀번호가 기존 DB와 맞지 않습니다.
 - `/var/backups/geunal`: DB 덤프(7일).
+
+## 서버 밖 DB 덤프
+
+디스크나 VM을 잃어도 하루치 넘게 잃지 않도록, 매일 덤프를 `geunal-alpha-backups` 버킷의 `db/geunal-<요일 번호>.dump.age`에도 올립니다([인프라](../../docs/parts/infra.md) 2장 백업). 요일마다 같은 이름을 덮어쓰므로 버킷에는 7일치가 남습니다.
+
+- 올리기 전에 운영자의 [age](https://age-encryption.org) 공개 키로 암호화합니다. 개인 키는 서버에 두지 않으므로 서버나 버킷 키를 빼앗겨도 덤프를 읽지 못합니다.
+- API 키와 다른, 서버 전용 Object Storage 키를 씁니다. 이 키에는 `geunal-alpha-backups`에 쓰는 권한만 줍니다.
+- 서버의 `/etc/geunal/dump.env`(root 전용)에 다음 세 줄을 둡니다. 이 파일이 없으면 덤프는 서버에만 남고 매번 경고가 남습니다.
+
+```bash
+GEUNAL_DUMP_AGE_RECIPIENT=age1...      # 운영자 PC에서 age-keygen으로 만든 키의 공개 키
+GEUNAL_DUMP_S3_ACCESS_KEY=...
+GEUNAL_DUMP_S3_SECRET_KEY=...
+```
+
+- 복원: 덤프를 내려받아 운영자 PC에서 `age -d -i <개인 키> geunal-N.dump.age > geunal.dump`로 풀고 `pg_restore`로 넣습니다.
+- 확인: `journalctl -u geunal-db-dump`에 `Uploaded db/...`가 남습니다.
 
 ## 도메인과 DNS
 
@@ -47,7 +65,6 @@ GEUNAL_ALPHA_SSH=root@<서버 주소> GEUNAL_ALPHA_SSH_KEY=~/.ssh/<키> GEUNAL_A
 
 ## 아직 없는 것
 
-- 덤프를 `geunal-alpha-backups` 버킷에도 올리기: 서버 전용 Object Storage 키가 필요합니다.
 - 디스크 여유: 10GB 가운데 85%를 씁니다(스왑 2GB, containerd 이미지 저장소 1.2GB). API 이미지를 더 키우기 전에 블록 스토리지를 더하거나 Docker를 이전 저장 방식(overlay2)으로 돌려야 할 수 있습니다.
 - Secret Manager: 알파 동안은 위 파일로 두고, 테스터를 받기 전에 옮깁니다.
 - 이미지 레지스트리와 `main` 머지 뒤 자동 배포, 기본 경보.
