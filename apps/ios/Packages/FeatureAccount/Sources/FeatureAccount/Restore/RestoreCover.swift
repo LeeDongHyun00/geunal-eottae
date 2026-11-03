@@ -10,11 +10,15 @@ public struct RestoreCover: View {
     private let timeText: (Date) -> String
     private let onClose: () -> Void
 
-    public init(dependencies: OnboardingDependencies, onClose: @escaping () -> Void) {
+    /// `mode` is `.offer` for the account's backup after "나중에 넣을게요", or `.guestReturn` for a guest whose session
+    /// ended (decision 43).
+    public init(
+        dependencies: OnboardingDependencies, mode: RestoreModel.Mode = .offer, onClose: @escaping () -> Void
+    ) {
         let toasts = dependencies.toasts
         _model = State(
             initialValue: RestoreModel(
-                mode: .offer, core: dependencies.core, owner: dependencies.owner, providers: dependencies.providers,
+                mode: mode, core: dependencies.core, owner: dependencies.owner, providers: dependencies.providers,
                 lastSignIn: dependencies.state.lastProviderSignIn, notify: { toasts.show($0) }))
         timeText = dependencies.timeText
         self.onClose = onClose

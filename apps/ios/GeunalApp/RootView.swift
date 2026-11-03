@@ -43,7 +43,9 @@ struct RootView: View {
                                 onFinish: { model.signedInAgain() })
                         }
                         .fullScreenCover(isPresented: $model.enteringRecoveryCode) {
-                            RestoreCover(dependencies: dependencies(core), onClose: { model.recoveryCodeClosed() })
+                            RestoreCover(
+                                dependencies: dependencies(core), mode: model.returningAsGuest ? .guestReturn : .offer,
+                                onClose: { model.recoveryCodeClosed() })
                         }
                         .sheet(isPresented: asksLocalData) {
                             if let question = model.localData, let local = question.asking {

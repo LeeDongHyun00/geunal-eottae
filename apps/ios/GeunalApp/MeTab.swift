@@ -77,11 +77,15 @@ struct MeTab: View {
             .navigationDestination(for: Route.self) { route in
                 destination(route)
             }
-            .task(id: app.accountChanges) { await model.load() }
+            .task(id: app.accountChanges) {
+                model.sessionEnd = app.sessionEnded
+                await model.load()
+            }
             .onChange(of: path) { _, path in
                 // Back on the list: the counts and states may have changed under it, the code on paper among them.
                 if path.isEmpty {
                     Task {
+                        model.sessionEnd = app.sessionEnded
                         await model.load()
                         await app.refreshAccount()
                     }
@@ -164,6 +168,7 @@ struct MeTab: View {
         case .none: Text("계정 없이 쓰는 중이에요")
         case .guest(let view), .provider(let view): Text(verbatim: view.displayName)
         case .signedOut: Text("로그아웃됨")
+        case .sessionEnded: Text("로그인이 끝났어요")
         }
     }
 
@@ -174,6 +179,7 @@ struct MeTab: View {
         case .guest: Text("게스트 · 기기를 잃으면 복구 코드로만 돌아올 수 있어요")
         case .provider(let view): view.providers.contains(.kakao) ? Text("카카오 계정") : Text("Apple 계정")
         case .signedOut: Text("캘린더만 쓸 수 있어요")
+        case .sessionEnded: Text("다시 로그인하면 이어서 써요")
         }
     }
 
@@ -188,7 +194,7 @@ struct MeTab: View {
             .buttonStyle(.geunal(.prominentPill))
             .disabled(link.isWorking)
             .accessibilityIdentifier("me.link")
-        case .signedOut:
+        case .signedOut, .sessionEnded(.provider):
             Button {
                 app.signInAgain()
             } label: {
@@ -196,6 +202,16 @@ struct MeTab: View {
             }
             .buttonStyle(.geunal(.prominentPill))
             .accessibilityIdentifier("me.signIn")
+        case .sessionEnded(.guest):
+            // The device still holds the guest's code; until the core can come back with it alone, the code is
+            // entered on screen 21 (decision 43).
+            Button {
+                app.returnAsGuest()
+            } label: {
+                Text("다시 들어가기")
+            }
+            .buttonStyle(.geunal(.prominentPill))
+            .accessibilityIdentifier("me.returnAsGuest")
         default:
             EmptyView()
         }
@@ -251,21 +267,26 @@ struct MeTab: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("me.recovery")
+            // The code stays on the device after the session ended, so it can still be read (decision 43).
+            .disabled(!model.showsRecoveryCode)
+            .opacity(model.showsRecoveryCode ? 1 : 0.4)
             separator
-            NavigationLink(value: Route.backup) {
-                SettingsRow(Text("암호화 백업"), value: backupValue)
+            Group {
+                NavigationLink(value: Route.backup) {
+                    SettingsRow(Text("암호화 백업"), value: backupValue)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("me.backup")
+                separator
+                NavigationLink(value: Route.deviceChange) {
+                    SettingsRow(Text("기기 바꾸기"))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("me.deviceChange")
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("me.backup")
-            separator
-            NavigationLink(value: Route.deviceChange) {
-                SettingsRow(Text("기기 바꾸기"))
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("me.deviceChange")
+            .disabled(!model.hasAccount)
+            .opacity(model.hasAccount ? 1 : 0.4)
         }
-        .disabled(!model.hasAccount)
-        .opacity(model.hasAccount ? 1 : 0.4)
     }
 
     private var accountRows: some View {
