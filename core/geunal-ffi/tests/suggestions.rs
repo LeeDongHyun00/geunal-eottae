@@ -71,6 +71,36 @@ fn puts_a_birthday_within_a_week_first_unless_the_person_is_left_out() {
 }
 
 #[test]
+fn converts_a_lunar_birthday_to_this_years_solar_date_before_suggesting() {
+    let d = device();
+    // The day's other chips are always there, so a missing birthday chip is not an empty answer.
+    let birthday_chip = |day: &str, name: &str| {
+        let found = chips(&d.core, day);
+        assert!(!found.is_empty(), "{day}");
+        found.into_iter().find(|s| s.event.title == format!("{name} 생일 약속"))
+    };
+    // 음력 10월 3일 is Wednesday 11 November 2026 (screen 17), five days after Friday the 6th.
+    let grandma = add_person(&d.core, "할머니", lunar(10, 3, false));
+    let chip = birthday_chip("2026-11-06", "할머니").expect("a chip within the week");
+    assert_eq!(chip.source, SuggestionSource::Birthday { person_id: grandma });
+    assert_eq!((chip.event.start.minute, chip.event.end.minute), (19 * 60, 21 * 60));
+    // Eight days before is past the week. Read as a solar date the birthday would be 3 October, two days after the
+    // 1st, which is not where it falls.
+    for day in ["2026-11-03", "2026-10-01"] {
+        assert!(birthday_chip(day, "할머니").is_none(), "{day}");
+    }
+
+    // 음력 1월 1일 moves with 설날 each year: 17 February 2026, 7 February 2027. Solar 1 January is not it.
+    add_person(&d.core, "삼촌", lunar(1, 1, false));
+    for day in ["2026-02-12", "2027-02-02"] {
+        assert!(birthday_chip(day, "삼촌").is_some(), "{day}");
+    }
+    for day in ["2026-02-09", "2027-01-30", "2026-12-28"] {
+        assert!(birthday_chip(day, "삼촌").is_none(), "{day}");
+    }
+}
+
+#[test]
 fn offers_a_trip_before_and_during_a_long_weekend_and_an_outing_on_a_substitute_holiday() {
     let d = device();
     // Thursday 24 December, the day before 25–27 December.

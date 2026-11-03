@@ -76,3 +76,29 @@ PR 설명에는 다음을 적습니다.
 - 새 비밀이나 새 저장 위치가 생겼는지
 - 새 로그 줄이 있으면 무엇을 남기는지
 - 위 표에서 해당하는 항목과, 해당하지 않으면 "해당 없음"
+
+## 7. 암호와 수출 규정
+
+앱은 OS가 주는 암호(HTTPS, 키체인·Keystore) 말고도 코어가 직접 암호를 씁니다. App Store의 수출 규정 답은 이 장을 근거로 합니다. 사용자가 면제로 신고하기로 정했습니다(2026-11-03).
+
+- **신고:** iOS `Info.plist`의 `ITSAppUsesNonExemptEncryption`을 `NO`로 둡니다. `NO`는 "수출 규정 문서가 필요 없는 암호만 씀"이라는 뜻입니다([Apple](https://developer.apple.com/documentation/security/complying-with-encryption-export-regulations)).
+  - Apple은 OS 밖의 업계 표준 알고리즘을 쓰는 앱에 프랑스 암호 신고서만 요구합니다. 그것도 프랑스 App Store에 배포할 때만입니다([App Store Connect 도움말](https://developer.apple.com/help/app-store-connect/reference/app-information/export-compliance-documentation-for-encryption/)). 그래서 아래 두 조건을 지키는 동안 필요한 문서가 없습니다.
+  - 미국의 연간 자가분류 보고는 2021-03-29 개정으로 대부분의 대중 시장(mass market) 완제품에 더는 필요하지 않습니다(License Exception ENC, 15 CFR 740.17(b)(1)). 코어를 부품(SDK)으로 따로 내놓게 되면 다시 봅니다.
+- **조건 1: 공개된 표준 알고리즘만 씁니다.** 미국 규정의 "비표준 암호"는 표준 기구가 채택하지 않았고 공개되지도 않은 암호입니다. 지금 쓰는 암호는 아래와 같습니다. 우리 계약의 문장과 구성([공통 계약](../parts/protocol.md))은 이 기본 요소를 조합한 것이고, 이 저장소에 공개돼 있습니다.
+
+| 쓰는 곳 | 알고리즘 | 근거 |
+| --- | --- | --- |
+| 그룹 메시지 | MLS, 암호 조합 0x0003(X25519, ChaCha20-Poly1305, SHA-256, Ed25519) | RFC 9420, RFC 7748, RFC 8439, RFC 8032 |
+| 상태 블롭, 래핑된 AMK, 백업, 첨부 | XChaCha20-Poly1305, 백업·첨부는 STREAM 구성 | RFC 8439(ChaCha20-Poly1305), 공개된 IRTF CFRG 초안(XChaCha20), 공개 논문(STREAM) |
+| 복구 코드 | Argon2id, HKDF-SHA256, Ed25519 | RFC 9106, RFC 5869, RFC 8032 |
+| 기기 서명 | Ed25519 | RFC 8032 |
+| 기기 저장소 | SQLCipher(AES-256-CBC, HMAC-SHA512), OpenSSL. 무작위 32바이트 키를 그대로 넣어 암호 문구 유도는 쓰지 않음 | FIPS 197, FIPS 198-1 |
+| 통신 | TLS 1.2·1.3(rustls, ring) | RFC 5246, RFC 8446 |
+
+- **조건 2: 프랑스 App Store에는 내지 않습니다.** App Store Connect의 판매 국가에서 프랑스를 뺍니다.
+  - 프랑스 정부는 보안 통신·보안 저장 앱의 암호를 따로 통제하고(ANSSI), 이 앱은 둘 다에 해당합니다.
+  - 프랑스에 내려면 먼저 프랑스 암호 신고를 합니다. 그 뒤 `ITSAppUsesNonExemptEncryption`을 `YES`로 바꾸고, Apple이 준 코드를 `ITSEncryptionExportComplianceCode`에 넣습니다.
+  - 이 통제는 스토어와 상관없이 프랑스에 배포하는 암호 앱에 걸립니다. 안드로이드도 프랑스에 낼 때 함께 봅니다.
+- **PR마다 볼 것:** 암호 알고리즘이나 암호 라이브러리를 더하거나 바꾸는 PR(코어 포함)은 조건 1을 지키는지 PR 설명에 적습니다.
+  - 스스로 고안했거나 공개되지 않은 암호는 넣지 않습니다. 넣어야 하면 미국 분류(CCATS)가 필요하므로, 사용자에게 먼저 묻습니다.
+- **책임:** Apple은 면제를 잘못 주장한 책임을 개발자에게 둡니다. 이 장은 법률 검토를 대신하지 않으므로, 정식 출시(M4) 전에 다시 확인합니다.

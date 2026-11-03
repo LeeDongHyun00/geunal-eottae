@@ -1,26 +1,18 @@
 package app.geunal
 
-import android.graphics.Bitmap
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.isRoot
-import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.services.storage.TestStorage
 import app.geunal.core.AccountView
 import app.geunal.core.AlertRule
 import app.geunal.core.Core
@@ -102,15 +94,4 @@ class MainScaffoldTest {
             name: String,
         ) = Person(id, name, null, null, null, PersonSource.Manual, readOnly = false, alert = AlertRule.Inherit, suggest = true)
     }
-}
-
-/** As feature-account's helper: `screenshots/<name>.png` through the test storage service, for review only. */
-private fun ComposeTestRule.screenshot(name: String) {
-    waitForIdle()
-    val captured =
-        runCatching {
-            val bitmap = onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap()
-            TestStorage().openOutputFile("screenshots/$name.png").use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        }
-    if (captured.isFailure) Log.w("Screenshots", "no screenshot for $name")
 }

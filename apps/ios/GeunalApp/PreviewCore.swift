@@ -15,6 +15,12 @@
             case replace
             /// Another account's events are on the device, so the restore asks first (m1.md screen 24).
             case otherAccountData
+            /// A guest signed in on this device, the recovery code not yet on paper: 나, the banner, screens 13–22.
+            case guest
+            /// The same with a Kakao account, whose deletion signs in with Kakao once more.
+            case kakao
+            /// Another device signed in with the recovery code: the "기기 로그아웃됨" sheet on launch (screen 23).
+            case revoked
         }
 
         /// The design's example code (docs/design/m1.md screen 21), all in the BIP39 Korean list.
@@ -23,11 +29,29 @@
         private let scenario: Scenario
         private let lock = NSLock()
         private var signedIn: Session?
+        private var linked: [Provider] = []
+        private var recoverySaved = false
+        private var revoked: Revocation?
+        private var autoBackup = true
         private var alphaStats = false
+        private var settings = NotificationSettings(
+            eventAlert: 10, allDayAlert: 360, nextUpBar: true, birthdayAlerts: true, leaveSuggestions: true)
 
         init(scenario: Scenario) {
             self.scenario = scenario
             super.init(noHandle: Core.NoHandle())
+            switch scenario {
+            case .guest:
+                signedIn = Self.session
+            case .kakao:
+                signedIn = Self.session
+                linked = [.kakao]
+            case .revoked:
+                revoked = Revocation(
+                    at: Date(timeIntervalSinceNow: -3_600), byPlatform: "android", via: .recovery)
+            case .standard, .replace, .otherAccountData:
+                break
+            }
         }
 
         required init(unsafeFromHandle handle: UInt64) {
@@ -69,7 +93,38 @@
         }
 
         override func account() throws -> AccountView? {
-            locked { signedIn }.map { AccountView(userId: $0.userId, displayName: "하린", providers: []) }
+            locked { signedIn.map { AccountView(userId: $0.userId, displayName: "하린", providers: linked) } }
+        }
+
+        override func linkKakao(nonce: String, idToken: String) async throws -> [Provider] {
+            locked {
+                linked = [.kakao]
+                return linked
+            }
+        }
+
+        override func linkApple(nonce: String, idToken: String) async throws -> [Provider] {
+            locked {
+                linked = [.apple]
+                return linked
+            }
+        }
+
+        override func revocation() throws -> Revocation? { locked { revoked } }
+
+        override func meSummary() throws -> MeSummary {
+            let view = try self.account()
+            return MeSummary(
+                account: view, calendars: 1, shiftTemplates: 0, people: 0, deviceCalendars: 0,
+                recoverySaved: locked { recoverySaved }, lastBackupAt: view == nil ? nil : Self.backup.createdAt)
+        }
+
+        override func deleteAccount(proof: DeletionProof) async throws {
+            locked {
+                signedIn = nil
+                linked = []
+                recoverySaved = false
+            }
         }
 
         override func recordAppForeground() throws {}
@@ -82,18 +137,51 @@
                 return .replaceRequired(
                     userId: "preview-user", activePlatform: "android", activeSince: Date(timeIntervalSinceNow: -86_400),
                     recovery: true)
-            case .standard:
+            case .standard, .guest, .kakao, .revoked:
                 return .registered(session: register(), newAccount: true, recovery: false)
             }
         }
 
+        private static let session = Session(userId: "preview-user", deviceId: "preview-device")
+
         private func register() -> Session {
-            let session = Session(userId: "preview-user", deviceId: "preview-device")
-            locked { signedIn = session }
-            return session
+            locked {
+                signedIn = Self.session
+                revoked = nil
+            }
+            return Self.session
         }
 
-        // MARK: Recovery code
+        // MARK: Recovery code and backups
+
+        override func recoveryWords() throws -> [String] {
+            guard locked({ signedIn }) != nil else { throw CoreError.NotFound(what: "recovery code") }
+            return Self.words
+        }
+
+        override func recoveryStatus() throws -> RecoveryStatus {
+            locked { RecoveryStatus(created: signedIn != nil, saved: recoverySaved, uploaded: signedIn != nil) }
+        }
+
+        override func markRecoverySaved() throws { locked { recoverySaved = true } }
+
+        /// Last night's automatic backup.
+        private static let backup = BackupView(
+            id: 3, createdAt: Date(timeIntervalSinceNow: -6 * 3_600), size: 2_400_000, automatic: true, events: 128,
+            people: 12)
+
+        override func backupStatus() throws -> BackupStatus {
+            locked { BackupStatus(last: Self.backup, auto: autoBackup, changed: false, ready: signedIn != nil) }
+        }
+
+        override func backups() async throws -> [BackupView] { [Self.backup] }
+
+        override func backupNow(progress: ProgressListener?) async throws -> BackupView {
+            progress?.onProgress(done: 2_400_000, total: 2_400_000)
+            return Self.backup
+        }
+
+        override func setAutoBackup(enabled: Bool) throws { locked { autoBackup = enabled } }
 
         override func checkRecoveryWord(text: String) throws -> String? {
             let word = text.precomposedStringWithCanonicalMapping.trimmingCharacters(in: .whitespaces)
@@ -182,6 +270,12 @@
         }
 
         override func suggestions(day: String) throws -> [Suggestion] { [] }
+
+        override func notificationSettings() throws -> NotificationSettings { locked { settings } }
+
+        override func setNotificationSettings(settings: NotificationSettings) throws {
+            locked { self.settings = settings }
+        }
 
         override func addEvent(input: EventInput, fromSuggestion: Bool) throws -> AddedEvent {
             AddedEvent(eventId: UUID().uuidString, repeatHint: nil)

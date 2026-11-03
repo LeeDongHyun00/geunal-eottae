@@ -4,6 +4,7 @@ import Foundation
 public struct OnboardingState: Sendable {
     private static let finishedKey = "app.geunal.onboarding.finished"
     private static let pendingGuestKey = "app.geunal.onboarding.pendingGuestAgeConfirmedAt"
+    private static let revocationShownKey = "app.geunal.account.revocationShownAt"
 
     private nonisolated(unsafe) let defaults: UserDefaults
 
@@ -22,6 +23,7 @@ public struct OnboardingState: Sendable {
     public func reset() {
         isFinished = false
         pendingGuestAgeConfirmedAt = nil
+        revocationShownAt = nil
     }
 
     /// A guest who started offline: the time they ticked "만 14세 이상이에요", kept until the guest account can be made
@@ -33,6 +35,19 @@ public struct OnboardingState: Sendable {
                 defaults.set(newValue, forKey: Self.pendingGuestKey)
             } else {
                 defaults.removeObject(forKey: Self.pendingGuestKey)
+            }
+        }
+    }
+
+    /// When the revocation the "기기 로그아웃됨" sheet last showed happened (m1.md screen 23). The core keeps the
+    /// revocation until the next sign-in, and the sheet comes once for each.
+    public var revocationShownAt: Date? {
+        get { defaults.object(forKey: Self.revocationShownKey) as? Date }
+        nonmutating set {
+            if let newValue {
+                defaults.set(newValue, forKey: Self.revocationShownKey)
+            } else {
+                defaults.removeObject(forKey: Self.revocationShownKey)
             }
         }
     }

@@ -1,13 +1,14 @@
-//! core/vectors/recovery.json and login_nonce.json pin the recovery code and the sign-in nonce binding (protocol §10,
-//! §12, §13): the API server checks recovery signatures and provider nonces against them, and a later core build
-//! must derive the same values from the same code. `GEUNAL_WRITE_VECTORS=1 cargo test -p geunal-crypto --locked --test
-//! vectors` regenerates both files; the plain test run only checks them.
+//! core/vectors/recovery.json, login_nonce.json and device_signatures.json pin the recovery code, the sign-in nonce
+//! binding and what the device key signs (protocol §10, §12, §13): the API server checks recovery signatures, provider
+//! nonces and device signatures against them, and a later core build must derive the same values from the same code.
+//! `GEUNAL_WRITE_VECTORS=1 cargo test -p geunal-crypto --locked --test vectors` regenerates the files; the plain test
+//! run only checks them.
 
 use std::path::PathBuf;
 
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{Signer, SigningKey};
 use geunal_crypto::kdf;
-use geunal_crypto::login::provider_nonce;
+use geunal_crypto::login::{delete_message, provider_nonce, recovery_upload_message, replace_message};
 use geunal_crypto::recovery::{self, CodeError, Entropy, RecoveryKeys};
 use serde_json::{Value, json};
 
@@ -128,6 +129,54 @@ fn login_document() -> Value {
     })
 }
 
+/// The device key's messages and Ed25519 signatures (deterministic, RFC 8032) for a few seeds. The core's MLS signer
+/// is the same Ed25519, so the server can verify these with the public key a device registers.
+fn device_document() -> Value {
+    // The material a recovery upload puts up, with the lengths the server checks. Each field has bytes of its own, so a
+    // message that joins them in another order does not match.
+    let recovery_id: Vec<u8> = (0x00..0x10).collect();
+    let recovery_public_key: Vec<u8> = (0x10..0x30).collect();
+    let amk_wrapped: Vec<u8> = (0x30..0x78).collect();
+    let upload =
+        |new_key, nonce| recovery_upload_message(new_key, nonce, &recovery_id, &recovery_public_key, &amk_wrapped);
+    let cases: Vec<Value> = [[1u8; 32], [2u8; 32]]
+        .iter()
+        .zip([NONCE, "nonce-1"])
+        .map(|(seed, nonce)| {
+            let key = SigningKey::from_bytes(seed);
+            let signed = |message: Vec<u8>| {
+                json!({ "message": hex::encode(&message), "signature": hex::encode(key.sign(&message).to_bytes()) })
+            };
+            json!({
+                "seed": hex::encode(seed),
+                "signature_key": hex::encode(key.verifying_key().to_bytes()),
+                "nonce": nonce,
+                "delete": signed(delete_message(nonce)),
+                "recovery_upload": signed(upload(false, nonce)),
+                "new_key": signed(upload(true, nonce)),
+                "replace": signed(replace_message(nonce)),
+            })
+        })
+        .collect();
+    json!({
+        "version": 1,
+        "generated_by": GENERATED_BY,
+        "signed": {
+            "delete": "geunal delete v1 ‖ nonce",
+            "recovery_upload": "geunal recovery upload v1 ‖ nonce ‖ recovery_id ‖ recovery_public_key ‖ amk_wrapped",
+            "new_key": "geunal new key v1 ‖ nonce ‖ recovery_id ‖ recovery_public_key ‖ amk_wrapped",
+            "replace": "geunal replace v1 ‖ ticket",
+        },
+        "material": {
+            "recovery_id": hex::encode(&recovery_id),
+            "recovery_public_key": hex::encode(&recovery_public_key),
+            "amk_wrapped": hex::encode(&amk_wrapped),
+        },
+        "note": "replace signs the ticket; the cases reuse the nonce string as the ticket",
+        "cases": cases,
+    })
+}
+
 fn check(name: &str, document: Value) {
     let path = path(name);
     if std::env::var_os("GEUNAL_WRITE_VECTORS").is_some() {
@@ -168,4 +217,9 @@ fn recovery_json_matches_this_build() {
 #[test]
 fn login_nonce_json_matches_this_build() {
     check("login_nonce.json", login_document());
+}
+
+#[test]
+fn device_signatures_json_matches_this_build() {
+    check("device_signatures.json", device_document());
 }

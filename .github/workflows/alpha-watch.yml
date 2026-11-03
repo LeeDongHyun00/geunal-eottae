@@ -1,0 +1,33 @@
+# The alpha's basic alarm: every 15 minutes, infra/alpha/watch.sh checks the API's health and TLS certificate from
+# outside NCP and keeps one alpha-alert issue open while something fails (infra/alpha/README.md "경보"). It needs no
+# secrets; the token can only touch this repository's issues.
+name: alpha-watch
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+# A slow run (the health check retries for about two minutes) must not overlap the next one and open a second issue.
+concurrency:
+  group: alpha-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: infra/alpha/watch.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GEUNAL_WATCH_HOST: api.geunaleottae.com
+          GEUNAL_WATCH_NOTIFY: ${{ github.repository_owner }}

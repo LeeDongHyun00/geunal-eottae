@@ -1,0 +1,9 @@
+# Runs infra/alpha/db-dump.sh, which bootstrap.sh installs with the timer of the same name.
+[Unit]
+Description=Dump the geunal database
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/geunal/db-dump.sh

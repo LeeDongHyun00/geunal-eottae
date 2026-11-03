@@ -1300,7 +1300,8 @@ impl Core {
     }
 
     /// `PUT /me/recovery`. A retry may find its own earlier upload stored, which the same code then proves; an id
-    /// another account already uses means a new `E` (409 `recovery_conflict`, protocol §11).
+    /// another account already uses means a new `E` (409 `recovery_conflict`, protocol §11). Every request, retries
+    /// included, carries the device key's signature over its nonce and material.
     async fn upload_recovery(&self, new_key: bool, provider: Option<&DeletionProof>) -> Result<(), CoreError> {
         let session = self.current_session()?.ok_or(CoreError::NotSignedIn)?;
         let mut conflicts = 0;
@@ -1314,6 +1315,7 @@ impl Core {
                 new_key,
                 nonce: None,
                 proof: None,
+                device_signature: None,
                 kakao_id_token: None,
                 apple_authorization_code: None,
             };
@@ -1326,6 +1328,13 @@ impl Core {
                 }
                 _ => upload,
             };
+            // The device key signs every upload over its nonce and the material itself: the Kakao token's nonce when
+            // one comes, a fresh one otherwise.
+            let nonce = match upload.nonce.clone() {
+                Some(nonce) => nonce,
+                None => self.checked(self.api.nonce().await).await?,
+            };
+            let upload = self.signed_upload(RecoveryUpload { nonce: Some(nonce), ..upload })?;
             let result = match self.api.put_recovery(upload.clone()).await {
                 // The server may hold this code already, from a try whose answer was lost: the code then proves
                 // itself. Past the 30 minutes that is how a waiting `new_key` upload goes through without a provider
@@ -1334,14 +1343,14 @@ impl Core {
                     if first.is(403, "recovery_proof_required") || (new_key && first.is(403, "reauth_required")) =>
                 {
                     let nonce = self.api.nonce().await?;
-                    let retry = RecoveryUpload {
+                    let retry = self.signed_upload(RecoveryUpload {
                         new_key: false,
                         proof: Some(keys.sign_rotation(&nonce).to_vec()),
                         nonce: Some(nonce),
                         kakao_id_token: None,
                         apple_authorization_code: None,
                         ..upload
-                    };
+                    })?;
                     match self.api.put_recovery(retry).await {
                         // Another code is on the server: the first answer stands.
                         Err(e) if e.is(403, "recovery_proof_required") => Err(first),
@@ -1375,8 +1384,9 @@ impl Core {
 
     /// The body of `DELETE /me` for `proof`. A guest's is signed here with the recovery key of this device's code over
     /// a fresh nonce, without asking the user (protocol §13 "계정 삭제").
+    /// Every kind also carries the device key's signature over the nonce, the Kakao token's own or a fresh one.
     async fn deletion_request(&self, proof: &DeletionProof) -> Result<DeleteAccount, CoreError> {
-        Ok(match proof {
+        let request = match proof {
             DeletionProof::Guest => {
                 let (entropy, _) = self.recovery_secrets()?.ok_or_else(|| CoreError::Invalid {
                     reason: "this device holds no recovery code to sign with".into(),
@@ -1394,10 +1404,32 @@ impl Core {
                 kakao_id_token: Some(id_token.clone()),
                 ..DeleteAccount::default()
             },
-            DeletionProof::Apple { authorization_code } => {
-                DeleteAccount { apple_authorization_code: Some(authorization_code.clone()), ..DeleteAccount::default() }
-            }
-        })
+            DeletionProof::Apple { authorization_code } => DeleteAccount {
+                nonce: Some(self.checked(self.api.nonce().await).await?),
+                apple_authorization_code: Some(authorization_code.clone()),
+                ..DeleteAccount::default()
+            },
+        };
+        let nonce = request.nonce.as_deref().unwrap_or_default();
+        let device_signature = Some(self.sign_with_device_key(&login::delete_message(nonce))?);
+        Ok(DeleteAccount { device_signature, ..request })
+    }
+
+    /// `upload` signed by the device key over its words, nonce and material (protocol §10 "기기 키의 서명"): a stolen
+    /// session cannot put material up, and nobody in the middle can swap other material in under this signature.
+    fn signed_upload(&self, upload: RecoveryUpload) -> Result<RecoveryUpload, CoreError> {
+        let nonce = upload.nonce.as_deref().ok_or_else(|| malformed("a recovery upload without a nonce"))?;
+        let (id, public_key, wrapped) = (&upload.recovery_id, &upload.recovery_public_key, &upload.amk_wrapped);
+        let message = login::recovery_upload_message(upload.new_key, nonce, id, public_key, wrapped);
+        let device_signature = Some(self.sign_with_device_key(&message)?);
+        Ok(RecoveryUpload { device_signature, ..upload })
+    }
+
+    /// Signs with this device's registered key, which never leaves the device: what deletions and recovery uploads
+    /// add so that a stolen session, even with a provider proof, is not enough (threat model §3.6, §3.7).
+    fn sign_with_device_key(&self, message: &[u8]) -> Result<Vec<u8>, CoreError> {
+        let secret = signing_secret(self.secrets.as_ref())?;
+        Ok(MlsClient::sign_with(&secret, message)?)
     }
 
     /// The keys of `entropy`, from memory after the first derivation of this run.
