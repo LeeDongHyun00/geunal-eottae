@@ -13,6 +13,8 @@ data class AuthProperties(
     val ticketTtl: Duration = Duration.ofMinutes(30),
     /** "새로 시작" without the recovery code needs a provider sign-in this recent, or a fresh provider proof (protocol §10). */
     val providerWindow: Duration = Duration.ofMinutes(30),
+    /** Sign-ins and nonces per client address an hour (api-server.md §9), guest recovery and replacement included. */
+    val signInsPerHour: Int = 30,
     val jwt: Jwt = Jwt(),
     val kakao: Kakao = Kakao(),
     val apple: Apple = Apple(),

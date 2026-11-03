@@ -1,8 +1,8 @@
 package app.geunal.api.holidays
 
 import app.geunal.api.common.ApiException
+import app.geunal.api.common.HourlyLimit
 import jakarta.servlet.http.HttpServletRequest
-import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.CacheControl
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
@@ -38,7 +38,7 @@ data class HolidayYears(
 @RestController
 class HolidayController(
     private val jdbc: JdbcClient,
-    private val redis: StringRedisTemplate,
+    private val limits: HourlyLimit,
     private val mapper: JsonMapper,
     private val clock: Clock,
 ) {
@@ -52,7 +52,7 @@ class HolidayController(
         if (from < FIRST_YEAR || from > thisYear + 1 || to < from || to > from + 1) {
             throw ApiException.invalid("from_year must be $FIRST_YEAR to next year, and to_year from_year or the year after")
         }
-        limit(request.remoteAddr)
+        limits.check("holidays", request.remoteAddr, PER_HOUR)
         val years =
             jdbc
                 .sql("SELECT year FROM holiday_years WHERE year BETWEEN :from AND :to ORDER BY year")
@@ -97,27 +97,11 @@ class HolidayController(
             .body(body)
     }
 
-    /** 60 an hour for each address (api-server.md §9), counted per clock hour. */
-    private fun limit(address: String) {
-        val hour = clock.instant().epochSecond / HOUR.seconds
-        val key = "holidays:$address:$hour"
-        val count = redis.opsForValue().increment(key) ?: 0
-        if (count == 1L) redis.expire(key, HOUR.multipliedBy(2))
-        if (count > PER_HOUR) {
-            val retryAfter = (hour + 1) * HOUR.seconds - clock.instant().epochSecond
-            throw ApiException(
-                HttpStatus.TOO_MANY_REQUESTS,
-                "rate_limited",
-                "at most $PER_HOUR holiday requests an hour",
-                headers = mapOf(HttpHeaders.RETRY_AFTER to retryAfter.coerceAtLeast(1).toString()),
-            )
-        }
-    }
-
     private companion object {
         const val FIRST_YEAR = 2000
+
+        /** api-server.md §9. */
         const val PER_HOUR = 60
-        val HOUR: Duration = Duration.ofHours(1)
         val CACHE_FOR: Duration = Duration.ofHours(1)
         val SEOUL: ZoneId = ZoneId.of("Asia/Seoul")
     }
