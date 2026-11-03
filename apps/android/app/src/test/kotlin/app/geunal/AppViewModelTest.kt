@@ -94,11 +94,34 @@ class AppViewModelTest {
                 }
             advanceUntilIdle()
 
+            // The failure screen stays while it tries again, and a second tap does not open the store twice.
+            viewModel.start()
+            assertEquals(AppPhase.Failed(StartFailure.STORE, retrying = true), viewModel.phase.value)
             viewModel.start()
             advanceUntilIdle()
 
             assertEquals(2, attempts)
             assertEquals(AppPhase.Onboarding, viewModel.phase.value)
+        }
+
+    @Test
+    fun aRetryThatFailsAgainOffersAnotherTry() =
+        runTest(dispatcher) {
+            var attempts = 0
+            val viewModel =
+                viewModel {
+                    attempts++
+                    throw if (attempts == 1) CoreException.Store("locked") else CoreException.SecretStore("unreadable")
+                }
+            advanceUntilIdle()
+
+            viewModel.start()
+            advanceUntilIdle()
+            assertEquals(AppPhase.Failed(StartFailure.SECRETS), viewModel.phase.value)
+
+            viewModel.start()
+            advanceUntilIdle()
+            assertEquals(3, attempts)
         }
 
     @Test
