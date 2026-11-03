@@ -22,6 +22,7 @@ GEUNAL_ALPHA_SSH=root@<서버 주소> GEUNAL_ALPHA_SSH_KEY=~/.ssh/<키> GEUNAL_A
 ```
 
 - ACG가 SSH를 운영자 주소(`admin_cidr`)에만 열어 두어서, CI가 아니라 운영자 PC에서 돌립니다.
+- `<서버 주소>`는 운영자 PC의 `known_hosts`에 들어 있는 형태로 씁니다(처음 접속한 주소, 지금은 IP). `deploy.sh`는 SSH에 `BatchMode`와 `-i`만 넘기므로, 처음 보는 이름으로 쓰면 호스트 키 확인에서 멈춥니다.
 - API 이미지 태그는 `server/api`를 마지막으로 바꾼 커밋입니다([인프라](../../docs/parts/infra.md) 3장). 서버에 그 태그가 있으면 빌드와 전송을 건너뜁니다. 레지스트리 없이 SSH로 보냅니다.
 - 서버가 amd64라서, 이미지를 arm64로 만드는 Apple 실리콘 Mac에서는 스크립트가 멈춥니다.
 - `GEUNAL_API_HOST`가 없으면 Caddy를 띄우지 않습니다. 그러면 API는 서버의 루프백(`127.0.0.1:8080`)에만 열리고, `ssh -L 8080:127.0.0.1:8080 …`로 확인합니다.
@@ -58,10 +59,15 @@ GEUNAL_ALPHA_SSH=root@<서버 주소> GEUNAL_ALPHA_SSH_KEY=~/.ssh/<키> GEUNAL_A
 
 **처음 한 번**
 
-1. **서브 계정:** 서버 전용 서브 계정을 만들어 `NCP_SECRETMANAGER_USER`(조회만) 정책만 주고, API 접근 키를 발급합니다. 이 정책은 계정의 모든 비밀값을 읽을 수 있으므로, 이 NCP 계정에는 그날어때 알파의 비밀값만 둡니다.
-2. **비밀값:** 콘솔 › Security › Secret Manager › Secret에서 비밀값을 하나 만들고 위 표의 키를 JSON으로 넣습니다. 보호 키는 서비스가 관리하는 키를 고르고, 자동 교체는 켜지 않습니다. 교체 대상 키를 하나 고르라고 하면 아무 키나 고릅니다. 만든 뒤 비밀값 ID를 적어 둡니다.
-   - JSON 문자열 안의 줄바꿈은 `\n`으로 적습니다. 그래서 `.p8`은 `"-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----"`처럼 한 줄이 됩니다.
+1. **비밀값:** 콘솔 › Security › Secret Manager › Secret에서 비밀값을 하나 만들고 위 표의 키를 JSON으로 넣습니다. 보호 키는 서비스가 관리하는 키를 고르고, 자동 교체는 켜지 않습니다. 교체 대상 키를 하나 고르라고 하면 아무 키나 고릅니다. 만든 뒤 비밀값 ID를 적어 둡니다.
+   - JSON 문자열 안의 줄바꿈은 `\n`으로 적습니다. 그래서 `.p8`은 `"-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----"`처럼 한 줄이 됩니다. 운영자 PC에서 `awk '{printf "%s\\n", $0}' AuthKey_<키 ID>.p8 | pbcopy`로 그 한 줄을 만들 수 있습니다.
+   - 키 이름은 표와 글자 하나까지 같아야 합니다. 틀린 이름도 `GEUNAL_`로 시작하면 그대로 받아 쓰지만 서버는 쓰지 않으므로, 배포 출력의 받은 이름 목록으로 확인합니다.
+2. **서브 계정:** 서버 전용 서브 계정을 만들어(접근 유형은 API Gateway만) 아래 사용자 정의 정책 하나만 주고, Access Key를 발급합니다.
+   - 콘솔에는 조회 전용 관리형 정책이 없습니다(2026-11 기준 `NCP_VPC_SECRET_MANAGER_MANAGER`뿐). 그 정책은 비밀값을 고치고 지울 수 있어 서버 키에 주지 않습니다.
+   - 사용자 정의 정책은 Secret Manager의 `View/getSecretValue` 하나입니다. 연관 액션 `View/getSecretList`, `View/getSecretDetail`은 함께 붙습니다. 리소스는 1번의 비밀값 하나로 제한합니다. 비밀값을 먼저 만드는 것은 이 때문입니다.
+   - 리소스를 고를 수 없으면 이 키가 계정의 모든 비밀값을 읽게 되므로, 그때는 이 NCP 계정에 그날어때 알파의 비밀값만 둡니다.
 3. **서버:** 아래 세 줄로 `/etc/geunal/secret-manager.env`를 만듭니다. 예: `ssh root@<서버 주소> 'umask 077; cat >/etc/geunal/secret-manager.env'`로 붙여 넣고 Ctrl-D.
+   - 이 파일이 있으면 배포는 Secret Manager에서 받아 오기를 반드시 거칩니다. 세 값이 준비되기 전에 빈 파일을 만들면 배포가 `lacks NCP_ACCESS_KEY, …`로 멈춥니다.
 
 ```bash
 NCP_ACCESS_KEY=...
@@ -73,6 +79,8 @@ GEUNAL_SECRET_ID=...
 5. **정리:** 예전에 `api.env`에 손으로 넣은 제공자·저장소 키 줄이 있으면 지웁니다. `api.secrets.env`가 뒤에 읽혀 Secret Manager의 값이 이기지만, 같은 키를 두 곳에 두지 않으려는 것입니다. `dump.env`는 받아 쓸 때 통째로 바뀝니다. Secret Manager에서 `GEUNAL_DUMP_` 키를 모두 지우면, 이 스크립트가 썼던 `dump.env`도 지워져 덤프가 다시 서버에만 남습니다.
 
 **키를 바꿀 때:** 콘솔에서 값을 고친 뒤 `make deploy-alpha`를 돌립니다. 값이 바뀐 컨테이너만 다시 만들어집니다.
+
+**비밀값을 지우고 다시 만들었을 때:** 이름이 같아도 비밀값 ID가 바뀝니다. 서버 파일의 `GEUNAL_SECRET_ID`와 2번 정책의 리소스를 새 비밀값으로 바꾼 뒤 배포합니다. 바꾸지 않으면 서버는 옛 비밀값을 가리킵니다. 그 비밀값이 아직 삭제 대기 중이면 옛 값을 그대로 받아 오고, 아니면 받아 오기가 `answered 404`(ID)나 `403`(정책)으로 멈출 수 있으니, 배포 출력의 받은 이름 목록이 새 비밀값과 같은지 봅니다.
 
 **얻는 것과 남는 것:**
 - 운영자가 서버에 들어가 파일을 고치지 않고 콘솔에서 키를 넣습니다. 읽을 때마다 Cloud Activity Tracer에 기록이 남습니다. 서버가 위험해지면 서버 전용 조회 키 하나만 끊으면 됩니다.
