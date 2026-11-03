@@ -26,9 +26,11 @@ class Api(
         path: String,
         token: String? = null,
         body: Any? = null,
+        headers: Map<String, String> = emptyMap(),
     ): Reply {
         val request = client.method(method).uri(path)
         if (token != null) request.header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+        headers.forEach { (name, value) -> request.header(name, value) }
         if (body != null) request.contentType(MediaType.APPLICATION_JSON).body(mapper.writeValueAsString(body))
         val response = request.retrieve().toEntity(String::class.java)
         val json = response.body?.takeIf { it.isNotBlank() }?.let { mapper.readTree(it) }

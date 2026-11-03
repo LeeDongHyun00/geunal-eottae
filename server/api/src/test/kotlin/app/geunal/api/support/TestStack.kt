@@ -27,6 +27,7 @@ object TestStack {
     const val S3_ACCESS_KEY = "geunal-test"
     const val S3_SECRET_KEY = "geunal-test-secret"
     const val BACKUPS_BUCKET = "geunal-test-backups"
+    const val ACCESS_LOGS_BUCKET = "geunal-test-access-logs"
 
     /**
      * SeaweedFS's S3 API with one identity, so it checks signatures the way NCP Object Storage does: a presigned URL
@@ -70,6 +71,7 @@ object TestStack {
         while (true) {
             try {
                 client.createBucket { it.bucket(BACKUPS_BUCKET) }
+                client.createBucket { it.bucket(ACCESS_LOGS_BUCKET) }
                 return
             } catch (e: SdkException) {
                 if (Instant.now().isAfter(deadline)) throw e

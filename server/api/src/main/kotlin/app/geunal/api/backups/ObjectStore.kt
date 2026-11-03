@@ -10,6 +10,7 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.core.checksums.RequestChecksumCalculation
 import software.amazon.awssdk.core.checksums.ResponseChecksumValidation
+import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
@@ -29,7 +30,7 @@ import java.time.Duration
 /**
  * `geunal.s3.*`: the S3-compatible object storage (NCP Object Storage, SeaweedFS locally). [publicEndpoint] is the
  * address devices reach, which presigned URLs are signed for; it defaults to [endpoint], where the API itself reaches
- * the store. Bucket names are the full names infra gives them (`<prefix>-backups`).
+ * the store. Bucket names are the full names infra gives them (`<prefix>-backups`, `<prefix>-access-logs`).
  */
 @ConfigurationProperties("geunal.s3")
 data class StorageProperties(
@@ -39,11 +40,12 @@ data class StorageProperties(
     val accessKey: String = "",
     val secretKey: String = "",
     val backupsBucket: String = "backups",
+    val accessLogsBucket: String = "access-logs",
 )
 
 /**
- * Presigned URLs and the few calls the API makes itself (a size check, deletes). Requests carry no checksum the
- * signature does not need, since S3-compatible stores differ in which checksum headers they understand.
+ * Presigned URLs and the few calls the API makes itself (a size check, deletes, the access log). Requests carry no
+ * checksum the signature does not need, since S3-compatible stores differ in which checksum headers they understand.
  */
 @Component
 class ObjectStore(
@@ -57,7 +59,7 @@ class ObjectStore(
     }
 
     /** The short bucket names of infra.md §1 that rows refer to, with the names this deployment gives them. */
-    val buckets: Map<String, String> = mapOf(BACKUPS to properties.backupsBucket)
+    val buckets: Map<String, String> = mapOf(BACKUPS to properties.backupsBucket, ACCESS_LOGS to properties.accessLogsBucket)
 
     private val credentials =
         StaticCredentialsProvider.create(
@@ -159,6 +161,25 @@ class ObjectStore(
             if (e.statusCode() == HttpStatus.NOT_FOUND.value()) null else throw e
         }
 
+    /** Writes [bytes] under [key], replacing any object there, so writing the same object again is harmless. */
+    fun put(
+        bucket: String,
+        key: String,
+        bytes: ByteArray,
+        contentType: String,
+    ) {
+        client().putObject(
+            PutObjectRequest
+                .builder()
+                .bucket(bucket)
+                .key(key)
+                .contentType(contentType)
+                .contentLength(bytes.size.toLong())
+                .build(),
+            RequestBody.fromBytes(bytes),
+        )
+    }
+
     /** Deleting a key that is already gone succeeds, so a retried deletion is harmless. */
     fun delete(
         bucket: String,
@@ -186,6 +207,7 @@ class ObjectStore(
 
     companion object {
         const val BACKUPS = "backups"
+        const val ACCESS_LOGS = "access-logs"
         private val TIMEOUT: Duration = Duration.ofSeconds(10)
     }
 }

@@ -1,5 +1,7 @@
 package app.geunal.api.auth
 
+import app.geunal.api.accesslog.AccessEvent
+import app.geunal.api.accesslog.AccessLog
 import app.geunal.api.common.ApiException
 import app.geunal.api.devices.DeviceRepository
 import app.geunal.api.devices.DeviceRow
@@ -35,6 +37,7 @@ class AuthService(
     private val providers: ProviderTokens,
     private val signals: Signals,
     private val properties: AuthProperties,
+    private val accessLog: AccessLog,
     private val clock: Clock,
 ) {
     private val random = SecureRandom()
@@ -195,7 +198,7 @@ class AuthService(
             throw expired
         }
         val device = devices.current(deviceId) ?: throw devices.revokedError(deviceId)
-        return issue(Caller(device.userId, deviceId))
+        return issue(Caller(device.userId, deviceId), AccessEvent.REFRESH)
     }
 
     /**
@@ -274,7 +277,7 @@ class AuthService(
         caller: Caller,
         newAccount: Boolean,
     ): Registered {
-        val tokens = issue(caller)
+        val tokens = issue(caller, AccessEvent.SIGN_IN)
         return Registered(
             userId = tokens.userId,
             deviceId = tokens.deviceId,
@@ -286,7 +289,12 @@ class AuthService(
         )
     }
 
-    private fun issue(caller: Caller): TokenResponse {
+    /** New tokens for [caller], recorded in the access log in the same transaction. */
+    private fun issue(
+        caller: Caller,
+        event: AccessEvent,
+    ): TokenResponse {
+        accessLog.record(event, caller)
         val refreshToken = randomToken()
         jdbc
             .sql("INSERT INTO sessions (device_id, refresh_hash, expires_at) VALUES (:device, :hash, :expires)")

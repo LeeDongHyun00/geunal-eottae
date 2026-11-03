@@ -13,7 +13,11 @@ import java.util.UUID
  * One running API with the auth stub on and Kakao and Apple pointed at [FakeProviders], shared by every test class that
  * extends this.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = ["geunal.auth.stub=true"])
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    // The access log ships only when a test asks, so no scheduled round empties the outbox under a test reading it.
+    properties = ["geunal.auth.stub=true", "geunal.alpha-stats.enabled=true", "geunal.access-log.ship-every=PT24H"],
+)
 abstract class ApiTest {
     companion object {
         @JvmStatic
@@ -77,4 +81,5 @@ fun TestStack.register(registry: DynamicPropertyRegistry) {
     registry.add("geunal.s3.access-key") { TestStack.S3_ACCESS_KEY }
     registry.add("geunal.s3.secret-key") { TestStack.S3_SECRET_KEY }
     registry.add("geunal.s3.backups-bucket") { TestStack.BACKUPS_BUCKET }
+    registry.add("geunal.s3.access-logs-bucket") { TestStack.ACCESS_LOGS_BUCKET }
 }

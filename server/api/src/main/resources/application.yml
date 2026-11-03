@@ -12,6 +12,11 @@ spring:
     # Every JSON field the protocol names is snake_case (user_id, group_id, base_version).
     property-naming-strategy: SNAKE_CASE
 
+# Caddy, the one way in from outside (infra/alpha), sets X-Forwarded-For to the client's address; Tomcat takes it from
+# a private-network peer only, so the access log records the device and not the proxy (api-server.md §10).
+server:
+  forward-headers-strategy: native
+
 # JSON lines only. Request and response bodies, ciphertext and tokens never reach a log (api-server.md §10).
 logging:
   structured:
@@ -67,10 +72,17 @@ geunal:
     android-package: app.geunal
     android-fingerprints:
       - "DE:B8:C0:15:7E:58:20:68:36:81:A1:8D:74:0B:2D:17:6B:FC:AA:67:48:68:9E:5B:25:4B:2A:53:9C:52:1E:B8"
+  # POST /me/alpha-stats (protocol §14). GEUNAL_ALPHA_STATS_ENABLED=true on the alpha server only; elsewhere 404.
+  alpha-stats:
+    enabled: false
+  # How often sign-ins and refreshes move from access_log_outbox to the access-logs bucket.
+  access-log:
+    ship-every: PT5M
   # Object storage for backups (S3-compatible: NCP Object Storage, SeaweedFS locally). GEUNAL_S3_ENDPOINT is where the
   # API reaches the store; GEUNAL_S3_PUBLIC_ENDPOINT, if different, is the address devices reach, which presigned URLs
   # are signed for. GEUNAL_S3_ACCESS_KEY and GEUNAL_S3_SECRET_KEY come from the secret manager. GEUNAL_S3_BACKUPS_BUCKET
-  # is the full bucket name (<prefix>-backups). The prod profile refuses to start without an endpoint.
+  # and GEUNAL_S3_ACCESS_LOGS_BUCKET are full bucket names (<prefix>-backups, <prefix>-access-logs). The prod profile
+  # refuses to start without an endpoint.
   s3:
     endpoint: ""
     public-endpoint: ""
@@ -78,3 +90,4 @@ geunal:
     access-key: ""
     secret-key: ""
     backups-bucket: backups
+    access-logs-bucket: access-logs
