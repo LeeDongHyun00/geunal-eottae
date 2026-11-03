@@ -33,6 +33,7 @@
 1. **`DELETE /me`와 "새 키로 시작"에 기기 키 서명 `"geunal delete v1" ‖ nonce`를 더합니다.** 사용자가 확정했고, 새 코어 세션의 첫 일입니다(`docs/security/threat-model.md` 3.7).
    - 계약 변경이므로 `docs/parts/protocol.md`(13장 "계정 삭제", 10장 "새 키로 시작")와 `core/vectors/`부터 고칩니다. `DELETE /me`를 구현하는 백엔드 #69와 맞춥니다.
    - 코어: `account.rs`의 `deletion_request`(지금은 게스트만 복구 키로 같은 문장에 서명)와 `upload_recovery`의 `new_key` 경로, `fake.rs`의 `delete_account`·`put_recovery`.
+   - 게스트의 첫 `PUT /me/recovery`에도 서명을 요구하면 QA가 적은 "첫 업로드 창"이 닫힙니다. 넣을지는 보안이 정합니다(`.claude/handoff/qa.md` "기다리는 결정").
 2. **앱이 우리 CA만 믿게 하는 계획(M2 전):** 인프라가 초안을 쓰면, 코어는 `core/geunal-sync/src/tls.rs`(지금은 webpki-roots 번들, `docs/adr/0002-http-tls-stack.md`)를 바꾸는 비용을 검토합니다.
 3. 음력 생일로 추천을 받는 시험을 더합니다(위 대조표의 "일부").
 4. 백엔드 #62·#69와 인프라 #64가 머지되면 `make e2e`에 계정 흐름(로그인, 복구 업로드, 백업, 삭제)을 더합니다. 지금은 가짜 서버와 `server/api/openapi.yaml`의 필드 대조까지입니다.
