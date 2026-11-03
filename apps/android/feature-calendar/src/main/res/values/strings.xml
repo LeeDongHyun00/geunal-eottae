@@ -77,6 +77,10 @@
     <string name="calendar_repeat_every_years">%1$d년마다</string>
 
     <!-- 5. 빠른 입력 -->
+    <string name="quick_entry_day_events">이날 일정 %1$d개</string>
+    <string name="quick_entry_day_events_more">%1$d개 더 보기</string>
+    <string name="quick_entry_day_events_less">접기</string>
+    <string name="quick_entry_day_event_time">%1$s부터 %2$s까지</string>
     <string name="quick_entry_suggestions">추천 · 누르면 바로 저장돼요</string>
     <string name="quick_entry_chip_hint">누르면 바로 저장돼요</string>
     <string name="quick_entry_typed">직접 입력</string>

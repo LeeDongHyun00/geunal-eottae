@@ -51,11 +51,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.geunal.core.EventInput
+import app.geunal.core.EventItem
 import app.geunal.core.Palette
 import app.geunal.core.Suggestion
 import app.geunal.designsystem.GeunalType
@@ -70,19 +72,23 @@ import app.geunal.designsystem.components.pressScale
 import app.geunal.feature.calendar.R
 import app.geunal.feature.calendar.support.CalendarColors
 import app.geunal.feature.calendar.support.ChipTime
+import app.geunal.feature.calendar.support.DayText
 import app.geunal.feature.calendar.support.text
 import app.geunal.designsystem.R as DesignR
 
 /**
- * The quick entry sheet (m1.md screen 5, boards/QuickEntry): the day as the title, five suggestion chips that save at
- * once, then a title and a range on the 0–24 strip, with the calendar and repeat chips and "저장" at the bottom. A chip
- * closes the sheet before the core answers; "저장" keeps it up until then, so a refusal leaves what was typed.
+ * The quick entry sheet (m1.md screen 5, boards/QuickEntry): the day as the title, the day's events when it has any
+ * (boards/QuickEntryDay), five suggestion chips that save at once, then a title and a range on the 0–24 strip, with the
+ * calendar and repeat chips and "저장" at the bottom. A chip closes the sheet before the core answers; "저장" keeps it
+ * up until then, so a refusal leaves what was typed.
  */
 @Composable
 fun QuickEntrySheet(
     model: QuickEntryModel,
     actions: EventActions,
     onDismiss: () -> Unit,
+    /** A row of the day's events: that event's editor. */
+    onEvent: (EventItem) -> Unit,
     /** "자세히": the editor with what is typed so far. */
     onMore: (EventInput) -> Unit,
 ) {
@@ -104,7 +110,7 @@ fun QuickEntrySheet(
         Column(
             Modifier
                 .fillMaxWidth()
-                .height(sheetHeight())
+                .height(sheetHeight(eventRows = state.shownEvents.size))
                 .padding(horizontal = Metrics.Sheet.paddingSide)
                 .padding(bottom = Metrics.Sheet.paddingBottom),
         ) {
@@ -113,6 +119,9 @@ fun QuickEntrySheet(
                 modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = Space.s),
             ) {
                 Header(model, onClose = onDismiss)
+                if (state.events.isNotEmpty()) {
+                    DayEvents(state, day = model.day, onToggle = model::toggleEvents, onEvent = onEvent)
+                }
                 if (state.suggestions.isNotEmpty()) {
                     Suggestions(state.suggestions, color = model::color) { suggestion ->
                         onDismiss()
@@ -128,18 +137,114 @@ fun QuickEntrySheet(
 }
 
 /**
- * 552 high in the board, grabber included; it grows with the font scale as iOS's does with Dynamic Type, never past
- * 90% of the window, and the content scrolls inside it when it does not fit.
+ * 552 high in the board, grabber included, and taller by the day's events when it lists them (decision 42); it grows
+ * with the font scale as iOS's does with Dynamic Type, never past 90% of the window, and the content scrolls inside it
+ * when it does not fit.
  */
 @Composable
-private fun sheetHeight() =
+private fun sheetHeight(eventRows: Int) =
     with(LocalDensity.current) {
         val window =
             LocalWindowInfo.current.containerSize.height
                 .toDp()
-        val board = (SHEET_HEIGHT - Metrics.Sheet.paddingTop - Metrics.Sheet.grabberHeight) * fontScale.coerceAtLeast(1f)
+        val events = if (eventRows == 0) 0.dp else EVENTS_HEADER + EVENTS_GAP + EVENT_ROW * eventRows + 18.dp
+        val board = (SHEET_HEIGHT - Metrics.Sheet.paddingTop - Metrics.Sheet.grabberHeight + events) * fontScale.coerceAtLeast(1f)
         minOf(board, window * Metrics.Sheet.MAX_HEIGHT_RATIO)
     }
+
+/**
+ * "이날 일정 N개" (m1.md screen 5, decision 42): a grey group of the day's events in the core's order, three rows until
+ * "N개 더 보기" opens the rest in place. A row opens that event's editor, so an event the month cell hid behind "+N" is
+ * one tap away. Birthdays and holidays stay on the line under the title.
+ */
+@Composable
+private fun DayEvents(
+    state: QuickEntryModel.State,
+    day: String,
+    onToggle: () -> Unit,
+    onEvent: (EventItem) -> Unit,
+) {
+    val neutrals = LocalNeutralColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(EVENTS_GAP), modifier = Modifier.testTag("quickEntry.dayEvents")) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(
+                painterResource(DesignR.drawable.ds_ic_calendar),
+                contentDescription = null,
+                tint = neutrals.secondaryText,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(
+                stringResource(R.string.quick_entry_day_events, state.events.size),
+                style = GeunalType.caption.copy(fontWeight = FontWeight.SemiBold),
+                color = neutrals.secondaryText,
+                modifier = Modifier.weight(1f).semantics { heading() },
+            )
+            if (state.foldedEvents > 0) {
+                // The line stays the board's 18 high: Compose widens a small clickable's touch area to the minimum
+                // touch target on its own, so the toggle is still easy to hit.
+                Text(
+                    if (state.showsAllEvents) {
+                        stringResource(R.string.quick_entry_day_events_less)
+                    } else {
+                        stringResource(R.string.quick_entry_day_events_more, state.foldedEvents)
+                    },
+                    style = GeunalType.caption.copy(fontWeight = FontWeight.SemiBold),
+                    color = neutrals.secondaryText,
+                    modifier = Modifier.clickable(role = Role.Button, onClick = onToggle).testTag("quickEntry.eventsToggle"),
+                )
+            }
+        }
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.input)).background(neutrals.groupedBackground)) {
+            state.shownEvents.forEachIndexed { index, event ->
+                if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(neutrals.fill))
+                DayEventRow(event, day, onClick = { onEvent(event) }, modifier = Modifier.testTag("quickEntry.event.$index"))
+            }
+        }
+    }
+}
+
+/** One of the day's events: the calendar's dot, the title in 15 · 600 and the time in tabular figures, or "종일". */
+@Composable
+private fun DayEventRow(
+    event: EventItem,
+    day: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val neutrals = LocalNeutralColors.current
+    val minutes = QuickEntryModel.minutesOn(event, day)
+    val time = if (event.allDay) stringResource(R.string.calendar_all_day) else DayText.range(minutes.first, minutes.last)
+    // "교양 수업, 09:00부터 10:30까지": the dash would be read as a minus sign.
+    val spoken =
+        if (event.allDay) {
+            time
+        } else {
+            stringResource(R.string.quick_entry_day_event_time, DayText.clock(minutes.first), DayText.clock(minutes.last))
+        }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Space.s),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = EVENT_ROW)
+                .clickable(role = Role.Button, onClick = onClick)
+                // After the click in the chain, so the click stays on the node.
+                .clearAndSetSemantics { contentDescription = "${event.title}, $spoken" }
+                .padding(horizontal = 14.dp),
+    ) {
+        Box(Modifier.size(8.dp).background(CalendarColors.marker(event.color), CircleShape))
+        Text(
+            event.title,
+            style = GeunalType.buttonSmall,
+            color = neutrals.ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(time, style = GeunalType.secondary.copy(fontFeatureSettings = "tnum"), color = neutrals.secondaryText, maxLines = 1)
+    }
+}
 
 @Composable
 private fun Header(
@@ -455,3 +560,10 @@ private fun MenuChip(
 
 /** The board's sheet height, grabber included. */
 private val SHEET_HEIGHT = 552.dp
+
+/** A row of the day's events (m1.md screen 5 "줄 44"). */
+private val EVENT_ROW = 44.dp
+
+/** The "이날 일정 N개" line and the gap under it, as boards/QuickEntryDay draws them. */
+private val EVENTS_HEADER = 18.dp
+private val EVENTS_GAP = 8.dp
