@@ -161,7 +161,7 @@ M1부터 계정을 다른 기기로 옮기는 길이 둘입니다([공통 계약
 | 잠금이 풀린 기기 | "나 › 복구 코드"의 12단어(위 줄). 새 제공자 증명으로 계정 삭제와 "백업 없이 새로 시작"(백업 모두 삭제). 카카오톡 로그인은 확인 한 번으로 새 증명을 줄 수 있음 | 기기 인증(2026-10-26 사용자 결정). 12단어를 보여 주기 전, 새로 시작이 백업을 지우기 직전, 계정 삭제의 마지막 단계에서 기기 주인을 확인함([앱 PR 보안 점검표](app-review.md) 3장) | 화면 잠금이 없는 기기는 묻지 않고 진행합니다. 확인할 것이 없고, 계정 삭제는 스토어 규정상 늘 할 수 있어야 하기 때문입니다. 대신 화면 잠금을 권합니다. 카카오 재인증 프롬프트와 서버의 `auth_time` 확인은 하지 않습니다. `auth_time`은 백엔드를 만들 때 카카오 토큰에 실제로 들어오는지 확인한 뒤 다시 봅니다 | 앱 ＋`asks for the device owner before showing the recovery code`, ＋`asks for the device owner before starting fresh`, ＋`asks for the device owner before deleting the account` |
 | 도난 기기에 남은 `E` | 게스트면 그 `E`로 다시 복귀해 계정을 다시 가져감 | 해제(403 `device_revoked`, `revoke` 이벤트)를 받은 기기는 세션, 기기 서명 키, `E`, AMK, 그룹 상태를 지움(13장) | 공격자가 기기를 오프라인으로 두면 해제를 받지 못해 `E`가 남습니다. 그때는 복구 코드 화면의 기기 인증이 마지막 방어입니다 | 코어 ＋`a revoked device forgets its session, signing key, E and the AMK and keeps its events` |
 | 12단어 일부와 DB 덤프(또는 운영자) | 남은 단어를 찾아 `E`. 그러면 백업과 계정 | 서버에 가는 값(래핑된 AMK, 복구 ID, 복구 공개키)이 모두 64MiB Argon2id를 한 번 거친 `K`에서 나와, 후보마다 Argon2id가 듦(10장) | 드러난 단어가 많으면 여전히 풀립니다. 어림으로 GPU 한 대로, 남은 단어가 4개면 십수 년 이상, 3개면 며칠에서 몇 주, 2개면 몇십 분입니다 | 벡터 `recovery.json` |
-| 세션(리프레시 토큰) 탈취 | 세션으로 할 수 있는 것 | 복구 자료를 덮어쓰려면 지금 코드의 서명이 필요(10장). 계정 삭제에는 다시 증명이 필요(게스트는 복구 서명, 카카오는 새 ID 토큰, Apple은 새 인가 코드, 13장). 계정 삭제와 "새 키로 시작"에는 기기 키의 서명도 필요(10·13장, 2026-11-03). 기기 키는 기기를 떠나지 않아서, 세션에 제공자 증명까지 모은 사람도 하지 못함. 이미 교체된 리프레시 토큰이 다시 오면 그 기기의 세션을 모두 끊음(재사용 감지, [API](../parts/api-server.md) 4장) | 재사용 감지가 끊기 전까지 세션으로 할 수 있는 나머지(그룹 나가기, 방장이면 강퇴)는 남습니다. 되돌릴 수 없는 것은 막았습니다. **게스트의 첫 업로드 창:** 게스트가 복구 자료를 아직 올리지 못한 동안(로그인 직후의 업로드가 실패해 다음 동기화를 기다리는 동안)에는, 첫 `PUT /me/recovery`에 증명이 필요 없습니다. 그래서 세션을 가진 사람이 자기 복구 자료를 먼저 올릴 수 있습니다. 그러면 원래 기기는 자료를 올리지 못하고(403 `recovery_proof_required`), 공격자는 `POST /auth/recover`로 계정을 가져갑니다. 아래 검토할 결정 | API ＋`refuses to overwrite recovery material without the current code's signature`, ＋`refuses to delete an account without a fresh proof and deletes nothing`, ＋`refuses to delete an account or start over without the device key's signature`, ＋`a reused refresh token signs the device out`, 코어 `a_stolen_session_with_a_fresh_provider_proof_neither_deletes_nor_starts_over_without_the_device_key`, 벡터 `device_signatures.json` |
+| 세션(리프레시 토큰) 탈취 | 세션으로 할 수 있는 것 | 복구 자료를 덮어쓰려면 지금 코드의 서명이 필요(10장). 계정 삭제에는 다시 증명이 필요(게스트는 복구 서명, 카카오는 새 ID 토큰, Apple은 새 인가 코드, 13장). 계정 삭제와 "새 키로 시작"에는 기기 키의 서명도 필요(10·13장, 2026-11-03). 기기 키는 기기를 떠나지 않아서, 세션에 제공자 증명까지 모은 사람도 하지 못함. 이미 교체된 리프레시 토큰이 다시 오면 그 기기의 세션을 모두 끊음(재사용 감지, [API](../parts/api-server.md) 4장) | 재사용 감지가 끊기 전까지 세션으로 할 수 있는 나머지(그룹 나가기, 방장이면 강퇴)는 남습니다. 되돌릴 수 없는 것은 막았습니다. **게스트의 첫 업로드 창:** 게스트가 복구 자료를 아직 올리지 못한 동안(로그인 직후의 업로드가 실패해 다음 동기화를 기다리는 동안)에는, 첫 `PUT /me/recovery`에 증명이 필요 없습니다. 그래서 세션을 가진 사람이 자기 복구 자료를 먼저 올릴 수 있습니다. 그러면 원래 기기는 자료를 올리지 못하고(403 `recovery_proof_required`), 공격자는 `POST /auth/recover`로 계정을 가져갑니다. 아래 해결안 | API ＋`refuses to overwrite recovery material without the current code's signature`, ＋`refuses to delete an account without a fresh proof and deletes nothing`, ＋`refuses to delete an account or start over without the device key's signature`, ＋`a reused refresh token signs the device out`, 코어 `a_stolen_session_with_a_fresh_provider_proof_neither_deletes_nor_starts_over_without_the_device_key`, 벡터 `device_signatures.json` |
 | 카카오·Apple 계정 탈취 | 교체 티켓으로 백업 암호문과 래핑된 AMK(풀지 못함). `POST /auth/replace`로 계정. M2부터 그룹의 새 대화. 제공자 로그인 30분 안이나 새 제공자 증명으로 "백업 없이 새로 시작"을 고르면 서버의 백업을 모두 지움(10장 "새 키로 시작") | 백업은 12단어 없이는 못 풂. 원래 기기는 `replaced_via`가 `provider`인 것을 보고 알아챔 | 계정과 그룹 접근은 넘어갑니다. 그룹 멤버에게 "새 기기에서 들어왔어요"를 보일지는 3.1의 검토할 결정입니다. 지운 백업은 되돌릴 수 없지만, 원래 기기의 일정과 사람은 해제 뒤에도 남습니다. 원래 사용자가 다시 로그인해 새로 시작하면 그 기기에서 다시 백업합니다 | 코어 ＋`a second device restores with a replacement ticket and only then becomes the active device`, API ＋`allows a new recovery key only within 30 minutes of a provider sign-in or with a fresh provider proof` |
 | 제공자 토큰이나 nonce 가로채기 | 다른 기기 키로 먼저 로그인 | 제공자에게 넘기는 nonce가 `SHA-256("geunal login v1" ‖ nonce ‖ signature_key)`라, 토큰이 그 기기의 키에 묶임(13장). 카카오 SDK 2.29.0은 카카오톡 로그인과 웹 로그인 모두 인가 코드에 PKCE(S256)를 씀(2026-10-26 소스로 확인) | 없음 | API ＋`refuses a provider token bound to another device key`, 벡터 `login_nonce.json` |
 | 기기 백업에 남은 카카오 토큰 | 이 앱이 동의받은 항목(별명, openid)으로 카카오 API를 부름. 그날어때의 로그인과 삭제·새로 시작 증명은 만들지 못함. 제공자 토큰이 서버의 nonce와 기기 키에 묶이기 때문(13장) | 카카오 SDK의 기본 토큰 저장소(iOS `UserDefaults`, 안드로이드 SharedPreferences)는 기기 백업과 기기 이전으로 옮겨짐. 그래서 앱은 SDK를 초기화한 직후 저장소를 메모리 구현으로 바꾸고, 로그인 뒤에는 늘 로그아웃함([앱 PR 보안 점검표](app-review.md) 4장). 안드로이드 백업 규칙은 앱의 설정 파일만 이름으로 넣음(2026-10-30, #49 검토에서 찾음) | 없음 | 앱 ＋`keeps Kakao tokens in memory only` |
@@ -174,7 +174,36 @@ M1부터 계정을 다른 기기로 옮기는 길이 둘입니다([공통 계약
 - PR #26 리뷰의 제안은 대부분 계약에 들어갔습니다([공통 계약](../parts/protocol.md) 10·13장). 복구 코드 화면의 기기 인증은 2026-10-26에 정했고, 새로 시작과 계정 삭제 앞에도 둡니다(위 "잠금이 풀린 기기" 줄).
 - 보안 안내 페이지(M4)에 적을 것: 게스트의 12단어는 계정과 백업을 여는 유일한 열쇠이고, 본 사람은 계정을 가져갈 수 있습니다.
 
-**검토할 결정(사용자, 계약):** 게스트의 첫 `PUT /me/recovery`(서버에 복구 자료가 없을 때)에도 기기 키의 서명을 요구할지 정해야 합니다(위 "세션 탈취" 줄의 첫 업로드 창). 요구하면 세션만으로는 첫 자료를 올리지 못해 이 창이 닫힙니다. 비용은 nonce 요청 하나와 서명 하나이고, 기기 키는 이미 기기에 있습니다. 창이 열리는 것은 로그인 직후의 업로드가 실패한 짧은 동안뿐이지만, 열리면 게스트 계정을 통째로 가져가므로 QA·보안은 닫기를 권합니다.
+**해결안(QA·보안 제안, 2026-11-03, 사용자 확인 대기): 복구 자료를 올릴 때마다 기기 키로 그 자료에 서명합니다.** 위 "세션 탈취" 줄의 첫 업로드 창을 닫습니다.
+
+- **nonce에만 서명하면 모자랍니다.** 3.7의 중간자(앱과 API 사이에 낀 사람)는 기기가 서명한 요청에서 복구 자료만 자기 것으로 바꿔 서버에 넘길 수 있습니다. 같은 이유로 지금 있는 두 서명도 올리는 자료를 묶지 못합니다.
+  - 덮어쓰기 증명(`"geunal recovery rotate v1" ‖ nonce`): 게스트의 덮어쓰기 요청을 가로채면 계정을 가져갑니다.
+  - #95의 새 키 서명(`"geunal new key v1" ‖ nonce`): "백업 없이 새로 시작" 요청을 가로채면 백업이 지워진 계정에 공격자의 복구 자료가 남습니다. 원래 사용자는 새 기기에서 자기 백업을 풀지 못합니다(서버의 래핑된 AMK가 공격자 것). 공격자는 지금 코드를 아는 사람이 되어 세션만으로 자료를 다시 바꿀 수 있고, 제공자 연결이 끊긴 동안에는 12단어로 계정에 들어옵니다(위 "제공자 연결 끊김 알림 위조" 줄).
+- **계약(10장):** 모든 `PUT /me/recovery`(첫 업로드, 덮어쓰기, 새 키)에 `nonce`(`GET /auth/nonce`)와 `device_signature`를 넣습니다. 이 기기의 등록된 키로 다음에 서명합니다.
+  - `문장 ‖ nonce ‖ 복구 ID(16바이트) ‖ 복구 공개키(32바이트) ‖ 래핑된 AMK(72바이트)`
+  - 문장은 `new_key`면 `"geunal new key v1"`(#95의 문장에 자료를 붙임), 아니면 `"geunal recovery upload v1"`입니다. 백업을 지우는 요청과 지우지 않는 요청의 서명이 서로 맞지 않게 하려는 것입니다. `"geunal recovery v1"`은 Argon2id salt라 쓰지 않습니다.
+  - nonce는 요청마다 하나입니다. 덮어쓰기 증명이나 카카오 nonce 묶기가 있으면 같은 값을 씁니다.
+  - 이어 붙이는 값의 길이가 모두 정해져 있어(서버의 nonce는 32바이트를 base64url로 적은 43자) 경계가 모호하지 않습니다.
+  - 덮어쓰기 증명의 문장은 그대로 둡니다. 기기 서명이 자료를 묶기 때문입니다.
+- **서버:** 길이를 확인한 다음, 복구 ID 충돌·지금 코드의 증명·제공자 증명(Apple 코드 교환 포함)보다 먼저 세션 기기의 등록된 키로 서명을 확인합니다. nonce는 지금처럼 지우면서 한 번만, 5분 안에만 받습니다. 서명이 없거나 틀리면 아무것도 바꾸지 않습니다. 오류는 `new_key`면 403 `reauth_required`(#95와 같음), 그 밖에는 403 `recovery_proof_required`라 오류 표는 바뀌지 않습니다.
+- **코어:** `upload_recovery`가 재시도를 포함해 요청마다 nonce를 받아 서명합니다. 지금 코드로 다시 증명하는 재시도는 `new_key: false`이므로 `"geunal recovery upload v1"`로 서명합니다. 앱 API(UniFFI)는 그대로라 앱이 할 일은 없습니다.
+- **벡터:** `device_signatures.json`에 고정 시드·nonce·자료로 만든 `recovery_upload`를 더하고, `new_key`의 문장에 같은 자료를 붙입니다. QA가 따로 다시 계산합니다.
+- **시험:**
+  - 코어 `a_stolen_session_cannot_put_recovery_material_before_the_device`: 게스트의 첫 업로드가 실패한 동안 세션만 가진 사람은 자기 자료를 올리지 못합니다. 다음 동기화에 기기의 자료가 올라가고, 공격자의 `POST /auth/recover`는 실패합니다.
+  - 코어 `recovery_material_swapped_under_the_devices_signature_is_refused`: 기기가 서명한 요청의 자료를 바꾸면 첫 업로드·덮어쓰기·새 키 모두 403이고, 저장된 자료와 백업은 그대로입니다.
+  - API ＋`refuses recovery material without the device key's signature over it`.
+- **남는 것:**
+  - 계정을 만드는 순간에 이미 끼어 있던 중간자는 게스트 가입 요청(`POST /auth/guest`)의 기기 키를 자기 것으로 바꿔 등록하므로 처음부터 계정을 가집니다. 카카오·Apple 가입은 nonce 묶기가 제공자 토큰을 기기 키에 묶어 이 일이 없습니다. 게스트의 이 경우는 3.7의 CA 결정만 막습니다.
+  - 중간자는 업로드를 계속 막을 수 있습니다(장애). 기기는 다시 시도하고, 그동안 백업하지 않습니다.
+  - 잠금이 풀린 기기와 기기 안의 악성 코드는 기기 키로 서명할 수 있습니다. 기기 인증(위 "잠금이 풀린 기기" 줄)의 몫입니다.
+- **검토한 다른 방법:**
+  - 게스트 가입 요청에 복구 자료를 함께 넣어 창을 없앰: 게스트의 첫 업로드만 닫히고, 카카오·Apple 계정의 첫 업로드와 덮어쓰기·새 키의 바꿔치기는 남습니다. 가입 전에 Argon2id(64MiB)를 돌려야 해서 가입 흐름도 바뀝니다.
+  - 계정을 만든 뒤 몇 분 안에만 첫 업로드를 받음: 그 몇 분 안의 세션 탈취와 중간자를 막지 못합니다.
+  - 첫 업로드에만 nonce 서명을 요구함: 세션 탈취는 막지만 중간자의 바꿔치기는 막지 못합니다.
+- **비용과 순서:**
+  - 코어는 업로드마다 nonce 요청 하나(덮어쓰기와 새 키는 이미 받음)와 서명 하나를 더합니다. 백엔드는 `DELETE /me`와 새 키(#95)의 서명 확인을 `PUT /me/recovery` 전체로 넓힙니다.
+  - #95가 머지되기 전에 새 키 문장에 자료를 붙이면 계약과 벡터를 한 번만 바꿉니다. 서버의 `PUT /me/recovery`는 아직 머지되지 않은 #69에 있으므로 거기서 함께 넣으면 됩니다.
+  - 이 PR에 `user-approved`가 붙으면 채택한 것으로 봅니다. 코어가 계약(10장)·벡터·코어·가짜 서버·시험을, 백엔드가 서버 확인을 맡습니다. 구현이 머지되면 QA가 위 "세션 탈취" 줄에서 첫 업로드 창을 지웁니다.
 
 ### 3.7 이름과 인증서: `geunaleottae.com`
 
@@ -201,7 +230,7 @@ M1 알파부터 API 주소는 `api.geunaleottae.com`입니다([인프라](../par
 **정한 것(2026-11-03, 사용자):** 되돌릴 수 없는 두 요청에 기기 키의 서명을 요구합니다([공통 계약](../parts/protocol.md) 10장 "새 키로 시작", 13장 "계정 삭제").
 
 - `DELETE /me`(모든 계정 종류)는 `"geunal delete v1" ‖ nonce`에 서명합니다.
-- `new_key: true`인 `PUT /me/recovery`는 `"geunal new key v1" ‖ nonce`에 서명합니다.
+- `new_key: true`인 `PUT /me/recovery`는 `"geunal new key v1" ‖ nonce`에 서명합니다. 3.6의 해결안을 채택하면 이 문장 뒤에 올리는 복구 자료가 붙고, 다른 `PUT /me/recovery`도 서명합니다.
 - 서명이 없거나 틀리면 403 `reauth_required`이고 아무것도 바꾸지 않습니다. 서버는 nonce를 한 번만 받습니다.
 - 두 요청의 문장을 나눠, 한쪽에 쓴 서명이 다른 쪽에 맞지 않게 합니다. 기기 키가 서명하는 다른 문장(로그인의 nonce 그대로, `"geunal replace v1" ‖ ticket`, MLS의 레이블 서명)과도 겹치지 않습니다.
 - 게스트의 삭제 복구 서명과 문장이 같지만, 서버는 각각을 자기 공개키(복구 공개키, 등록된 기기 키)로 확인하므로 서로 대신하지 못합니다.
