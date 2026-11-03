@@ -16,6 +16,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
@@ -139,6 +140,31 @@ class PeopleModelTest {
             advanceUntilIdle()
 
             assertNull(model.editing.value)
+            assertTrue(
+                model.state.value.people
+                    .any { it.name == "서연" },
+            )
+        }
+
+    @Test
+    fun aSaveThatEndsLateLeavesTheNextSheetOpen() =
+        runTest(dispatcher) {
+            val model = model()
+            model.load()
+
+            // Saved, then closed with its close button before the core answered, and another person opened.
+            model.edit(null)
+            val first = checkNotNull(model.editing.value)
+            first.setName("서연")
+            first.launchSave()
+            model.closeEditor()
+            model.edit(minsu)
+            val second = checkNotNull(model.editing.value)
+            second.setName("민수 형")
+            advanceUntilIdle()
+
+            assertSame(second, model.editing.value)
+            assertEquals("민수 형", second.state.value.name)
             assertTrue(
                 model.state.value.people
                     .any { it.name == "서연" },

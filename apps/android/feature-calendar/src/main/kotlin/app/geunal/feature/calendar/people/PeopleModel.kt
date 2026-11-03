@@ -103,7 +103,9 @@ class PeopleModel(
 
     /** "＋" with no one, or a row with its person. */
     fun edit(person: Person?) {
-        _editing.value = PersonEditModel(person, core, scope, io, onDone = ::edited, now = now)
+        lateinit var editor: PersonEditModel
+        editor = PersonEditModel(person, core, scope, io, onDone = { edited(editor) }, now = now)
+        _editing.value = editor
     }
 
     fun closeEditor() {
@@ -113,7 +115,9 @@ class PeopleModel(
     /** "연락처에서 생일 가져오기", also from the empty list and the new person's sheet (m1.md §2.4). */
     fun openImport() {
         _editing.value = null
-        _importing.value = ContactsImportModel(contacts, core, scope, io, onFinished = ::finishedImport)
+        lateinit var importer: ContactsImportModel
+        importer = ContactsImportModel(contacts, core, scope, io, onFinished = { finishedImport(importer, it) })
+        _importing.value = importer
     }
 
     fun closeImport() {
@@ -130,15 +134,20 @@ class PeopleModel(
         _imported.value = null
     }
 
-    private fun finishedImport(result: ContactImport) {
-        _importing.value = null
+    // The models' work outlives their sheets: a sheet closed while it saved may have given way to another, and the late
+    // answer must not close that one with what was typed in it.
+    private fun finishedImport(
+        importer: ContactsImportModel,
+        result: ContactImport,
+    ) {
+        _importing.compareAndSet(importer, null)
         _imported.value = result
         scope.launch { load() }
     }
 
-    /** After the sheet saved or deleted: the lists again, the sheet closed. */
-    private fun edited() {
-        _editing.value = null
+    /** After the sheet saved or deleted: the lists again, and that sheet closed if it is still up. */
+    private fun edited(editor: PersonEditModel) {
+        _editing.compareAndSet(editor, null)
         scope.launch { load() }
     }
 

@@ -73,6 +73,29 @@ class PersonEditModelTest {
         }
 
     @Test
+    fun switchingCalendarsKeepsADayThatCalendarHas() =
+        runTest(dispatcher) {
+            val model = model()
+            model.setName("민수")
+
+            // No lunar month has a 31st: the core would refuse it and the save would only fail.
+            model.setBirthday(1, 31)
+            model.setLunar(true)
+            assertEquals(30, model.state.value.day)
+
+            // Lunar 2월 30일 is a day; the solar February keeps 29 for the leap-year birthdays.
+            model.setBirthday(2, 30)
+            model.setLunar(false)
+            assertEquals(29, model.state.value.day)
+
+            // A day both calendars have stays as it was.
+            model.setBirthday(3, 14)
+            model.setLunar(true)
+            assertEquals(14, model.state.value.day)
+            advanceUntilIdle()
+        }
+
+    @Test
     fun opensAPersonAndDeletesThem() =
         runTest(dispatcher) {
             val mom = Samples.person("p2", "엄마", 10, 3, lunar = true)

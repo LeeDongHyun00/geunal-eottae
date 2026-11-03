@@ -82,9 +82,15 @@ class PersonEditModel(
         _state.update { it.copy(name = name) }
     }
 
-    /** 양력·음력: the day stays as typed, read in the other calendar. */
+    /**
+     * 양력·음력: the day stays as typed, read in the other calendar, and comes down to that calendar's last day when it
+     * has none so late (solar 31 → lunar 30, lunar 30 February → solar 29): the core refuses a day that does not exist.
+     */
     fun setLunar(lunar: Boolean) {
-        _state.update { it.copy(lunar = lunar, leapMonth = lunar && it.leapMonth, solarThisYear = null) }
+        _state.update {
+            val day = it.month?.let { month -> it.day?.coerceAtMost(lastDay(month, lunar)) } ?: it.day
+            it.copy(lunar = lunar, leapMonth = lunar && it.leapMonth, day = day, solarThisYear = null)
+        }
         scope.launch { refreshSolar() }
     }
 
@@ -163,8 +169,20 @@ class PersonEditModel(
         return done
     }
 
-    private companion object {
-        fun stateOf(person: Person): State {
+    companion object {
+        /**
+         * The last day a birthday can be on in [month]: 30 in any lunar month, and the solar month's own length with 29
+         * in February, since a 2월 29일 birthday exists (rust-core.md §6, core `valid_day`).
+         */
+        fun lastDay(
+            month: Int,
+            lunar: Boolean,
+        ): Int = if (lunar) LUNAR_DAYS else SOLAR_DAYS[month - 1]
+
+        private const val LUNAR_DAYS = 30
+        private val SOLAR_DAYS = listOf(31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+
+        private fun stateOf(person: Person): State {
             val birthday = person.birthday
             val lunar = birthday?.calendar as? BirthdayCalendar.Lunar
             return State(

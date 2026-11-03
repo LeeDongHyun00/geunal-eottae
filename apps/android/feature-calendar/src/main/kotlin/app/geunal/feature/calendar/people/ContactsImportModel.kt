@@ -45,6 +45,12 @@ class ContactsImportModel(
     /** The system's question is up; another start (a rotation) must not ask twice. */
     private var asking = false
 
+    /**
+     * A read of the contacts is on its way. Set before it is launched, so a second start (a rotation while reading) or
+     * resume does not read again: a late second answer would replace the list and drop what was chosen meanwhile.
+     */
+    private var reading = false
+
     /** Reads at once with the permission; without it, [ask] puts the system's question up. */
     fun start(ask: () -> Unit) {
         val phase = _state.value.phase
@@ -107,9 +113,15 @@ class ContactsImportModel(
     }
 
     private fun launchRead() {
+        if (reading) return
+        reading = true
         scope.launch {
-            val found = reader.birthdays()
-            _state.value = State(phase = Phase.PICKING, candidates = found.withBirthday, withoutBirthday = found.withoutBirthday)
+            try {
+                val found = reader.birthdays()
+                _state.value = State(phase = Phase.PICKING, candidates = found.withBirthday, withoutBirthday = found.withoutBirthday)
+            } finally {
+                reading = false
+            }
         }
     }
 }

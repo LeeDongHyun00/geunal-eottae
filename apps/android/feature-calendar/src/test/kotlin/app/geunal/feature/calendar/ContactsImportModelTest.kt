@@ -32,14 +32,36 @@ class ContactsImportModelTest {
         private val list: List<ContactInput>,
     ) : ContactsReader {
         var allowed = true
+        var reads = 0
 
         override fun canRead(): Boolean = allowed
 
-        override suspend fun birthdays(): ContactsFound =
-            if (allowed) ContactsFound(list, withoutBirthday = 3) else ContactsFound(emptyList(), 0)
+        override suspend fun birthdays(): ContactsFound {
+            reads++
+            return if (allowed) ContactsFound(list, withoutBirthday = 3) else ContactsFound(emptyList(), 0)
+        }
     }
 
     private fun TestScope.model() = ContactsImportModel(reader, core, scope = this, io = dispatcher, onFinished = { finished = it })
+
+    @Test
+    fun readsTheContactsOnceWhenStartedAgainWhileReading() =
+        runTest(dispatcher) {
+            val model = model()
+
+            // A rotation while the first read is on its way starts the sheet again.
+            model.start(ask = { error("the permission is there") })
+            model.start(ask = { error("the permission is there") })
+            model.resumed()
+            advanceUntilIdle()
+            assertEquals(1, reader.reads)
+
+            model.toggle("41")
+            model.start(ask = { error("the permission is there") })
+            advanceUntilIdle()
+            assertEquals(1, reader.reads)
+            assertEquals(setOf("41"), model.state.value.selected)
+        }
 
     @Test
     fun startsWithNobodyChosenAndImportsOnlyThePicked() =

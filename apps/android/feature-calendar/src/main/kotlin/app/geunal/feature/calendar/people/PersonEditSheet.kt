@@ -389,7 +389,7 @@ private fun MonthDayDialog(
     var chosenMonth by remember { mutableIntStateOf(month ?: 1) }
     var chosenDay by remember { mutableIntStateOf(day ?: 1) }
     var chosenLeap by remember { mutableStateOf(leap) }
-    val days = if (lunar) 30 else SOLAR_DAYS[chosenMonth - 1]
+    val days = PersonEditModel.lastDay(chosenMonth, lunar)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.person_birthday)) },
@@ -404,7 +404,7 @@ private fun MonthDayDialog(
                     (1..12).forEach { value ->
                         NumberChip(value, value == chosenMonth, tag = "person.month.$value") {
                             chosenMonth = value
-                            chosenDay = chosenDay.coerceAtMost(if (lunar) 30 else SOLAR_DAYS[value - 1])
+                            chosenDay = chosenDay.coerceAtMost(PersonEditModel.lastDay(value, lunar))
                         }
                     }
                 }
@@ -493,9 +493,6 @@ private fun YearDialog(
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.editor_cancel)) } },
     )
 }
-
-/** Days in each solar month, with 29 for February: a birthday on 29 February is kept. */
-private val SOLAR_DAYS = listOf(31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
 
 private const val FIRST_YEAR = 1900
 
