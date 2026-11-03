@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -56,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.geunal.core.EventInput
 import app.geunal.core.Palette
 import app.geunal.core.Suggestion
 import app.geunal.designsystem.GeunalType
@@ -63,6 +63,7 @@ import app.geunal.designsystem.LocalNeutralColors
 import app.geunal.designsystem.Metrics
 import app.geunal.designsystem.Radius
 import app.geunal.designsystem.Space
+import app.geunal.designsystem.components.ButtonKind
 import app.geunal.designsystem.components.GeunalButton
 import app.geunal.designsystem.components.GeunalSheet
 import app.geunal.designsystem.components.pressScale
@@ -82,6 +83,8 @@ fun QuickEntrySheet(
     model: QuickEntryModel,
     actions: EventActions,
     onDismiss: () -> Unit,
+    /** "자세히": the editor with what is typed so far. */
+    onMore: (EventInput) -> Unit,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     // Between "저장" and the core's answer: a second tap must not add the event twice.
@@ -119,7 +122,7 @@ fun QuickEntrySheet(
                 Box(Modifier.fillMaxWidth().height(1.dp).background(LocalNeutralColors.current.separator))
                 Typed(state, model, onDone = save)
             }
-            BottomRow(state, model, saving = saving, onSave = save)
+            BottomRow(state, model, saving = saving, onSave = save, onMore = { onMore(model.draft()) })
         }
     }
 }
@@ -311,29 +314,45 @@ private fun Typed(
     }
 }
 
+/** The calendar and repeat chips, then "자세히" and "저장"; on a narrow phone the two buttons take a line of their own. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BottomRow(
     state: QuickEntryModel.State,
     model: QuickEntryModel,
     saving: Boolean,
     onSave: () -> Unit,
+    onMore: () -> Unit,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(Space.xs),
+        verticalArrangement = Arrangement.spacedBy(Space.xs),
+        itemVerticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(top = Space.s),
     ) {
         CalendarMenu(state, model)
         RepeatMenu(state, model)
-        Spacer(Modifier.weight(1f))
-        GeunalButton(
-            text = stringResource(if (state.needsTitle) R.string.quick_entry_needs_title else R.string.quick_entry_save),
-            onClick = onSave,
-            enabled = state.canSave && !saving,
-            height = Metrics.Button.secondary,
-            fullWidth = false,
-            modifier = Modifier.testTag("quickEntry.save"),
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.xxs, Alignment.End),
+            modifier = Modifier.weight(1f),
+        ) {
+            GeunalButton(
+                text = stringResource(R.string.quick_entry_more),
+                onClick = onMore,
+                kind = ButtonKind.Text,
+                height = Metrics.Button.secondary,
+                modifier = Modifier.testTag("quickEntry.more"),
+            )
+            GeunalButton(
+                text = stringResource(if (state.needsTitle) R.string.quick_entry_needs_title else R.string.quick_entry_save),
+                onClick = onSave,
+                enabled = state.canSave && !saving,
+                height = Metrics.Button.secondary,
+                fullWidth = false,
+                modifier = Modifier.testTag("quickEntry.save"),
+            )
+        }
     }
 }
 

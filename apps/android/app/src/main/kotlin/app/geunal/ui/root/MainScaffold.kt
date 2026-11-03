@@ -35,6 +35,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import app.geunal.R
+import app.geunal.core.EventItem
+import app.geunal.core.UpNext
 import app.geunal.designsystem.BrandColors
 import app.geunal.designsystem.GroupColors
 import app.geunal.designsystem.LocalDarkTheme
@@ -61,6 +63,8 @@ enum class MainTab { CALENDAR, ME }
 fun MainScaffold(
     nextUp: NextUpModel,
     toasts: ToastCenter,
+    /** The next-up bar's event, for the editor (m1.md §2.6). */
+    onOpenEvent: (EventItem) -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable (tab: MainTab, padding: PaddingValues) -> Unit,
 ) {
@@ -75,8 +79,17 @@ fun MainScaffold(
             containerColor = neutrals.background,
             bottomBar = {
                 Column(Modifier.onSizeChanged { barsHeight = it.height }) {
-                    // The event editor opens from the bar once it exists (m1.md §2.6); until then it leads to the calendar.
-                    NextUpSlot(nextUp = nextUp, toasts = toasts, toastShown = toast != null, onOpen = { tab = MainTab.CALENDAR })
+                    // An event opens in the editor over the calendar (m1.md §2.6); a birthday leads to the calendar until
+                    // 사람·생일 exists.
+                    NextUpSlot(
+                        nextUp = nextUp,
+                        toasts = toasts,
+                        toastShown = toast != null,
+                        onOpen = { item ->
+                            tab = MainTab.CALENDAR
+                            if (item is UpNext.Event) onOpenEvent(item.item)
+                        },
+                    )
                     TabBar(tab = tab, onSelect = { tab = it })
                 }
             },
@@ -100,7 +113,7 @@ private fun NextUpSlot(
     nextUp: NextUpModel,
     toasts: ToastCenter,
     toastShown: Boolean,
-    onOpen: () -> Unit,
+    onOpen: (UpNext) -> Unit,
 ) {
     Box(
         Modifier
@@ -113,7 +126,7 @@ private fun NextUpSlot(
             enter = fadeIn(tween(Motion.TOAST_OUT_MS)),
             exit = fadeOut(tween(Motion.TOAST_IN_MS)),
         ) {
-            NextUpBar(model = nextUp, onOpen = { onOpen() })
+            NextUpBar(model = nextUp, onOpen = onOpen)
         }
         ToastHost(center = toasts, style = ToastStyle.Slot)
     }
