@@ -5,6 +5,7 @@ import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.TextUnit
@@ -45,10 +46,15 @@ object GeunalType {
         fontFeatureSettings = "tnum",
         // Word-level breaking for Korean (design README §3); API 33 and later honour it, older releases break anywhere.
         lineBreak = LineBreak.Paragraph.copy(wordBreak = LineBreak.WordBreak.Phrase),
+        // Android breaks by phrase only for text it knows is Korean, and by default it takes the device's language: on a
+        // phone set to English, "있는지" split as "있 / 는지". Every string of the app is Korean, so the scale says so.
+        localeList = KOREAN,
         platformStyle = PlatformTextStyle(includeFontPadding = false),
         lineHeightStyle = LineHeightStyle(alignment = LineHeightStyle.Alignment.Center, trim = LineHeightStyle.Trim.None),
     )
 }
+
+private val KOREAN = LocaleList("ko-KR")
 
 /** The same steps on Material's slots, for the Material components that read the theme's typography. */
 val GeunalTypography =
