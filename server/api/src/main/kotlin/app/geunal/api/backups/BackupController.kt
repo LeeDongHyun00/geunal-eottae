@@ -3,6 +3,7 @@ package app.geunal.api.backups
 import app.geunal.api.auth.AccountRepository
 import app.geunal.api.auth.AuthProperties
 import app.geunal.api.auth.Caller
+import app.geunal.api.auth.DeviceSignatures
 import app.geunal.api.auth.Ed25519
 import app.geunal.api.auth.Nonces
 import app.geunal.api.auth.ProviderProofs
@@ -28,13 +29,17 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.UUID
 
-/** `PUT /me/recovery`. The last four fields prove the right to overwrite material that is already stored. */
+/**
+ * `PUT /me/recovery`. Every upload carries [nonce] and the device key's [deviceSignature] over it and the material; the
+ * last three fields prove the right to overwrite material that is already stored.
+ */
 data class RecoveryUploadRequest(
     val amkWrapped: ByteArray,
     val recoveryId: ByteArray,
     val recoveryPublicKey: ByteArray,
     val newKey: Boolean = false,
     val nonce: String? = null,
+    val deviceSignature: ByteArray? = null,
     val proof: ByteArray? = null,
     val kakaoIdToken: String? = null,
     val appleAuthorizationCode: String? = null,
@@ -111,6 +116,18 @@ class BackupController(
         accounts.lock(caller.userId)
         // Checked again under the account lock: a guest's recovery may just have replaced this device.
         val device = devices.current(caller.deviceId) ?: throw devices.revokedError(caller.deviceId)
+        // The device key signs the material itself, first upload included: a stolen session cannot put its own code in
+        // before the device does, and nobody in between can swap the material under a signature. It spends the one
+        // nonce, which the current code's proof and the Kakao binding below share.
+        val nonce = body.nonce.orEmpty()
+        val signed =
+            DeviceSignatures.recoveryUpload(body.newKey, nonce, body.recoveryId, body.recoveryPublicKey, body.amkWrapped)
+        if (body.deviceSignature == null ||
+            !nonces.spend(body.nonce) ||
+            !Ed25519.verify(device.signatureKey, signed, body.deviceSignature)
+        ) {
+            throw if (body.newKey) reauthRequired() else proofRequired()
+        }
         val owner = backups.recoveryOwner(body.recoveryId)
         if (owner != null && owner != caller.userId) {
             throw ApiException(HttpStatus.CONFLICT, "recovery_conflict", "another account uses this recovery_id; make a new code")
@@ -120,28 +137,39 @@ class BackupController(
             val since = devices.providerAuthAt(caller.deviceId)
             val recent = since != null && since.isAfter(clock.instant().minus(auth.providerWindow))
             if (!recent &&
-                proofs.prove(accounts.links(caller.userId), device, body.kakaoIdToken, body.nonce, body.appleAuthorizationCode) == null
+                proofs.prove(
+                    accounts.links(caller.userId),
+                    device,
+                    body.kakaoIdToken,
+                    nonce,
+                    body.appleAuthorizationCode,
+                    nonceSpent = true,
+                ) ==
+                null
             ) {
-                throw ApiException(
-                    HttpStatus.FORBIDDEN,
-                    "reauth_required",
-                    "starting fresh needs a provider sign-in on this device or a fresh provider proof",
-                )
+                throw reauthRequired()
             }
             backups.deleteAll(caller.userId)
         } else if (current != null) {
-            val message = ROTATE_LABEL + body.nonce.orEmpty().toByteArray(Charsets.US_ASCII)
-            val proven = body.proof != null && nonces.spend(body.nonce) && Ed25519.verify(current.publicKey, message, body.proof)
-            if (!proven) {
-                throw ApiException(
-                    HttpStatus.FORBIDDEN,
-                    "recovery_proof_required",
-                    "overwriting needs the current code's signature",
-                )
-            }
+            val message = ROTATE_LABEL + nonce.toByteArray(Charsets.US_ASCII)
+            if (body.proof == null || !Ed25519.verify(current.publicKey, message, body.proof)) throw proofRequired()
         }
         backups.putRecovery(caller.userId, body.recoveryId, body.recoveryPublicKey, body.amkWrapped)
     }
+
+    private fun reauthRequired() =
+        ApiException(
+            HttpStatus.FORBIDDEN,
+            "reauth_required",
+            "starting fresh needs the device key's signature and a provider sign-in on this device or a fresh provider proof",
+        )
+
+    private fun proofRequired() =
+        ApiException(
+            HttpStatus.FORBIDDEN,
+            "recovery_proof_required",
+            "storing recovery material needs the device key's signature, and overwriting it the current code's too",
+        )
 
     @GetMapping("/me/recovery")
     fun recovery(

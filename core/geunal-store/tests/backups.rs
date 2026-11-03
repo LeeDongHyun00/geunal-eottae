@@ -213,6 +213,38 @@ fn restoring_merges_into_a_store_and_replaces_the_empty_default_calendar() {
 }
 
 #[test]
+fn keeps_the_contact_id_this_store_matched_and_never_takes_the_archives() {
+    let (_a, source) = open();
+    let archive = source
+        .write(|db| {
+            fill(db);
+            db.archive("2026-10-26T13:05:00+09:00")
+        })
+        .unwrap();
+    assert_eq!(archive.people.iter().find(|p| p.id == "p-minsu").unwrap().contact_id.as_deref(), Some("contact-7"));
+
+    // Another phone: "contact-7" there is somebody else, so the restored person carries no contact id and a later
+    // import adds that contact as a new person instead of overwriting 민수.
+    let (_b, other) = open();
+    other.write(|db| db.restore_archive(&archive)).unwrap();
+    let minsu = other.read(|db| db.person("p-minsu")).unwrap().unwrap();
+    assert_eq!((minsu.name.as_str(), minsu.contact_id), ("민수", None));
+    assert!(other.read(|db| db.person_by_contact("contact-7")).unwrap().is_none());
+
+    // The phone that made the backup, signing back in: 민수 is still its contact-7.
+    source.write(|db| db.restore_archive(&archive)).unwrap();
+    assert_eq!(source.read(|db| db.person("p-minsu")).unwrap().unwrap().contact_id.as_deref(), Some("contact-7"));
+
+    // The other phone imported 민수 from its own address book after the restore; a later restore of the first phone's
+    // backup keeps this phone's id, not the archive's.
+    other
+        .write(|db| db.put_person(&PersonRow { contact_id: Some("here-3".into()), ..db.person("p-minsu")?.unwrap() }))
+        .unwrap();
+    other.write(|db| db.restore_archive(&archive)).unwrap();
+    assert_eq!(other.read(|db| db.person("p-minsu")).unwrap().unwrap().contact_id.as_deref(), Some("here-3"));
+}
+
+#[test]
 fn discarding_removes_own_data_and_keeps_device_calendars() {
     let (_dir, store) = open();
     store

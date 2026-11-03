@@ -111,6 +111,21 @@ class Client(
 
     fun delete(path: String) = api.send(HttpMethod.DELETE, path, token)
 
+    /**
+     * `PUT /me/recovery` as the core sends it (protocol §10): [body] with this device's signature over the words for its
+     * kind, its nonce (a fresh one unless [body] names one) and the material it carries.
+     */
+    fun putRecovery(body: Map<String, Any?>): Reply {
+        val nonce = body["nonce"] as String? ?: nonce()
+        val words = if (body["new_key"] == true) "geunal new key v1" else "geunal recovery upload v1"
+        val signed =
+            (words + nonce).toByteArray(Charsets.US_ASCII) +
+                body["recovery_id"] as ByteArray +
+                body["recovery_public_key"] as ByteArray +
+                body["amk_wrapped"] as ByteArray
+        return put("/me/recovery", body + mapOf("nonce" to nonce, "device_signature" to sign(signed)))
+    }
+
     /** An Add commit for [epoch] that brings [member]'s device in, with the Welcome addressed to it. */
     fun addMember(
         groupId: UUID,
