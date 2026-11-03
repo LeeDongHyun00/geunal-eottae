@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -61,6 +63,10 @@ fun RootScreen(
             )
         }
     val phase by model.phase.collectAsStateWithLifecycle()
+    val resources = LocalResources.current
+    LaunchedEffect(model, resources) {
+        model.notices.collect { model.toasts.show(resources.getString(it.text)) }
+    }
     LifecycleStartEffect(model) {
         model.appBecameActive()
         onStopOrDispose {}
@@ -88,6 +94,7 @@ fun RootScreen(
                         ),
                     onFinish = model::finishOnboarding,
                     modifier = modifier,
+                    round = model.onboardingRound,
                 )
             }
         AppPhase.Main ->
@@ -100,11 +107,21 @@ fun RootScreen(
                             DeviceContactsReader(context),
                             DeviceNotificationAccess(context),
                             container.deviceAuth,
+                            container.providers,
+                            model.accountEnded,
+                            model::accountDeleted,
                         )
                     }
                 val covers = coverModel.covers
                 val me = coverModel.me
-                CoveredTabs(covers = covers, me = me, toasts = model.toasts, modifier = modifier) {
+                val online by container.connectivity.isOnline.collectAsStateWithLifecycle()
+                CoveredTabs(
+                    covers = covers,
+                    me = me,
+                    toasts = model.toasts,
+                    online = online,
+                    modifier = modifier,
+                ) {
                     MainScaffold(
                         nextUp = nextUp,
                         toasts = model.toasts,
@@ -135,6 +152,7 @@ fun RootScreen(
                                     onAlerts = covers::alerts,
                                     onRecoveryCode = me::recoveryCode,
                                     onBackup = me::backup,
+                                    onDeleteAccount = me::deleteAccount,
                                     modifier = Modifier.padding(padding),
                                 )
                         }
@@ -157,6 +175,7 @@ private fun CoveredTabs(
     covers: CalendarCovers,
     me: MeCovers,
     toasts: ToastCenter,
+    online: Boolean,
     modifier: Modifier = Modifier,
     tabs: @Composable () -> Unit,
 ) {
@@ -172,7 +191,9 @@ private fun CoveredTabs(
                 val transitions = if (route.pushed) pushTransitions else coverTransitions
                 NavEntry(route, metadata = transitions) { CalendarCoverContent(route, covers, toasts) }
             } else if (route is MeCover) {
-                NavEntry(route, metadata = pushTransitions) { MeCoverContent(route, me, toasts) }
+                NavEntry(route, metadata = pushTransitions) {
+                    MeCoverContent(route, me, toasts, online)
+                }
             } else {
                 NavEntry(route) { tabs() }
             }

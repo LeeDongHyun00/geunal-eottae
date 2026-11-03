@@ -14,6 +14,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -21,7 +23,9 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -163,6 +167,59 @@ class AppViewModelTest {
             viewModel.appBecameActive()
             advanceUntilIdle()
             assertEquals(2, core.syncs)
+        }
+
+    @Test
+    fun aSyncThatFindsTheAccountDeletedStartsOverAndSaysSo() =
+        runTest(dispatcher) {
+            onboarding.isFinished = true
+            val core = FakeCore()
+            val viewModel = viewModel { core }
+            advanceUntilIdle()
+            assertEquals(AppPhase.Main, viewModel.phase.value)
+            val round = viewModel.onboardingRound
+
+            core.syncError = CoreException.Api(401u, "account_deleted", "")
+            viewModel.appBecameActive()
+            advanceUntilIdle()
+
+            assertEquals(AppPhase.Onboarding, viewModel.phase.value)
+            assertFalse(onboarding.isFinished)
+            assertEquals("onboarding starts from the welcome screen", round + 1, viewModel.onboardingRound)
+            assertEquals(AppNotice.ACCOUNT_DELETED, viewModel.notices.first())
+        }
+
+    @Test
+    fun tellsWhatHoldsTheAccountsScreensWhenItEnds() =
+        runTest(dispatcher) {
+            onboarding.isFinished = true
+            val viewModel = viewModel { FakeCore() }
+            advanceUntilIdle()
+            var ended = 0
+            val watcher = launch { viewModel.accountEnded.collect { ended++ } }
+            advanceUntilIdle()
+
+            viewModel.accountDeleted()
+            advanceUntilIdle()
+
+            assertEquals(1, ended)
+            watcher.cancel()
+        }
+
+    @Test
+    fun anotherRefusalKeepsTheTabs() =
+        runTest(dispatcher) {
+            onboarding.isFinished = true
+            val core = FakeCore()
+            val viewModel = viewModel { core }
+            advanceUntilIdle()
+
+            core.syncError = CoreException.Api(401u, "token_expired", "")
+            viewModel.appBecameActive()
+            advanceUntilIdle()
+
+            assertEquals(AppPhase.Main, viewModel.phase.value)
+            assertTrue(onboarding.isFinished)
         }
 
     @Test

@@ -201,15 +201,17 @@ class OnboardingViewModel(
 
 /**
  * The first run (m1.md §2.1): welcome → sign-in → permissions, or → the recovery code when the account lives on another
- * device, its backup waits on the server, or a guest comes back. [onFinish] opens the calendar.
+ * device, its backup waits on the server, or a guest comes back. [onFinish] opens the calendar. A new [round] (after
+ * the account was deleted) starts over from the welcome screen instead of where the last run ended.
  */
 @Composable
 fun OnboardingFlow(
     dependencies: OnboardingDependencies,
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
+    round: Int = 0,
 ) {
-    val model = viewModel { OnboardingViewModel(dependencies) }
+    val model = viewModel(key = "onboarding-$round") { OnboardingViewModel(dependencies) }
     val resources = LocalResources.current
     val isOnline by dependencies.isOnline.collectAsStateWithLifecycle()
     LaunchedEffect(model, resources) {

@@ -52,8 +52,8 @@ import java.time.Instant
 
 /**
  * The 나 tab (m1.md screen 12): the account card, the calendar group (캘린더 관리, the shift templates and 사람·생일 with
- * their counts from one `meSummary`), and the account group with 알림. The security and backup group, the device
- * calendars and the deletion follow with those screens.
+ * their counts from one `meSummary`), the security and backup group, and the account group with 알림 and the red 계정
+ * 삭제. The device calendars follow with that screen.
  */
 @Composable
 fun MeScreen(
@@ -65,6 +65,7 @@ fun MeScreen(
     onAlerts: () -> Unit,
     onRecoveryCode: () -> Unit,
     onBackup: () -> Unit,
+    onDeleteAccount: (AccountView) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val neutrals = LocalNeutralColors.current
@@ -163,6 +164,16 @@ fun MeScreen(
                 onClick = onAlerts,
                 modifier = Modifier.testTag("me.alerts"),
             )
+            // Only an account can be deleted; the calendar without one has nothing on the server.
+            summary?.account?.let { account ->
+                SettingsDivider()
+                SettingsRow(
+                    title = stringResource(R.string.me_delete_account),
+                    titleColor = neutrals.sunday,
+                    onClick = { onDeleteAccount(account) },
+                    modifier = Modifier.testTag("me.delete"),
+                )
+            }
         }
     }
 }
