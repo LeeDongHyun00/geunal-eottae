@@ -52,7 +52,14 @@ class SignInLimitTests {
         val device = Client(api, "limited")
         val nonce = { api.send(HttpMethod.GET, "/auth/nonce", headers = from) }
 
-        repeat(3) { nonce().expect(200) }
+        repeat(2) { nonce().expect(200) }
+        // The same endpoint under a percent-encoded spelling is the same endpoint, and counts.
+        val encoded =
+            HttpRequest
+                .newBuilder(URI("http://localhost:$port/auth/%6eonce"))
+                .header("X-Forwarded-For", from.values.single())
+                .build()
+        assertThat(HttpClient.newHttpClient().send(encoded, HttpResponse.BodyHandlers.discarding()).statusCode()).isEqualTo(200)
         val first = nonce().expect(200).string("nonce")
         api.send(HttpMethod.POST, "/auth/stub", body = device.loginRequest(first), headers = from).expect(201)
 

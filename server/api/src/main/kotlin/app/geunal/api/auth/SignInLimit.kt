@@ -4,6 +4,7 @@ import app.geunal.api.common.HourlyLimit
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.context.annotation.Configuration
+import org.springframework.web.method.HandlerMethod
 import org.springframework.web.servlet.HandlerInterceptor
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
@@ -28,9 +29,10 @@ class SignInLimit(
         response: HttpServletResponse,
         handler: Any,
     ): Boolean {
-        // GET /auth/apple is the App Link page, not a sign-in.
-        val counted = request.requestURI == NONCE || (request.method == "POST" && request.requestURI in SIGN_INS)
-        if (counted) limits.check("sign-in", request.remoteAddr, properties.signInsPerHour)
+        // The registered patterns match the decoded path, so a percent-encoded spelling is counted like the plain one;
+        // the raw URI is never compared. The one handler under these paths that is no sign-in is the App Link page.
+        val page = handler is HandlerMethod && handler.beanType == AppLinksController::class.java
+        if (!page) limits.check("sign-in", request.remoteAddr, properties.signInsPerHour)
         return true
     }
 
