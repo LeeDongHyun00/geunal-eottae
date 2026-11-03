@@ -28,5 +28,7 @@ class TypeTest {
             // splits words between syllables.
             assertEquals(LocaleList("ko-KR"), style.localeList)
         }
+        // Read after GeunalType, the order that once left the theme's slots null while the two initialised each other.
+        assertEquals(GeunalType.body, GeunalTypography.bodyLarge)
     }
 }

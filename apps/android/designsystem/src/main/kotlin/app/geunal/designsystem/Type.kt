@@ -18,6 +18,10 @@ import androidx.compose.ui.unit.sp
  * draws the scale.
  */
 object GeunalType {
+    // Ahead of the steps that read it, and inside this object: a top-level value would start the file's initializer,
+    // which builds GeunalTypography from this object's steps while they are still null.
+    private val KOREAN = LocaleList("ko-KR")
+
     val largeTitle = style(32.sp, FontWeight.SemiBold, (-0.025).em)
     val title1 = style(26.sp, FontWeight.SemiBold, (-0.025).em)
     val title2 = style(20.sp, FontWeight.SemiBold, (-0.015).em)
@@ -53,8 +57,6 @@ object GeunalType {
         lineHeightStyle = LineHeightStyle(alignment = LineHeightStyle.Alignment.Center, trim = LineHeightStyle.Trim.None),
     )
 }
-
-private val KOREAN = LocaleList("ko-KR")
 
 /** The same steps on Material's slots, for the Material components that read the theme's typography. */
 val GeunalTypography =
