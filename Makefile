@@ -7,7 +7,7 @@ SHELL := /bin/bash
 .PHONY: help setup lint test lint-repo lint-core test-core build-android build-ios lint-api test-api image-api scan-api \
 	lint-gateway test-gateway image-gateway scan-gateway lint-android test-android connected-android up down e2e \
 	audit audit-core audit-apps \
-	lint-ios project-ios app-ios test-ios uitest-ios lock-ios \
+	lint-ios project-ios app-ios test-ios uitest-ios lock-ios archive-ios release-ios \
 	lint-terraform lock-terraform deploy-alpha
 
 # Providers download once into .tools (gitignored, cached in CI) instead of once per root.
@@ -73,6 +73,12 @@ test-ios: project-ios ## iOS: unit tests on the simulator
 
 uitest-ios: project-ios ## iOS: UI tests on the simulator, with each screen's capture in apps/ios/screenshots
 	apps/ios/scripts/xcodebuild.sh uitest
+
+archive-ios: project-ios ## iOS: archive the Release configuration for devices without signing (checks a release compiles)
+	apps/ios/scripts/release.sh check
+
+release-ios: project-ios ## iOS: archive, sign in the cloud and upload to TestFlight; needs the variables in infra/release/README.md
+	apps/ios/scripts/release.sh upload
 
 lock-ios: ## iOS: resolve the Swift packages again and write apps/ios/Package.resolved (after changing a dependency)
 	apps/ios/scripts/import-core.sh

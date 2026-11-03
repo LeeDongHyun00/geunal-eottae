@@ -46,6 +46,8 @@ jobs:
           key: ${{ steps.core.outputs.cache-primary-key }}
       - run: make lint-ios
       - run: make app-ios
+      # The Release configuration for devices, unsigned: TestFlight builds it (make release-ios), and nothing else does.
+      - run: make archive-ios
       - run: make test-ios
       - run: make uitest-ios
       # One PNG per screen, named like docs/design/screens, for the design session and the user to compare.
