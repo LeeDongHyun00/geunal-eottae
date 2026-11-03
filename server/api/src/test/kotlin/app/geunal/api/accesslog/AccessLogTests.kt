@@ -27,20 +27,21 @@ class AccessLogTests : ApiTest() {
 
     private fun forwardedFor(address: String) = mapOf("X-Forwarded-For" to address)
 
+    /** The lines of the access-logs object [key]. */
+    private fun lines(key: String): List<JsonNode> {
+        val gzipped = TestStack.s3Client.getObjectAsBytes { it.bucket(TestStack.ACCESS_LOGS_BUCKET).key(key) }.asByteArray()
+        return GZIPInputStream(gzipped.inputStream())
+            .bufferedReader()
+            .readLines()
+            .map { api.mapper.readTree(it) }
+    }
+
     /** Every line of every object in the access-logs bucket. */
-    private fun shipped(): List<JsonNode> {
-        val s3 = TestStack.s3Client
-        return s3
+    private fun shipped(): List<JsonNode> =
+        TestStack.s3Client
             .listObjectsV2Paginator { it.bucket(TestStack.ACCESS_LOGS_BUCKET) }
             .contents()
-            .flatMap { item ->
-                val gzipped = s3.getObjectAsBytes { it.bucket(TestStack.ACCESS_LOGS_BUCKET).key(item.key()) }.asByteArray()
-                GZIPInputStream(gzipped.inputStream())
-                    .bufferedReader()
-                    .readLines()
-                    .map { api.mapper.readTree(it) }
-            }
-    }
+            .flatMap { lines(it.key()) }
 
     @Test
     fun `a sign-in and a refresh are logged with the address the proxy forwarded`() {
@@ -95,6 +96,26 @@ class AccessLogTests : ApiTest() {
         assertThat(line.path("user_id").stringValue()).isEqualTo(device.userId.toString())
         assertThat(line.path("ip").stringValue()).isEqualTo("198.51.100.4")
         assertThat(OffsetDateTime.parse(line.path("at").stringValue())).isAfter(OffsetDateTime.now().minusMinutes(5))
+    }
+
+    @Test
+    fun `a batch cut before a failed round goes again with the same rows under the same name`() {
+        val earlier = signIn()
+        // As if an earlier round had cut this batch and then failed to upload it or to delete its rows.
+        val cut = "2026/11/03/cut-${UUID.randomUUID()}.jsonl.gz"
+        jdbc
+            .sql("UPDATE access_log_outbox SET batch = :batch WHERE device_id = :id")
+            .param("batch", cut)
+            .param("id", earlier.deviceId)
+            .update()
+        val later = signIn()
+
+        accessLog.ship()
+
+        assertThat(lines(cut).map { it.path("device_id").stringValue() }).containsExactly(earlier.deviceId.toString())
+        assertThat(shipped().count { it.path("device_id").stringValue() == earlier.deviceId.toString() }).isEqualTo(1)
+        assertThat(shipped().count { it.path("device_id").stringValue() == later.deviceId.toString() }).isEqualTo(1)
+        assertThat(waiting(earlier.deviceId) + waiting(later.deviceId)).isEmpty()
     }
 
     @Test

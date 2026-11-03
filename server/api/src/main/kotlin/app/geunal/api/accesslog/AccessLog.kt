@@ -71,8 +71,9 @@ class AccessLog(
     }
 
     /**
-     * Writes the waiting rows to the bucket as gzipped JSON lines, one object per [BATCH], and removes them. An object
-     * is named by its rows' ids, so a batch retried after its delete failed overwrites the same object. A store that
+     * Writes the waiting rows to the bucket as gzipped JSON lines, at most [BATCH] to an object, and removes them. A
+     * batch is cut and named before its upload, so one whose upload or delete failed goes again first, with the same
+     * rows under the same name: a retry overwrites its object and never copies a line into a second one. A store that
      * fails leaves the rows for the next round; without storage (a local stack) they wait until the daily cleanup.
      */
     @Scheduled(fixedDelayString = "\${geunal.access-log.ship-every:PT5M}", initialDelayString = "\${geunal.access-log.ship-every:PT5M}")
@@ -80,7 +81,11 @@ class AccessLog(
         if (!store.configured) return
         val bucket = store.buckets.getValue(ObjectStore.ACCESS_LOGS)
         try {
-            while (shipBatch(bucket) == BATCH) continue
+            for (batch in cutEarlier()) send(bucket, batch)
+            while (true) {
+                val batch = cut() ?: break
+                if (send(bucket, batch) < BATCH) break
+            }
         } catch (e: RuntimeException) {
             log.warn("could not write the access log to object storage: {}", e.javaClass.simpleName)
         }
@@ -89,31 +94,57 @@ class AccessLog(
     /** Rows past the three months the law asks for that never reached the bucket. */
     fun expire(): Int = jdbc.sql("DELETE FROM access_log_outbox WHERE at < now() - interval '92 days'").update()
 
-    private fun shipBatch(bucket: String): Int =
+    private fun cutEarlier(): List<String> =
+        jdbc
+            .sql("SELECT DISTINCT batch FROM access_log_outbox WHERE batch IS NOT NULL")
+            .query(String::class.java)
+            .list()
+            .filterNotNull()
+
+    /** Names the next waiting rows' object after the first row's day and the ids; null when none wait. */
+    private fun cut(): String? =
         transaction.execute {
             val rows =
                 jdbc
-                    .sql(
-                        "SELECT id, at, event, user_id, device_id, ip FROM access_log_outbox ORDER BY id LIMIT :batch FOR UPDATE SKIP LOCKED",
-                    ).param("batch", BATCH)
-                    .query { rs, _ ->
-                        Row(
-                            rs.getLong("id"),
-                            rs.getObject("at", OffsetDateTime::class.java),
-                            rs.getString("event"),
-                            rs.getObject("user_id", UUID::class.java),
-                            rs.getObject("device_id", UUID::class.java),
-                            rs.getString("ip"),
-                        )
-                    }.list()
-            if (rows.isNotEmpty()) {
-                val first = rows.first()
-                val key = "${DAY.format(first.at.withOffsetSameInstant(ZoneOffset.UTC))}/${first.id}-${rows.last().id}.jsonl.gz"
-                store.put(bucket, key, gzip(rows), "application/gzip")
-                jdbc.sql("DELETE FROM access_log_outbox WHERE id IN (:ids)").param("ids", rows.map { it.id }).update()
-            }
-            rows.size
+                    .sql("SELECT id, at FROM access_log_outbox WHERE batch IS NULL ORDER BY id LIMIT :batch FOR UPDATE SKIP LOCKED")
+                    .param("batch", BATCH)
+                    .query { rs, _ -> rs.getLong("id") to rs.getObject("at", OffsetDateTime::class.java) }
+                    .list()
+            if (rows.isEmpty()) return@execute null
+            val (firstId, firstAt) = rows.first()
+            val batch = "${DAY.format(firstAt.withOffsetSameInstant(ZoneOffset.UTC))}/$firstId-${rows.last().first}.jsonl.gz"
+            jdbc
+                .sql("UPDATE access_log_outbox SET batch = :batch WHERE id IN (:ids)")
+                .param("batch", batch)
+                .param("ids", rows.map { it.first })
+                .update()
+            batch
         }
+
+    /** Uploads the rows of [batch] to the object of that name and removes them; returns how many there were. */
+    private fun send(
+        bucket: String,
+        batch: String,
+    ): Int {
+        val rows =
+            jdbc
+                .sql("SELECT id, at, event, user_id, device_id, ip FROM access_log_outbox WHERE batch = :batch ORDER BY id")
+                .param("batch", batch)
+                .query { rs, _ ->
+                    Row(
+                        rs.getLong("id"),
+                        rs.getObject("at", OffsetDateTime::class.java),
+                        rs.getString("event"),
+                        rs.getObject("user_id", UUID::class.java),
+                        rs.getObject("device_id", UUID::class.java),
+                        rs.getString("ip"),
+                    )
+                }.list()
+        if (rows.isEmpty()) return 0
+        store.put(bucket, batch, gzip(rows), "application/gzip")
+        jdbc.sql("DELETE FROM access_log_outbox WHERE batch = :batch").param("batch", batch).update()
+        return rows.size
+    }
 
     private fun gzip(rows: List<Row>): ByteArray {
         val bytes = ByteArrayOutputStream()

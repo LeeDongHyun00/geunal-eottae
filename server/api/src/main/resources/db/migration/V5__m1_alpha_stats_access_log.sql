@@ -17,5 +17,8 @@ CREATE TABLE access_log_outbox (
   event      text NOT NULL CHECK (event IN ('sign_in', 'refresh')),
   user_id    uuid NOT NULL,
   device_id  uuid NOT NULL,
-  ip         text NOT NULL
+  ip         text NOT NULL,
+  -- The object a row goes into, fixed (and committed) before the upload so a retried upload writes the same rows to
+  -- the same object; NULL until a shipping round takes the row.
+  batch      text
 );
