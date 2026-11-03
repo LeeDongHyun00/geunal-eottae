@@ -141,6 +141,9 @@ private struct EventLine: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(GeunalColor.ink)
                     .lineLimit(1)
+                    // On a locked phone the system decides, by its own settings, whether a title shows or is
+                    // redacted; the time and the dot stay, as they say little about the person.
+                    .privacySensitive()
             }
             Text(verbatim: WidgetText.time(event))
                 .font(.system(size: 12))
