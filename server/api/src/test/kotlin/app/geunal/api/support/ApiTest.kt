@@ -9,13 +9,19 @@ import org.springframework.test.context.DynamicPropertySource
 import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
 
-/** One running API with the auth stub on, shared by every test class that extends this. */
+/**
+ * One running API with the auth stub on and Kakao and Apple pointed at [FakeProviders], shared by every test class that
+ * extends this.
+ */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = ["geunal.auth.stub=true"])
 abstract class ApiTest {
     companion object {
         @JvmStatic
         @DynamicPropertySource
-        fun stack(registry: DynamicPropertyRegistry) = TestStack.register(registry)
+        fun stack(registry: DynamicPropertyRegistry) {
+            TestStack.register(registry)
+            FakeProviders.register(registry)
+        }
     }
 
     @Autowired
@@ -34,6 +40,16 @@ abstract class ApiTest {
         subject: String = "user-${UUID.randomUUID()}",
         platform: String = "ios",
     ): Client = Client(api, subject).also { it.login(platform) }
+
+    /** A new device of [subject]'s account that signs in, is told to replace the active one, and does. */
+    fun replaceDevice(
+        subject: String,
+        platform: String = "ios",
+    ): Client =
+        Client(api, subject).also {
+            val ticket = it.stubSignIn(platform).expect(200).string("ticket")
+            it.replace(ticket).expect(201)
+        }
 
     /** Listens on the Redis channels of these devices, as the gateway would. */
     fun inbox(vararg deviceIds: UUID): Inbox = Inbox(mapper, deviceIds.map { "d:$it" })

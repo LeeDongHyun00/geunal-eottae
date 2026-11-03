@@ -32,8 +32,36 @@ geunal:
     access-ttl: 15m
     refresh-ttl: 30d
     nonce-ttl: 5m
+    # How long a replace_required ticket stays good for POST /auth/replace and the restore reads (protocol §13).
+    ticket-ttl: 30m
     jwt:
       # GEUNAL_AUTH_JWT_KEYS: a JWK Set with at least one P-256 private key; the first one signs, all are published at
       # /.well-known/jwks.json so a key can be rotated by adding the new one in front. Empty means a fresh key for this
       # process, which is fine locally (the gateway fetches the JWKS at runtime) and refused under the prod profile.
       keys: ""
+    # Kakao Login (OpenID Connect). Sign-in is on only when both keys are set: GEUNAL_AUTH_KAKAO_APP_KEY is the native
+    # app key, which Kakao puts in the ID token's aud; GEUNAL_AUTH_KAKAO_ADMIN_KEY unlinks a deleted account. Both are
+    # secrets from the secret manager, never from this file.
+    kakao:
+      app-key: ""
+      admin-key: ""
+    # Sign in with Apple. Sign-in is on only when the four values below are set: the client secret is an ES256 JWT
+    # made from GEUNAL_AUTH_APPLE_TEAM_ID, GEUNAL_AUTH_APPLE_KEY_ID and GEUNAL_AUTH_APPLE_PRIVATE_KEY (the .p8 file's
+    # PEM text), and GEUNAL_AUTH_APPLE_REDIRECT_URI (https://<API host>/auth/apple/callback) is where Android's web
+    # sign-in returns. The audiences are the iOS bundle ID and the services ID (infra.md §10).
+    apple:
+      team-id: ""
+      key-id: ""
+      private-key: ""
+      redirect-uri: ""
+      bundle-id: app.geunal.ios
+      service-id: app.geunal.signin
+      # GEUNAL_AUTH_APPLE_APP_LINK: where /auth/apple/callback sends Android's sign-in result. The relative default is
+      # this server's own /auth/apple, the App Link path assetlinks.json covers.
+      app-link: /auth/apple
+  # /.well-known/assetlinks.json: the Android package and the SHA-256 of the Play app signing certificate in use
+  # (infra.md §10). GEUNAL_APP_LINKS_ANDROID_FINGERPRINTS takes a comma-separated list.
+  app-links:
+    android-package: app.geunal
+    android-fingerprints:
+      - "DE:B8:C0:15:7E:58:20:68:36:81:A1:8D:74:0B:2D:17:6B:FC:AA:67:48:68:9E:5B:25:4B:2A:53:9C:52:1E:B8"
