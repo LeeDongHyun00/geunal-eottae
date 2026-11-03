@@ -39,6 +39,32 @@ class AlertSettingsModelTest {
         }
 
     @Test
+    fun storesTheLastOfQuickChangesAndGoesBackToWhatTheCoreHoldsWhenRefused() =
+        runTest(dispatcher) {
+            val model = model()
+            model.load()
+            val loaded = model.state.value.settings
+
+            // Two changes before the first write ran: what is stored is what the screen shows.
+            model.setEventAlert(30)
+            model.setNextUpBar(false)
+            advanceUntilIdle()
+            assertEquals(model.state.value.settings, core.settings)
+            assertEquals(30, core.settings.eventAlert)
+            assertFalse(core.settings.nextUpBar)
+            val stored = core.settings
+
+            // Both refused: the screen goes back to what the core still holds, not to a half-way choice.
+            core.writeError = CoreException.Store("busy")
+            model.setEventAlert(60)
+            model.setBirthdayAlerts(false)
+            advanceUntilIdle()
+            assertEquals(stored, model.state.value.settings)
+            assertTrue(model.state.value.failed)
+            assertTrue(loaded != stored)
+        }
+
+    @Test
     fun putsAChangeBackWhenTheCoreRefuses() =
         runTest(dispatcher) {
             val model = model()

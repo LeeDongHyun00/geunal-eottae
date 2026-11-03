@@ -84,7 +84,8 @@ class CalendarsModel(
     /** A row with its calendar, or "＋ 새 캘린더" with none. */
     fun edit(calendar: CalendarView?) {
         val calendars = _state.value.calendars
-        _editing.value =
+        lateinit var editor: CalendarEditModel
+        editor =
             CalendarEditModel(
                 calendar = calendar,
                 isLast = calendar != null && calendars.size <= 1,
@@ -92,16 +93,21 @@ class CalendarsModel(
                 core = core,
                 scope = scope,
                 io = io,
-                onDone = ::edited,
+                onDone = { edited(editor) },
             )
+        _editing.value = editor
     }
 
     fun closeEditor() {
         _editing.value = null
     }
 
-    private fun edited() {
-        _editing.value = null
+    /**
+     * After a sheet saved or deleted: the list again, and that sheet closed if it is still up. Its work outlives the
+     * sheet, which may have been closed and given way to another calendar's before the core answered.
+     */
+    private fun edited(editor: CalendarEditModel) {
+        _editing.compareAndSet(editor, null)
         scope.launch { load() }
     }
 }

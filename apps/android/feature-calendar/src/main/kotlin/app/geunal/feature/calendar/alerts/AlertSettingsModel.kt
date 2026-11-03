@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** Whether the system lets this app post notifications at all. */
@@ -31,7 +33,8 @@ class DeviceNotificationAccess(
 /**
  * 알림 설정 (m1.md screen 19): the default alerts of timed and all-day events, the next-up bar, birthday alerts and
  * the long-weekend suggestions, all rung by this device. The core keeps the values and says what fires when; the
- * scheduling stays with the app. Each change is written at once, and put back when the core refuses it.
+ * scheduling stays with the app. Each change shows at once and is written in order; a refusal puts the screen back to
+ * what the core last took.
  */
 class AlertSettingsModel(
     private val core: CoreInterface,
@@ -51,6 +54,12 @@ class AlertSettingsModel(
 
     private var started = false
 
+    /** One write at a time: two in flight could land out of order and leave an older choice stored. */
+    private val writes = Mutex()
+
+    /** What the core holds, as read or last written; a refusal goes back to it. */
+    private var confirmed: NotificationSettings? = null
+
     fun start() {
         if (started) return
         started = true
@@ -59,6 +68,7 @@ class AlertSettingsModel(
 
     suspend fun load() {
         val settings = withContext(io) { coreRead { core.notificationSettings() } }
+        if (settings != null) confirmed = settings
         _state.update { it.copy(settings = settings ?: it.settings, systemEnabled = access.enabled()) }
     }
 
@@ -80,21 +90,29 @@ class AlertSettingsModel(
     fun setLeaveSuggestions(on: Boolean) = write { it.copy(leaveSuggestions = on) }
 
     private fun write(change: (NotificationSettings) -> NotificationSettings) {
-        val before = _state.value.settings ?: return
-        val after = change(before)
-        _state.update { it.copy(settings = after, failed = false) }
+        val shown = _state.value.settings ?: return
+        _state.update { it.copy(settings = change(shown), failed = false) }
         scope.launch {
-            val done =
-                try {
-                    withContext(io) { core.setNotificationSettings(after) }
-                    true
-                } catch (e: CoreException) {
-                    false
-                } catch (e: InternalException) {
-                    false
+            writes.withLock {
+                // The screen as it is now, which holds every change made so far; a later change's write finds it
+                // already stored and has nothing left to do.
+                val wanted = _state.value.settings ?: return@withLock
+                if (wanted == confirmed) return@withLock
+                val done =
+                    try {
+                        withContext(io) { core.setNotificationSettings(wanted) }
+                        true
+                    } catch (e: CoreException) {
+                        false
+                    } catch (e: InternalException) {
+                        false
+                    }
+                if (done) {
+                    confirmed = wanted
+                } else {
+                    _state.update { it.copy(settings = confirmed ?: it.settings, failed = true) }
                 }
-            // Put back only what this write changed, if nothing came after it.
-            if (!done) _state.update { if (it.settings == after) it.copy(settings = before, failed = true) else it.copy(failed = true) }
+            }
         }
     }
 

@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -93,6 +94,27 @@ class CalendarsModelTest {
             assertFalse(sheet.canDelete)
             assertFalse(sheet.delete())
             assertTrue(core.calls.none { it.startsWith("deleteCalendar") })
+        }
+
+    @Test
+    fun aSaveThatEndsLateLeavesTheNextSheetOpen() =
+        runTest(dispatcher) {
+            val model = model()
+            model.load()
+
+            // Saved, then closed before the core answered, and another calendar opened and typed in.
+            model.edit(null)
+            val first = checkNotNull(model.editing.value)
+            first.setName("학교")
+            first.launchSave()
+            model.closeEditor()
+            model.edit(null)
+            val second = checkNotNull(model.editing.value)
+            second.setName("동아리")
+            advanceUntilIdle()
+
+            assertSame(second, model.editing.value)
+            assertEquals("동아리", second.state.value.name)
         }
 
     @Test
