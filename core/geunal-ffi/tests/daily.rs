@@ -156,10 +156,12 @@ fn counts_only_events_created_on_this_device_and_sends_up_to_fourteen_missed_day
         a.core.clone().backup_now(None).await.unwrap();
         let words = a.core.recovery_words().unwrap();
 
-        // The events a restore brings are not this device's: only the one made here counts.
+        // The events a restore brings are not this device's: only the one made here counts. The tester agreed before
+        // the restore, so a restore that counted what it brings in would show here.
         let user = user_id(&kakao(&b.core, "olga", "올가").await.unwrap());
-        b.core.clone().restore_from_code(words, LocalDataChoice::Keep, None).await.unwrap();
         b.core.set_alpha_stats(true).unwrap();
+        b.core.clone().restore_from_code(words, LocalDataChoice::Keep, None).await.unwrap();
+        assert!(b.core.alpha_stats_enabled().unwrap(), "the restore keeps this device's agreement");
         b.core.record_app_foreground().unwrap();
         event(&b.core, "치과");
         b.core.clone().sync().await.unwrap();
