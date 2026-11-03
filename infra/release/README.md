@@ -41,6 +41,7 @@ M1부터 알파 빌드를 TestFlight와 플레이 내부 테스트 트랙으로 
 
 1. **GitHub 환경 두 개:** 저장소 Settings › Environments에서 `testflight`, `play-internal`을 만듭니다. 둘 다 Required reviewers에 본인을 넣고, Deployment branches를 `main`으로 제한합니다.
 2. **App Store Connect API 키:** Users and Access › Integrations › App Store Connect API › Team Keys에서 만듭니다. `.p8`은 한 번만 내려받을 수 있습니다.
+   - App Store Connect › 앱 › 가격 및 사용 가능 여부에서 판매 국가 가운데 프랑스를 뺍니다(위 "수출 규정").
    - 역할은 Admin으로 둡니다. 클라우드 서명이 배포 인증서와 프로필을 만들어야 하기 때문입니다. 더 낮은 역할(App Manager)로 되는지는 첫 업로드 뒤에 확인해 낮춥니다.
    - `testflight` 환경 비밀값: `ASC_KEY_P8`(파일 내용 전체), `ASC_KEY_ID`, `ASC_ISSUER_ID`, `KAKAO_APP_KEY`.
 3. **Apple 개발자 계정의 App ID 설정:** `app.geunal.ios`에 앱이 쓰는 기능(Sign in with Apple, App Groups 등)을 켭니다. 무엇을 켤지는 iOS 세션이 적어 드립니다.
@@ -51,7 +52,14 @@ M1부터 알파 빌드를 TestFlight와 플레이 내부 테스트 트랙으로 
 6. **플레이 첫 번들은 손으로:** Play는 새 앱의 첫 번들을 API로 받지 않습니다. `release-android`를 `upload` 끄고 돌려 아티팩트의 `.aab`를 받은 뒤, Play Console › 내부 테스트에 직접 올립니다. 이때의 서명이 업로드 키로 등록됩니다. 그 뒤로는 `upload`를 켠 채로 돌립니다.
 7. **테스터:** TestFlight 내부 테스터와 플레이 내부 테스트의 테스터 목록에 알파 테스터를 넣습니다.
 
+## 수출 규정(암호화)
+
+사용자가 면제로 신고하기로 정했습니다(2026-11-03). 근거와 지킬 조건은 [앱 심사](../../docs/security/app-review.md) 7장에 있습니다.
+
+- iOS `Info.plist`의 `ITSAppUsesNonExemptEncryption`이 `NO`라 App Store Connect가 빌드마다 묻지 않습니다(iOS 세션이 넣음).
+- 조건: 공개된 표준 알고리즘만 쓰고, 프랑스 App Store에는 내지 않습니다. 그래서 위 "사용자가 준비할 것" 2번에 판매 국가에서 프랑스를 빼는 일이 있습니다.
+- 플레이도 프랑스에 낼 때는 같은 조건을 봅니다. 내부 테스트는 초대한 테스터에게만 가므로 지금은 해당하지 않습니다.
+
 ## 아직 정하지 않은 것
 
-- **수출 규정(암호화):** 앱이 종단 간 암호화를 쓰므로, App Store Connect가 빌드마다 수출 규정 질문을 합니다. 답을 정해 `ITSAppUsesNonExemptEncryption`을 `Info.plist`에 두면 질문이 사라집니다. 답은 사용자가 정합니다.
 - **자동 배포:** 지금은 손으로만 돌립니다. `main` 머지마다 올리면 테스터가 받는 빌드가 너무 잦고 TestFlight 처리량도 씁니다. 알파가 안정되면 다시 봅니다.
