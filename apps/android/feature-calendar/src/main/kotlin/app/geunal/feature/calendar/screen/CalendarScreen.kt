@@ -13,9 +13,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -276,7 +279,15 @@ private fun CalendarHeader(
                 style = GeunalType.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
                 color = neutrals.secondaryText,
             )
-            Text(title, style = GeunalType.largeTitle, color = neutrals.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // A narrow phone gets a smaller title rather than an ellipsis, which would cut the dates off the range
+            // ("25–…"); below 24 it gives in and ellipsizes.
+            BasicText(
+                title,
+                style = GeunalType.largeTitle.copy(color = neutrals.ink),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                autoSize = TextAutoSize.StepBased(minFontSize = TITLE_MIN_SIZE, maxFontSize = GeunalType.largeTitle.fontSize),
+            )
         }
         Spacer(Modifier.width(Space.xs))
         SegmentedControl(
@@ -288,7 +299,7 @@ private fun CalendarHeader(
                 ),
             selected = kind.ordinal,
             onSelect = { onSelect(CalendarViewKind.entries[it]) },
-            modifier = Modifier.width(SEGMENT_WIDTH).testTag("calendar.segment"),
+            modifier = Modifier.widthIn(min = SEGMENT_WIDTH).testTag("calendar.segment"),
         )
         if (onNewEvent != null) {
             AddMenu(onNewEvent = onNewEvent, onStamp = onStamp)
@@ -337,3 +348,6 @@ private fun AddMenu(
 
 /** Three short labels, as wide as the boards draw the segment. */
 private val SEGMENT_WIDTH = 132.dp
+
+/** The smallest the header title goes on a narrow phone before it ellipsizes. */
+private val TITLE_MIN_SIZE = 24.sp

@@ -3,7 +3,6 @@ package app.geunal.designsystem.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -28,9 +27,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import app.geunal.designsystem.GeunalType
 import app.geunal.designsystem.LocalDarkTheme
@@ -131,7 +132,8 @@ fun GeunalSwitch(
 /**
  * 월 · 주 · 목록 and the like: the fill track with the chosen segment on white and a small shadow (components.md §4).
  * Drawn here rather than with Material's segmented buttons, which have a different shape; TalkBack reads each segment
- * as a tab that is selected or not.
+ * as a tab that is selected or not. The segments are equally wide and at least as wide as the longest label, which
+ * stays on one line: a fixed share of a narrow track split "목록" over two lines on a 320dp phone.
  */
 @Composable
 fun SegmentedControl(
@@ -142,7 +144,7 @@ fun SegmentedControl(
 ) {
     val neutrals = LocalNeutralColors.current
     val dark = LocalDarkTheme.current
-    Row(
+    EqualCells(
         modifier =
             modifier
                 .heightIn(min = Metrics.Segment.height)
@@ -150,7 +152,6 @@ fun SegmentedControl(
                 .background(neutrals.fill)
                 .padding(Metrics.Segment.padding)
                 .selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         options.forEachIndexed { index, label ->
             val isSelected = index == selected
@@ -158,7 +159,6 @@ fun SegmentedControl(
                 contentAlignment = Alignment.Center,
                 modifier =
                     Modifier
-                        .weight(1f)
                         .heightIn(min = Metrics.Segment.height - Metrics.Segment.padding * 2)
                         .then(
                             if (isSelected) {
@@ -177,7 +177,36 @@ fun SegmentedControl(
                     style = GeunalType.pill,
                     color = if (isSelected) neutrals.ink else neutrals.secondaryText,
                     textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Lays its children side by side in cells of one width: the widest child's own width, or an equal share of the width
+ * the caller asks for when that is more. Cells never go below their content, so a long label widens the whole row.
+ */
+@Composable
+private fun EqualCells(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Layout(content = content, modifier = modifier) { measurables, constraints ->
+        if (measurables.isEmpty()) return@Layout layout(constraints.minWidth, constraints.minHeight) {}
+        val widest = measurables.maxOf { it.maxIntrinsicWidth(constraints.maxHeight) }
+        val share = constraints.minWidth / measurables.size
+        val cell =
+            maxOf(widest, share).let {
+                if (constraints.hasBoundedWidth) minOf(it, constraints.maxWidth / measurables.size) else it
+            }
+        val placeables = measurables.map { it.measure(Constraints(minWidth = cell, maxWidth = cell, minHeight = constraints.minHeight)) }
+        val height = maxOf(constraints.minHeight, placeables.maxOf { it.height })
+        layout(cell * placeables.size, height) {
+            placeables.forEachIndexed { index, placeable ->
+                placeable.place(index * cell, (height - placeable.height) / 2)
             }
         }
     }
