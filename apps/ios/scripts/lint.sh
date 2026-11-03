@@ -12,7 +12,7 @@ cd "$ios_dir"
 files=()
 while IFS= read -r file; do
   files+=("$file")
-done < <(git ls-files 'GeunalApp/*.swift' 'GeunalAppTests/*.swift' 'GeunalAppUITests/*.swift' 'Packages/*.swift')
+done < <(git ls-files 'GeunalApp/*.swift' 'GeunalAppTests/*.swift' 'GeunalAppUITests/*.swift' 'GeunalWidget/*.swift' 'Packages/*.swift')
 
 xcrun swift-format lint --strict --configuration .swift-format --parallel "${files[@]}"
 echo "swift-format: ${#files[@]} files clean"

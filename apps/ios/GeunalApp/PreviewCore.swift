@@ -316,6 +316,14 @@
 
         override func suggestions(day: String) throws -> [Suggestion] { [] }
 
+        // Calls the app makes on its own (coming to the front, a background task); a method left to `Core` would
+        // reach Rust without a handle and crash the preview.
+        /// No snapshot: the widget write skips, and the widgets say "그날어때를 열어 시작하세요".
+        override func widgetSnapshot() throws -> String { throw CoreError.NotFound(what: "widget snapshot") }
+        override func recordCrashes(day: String, count: UInt32) throws {}
+        override func autoBackup() async throws -> BackupView? { nil }
+        override func people() throws -> [Person] { [] }
+
         override func notificationSettings() throws -> NotificationSettings { locked { settings } }
 
         override func setNotificationSettings(settings: NotificationSettings) throws {

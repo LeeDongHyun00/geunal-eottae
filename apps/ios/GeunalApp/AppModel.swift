@@ -4,7 +4,9 @@ import FeatureAccount
 import FeatureCalendar
 import Foundation
 import GeunalCore
+import HomeWidget
 import Observation
+import WidgetKit
 
 /// The app's state above the screens: open the core once, decide between onboarding and the tabs, and keep what every
 /// tab shares (the toast, the next-up bar, connectivity, the account's state).
@@ -64,6 +66,8 @@ final class AppModel {
     @ObservationIgnored private var pendingCrashes: [String: UInt32] = [:]
     /// A background task learned the account was deleted: the toast waits for someone to open the app.
     @ObservationIgnored private var deletionUnannounced = false
+    /// The last write of the widget snapshot; each waits for the one before, so an older snapshot never lands last.
+    @ObservationIgnored private var widgetWrite: Task<Void, Never>?
 
     /// The scene's start: the core, then what coming to the front does, once.
     func start() async {
@@ -119,6 +123,7 @@ final class AppModel {
             }
             recordPendingCrashes()
             phase = onboardingState.isFinished ? .main : .onboarding
+            writeWidgetSnapshot()
         } catch {
             phase = .failed(StartFailure(error))
             // A background task can wake the app before the first unlock, when neither the keychain nor the store
@@ -146,6 +151,35 @@ final class AppModel {
             // The permissions screen may just have allowed alerts.
             await alerts?.refresh()
         }
+        writeWidgetSnapshot()
+    }
+
+    /// The widgets' snapshot (rust-core.md §3 "위젯 스냅샷"), after the calendar may have changed: only once the
+    /// tabs are there, so the widgets ask the person to start until then.
+    func writeWidgetSnapshot() {
+        let previous = widgetWrite
+        widgetWrite = Task {
+            await previous?.value
+            guard let core, case .main = phase, let container = AppGroup.container() else { return }
+            guard let json = try? await Task.detached(operation: { try core.widgetSnapshot() }).value else { return }
+            let changed = await Task.detached { WidgetSnapshotFile.write(Data(json.utf8), in: container) }.value
+            if changed {
+                WidgetCenter.shared.reloadAllTimelines()
+            }
+        }
+    }
+
+    /// A sign-out or a deleted account (docs/security/app-review.md §2): the widgets go back to "그날어때를 열어
+    /// 시작하세요" and the titles leave the shared container.
+    private func removeWidgetSnapshot() {
+        let previous = widgetWrite
+        widgetWrite = Task {
+            await previous?.value
+            guard let container = AppGroup.container() else { return }
+            if await Task.detached(operation: { WidgetSnapshotFile.remove(in: container) }).value {
+                WidgetCenter.shared.reloadAllTimelines()
+            }
+        }
     }
 
     /// Each time the app comes to the front: the day's session count for the alpha statistics (protocol §14), the
@@ -160,13 +194,14 @@ final class AppModel {
         }
         let online = connectivity.isOnline
         let state = onboardingState
-        Task {
+        // Both pieces write to the store in the App Group container, so each finishes before the app is suspended.
+        BackgroundTime.finishing("app.geunal.ios.foreground") { [self] in
             if online {
                 await PendingGuest.complete(core: core, state: state)
                 // The sync finishes what a sign-in left undone (the account, key packages, the recovery material) and
                 // once a day fetches the holidays and sends the alpha statistics; what it changes arrives through the
                 // listener. On its own task, so a slow network does not hold the next-up bar back.
-                Task {
+                BackgroundTime.finishing("app.geunal.ios.sync") { [self] in
                     do {
                         try await core.sync()
                     } catch let error as CoreError where error.isAccountDeleted {
@@ -183,9 +218,11 @@ final class AppModel {
             await nextUp?.refresh()
             await refreshSettings()
             await refreshAccount()
-            // The phone's calendars may have changed while the app was away; the alerts move on with the clock.
+            // The phone's calendars may have changed while the app was away; the alerts and the widgets' today move
+            // on with the clock.
             await mirror?.refresh()
             await alerts?.refresh()
+            writeWidgetSnapshot()
         }
     }
 
@@ -204,6 +241,8 @@ final class AppModel {
         }
         if !Task.isCancelled {
             await alerts?.refresh()
+            writeWidgetSnapshot()
+            await widgetWrite?.value
         }
     }
 
@@ -229,6 +268,17 @@ final class AppModel {
     /// The system's notification tap; the tabs take it when they are there.
     func open(_ route: AlertRoute) {
         self.route = route
+    }
+
+    /// A tapped widget (m1.md §2.6): the small one opens the month view on today, an event of the medium one its
+    /// editor.
+    func open(_ link: WidgetLink) {
+        switch link {
+        case .today:
+            route = .week(day: KoreanCalendar.day(of: Date()))
+        case .event(let eventId, let occurrence):
+            route = .event(eventId: eventId, occurrence: occurrence)
+        }
     }
 
     func routeTaken() {
@@ -283,6 +333,7 @@ final class AppModel {
     /// onboarding comes back for the next account.
     func accountDeleted(announce: Bool = true) {
         alerts?.removeAll()
+        removeWidgetSnapshot()
         onboardingState.isFinished = false
         onboardingResumes = false
         accountChanges += 1
@@ -300,8 +351,10 @@ final class AppModel {
         let read = await Task.detached { (try? core.revocation(), try? core.recoveryStatus(), core.session()) }.value
         if let revoked = read.0, revoked.at != onboardingState.revocationShownAt {
             if revocation == nil {
-                // Signed out from another device: the alerts with their titles go, as on a deletion.
+                // Signed out from another device: the alerts and the widget snapshot go with their titles, as on a
+                // deletion.
                 alerts?.removeAll()
+                removeWidgetSnapshot()
             }
             revocation = revoked
         }
@@ -340,6 +393,7 @@ final class AppModel {
                     await self?.refreshSettings()
                     // Events, people's birthdays and the 알림 settings all decide what fires when.
                     await self?.alerts?.refresh()
+                    self?.writeWidgetSnapshot()
                 case .account:
                     self?.accountChanges += 1
                     await self?.refreshAccount()
