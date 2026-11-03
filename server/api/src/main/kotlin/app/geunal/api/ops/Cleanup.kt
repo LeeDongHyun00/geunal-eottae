@@ -1,5 +1,6 @@
 package app.geunal.api.ops
 
+import app.geunal.api.accesslog.AccessLog
 import app.geunal.api.backups.BackupRepository
 import app.geunal.api.backups.ObjectStore
 import org.slf4j.LoggerFactory
@@ -11,13 +12,15 @@ import java.time.Duration
 /**
  * The periodic deletions of api-server.md §8 that M1 needs: queued objects every ten minutes, and once a day the backup
  * uploads nobody completed, the sessions past their expiry, spent or not (a spent refresh token is kept only that long
- * for reuse detection), replacement tickets, and a deleted account's refresh hashes.
+ * for reuse detection), replacement tickets, a deleted account's refresh hashes, and access log rows that never reached
+ * their bucket within the three months they are kept.
  */
 @Component
 class Cleanup(
     private val jdbc: JdbcClient,
     private val backups: BackupRepository,
     private val store: ObjectStore,
+    private val accessLog: AccessLog,
 ) {
     private data class Queued(
         val key: String,
@@ -61,6 +64,7 @@ class Cleanup(
         val sessions = jdbc.sql("DELETE FROM sessions WHERE expires_at < now()").update()
         val tickets = jdbc.sql("DELETE FROM replace_tickets WHERE expires_at < now()").update()
         jdbc.sql("DELETE FROM deleted_sessions WHERE expires_at < now()").update()
+        accessLog.expire()
         log.info("dropped {} abandoned backup uploads, {} expired sessions and {} expired tickets", abandoned, sessions, tickets)
     }
 

@@ -452,7 +452,10 @@ paths:
 
   /me/alpha-stats:
     post:
-      summary: "M1: Alpha builds only: daily counts from an opted-in tester's device (protocol §14); 404 on public builds"
+      summary: "Alpha builds only: daily counts from an opted-in tester's device (protocol §14); 404 on public builds"
+      description: |
+        Answers only on a server with GEUNAL_ALPHA_STATS_ENABLED=true (the alpha server). Each day is kept per account
+        and day; sending a day again replaces it. Days run from 14 days before today to tomorrow, in Asia/Seoul.
       requestBody:
         content:
           application/json:
@@ -475,7 +478,8 @@ paths:
                       crashes: { type: integer, minimum: 0, description: "crashes that day: MXCrashDiagnostic (iOS), ApplicationExitInfo REASON_CRASH and REASON_CRASH_NATIVE only (Android)" }
       responses:
         "204": { description: stored; a day sent again overwrites the earlier counts }
-        "400": { description: "invalid_request (suggested above events, a day more than 14 days old)" }
+        "400": { description: "invalid_request (suggested above events, a negative count, a day sent twice, a day more than 14 days old or after tomorrow)" }
+        "403": { description: replace_required (a replacement ticket), device_revoked }
         "404": { description: not_found (public build) }
 
   /holidays:
