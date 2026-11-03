@@ -66,11 +66,20 @@ class MeCovers(
     }
 
     fun close(cover: MeCover) {
-        stack.remove(cover)
+        if (stack.remove(cover)) closed(cover)
     }
 
     /** Takes the top screen away; false when there is none here. */
-    fun back(): Boolean = stack.removeLastOrNull() != null
+    fun back(): Boolean = stack.removeLastOrNull()?.also(::closed) != null
+
+    /**
+     * 복구 코드 opened from 암호화 백업's reminder may have marked the code saved: the backup screen under it reads
+     * again, or it would keep asking for a code just written down.
+     */
+    private fun closed(cover: MeCover) {
+        if (cover !is MeCover.RecoveryCode) return
+        stack.filterIsInstance<MeCover.Backup>().forEach { scope.launch { it.model.load() } }
+    }
 }
 
 @Composable

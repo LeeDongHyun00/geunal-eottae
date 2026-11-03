@@ -61,6 +61,7 @@ class BackupScreenTest {
     @Test
     fun restsUntilTheCodePutOffIsEntered() {
         core.backup = core.backup.copy(ready = false)
+        core.recovery = core.recovery.copy(created = false, uploaded = false)
         show()
         compose.waitForTag("backup.waitsForCode")
 

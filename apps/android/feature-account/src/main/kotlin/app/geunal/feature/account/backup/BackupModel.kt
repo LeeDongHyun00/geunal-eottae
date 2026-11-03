@@ -42,8 +42,12 @@ class BackupModel(
     ) {
         val isBackingUp: Boolean get() = progress != null
 
-        /** The code was put off (screen 21 "나중에"): backups wait until it is entered. */
-        val waitsForCode: Boolean get() = status?.ready == false
+        /**
+         * The code was put off (screen 21 "나중에"): this device has none, and backups wait until it is entered. A code
+         * whose material only waits to be uploaded is not this: "지금 백업" uploads it first (`backup_now`), so
+         * `status.ready` alone, false in both cases, would block the one way to retry.
+         */
+        val waitsForCode: Boolean get() = recovery?.let { !it.created } ?: (status?.ready == false)
 
         /** The code was never written down, and a backup opens with nothing else. */
         val codeNotSaved: Boolean get() = recovery?.saved == false && !waitsForCode

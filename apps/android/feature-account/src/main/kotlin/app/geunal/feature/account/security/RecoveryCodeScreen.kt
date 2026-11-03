@@ -1,5 +1,6 @@
 package app.geunal.feature.account.security
 
+import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +42,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.geunal.designsystem.GeunalType
 import app.geunal.designsystem.LocalNeutralColors
@@ -90,6 +92,16 @@ fun RecoveryCodeScreen(
     }
     // Leaving the screen takes the code off at once: the app cannot clear the clipboard from the background.
     DisposableEffect(clipboard) { onDispose { clipboard.clear() } }
+    // Gone to another app (to paste the code there, say), the minute may run out while the clipboard cannot be
+    // touched; the code comes off as soon as the app is back in front.
+    LifecycleResumeEffect(clipboard, copiedAt) {
+        val at = copiedAt
+        if (at != null && SystemClock.elapsedRealtime() - at >= SensitiveClipboard.CLEAR_AFTER_MS) {
+            clipboard.clear()
+            copiedAt = null
+        }
+        onPauseOrDispose { }
+    }
     Box(modifier.fillMaxSize().background(neutrals.background)) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             Row(
@@ -180,7 +192,7 @@ fun RecoveryCodeScreen(
                     text = stringResource(R.string.recovery_copy),
                     onClick = {
                         clipboard.copy(state.words.joinToString(" ") { it.nfc() })
-                        copiedAt = System.currentTimeMillis()
+                        copiedAt = SystemClock.elapsedRealtime()
                         toasts.show(resources.getString(R.string.recovery_copied))
                     },
                     kind = ButtonKind.Secondary,

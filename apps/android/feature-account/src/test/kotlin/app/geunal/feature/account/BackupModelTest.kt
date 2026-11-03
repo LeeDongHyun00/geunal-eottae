@@ -50,9 +50,26 @@ class BackupModelTest {
         }
 
     @Test
+    fun aCodeWhoseMaterialWaitsToBeUploadedCanStillBackUp() =
+        runTest(dispatcher) {
+            // Sign-in made the code but could not upload its material: "지금 백업" is how it goes up.
+            core.backup = core.backup.copy(ready = false)
+            core.recovery = core.recovery.copy(created = true, uploaded = false)
+            val model = model()
+            model.load()
+
+            assertFalse(model.state.value.waitsForCode)
+            assertTrue(model.state.value.canBackUp)
+            assertTrue("the code to write down is there", model.state.value.codeNotSaved)
+            model.backUpNow()
+            assertTrue(core.calls.contains("backupNow"))
+        }
+
+    @Test
     fun waitsForACodePutOff() =
         runTest(dispatcher) {
             core.backup = core.backup.copy(ready = false)
+            core.recovery = core.recovery.copy(created = false, uploaded = false)
             val model = model()
             model.load()
 
