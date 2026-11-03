@@ -1,0 +1,64 @@
+# Posts the `gate` commit status that main's ruleset requires next to `ci-ok` (scripts/gate.sh says what it checks).
+# A pull request event evaluates that pull request; opening, closing or relabelling a `hold` issue re-evaluates every
+# open pull request, so pausing or resuming the project takes effect at once. A manual run re-evaluates them all and
+# also (re)creates the labels the gate reads, with descriptions, so the user can pick them on GitHub.
+# The job is not named `gate`: a check run of that name would also satisfy the required check whatever status the
+# script posts.
+name: gate
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review]
+  issues:
+    types: [opened, reopened, closed, deleted, labeled, unlabeled]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  labels:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Create or update the gate labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create hold --force --color B60205 \
+            --description "열린 보류 이슈가 있으면 모든 PR의 gate가 빨갛고, 세션은 바깥에 남는 일을 멈춥니다"
+          gh label create hold-exempt --force --color FBCA04 \
+            --description "보류 중에도 머지할 PR(빨간 main을 고치는 PR 등). 사용자나 조정 세션만 답니다"
+          gh label create user-approved --force --color 0E8A16 \
+            --description "사용자가 확인한 PR. docs/를 바꾸는 PR은 이 라벨이 있어야 gate가 녹색입니다"
+
+  evaluate:
+    # An issue event matters only when it opens, closes or relabels a hold issue.
+    if: >-
+      github.event_name != 'issues' ||
+      contains(github.event.issue.labels.*.name, 'hold') ||
+      github.event.label.name == 'hold'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: gate-${{ github.event.pull_request.number || 'all' }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      issues: read
+      # Removes `user-approved` from a docs pull request after a new push.
+      pull-requests: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Post the gate status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATE_PUSHED: ${{ github.event.action == 'synchronize' && '1' || '0' }}
+          PR: ${{ github.event.pull_request.number }}
+        run: scripts/gate.sh ${PR:+"$PR"}
