@@ -27,8 +27,29 @@ services:
   # MinIO stopped publishing community images in 2025; SeaweedFS serves the S3 API locally.
   s3:
     image: chrislusf/seaweedfs:4.50
-    command: server -s3 -dir=/data
+    # Small volumes: by default a volume reserves 30 GB, and a laptop or CI disk with less free space than that leaves
+    # no writable volume for the first backup.
+    command: server -s3 -dir=/data -master.volumeSizeLimitMB=64
     ports: ["127.0.0.1:8333:8333"]
+
+  # SeaweedFS will not create a bucket for an upload it cannot tie to an admin key, so the API's buckets (backups, and
+  # access logs every five minutes) are made before the API starts. A bucket that exists from an earlier `up` is left
+  # alone, so the stack comes up again over its own data.
+  s3-buckets:
+    image: chrislusf/seaweedfs:4.50
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        shell() { weed shell -master=s3:9333 -filer=s3:8888; }
+        until echo cluster.ps | shell >/dev/null 2>&1; do sleep 1; done
+        for bucket in backups access-logs; do
+          echo s3.bucket.list | shell | grep -qw "$$bucket" || echo "s3.bucket.create -name $$bucket" | shell
+          echo s3.bucket.list | shell | grep -qw "$$bucket"
+        done
+    depends_on:
+      s3: { condition: service_started }
 
   # These two images come from make image-api and make image-gateway rather than a compose build: the API image
   # packages a boot jar built outside it, and cloud sessions need scripts/docker-build.sh to reach package archives.
@@ -43,12 +64,14 @@ services:
       SPRING_DATASOURCE_PASSWORD: geunal-local
       SPRING_DATA_REDIS_HOST: redis
       GEUNAL_S3_ENDPOINT: http://s3:8333
+      # Presigned backup URLs are for the devices, which reach the store on the published port, not by service name.
+      GEUNAL_S3_PUBLIC_ENDPOINT: http://127.0.0.1:8333
       GEUNAL_AUTH_STUB: "true" # M0: sign in without Kakao or Apple
     ports: ["127.0.0.1:8080:8080"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
-      s3: { condition: service_started }
+      s3-buckets: { condition: service_completed_successfully }
 
   gateway:
     image: geunal/gateway:local
