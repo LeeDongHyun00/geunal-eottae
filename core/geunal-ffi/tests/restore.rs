@@ -6,8 +6,8 @@ mod phones;
 use std::sync::{Arc, Mutex};
 
 use geunal_ffi::{
-    AlertRule, AuthResult, Core, CoreError, LocalData, LocalDataChoice, PersonInput, ProgressListener, RevokedVia,
-    SecretStore,
+    AlertRule, AuthResult, Core, CoreError, DayTime, EventInput, LocalData, LocalDataChoice, PersonInput,
+    ProgressListener, RevokedVia, SecretStore, ShiftTemplateInput,
 };
 use geunal_sync::fake::FakeServer;
 use phones::{Phone, kakao, new_account, phone, user_id};
@@ -251,5 +251,74 @@ fn events_kept_from_another_account_are_backed_up_for_the_new_one() {
         let view = p.core.clone().auto_backup().await.unwrap().unwrap();
         assert_eq!(view.people, Some(2));
         assert_eq!(server.backups_of(&mina).len(), 1);
+    });
+}
+
+/// Day, title, calendar, all day, start and end minutes.
+type Event = (String, String, String, bool, u16, u16);
+/// Name, start and end minutes, tint.
+type Template = (String, u16, u16, u8);
+
+/// What a restore must bring back, without the ids the store makes: each day's events, the people, the templates.
+fn content(core: &Core) -> (Vec<Event>, Vec<String>, Vec<Template>) {
+    let events = core
+        .calendar_agenda("2026-11-01".into(), 30)
+        .unwrap()
+        .into_iter()
+        .flat_map(|day| day.events.into_iter().map(move |e| (day.day.clone(), e)))
+        .map(|(day, e)| (day, e.title, e.calendar_name, e.all_day, e.start.minute, e.end.minute))
+        .collect();
+    let mut templates: Vec<_> =
+        core.shift_templates().unwrap().into_iter().map(|t| (t.name, t.start_minute, t.end_minute, t.tint)).collect();
+    templates.sort();
+    (events, names(core), templates)
+}
+
+#[test]
+fn restores_events_people_and_shift_templates_on_a_fresh_store_from_the_latest_backup_with_the_twelve_words() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let a = phone(&server);
+        kakao(&a.core, "june", "준").await.unwrap();
+        let calendar = a.core.calendars().unwrap().remove(0).id;
+        let at = |day: &str, minute| DayTime { day: day.into(), minute };
+        let event = |title: &str, all_day, start, end| EventInput {
+            calendar_id: calendar.clone(),
+            title: title.into(),
+            all_day,
+            start,
+            end,
+            recurrence: None,
+            alert: AlertRule::Inherit,
+            note: None,
+        };
+        a.core.add_event(event("치과", false, at("2026-11-03", 10 * 60), at("2026-11-03", 11 * 60)), false).unwrap();
+        a.core.add_event(event("제주 여행", true, at("2026-11-20", 0), at("2026-11-22", 0)), false).unwrap();
+        a.core.save_person(person("엄마")).unwrap();
+        a.core.save_person(person("민지")).unwrap();
+        for (name, start, end) in [("오픈", 9 * 60, 15 * 60), ("마감", 22 * 60, 2 * 60)] {
+            let template = ShiftTemplateInput {
+                id: None,
+                name: name.into(),
+                start_minute: start,
+                end_minute: end,
+                calendar_id: None,
+                alert: AlertRule::Inherit,
+            };
+            a.core.save_shift_template(template).unwrap();
+        }
+        let before = content(&a.core);
+        assert_eq!((before.0.len(), before.1.len(), before.2.len()), (4, 2, 2), "{before:?}");
+        // An older backup without 아빠: the restore takes the latest.
+        a.core.clone().backup_now(None).await.unwrap();
+        a.core.save_person(person("아빠")).unwrap();
+        a.core.clone().backup_now(None).await.unwrap();
+        let before = content(&a.core);
+        let words = a.core.recovery_words().unwrap();
+
+        let b = phone(&server);
+        assert!(matches!(kakao(&b.core, "june", "준").await.unwrap(), AuthResult::ReplaceRequired { .. }));
+        b.core.clone().restore_from_code(words, LocalDataChoice::Keep, None).await.unwrap();
+        assert_eq!(content(&b.core), before);
     });
 }

@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use geunal_crypto::recovery;
 use geunal_ffi::{
-    AlertRule, AuthResult, Core, CoreError, DeletionProof, PersonInput, Provider, RecoveryCodeCheck, RevokedVia,
-    SecretStore,
+    AlertRule, AuthResult, Core, CoreError, DeletionProof, LocalDataChoice, PersonInput, Provider, RecoveryCodeCheck,
+    RevokedVia, SecretStore,
 };
 use geunal_sync::fake::FakeServer;
 use phones::{Fault, MemorySecrets, Quiet, kakao, kakao_deletion, keys_of, new_account, phone, user_id};
@@ -659,4 +659,86 @@ fn the_word_helpers_follow_the_list() {
     assert_eq!(a.core.check_recovery_word("없는말".into()).unwrap(), None);
     assert!(a.core.recovery_completions(word.chars().take(1).collect()).unwrap().contains(&word.to_owned()));
     assert_eq!(a.core.split_recovery_code(format!("1. {word}\n2) {word}")).unwrap(), vec![word, word]);
+}
+
+#[test]
+fn keeps_e_and_the_amk_in_the_secret_store_and_never_in_the_database() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let a = phone(&server);
+        kakao(&a.core, "ruth", "루스").await.unwrap();
+        a.core.clone().backup_now(None).await.unwrap();
+        a.core.mark_recovery_saved().unwrap();
+        let entropy = a.secrets.get("recovery_entropy".into()).unwrap().unwrap();
+        let amk = a.secrets.get("account_master_key".into()).unwrap().unwrap();
+        assert_eq!((entropy.len(), amk.len()), (16, 32));
+        let words = a.core.recovery_words().unwrap().join(" ");
+
+        // Every value of every table, read through the database key, in each form a secret could be written in.
+        let key: [u8; 32] = a.secrets.get("db_key".into()).unwrap().unwrap().try_into().unwrap();
+        let store = geunal_store::Store::open(&a._dir.path().join(geunal_store::DB_FILE), &key).unwrap();
+        let db = store.connection();
+        let tables: Vec<String> = db
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert!(tables.len() > 5, "{tables:?}");
+        let mut values = 0;
+        for table in tables {
+            let mut select = db.prepare(&format!("SELECT * FROM \"{table}\"")).unwrap();
+            let columns = select.column_count();
+            let mut rows = select.query([]).unwrap();
+            while let Some(row) = rows.next().unwrap() {
+                for i in 0..columns {
+                    let bytes = match row.get_ref(i).unwrap() {
+                        rusqlite::types::ValueRef::Blob(b) | rusqlite::types::ValueRef::Text(b) => b.to_vec(),
+                        _ => continue,
+                    };
+                    values += 1;
+                    let text = String::from_utf8_lossy(&bytes).to_lowercase();
+                    for secret in [&entropy, &amk] {
+                        assert!(!bytes.windows(secret.len()).any(|w| w == secret.as_slice()), "{table}: raw bytes");
+                        assert!(!text.contains(&hex::encode(secret)), "{table}: hex");
+                        for b64 in [
+                            base64::engine::general_purpose::STANDARD,
+                            base64::engine::general_purpose::URL_SAFE_NO_PAD,
+                        ] {
+                            let encoded = base64::Engine::encode(&b64, secret).to_lowercase();
+                            assert!(!text.contains(encoded.trim_end_matches('=')), "{table}: base64");
+                        }
+                    }
+                    assert!(!text.contains(&words), "{table}: the words");
+                }
+            }
+        }
+        assert!(values > 0);
+    });
+}
+
+#[test]
+fn an_account_linked_to_kakao_or_apple_cannot_come_back_with_the_twelve_words_alone() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        // A Kakao account, and a guest that linked Apple later.
+        let a = phone(&server);
+        let kakao_user = user_id(&kakao(&a.core, "sam", "샘").await.unwrap());
+        let g = phone(&server);
+        let guest_user = g.core.clone().sign_in_guest(new_account("게스트")).await.unwrap().user_id;
+        let nonce = g.core.clone().sign_in_nonce().await.unwrap();
+        let id_token = FakeServer::id_token("apple", "sam-apple", &nonce.provider_nonce);
+        assert_eq!(g.core.clone().link_apple(nonce.nonce, id_token).await.unwrap(), vec![Provider::Apple]);
+
+        for (owner, user) in [(&a, kakao_user), (&g, guest_user)] {
+            let words = owner.core.recovery_words().unwrap();
+            let b = phone(&server);
+            let result = b.core.clone().restore_from_code(words, LocalDataChoice::Keep, None).await;
+            assert!(matches!(result, Err(CoreError::WrongRecoveryCode)), "{result:?}");
+            assert!(b.core.session().is_none());
+            assert_eq!(server.active_device(&user), owner.core.session().map(|s| s.device_id), "nobody was signed out");
+            owner.core.clone().sync().await.unwrap();
+        }
+    });
 }

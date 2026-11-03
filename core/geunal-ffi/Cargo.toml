@@ -33,10 +33,14 @@ uuid.workspace = true
 fake-server = []
 
 [dev-dependencies]
+# base64, hex and rusqlite read the store's tables in their raw forms for the secret-placement test.
+base64.workspace = true
 # Turns the fake server on for the tests only.
 geunal-ffi = { workspace = true, features = ["fake-server"] }
 geunal-mls.workspace = true
+hex.workspace = true
 pollster.workspace = true
+rusqlite.workspace = true
 tempfile.workspace = true
 
 [lints]
