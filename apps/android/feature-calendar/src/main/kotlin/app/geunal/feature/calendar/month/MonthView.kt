@@ -268,7 +268,9 @@ private fun MonthCell(
                 .clipToBounds()
                 .clickable(interactionSource = interaction, indication = null, onClick = onClick)
                 // Ahead of clearAndSetSemantics, which drops whatever comes after it in the chain, a tag included.
-                .testTag("month.day.${cell.day}")
+                // The pager also draws the neighbouring months, whose grids repeat this month's edge days, so only a
+                // day of the cell's own month owns the "month.day" tag; the rest stay distinct as "month.outside".
+                .testTag(if (cell.inMonth) "month.day.${cell.day}" else "month.outside.${cell.day}")
                 .clearAndSetSemantics {
                     contentDescription = label
                     role = Role.Button
