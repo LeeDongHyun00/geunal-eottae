@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.geunal.core.Change
 import app.geunal.core.CoreInterface
+import app.geunal.core.EventItem
 import app.geunal.designsystem.components.ToastCenter
 import app.geunal.feature.calendar.agenda.AgendaModel
 import app.geunal.feature.calendar.month.MonthModel
@@ -110,12 +111,16 @@ class CalendarViewModel(
         viewModelScope.launch { reload() }
     }
 
-    /** The quick entry for [day], with what the line under its title says. */
+    /**
+     * The quick entry for [day], with what the line under its title says and the day's events; `null` events have the
+     * sheet read them.
+     */
     fun quickEntry(
         day: String,
         notes: List<String>,
         range: IntRange? = null,
-    ): QuickEntryModel = QuickEntryModel(day, notes, range, core, now, io)
+        events: List<EventItem>? = emptyList(),
+    ): QuickEntryModel = QuickEntryModel(day, notes, range, events, core, now, io)
 
     val today: String get() = KoreanCalendar.day(now())
 

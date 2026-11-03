@@ -194,6 +194,48 @@ class CalendarScreenTest {
         assertTrue(core.calls.toString(), "add 스터디 2026-10-26 540-600" in core.calls)
     }
 
+    @Test
+    fun listsTheDaysEventsInTheQuickEntryAndOpensTheOneTheCellHid() {
+        core.events =
+            core.events +
+            (
+                "2026-10-22" to
+                    listOf(
+                        Samples.event("q1", "교양 수업", "2026-10-22", 540, 630),
+                        Samples.event("q2", "치과", "2026-10-22", 660, 720, Samples.work),
+                        Samples.event("q3", "팀플 회의", "2026-10-22", 960, 1020),
+                        Samples.event("q4", "동아리 회의", "2026-10-22", 1140, 1260, Samples.work),
+                    )
+            )
+        show()
+        compose.waitForTag("month.day.2026-10-22")
+
+        // The date line: the bars below it open their own events (decision 41).
+        compose.onNodeWithTag("month.day.2026-10-22").performTouchInput { click(percentOffset(0.5f, 0.08f)) }
+        compose.waitForTag("quickEntry.dayEvents")
+        compose.waitForText("이날 일정 4개")
+        compose.onNodeWithTag("quickEntry.event.2").assertExists()
+        compose.onNodeWithTag("quickEntry.event.3").assertDoesNotExist()
+        compose.screenshot("05-quick-entry--day")
+
+        compose.onNodeWithTag("quickEntry.eventsToggle").performClick()
+        compose.waitForTag("quickEntry.event.3")
+        compose.waitForText("접기")
+        compose.screenshot("05-quick-entry--day-open")
+
+        // "+N" hid the fourth in the cell; here it is one tap from its editor.
+        compose.onNodeWithTag("quickEntry.event.3").performClick()
+        assertEquals(EditorTarget.Existing("q4", null), edits.removeAt(0))
+        compose.onNodeWithTag("quickEntry.dayEvents").assertDoesNotExist()
+
+        // The week view does not hold every timed event, so the sheet reads the day from the month.
+        segment("주").performClick()
+        compose.waitForTag("week.day.2026-10-27")
+        compose.onNodeWithTag("week.day.2026-10-27").performClick()
+        compose.waitForText("이날 일정 2개")
+        assertTrue(edits.toString(), edits.isEmpty())
+    }
+
     // The custom-action helper is still marked experimental; it is how TalkBack reaches a day's events.
     @OptIn(ExperimentalTestApi::class)
     @Test

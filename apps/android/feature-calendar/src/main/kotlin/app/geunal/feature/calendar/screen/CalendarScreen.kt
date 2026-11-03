@@ -88,7 +88,9 @@ fun CalendarScreen(
     val agendaState by model.agenda.state.collectAsStateWithLifecycle()
     val resources = LocalResources.current
     var entry by remember { mutableStateOf<QuickEntryModel?>(null) }
-    val open = { day: String, notes: List<String>, range: IntRange? -> entry = model.quickEntry(day, notes, range) }
+    val open = { day: String, notes: List<String>, range: IntRange?, events: List<EventItem>? ->
+        entry = model.quickEntry(day, notes, range, events)
+    }
     val edit = { event: EventItem -> onEdit(EditorTarget.Existing(event.eventId, event.occurrence)) }
     val leave = resources.getString(R.string.calendar_leave)
     // Coming back to the app, or midnight while it is in front: a new today means reading the views again.
@@ -132,7 +134,7 @@ fun CalendarScreen(
                     MonthView(
                         model = model.month,
                         pager = monthPager,
-                        onDay = { cell -> open(cell.day, notes(cell.birthdays, cell.holidays, resources), null) },
+                        onDay = { cell -> open(cell.day, notes(cell.birthdays, cell.holidays, resources), null, cell.events) },
                         onEvent = edit,
                         // The leave mark fills an all-day '연차' (rust-core.md §6 "공휴일과 연차 다리").
                         onLeave = { cell -> onEdit(EditorTarget.New(cell.day, leaveInput(cell.day, leave))) },
@@ -145,8 +147,11 @@ fun CalendarScreen(
                 WeekView(
                     model = model.week,
                     pager = weekPager,
-                    onDay = { day -> open(day.day, notes(day.birthdays, day.holidays, resources), null) },
-                    onSlot = { day, hour -> open(day.day, notes(day.birthdays, day.holidays, resources), (hour * 2)..(hour * 2 + 1)) },
+                    // A week day holds its timed events only up to three columns, so the sheet reads the day itself.
+                    onDay = { day -> open(day.day, notes(day.birthdays, day.holidays, resources), null, null) },
+                    onSlot = { day, hour ->
+                        open(day.day, notes(day.birthdays, day.holidays, resources), (hour * 2)..(hour * 2 + 1), null)
+                    },
                     onEvent = edit,
                     modifier = Modifier.weight(1f),
                 )
@@ -154,8 +159,9 @@ fun CalendarScreen(
             CalendarViewKind.LIST ->
                 AgendaView(
                     model = model.agenda,
-                    onDay = { day -> open(day.day, notes(day.birthdays, day.holidays, resources), null) },
-                    onAddToday = { open(model.today, emptyList(), null) },
+                    onDay = { day -> open(day.day, notes(day.birthdays, day.holidays, resources), null, day.events) },
+                    // The list is empty, so today has no events either.
+                    onAddToday = { open(model.today, emptyList(), null, emptyList()) },
                     onEvent = edit,
                     modifier = Modifier.weight(1f),
                 )
@@ -166,6 +172,10 @@ fun CalendarScreen(
             model = quickEntry,
             actions = model.actions,
             onDismiss = { entry = null },
+            onEvent = { event ->
+                entry = null
+                edit(event)
+            },
             onMore = { input ->
                 entry = null
                 onEdit(EditorTarget.New(quickEntry.day, input))
