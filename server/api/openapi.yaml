@@ -345,26 +345,32 @@ paths:
         tokens `apple_authorization_code` was exchanged for; a call that fails is retried with backoff. An iOS device's
         code is exchanged with the bundle ID, an Android device's with the services ID and the callback address.
 
-        The only irreversible call proves the account again, so a stolen session cannot delete it:
+        The only irreversible call is signed by the device and proves the account again, so a stolen session cannot
+        delete it, even with a provider proof gathered on the way:
+        - every account: `nonce` and `device_signature`, this device's registered key's signature over the ASCII bytes
+          "geunal delete v1" followed by the ASCII bytes of `nonce`. It is checked first, before any provider is asked,
+          and spends the nonce, which the proof below uses too;
         - guest (or an account whose provider link was cut): `nonce` and `recovery_signature`, the recovery signing
           key's signature over the ASCII bytes "geunal delete v1" followed by the ASCII bytes of `nonce`;
         - Kakao: `kakao_id_token` and `nonce` from a Kakao sign-in made for this deletion, bound to this device's
           registered key as for sign-in;
         - Apple: `apple_authorization_code` from a Sign in with Apple made for this deletion; the identity token the
-          exchange returns must carry this account's `sub`.
+          exchange returns must carry this account's `sub`. `nonce` is then a fresh one for the device's signature.
       requestBody:
         content:
           application/json:
             schema:
               type: object
+              required: [nonce, device_signature]
               properties:
-                nonce: { type: string, description: from GET /auth/nonce; with recovery_signature or kakao_id_token }
+                nonce: { type: string, description: from GET /auth/nonce; single use, shared by device_signature and the proof }
+                device_signature: { $ref: "#/components/schemas/Bytes", description: 64-byte Ed25519 signature by this device's registered key }
                 recovery_signature: { $ref: "#/components/schemas/Bytes", description: 64-byte Ed25519 signature; guests }
                 kakao_id_token: { type: string, description: Kakao accounts }
                 apple_authorization_code: { type: string, description: Apple accounts }
       responses:
         "204": { description: "deleted; until they would have expired, this device's tokens answer 401 account_deleted" }
-        "403": { description: "reauth_required (the proof is missing, of the wrong kind for this account, or does not verify, including a provider token for another account; the session stays valid); replace_required (called with a replacement ticket)" }
+        "403": { description: "reauth_required (the device's signature or the proof is missing, of the wrong kind for this account, or does not verify, including a provider token for another account; the session stays valid); replace_required (called with a replacement ticket)" }
         "409": { description: "recovery_missing (a guest whose recovery material is not stored yet: PUT /me/recovery first, then delete again)" }
 
   /me/recovery:

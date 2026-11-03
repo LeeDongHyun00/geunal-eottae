@@ -19,9 +19,13 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
-/** `DELETE /me`: the proof that fits the account's kind (protocol §13 "계정 삭제"); the others stay empty. */
+/**
+ * `DELETE /me` (protocol §13 "계정 삭제"): [deviceSignature] over [nonce] from every account, and the proof that fits the
+ * account's kind; the others stay empty.
+ */
 data class DeleteAccountRequest(
     val nonce: String? = null,
+    val deviceSignature: ByteArray? = null,
     val recoverySignature: ByteArray? = null,
     val kakaoIdToken: String? = null,
     val appleAuthorizationCode: String? = null,
@@ -40,9 +44,10 @@ class AccountController(
 }
 
 /**
- * Deletes an account, the one call that cannot be undone, so the active device proves the account again: a guest (or
- * an account whose provider cut the link) with its recovery key, a Kakao account with a fresh ID token, an Apple
- * account with a fresh authorization code. A stolen session alone gets 403 `reauth_required` and changes nothing.
+ * Deletes an account, the one call that cannot be undone, so the active device signs it with its own key and proves the
+ * account again: a guest (or an account whose provider cut the link) with its recovery key, a Kakao account with a fresh
+ * ID token, an Apple account with a fresh authorization code. A stolen session, even with a provider proof collected on
+ * the way, gets 403 `reauth_required` and changes nothing, since the device key never leaves the device.
  */
 @Service
 class AccountDeletion(
@@ -64,23 +69,27 @@ class AccountDeletion(
         accounts.lock(caller.userId)
         // Checked again under the account lock: a guest's recovery may just have replaced this device.
         val device = devices.current(caller.deviceId) ?: throw devices.revokedError(caller.deviceId)
+        // The device key's signature comes first, before any provider is asked, and spends the request's one nonce; the
+        // recovery signature and the Kakao binding below are over that same nonce.
+        val nonce = request.nonce
+        val message = DELETE_LABEL + nonce.orEmpty().toByteArray(Charsets.US_ASCII)
+        val deviceSignature = request.deviceSignature
+        if (deviceSignature == null || !nonces.spend(nonce) || !Ed25519.verify(device.signatureKey, message, deviceSignature)) {
+            throw reauthRequired()
+        }
         val links = accounts.links(caller.userId)
         val proof =
             if (links.isEmpty()) {
                 val recovery =
                     backups.recovery(caller.userId)
                         ?: throw ApiException(HttpStatus.CONFLICT, "recovery_missing", "upload the recovery material first, then delete")
-                val message = DELETE_LABEL + request.nonce.orEmpty().toByteArray(Charsets.US_ASCII)
                 val signature = request.recoverySignature
-                if (signature == null ||
-                    !nonces.spend(request.nonce) ||
-                    !Ed25519.verify(recovery.publicKey, message, signature)
-                ) {
-                    throw reauthRequired()
-                }
+                // The same words as the device's signature, under another key: neither stands in for the other.
+                if (signature == null || !Ed25519.verify(recovery.publicKey, message, signature)) throw reauthRequired()
                 null
             } else {
-                proofs.prove(links, device, request.kakaoIdToken, request.nonce, request.appleAuthorizationCode) ?: throw reauthRequired()
+                proofs.prove(links, device, request.kakaoIdToken, nonce, request.appleAuthorizationCode, nonceSpent = true)
+                    ?: throw reauthRequired()
             }
         erase(caller.userId)
         val queued = revocations.queue(links[Provider.KAKAO], proof?.apple)
