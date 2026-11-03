@@ -23,6 +23,10 @@ public final class NotificationSettingsModel {
 
     @ObservationIgnored private let core: any CoreProtocol
     @ObservationIgnored private let permissionState: @MainActor () async -> AlertPermission
+    /// The last write handed to the core. Each write waits for it, so an older snapshot never lands after a newer one.
+    @ObservationIgnored private var lastWrite: Task<Void, Never>?
+    /// What the core holds, for putting the switches back when a write is refused.
+    @ObservationIgnored private var stored: NotificationSettings?
 
     public init(core: any CoreProtocol, permission: @escaping @MainActor () async -> AlertPermission) {
         self.core = core
@@ -37,8 +41,9 @@ public final class NotificationSettingsModel {
 
     public func load() async {
         let core = self.core
-        if let stored = try? await offMain({ try core.notificationSettings() }) {
-            settings = stored
+        if let read = try? await offMain({ try core.notificationSettings() }) {
+            settings = read
+            stored = read
         }
         permission = await permissionState()
         loaded = true
@@ -85,17 +90,29 @@ public final class NotificationSettingsModel {
         return AlertText.describe(minutes: minutes, allDay: allDay)
     }
 
+    /// Every change writes the whole snapshot, so writes go one after another in the order they were made.
     private func save(_ next: NotificationSettings) async {
-        let previous = settings
+        let fallback = stored ?? settings
         // Shown at once; put back if the core refuses.
         settings = next
         let core = self.core
-        do {
-            try await offMain { try core.setNotificationSettings(settings: next) }
-            failed = false
-        } catch {
-            settings = previous
-            failed = true
+        let before = lastWrite
+        let write = Task { @MainActor [weak self] in
+            await before?.value
+            do {
+                try await offMain { try core.setNotificationSettings(settings: next) }
+                self?.stored = next
+                self?.failed = false
+            } catch {
+                guard let self else { return }
+                self.failed = true
+                // A newer change already on screen keeps its own write; only the latest one puts things back.
+                if self.settings == next {
+                    self.settings = self.stored ?? fallback
+                }
+            }
         }
+        lastWrite = write
+        await write.value
     }
 }

@@ -108,7 +108,7 @@ public struct RecoveryCodeScreen: View {
         }
         // iOS keeps a picture of the screen for the app switcher; the words must not be in it.
         .overlay {
-            if scenePhase != .active {
+            if Self.coversWords(in: scenePhase) {
                 GeunalColor.background.ignoresSafeArea()
             }
         }
@@ -116,6 +116,12 @@ public struct RecoveryCodeScreen: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
             notify(String(localized: "캡처 대신 종이에 적어 두세요", bundle: .module))
         }
+    }
+
+    /// The words hide whenever the app is not in front: `inactive` is when iOS takes the app switcher's picture, and
+    /// `background` is what the picture keeps (docs/qa/m1.md D7).
+    public static func coversWords(in phase: ScenePhase) -> Bool {
+        phase != .active
     }
 
     private var words: some View {

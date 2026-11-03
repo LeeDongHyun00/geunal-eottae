@@ -47,6 +47,14 @@ public final class BackupModel {
         }
     }
 
+    /// Reads the readiness again from the device, without asking the server for the list: an account change (the
+    /// recovery material uploaded by a background sync) can turn "지금 백업" on.
+    public func refreshStatus() async {
+        let core = self.core
+        status = try? await offMain { try core.backupStatus() }
+        recoverySaved = (try? await offMain { try core.recoveryStatus() })?.saved ?? true
+    }
+
     public func backUpNow() async {
         guard canBackUp else { return }
         phase = .running(done: 0, total: 0)

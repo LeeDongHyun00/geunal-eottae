@@ -80,7 +80,7 @@ public struct DeleteAccountScreen: View {
         .toolbar {
             ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
         }
-        .sheet(isPresented: $confirming) {
+        .sheet(isPresented: $confirming, onDismiss: { model.sheetClosed() }) {
             DeleteConfirmSheet(model: model, online: online) {
                 confirming = false
                 onDeleted()

@@ -33,6 +33,7 @@ public final class DeleteAccountModel {
     @ObservationIgnored private let owner: any DeviceOwnerCheck
     @ObservationIgnored private let account: AccountView?
     /// The sheet asks the OS once; "카카오로 다시 확인" after a failed check does not ask again (m1.md §4 "기기 인증").
+    /// Only within one presentation: whoever holds the phone after the sheet closed is asked again.
     @ObservationIgnored private var ownerConfirmed = false
 
     public init(
@@ -97,6 +98,11 @@ public final class DeleteAccountModel {
             problem = .failed
         }
         return false
+    }
+
+    /// The sheet closed, so its device-owner check goes with it: reopening the sheet asks the OS again.
+    public func sheetClosed() {
+        ownerConfirmed = false
     }
 
     /// 409 `recovery_missing` for a guest: the core uploads the recovery material on a sync, and the deletion goes

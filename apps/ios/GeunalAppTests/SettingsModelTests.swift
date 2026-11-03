@@ -76,6 +76,23 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertFalse(model.failed)
     }
 
+    func testKeepsBothChangesMadeBeforeTheFirstIsSaved() async throws {
+        let core = try makeCore()
+        let model = NotificationSettingsModel(core: core, permission: { .on })
+        await model.load()
+
+        // Two switches flipped in a row: each write carries the whole snapshot, so the older one must not land last.
+        let first = Task { await model.setNextUpBar(false) }
+        let second = Task { await model.setBirthdayAlerts(false) }
+        await first.value
+        await second.value
+
+        let stored = try core.notificationSettings()
+        XCTAssertFalse(stored.nextUpBar)
+        XCTAssertFalse(stored.birthdayAlerts)
+        XCTAssertEqual(model.settings, stored)
+    }
+
     func testDescribesTheAlertChoices() {
         XCTAssertEqual(NotificationSettingsModel.describe(10, allDay: false), "10분 전")
         XCTAssertEqual(NotificationSettingsModel.describe(-540, allDay: true), "당일 09:00")

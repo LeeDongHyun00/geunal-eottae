@@ -9,13 +9,18 @@ public struct BackupScreen: View {
     private let timeText: (Date) -> String
     private let online: Bool
     private let onRecoveryCode: () -> Void
+    private let accountChanges: Int
 
     /// `timeText` words a backup's time ("오늘 03:12", "10월 23일 03:11"); the app has the date style.
+    /// `accountChanges` counts the core's account changes: the recovery material reaching the server is one, and it
+    /// turns "지금 백업" on while the screen is open.
     public init(
-        model: BackupModel, online: Bool, timeText: @escaping (Date) -> String, onRecoveryCode: @escaping () -> Void
+        model: BackupModel, online: Bool, accountChanges: Int = 0, timeText: @escaping (Date) -> String,
+        onRecoveryCode: @escaping () -> Void
     ) {
         _model = State(initialValue: model)
         self.online = online
+        self.accountChanges = accountChanges
         self.timeText = timeText
         self.onRecoveryCode = onRecoveryCode
     }
@@ -87,6 +92,9 @@ public struct BackupScreen: View {
             ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
         }
         .task { await model.load() }
+        .onChange(of: accountChanges) {
+            Task { await model.refreshStatus() }
+        }
     }
 
     private var statusCard: some View {

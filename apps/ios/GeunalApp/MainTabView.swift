@@ -88,7 +88,7 @@ struct MainTabView: View {
     /// The banner's "저장": the OS prompt comes on the calendar, and only a pass opens 나 › 복구 코드 (decision 26).
     private func openRecoveryCode() {
         Task {
-            guard await model.owner.confirm(.recoveryCode) else { return }
+            guard await MeModel.mayOpenRecoveryCode(owner: model.owner) else { return }
             tab = .me
             openRoute = .recovery
         }

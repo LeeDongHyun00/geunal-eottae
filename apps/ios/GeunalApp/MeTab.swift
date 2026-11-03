@@ -349,7 +349,8 @@ struct MeTab: View {
                 backupLine: { MeText.backupLine($0) }, notify: { app.toasts.show($0) })
         case .backup:
             BackupScreen(
-                model: BackupModel(core: core), online: app.connectivity.isOnline, timeText: MeText.time,
+                model: BackupModel(core: core), online: app.connectivity.isOnline, accountChanges: app.accountChanges,
+                timeText: MeText.time,
                 onRecoveryCode: { openRecoveryCode() })
         case .deviceChange:
             DeviceChangeGuideScreen(onRecoveryCode: model.hasAccount ? { openRecoveryCode() } : nil)
@@ -385,7 +386,7 @@ struct MeTab: View {
     /// Every way to the twelve words passes the OS prompt first; cancelling stays where the person was (decision 26).
     private func openRecoveryCode() {
         Task {
-            guard await app.owner.confirm(.recoveryCode) else { return }
+            guard await MeModel.mayOpenRecoveryCode(owner: app.owner) else { return }
             path.append(.recovery)
         }
     }

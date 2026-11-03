@@ -1,5 +1,6 @@
 import FeatureAccount
 import GeunalCore
+import SwiftUI
 import XCTest
 
 /// 나 and the account screens on a fake core: the card, the recovery code, the backup, linking and deleting the
@@ -98,6 +99,35 @@ final class MeModelTests: XCTestCase {
         XCTAssertEqual(core.calls.current, ["markSaved"])
     }
 
+    // docs/qa/m1.md D11: the OS prompt comes before the twelve words; a cancel opens nothing, and a device without a
+    // screen lock goes through.
+    func testAsksForTheDeviceOwnerBeforeShowingTheRecoveryCode() async {
+        let owner = FakeDeviceOwner()
+        let opened = await MeModel.mayOpenRecoveryCode(owner: owner)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(owner.asked, [.recoveryCode])
+
+        let cancelled = FakeDeviceOwner()
+        cancelled.passes = false
+        let stayed = await MeModel.mayOpenRecoveryCode(owner: cancelled)
+        XCTAssertFalse(stayed)
+        XCTAssertEqual(cancelled.asked, [.recoveryCode])
+
+        let unlocked = FakeDeviceOwner()
+        unlocked.hasScreenLock = false
+        unlocked.passes = false
+        let openedWithoutLock = await MeModel.mayOpenRecoveryCode(owner: unlocked)
+        XCTAssertTrue(openedWithoutLock)
+    }
+
+    // docs/qa/m1.md D7: the words are covered whenever the app is not in front, which is when iOS takes the app
+    // switcher's picture.
+    func testKeepsTheRecoveryCodeOutOfScreenshotsAndTheAppSwitcher() {
+        XCTAssertFalse(RecoveryCodeScreen.coversWords(in: .active))
+        XCTAssertTrue(RecoveryCodeScreen.coversWords(in: .inactive))
+        XCTAssertTrue(RecoveryCodeScreen.coversWords(in: .background))
+    }
+
     // MARK: 암호화 백업
 
     func testWaitsForTheRecoveryMaterialBeforeABackup() async {
@@ -122,6 +152,20 @@ final class MeModelTests: XCTestCase {
         core.recovery.saved = true
         await model.load()
         XCTAssertTrue(model.recoverySaved)
+    }
+
+    func testTurnsBackupOnOnceTheRecoveryMaterialIsUploaded() async {
+        let core = AccountFakeCore()
+        core.backupState.ready = false
+        let model = BackupModel(core: core)
+        await model.load()
+        XCTAssertFalse(model.canBackUp)
+
+        // A background sync uploads the material; the screen hears it as an account change.
+        core.backupState.ready = true
+        await model.refreshStatus()
+
+        XCTAssertTrue(model.canBackUp)
     }
 
     func testBacksUpNowAndSaysSo() async {
@@ -241,6 +285,24 @@ final class MeModelTests: XCTestCase {
         XCTAssertNil(model.problem)
         XCTAssertEqual(model.typed, "삭제")
         XCTAssertTrue(model.canConfirm)
+    }
+
+    func testAsksTheOwnerAgainOnceTheSheetClosed() async {
+        let core = AccountFakeCore()
+        core.deleteErrors.update { $0 = [.Network(reason: "offline")] }
+        let owner = FakeDeviceOwner()
+        let model = deletion(core, owner)
+
+        let first = await model.delete(online: true)
+        XCTAssertFalse(first)
+        // Whoever holds the phone after the sheet closed is asked again; a cancel then deletes nothing.
+        model.sheetClosed()
+        owner.passes = false
+        let second = await model.delete(online: true)
+
+        XCTAssertFalse(second)
+        XCTAssertEqual(owner.asked, [.deleteAccount, .deleteAccount])
+        XCTAssertEqual(core.calls.current, ["delete"])
     }
 
     func testADeviceWithoutAScreenLockDeletesAndRecommendsOne() async {

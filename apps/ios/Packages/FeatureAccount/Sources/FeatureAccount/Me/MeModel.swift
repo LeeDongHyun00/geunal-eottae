@@ -29,6 +29,13 @@ public final class MeModel {
         showsAlphaStats = channel == .alpha
     }
 
+    /// Every way to the twelve words (나 › 복구 코드, the calendar's banner, the backup and device-change screens) asks
+    /// the OS first. Cancelling or failing opens nothing; a device without a screen lock passes and the screen recommends
+    /// one (m1.md decision 26, docs/qa/m1.md D11).
+    public static func mayOpenRecoveryCode(owner: any DeviceOwnerCheck) async -> Bool {
+        await owner.confirm(.recoveryCode)
+    }
+
     /// The security and backup rows read dim without an account to secure.
     public var hasAccount: Bool {
         switch account {
