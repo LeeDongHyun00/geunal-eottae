@@ -110,6 +110,72 @@ final class CalendarModelTests: XCTestCase {
         XCTAssertEqual(model.days.first { $0.day == fixture.today }?.events.map(\.title), ["스터디"])
     }
 
+    private func dayEvent(_ title: String, start: DayTime, end: DayTime, allDay: Bool = false) -> EventItem {
+        EventItem(
+            eventId: title, occurrence: nil, calendarId: "c1", calendarName: "개인", color: .blossom, title: title,
+            allDay: allDay, start: start, end: end, soft: false, source: .own, recurrence: nil)
+    }
+
+    // docs/design/m1.md decision 42: three rows, "N개 더 보기" for the rest, the times on this day.
+    func testTheQuickEntryListsTheDaysEventsThreeAtFirst() throws {
+        let fixture = try makeFixture()
+        let day = "2026-10-22"
+        let events = [
+            dayEvent("교양 수업", start: DayTime(day: day, minute: 540), end: DayTime(day: day, minute: 630)),
+            dayEvent("치과", start: DayTime(day: day, minute: 660), end: DayTime(day: day, minute: 720)),
+            dayEvent("팀플 회의", start: DayTime(day: day, minute: 960), end: DayTime(day: day, minute: 1020)),
+            dayEvent("동아리 회의", start: DayTime(day: day, minute: 1140), end: DayTime(day: day, minute: 1260)),
+        ]
+        let model = QuickEntryModel(day: day, events: events, core: fixture.core)
+
+        XCTAssertEqual(model.listedEvents.map(\.title), ["교양 수업", "치과", "팀플 회의"])
+        XCTAssertEqual(model.hiddenEventCount, 1)
+        XCTAssertEqual(model.time(of: events[0]), "09:00–10:30")
+        XCTAssertEqual(model.spokenTime(of: events[0]), "교양 수업, 09:00부터 10:30까지")
+
+        model.showsAllEvents = true
+        XCTAssertEqual(model.listedEvents.count, 4)
+
+        let few = QuickEntryModel(day: day, events: Array(events.prefix(2)), core: fixture.core)
+        XCTAssertEqual(few.hiddenEventCount, 0)
+        XCTAssertEqual(QuickEntryModel(day: day, core: fixture.core).listedEvents, [])
+    }
+
+    // The week view hid some of the day's timed events behind "+N": the sheet reads the day's month cell instead.
+    func testTheQuickEntryReadsTheDaysEventsWhenTheViewHidSome() async throws {
+        let fixture = try makeFixture()
+        let calendar = try personal(fixture.core)
+        for (index, title) in ["회의 1", "회의 2", "회의 3", "회의 4"].enumerated() {
+            _ = try fixture.core.addEvent(
+                input: event(calendar, title, on: fixture.today, from: 540, to: UInt16(600 + index)),
+                fromSuggestion: false)
+        }
+        let model = QuickEntryModel(day: fixture.today, events: nil, core: fixture.core)
+        XCTAssertEqual(model.events, [])
+
+        await model.load()
+
+        let month = try fixture.core.calendarMonth(month: KoreanCalendar.month(of: fixture.today))
+        let cell = try XCTUnwrap(month.first { $0.day == fixture.today })
+        XCTAssertEqual(cell.events.count, 4)
+        XCTAssertEqual(model.events, cell.events)
+        XCTAssertEqual(model.hiddenEventCount, 1)
+    }
+
+    func testTheQuickEntryShowsTheDaysPartOfALongEvent() throws {
+        let fixture = try makeFixture()
+        let day = "2026-10-22"
+        let night = dayEvent(
+            "야간 근무", start: DayTime(day: "2026-10-21", minute: 1320), end: DayTime(day: day, minute: 420))
+        let trip = dayEvent(
+            "여행", start: DayTime(day: day, minute: 0), end: DayTime(day: "2026-10-23", minute: 0), allDay: true)
+        let model = QuickEntryModel(day: day, events: [trip, night], core: fixture.core)
+
+        XCTAssertEqual(model.time(of: night), "00:00–07:00")
+        XCTAssertEqual(model.time(of: trip), "종일")
+        XCTAssertEqual(model.spokenTime(of: trip), "여행, 종일")
+    }
+
     func testTheQuickEntryBuildsATimedOrAllDayEvent() async throws {
         let fixture = try makeFixture()
         let model = QuickEntryModel(day: fixture.today, core: fixture.core)

@@ -86,7 +86,9 @@ public struct CalendarScreen: View {
                 ScrollView(.vertical) {
                     MonthView(
                         model: month,
-                        onDay: { cell in open(day: cell.day, notes: Self.notes(cell.birthdays, cell.holidays)) },
+                        onDay: { cell in
+                            open(day: cell.day, notes: Self.notes(cell.birthdays, cell.holidays), events: cell.events)
+                        },
                         onEvent: edit,
                         onLeave: { cell in editor = EditorRequest(.new(day: cell.day, input: Self.leave(cell.day))) })
                 }
@@ -94,17 +96,21 @@ public struct CalendarScreen: View {
             case .week:
                 WeekView(
                     model: week,
-                    onDay: { day in open(day: day.day, notes: Self.notes(day.birthdays, day.holidays)) },
+                    onDay: { day in
+                        open(day: day.day, notes: Self.notes(day.birthdays, day.holidays), events: Self.events(day))
+                    },
                     onSlot: { day, hour in
                         open(
-                            day: day.day, notes: Self.notes(day.birthdays, day.holidays),
+                            day: day.day, notes: Self.notes(day.birthdays, day.holidays), events: Self.events(day),
                             range: (hour * 2)..<(hour * 2 + 2))
                     },
                     onEvent: edit)
             case .list:
                 AgendaView(
                     model: agenda,
-                    onDay: { day in open(day: day.day, notes: Self.notes(day.birthdays, day.holidays)) },
+                    onDay: { day in
+                        open(day: day.day, notes: Self.notes(day.birthdays, day.holidays), events: day.events)
+                    },
                     onAddToday: { open(day: KoreanCalendar.day(of: now()), notes: []) },
                     onEvent: edit)
             }
@@ -122,10 +128,15 @@ public struct CalendarScreen: View {
         ) { request in
             QuickEntrySheet(
                 model: QuickEntryModel(
-                    day: request.day, notes: request.notes, range: request.range, core: core, now: now),
+                    day: request.day, notes: request.notes, events: request.events, range: request.range, core: core,
+                    now: now),
                 actions: actions,
                 onMore: { input in
                     pendingEditor = EditorRequest(.new(day: request.day, input: input))
+                    entry = nil
+                },
+                onEvent: { event in
+                    pendingEditor = EditorRequest(.existing(eventId: event.eventId, occurrence: event.occurrence))
                     entry = nil
                 })
         }
@@ -219,8 +230,8 @@ public struct CalendarScreen: View {
         }
     }
 
-    private func open(day: String, notes: [String], range: Range<Int>? = nil) {
-        entry = EntryRequest(day: day, notes: notes, range: range)
+    private func open(day: String, notes: [String], events: [EventItem]? = [], range: Range<Int>? = nil) {
+        entry = EntryRequest(day: day, notes: notes, events: events, range: range)
     }
 
     private func edit(_ event: EventItem) {
@@ -267,6 +278,12 @@ public struct CalendarScreen: View {
         await agenda.reload()
     }
 
+    /// A week column's events for the quick entry: all-day ones first, then the timed blocks in their order. When the
+    /// column hid some behind "+N" (they are not in the week's answer), `nil` has the sheet read the day's month cell.
+    static func events(_ day: WeekDay) -> [EventItem]? {
+        day.hidden > 0 ? nil : day.allDay + day.timed.map(\.event)
+    }
+
     /// The line under the quick entry's title: "민수 생일 · 개천절".
     static func notes(_ birthdays: [BirthdayItem], _ holidays: [Holiday]) -> [String] {
         birthdays.map { String(localized: "\($0.name) 생일", bundle: .module) } + holidays.map(\.name)
@@ -278,6 +295,7 @@ private struct EntryRequest: Identifiable {
     let id = UUID()
     let day: String
     let notes: [String]
+    let events: [EventItem]?
     let range: Range<Int>?
 }
 

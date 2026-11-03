@@ -22,6 +22,13 @@ public final class QuickEntryModel {
     public let today: String
     /// Birthdays and holidays of the day, for the line under the title.
     public let notes: [String]
+    /// The day's events in the core's order (m1.md decision 42): the ones a month cell hides behind "+N" open from
+    /// here. Usually what the view behind the sheet already has; read from the day's month cell when that view had
+    /// to leave some out.
+    public private(set) var events: [EventItem]
+    @ObservationIgnored private let readsEvents: Bool
+    /// "N개 더 보기" was pressed: every event shows, and the button says "접기".
+    public var showsAllEvents = false
     public private(set) var suggestions: [Suggestion] = []
     /// The calendars an event can go in: own ones, visible or not. Device calendars are read-only.
     public private(set) var calendars: [CalendarView] = []
@@ -35,17 +42,47 @@ public final class QuickEntryModel {
     @ObservationIgnored private let core: any CoreProtocol
 
     public init(
-        day: String, notes: [String] = [], range: Range<Int>? = nil, core: any CoreProtocol,
-        now: @escaping @Sendable () -> Date = Date.init
+        day: String, notes: [String] = [], events: [EventItem]? = [], range: Range<Int>? = nil,
+        core: any CoreProtocol, now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.day = day
         self.notes = notes
+        self.events = events ?? []
+        readsEvents = events == nil
         self.range = range
         self.core = core
         today = KoreanCalendar.day(of: now())
     }
 
     public var heading: String { DayText.title(day, today: today) }
+
+    /// Three rows keep a day of four events inside 90% of the screen with the chips still in view (decision 42).
+    public static let eventsShown = 3
+
+    /// The rows the list shows now.
+    public var listedEvents: [EventItem] {
+        showsAllEvents ? events : Array(events.prefix(Self.eventsShown))
+    }
+
+    /// The events behind "N개 더 보기"; zero when everything fits.
+    public var hiddenEventCount: Int { max(0, events.count - Self.eventsShown) }
+
+    /// "09:00–10:30", or "종일". An event that runs across midnight shows the part on this day ("22:00–24:00",
+    /// "00:00–02:00").
+    public func time(of event: EventItem) -> String {
+        guard !event.allDay else { return String(localized: "종일", bundle: .module) }
+        let start = event.start.day == day ? event.start.minute : 0
+        let end = event.end.day == day ? event.end.minute : 1440
+        return DayText.range(start: start, end: end)
+    }
+
+    /// What a screen reader says for a row: "교양 수업, 09:00부터 10:30까지" or "가족 여행, 종일".
+    public func spokenTime(of event: EventItem) -> String {
+        guard !event.allDay else { return String(localized: "\(event.title), 종일", bundle: .module) }
+        let start = DayText.clock(event.start.day == day ? event.start.minute : 0)
+        let end = DayText.clock(event.end.day == day ? event.end.minute : 1440)
+        return String(localized: "\(event.title), \(start)부터 \(end)까지", bundle: .module)
+    }
 
     public var selectedCalendar: CalendarView? {
         calendars.first { $0.id == calendarId } ?? calendars.first
@@ -65,6 +102,12 @@ public final class QuickEntryModel {
         async let suggestions = try? offMain { try core.suggestions(day: day) }
         self.calendars = (await calendars ?? []).filter { $0.kind == .own }
         self.suggestions = await suggestions ?? []
+        // `nil` events: the week view hid some behind "+N", so the day's month cell lists them all, as on Android.
+        if readsEvents {
+            let month = KoreanCalendar.month(of: day)
+            let cells = try? await offMain { try core.calendarMonth(month: month) }
+            events = cells?.first { $0.day == day }?.events ?? []
+        }
         if calendarId == nil {
             calendarId = self.calendars.first?.id
         }
