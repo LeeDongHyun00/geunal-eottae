@@ -230,7 +230,7 @@ public struct CalendarScreen: View {
         }
     }
 
-    private func open(day: String, notes: [String], events: [EventItem] = [], range: Range<Int>? = nil) {
+    private func open(day: String, notes: [String], events: [EventItem]? = [], range: Range<Int>? = nil) {
         entry = EntryRequest(day: day, notes: notes, events: events, range: range)
     }
 
@@ -278,10 +278,10 @@ public struct CalendarScreen: View {
         await agenda.reload()
     }
 
-    /// A week column's events for the quick entry: all-day ones first, then the timed blocks in their order. Timed
-    /// events that did not fit the week's three columns are not in the week's answer.
-    static func events(_ day: WeekDay) -> [EventItem] {
-        day.allDay + day.timed.map(\.event)
+    /// A week column's events for the quick entry: all-day ones first, then the timed blocks in their order. When the
+    /// column hid some behind "+N" (they are not in the week's answer), `nil` has the sheet read the day's month cell.
+    static func events(_ day: WeekDay) -> [EventItem]? {
+        day.hidden > 0 ? nil : day.allDay + day.timed.map(\.event)
     }
 
     /// The line under the quick entry's title: "민수 생일 · 개천절".
@@ -295,7 +295,7 @@ private struct EntryRequest: Identifiable {
     let id = UUID()
     let day: String
     let notes: [String]
-    let events: [EventItem]
+    let events: [EventItem]?
     let range: Range<Int>?
 }
 

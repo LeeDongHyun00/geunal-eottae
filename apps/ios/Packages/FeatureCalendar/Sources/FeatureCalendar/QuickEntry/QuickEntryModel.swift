@@ -22,9 +22,11 @@ public final class QuickEntryModel {
     public let today: String
     /// Birthdays and holidays of the day, for the line under the title.
     public let notes: [String]
-    /// The day's events as the view behind the sheet already has them, in the core's order (m1.md decision 42): the
-    /// ones a month cell hides behind "+N" open from here.
-    public let events: [EventItem]
+    /// The day's events in the core's order (m1.md decision 42): the ones a month cell hides behind "+N" open from
+    /// here. Usually what the view behind the sheet already has; read from the day's month cell when that view had
+    /// to leave some out.
+    public private(set) var events: [EventItem]
+    @ObservationIgnored private let readsEvents: Bool
     /// "N개 더 보기" was pressed: every event shows, and the button says "접기".
     public var showsAllEvents = false
     public private(set) var suggestions: [Suggestion] = []
@@ -40,12 +42,13 @@ public final class QuickEntryModel {
     @ObservationIgnored private let core: any CoreProtocol
 
     public init(
-        day: String, notes: [String] = [], events: [EventItem] = [], range: Range<Int>? = nil, core: any CoreProtocol,
-        now: @escaping @Sendable () -> Date = Date.init
+        day: String, notes: [String] = [], events: [EventItem]? = [], range: Range<Int>? = nil,
+        core: any CoreProtocol, now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.day = day
         self.notes = notes
-        self.events = events
+        self.events = events ?? []
+        readsEvents = events == nil
         self.range = range
         self.core = core
         today = KoreanCalendar.day(of: now())
@@ -99,6 +102,12 @@ public final class QuickEntryModel {
         async let suggestions = try? offMain { try core.suggestions(day: day) }
         self.calendars = (await calendars ?? []).filter { $0.kind == .own }
         self.suggestions = await suggestions ?? []
+        // `nil` events: the week view hid some behind "+N", so the day's month cell lists them all, as on Android.
+        if readsEvents {
+            let month = KoreanCalendar.month(of: day)
+            let cells = try? await offMain { try core.calendarMonth(month: month) }
+            events = cells?.first { $0.day == day }?.events ?? []
+        }
         if calendarId == nil {
             calendarId = self.calendars.first?.id
         }

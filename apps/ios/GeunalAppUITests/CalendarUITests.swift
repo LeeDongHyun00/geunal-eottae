@@ -57,6 +57,21 @@ final class CalendarUITests: GeunalUITestCase {
         XCTAssertEqual(title.value as? String, "치과")
     }
 
+    // The same day at an accessibility text size: the sheet passes its height and scrolls inside.
+    func testTheQuickEntryDayListAtALargeTextSize() {
+        let app = launch(
+            realCore: true,
+            [
+                "-GeunalOnboardingFinished", "-GeunalDemoBusyDay", "-UIPreferredContentSizeCategoryName",
+                "UICTContentSizeCategoryAccessibilityL",
+            ])
+        let today = app.buttons["month.day.\(koreanToday)"]
+        waitFor(today)
+        tapDate(today)
+        waitFor(app.buttons["quickEntry.moreEvents"])
+        snapshot(app, "05-quick-entry--day-large")
+    }
+
     func testTypesATitleDragsATimeAndUndoes() {
         let app = launch(realCore: true, ["-GeunalOnboardingFinished", "-GeunalToastsWait"])
         let today = app.buttons["month.day.\(koreanToday)"]

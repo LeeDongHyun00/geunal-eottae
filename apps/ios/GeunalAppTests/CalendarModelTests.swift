@@ -141,6 +141,27 @@ final class CalendarModelTests: XCTestCase {
         XCTAssertEqual(QuickEntryModel(day: day, core: fixture.core).listedEvents, [])
     }
 
+    // The week view hid some of the day's timed events behind "+N": the sheet reads the day's month cell instead.
+    func testTheQuickEntryReadsTheDaysEventsWhenTheViewHidSome() async throws {
+        let fixture = try makeFixture()
+        let calendar = try personal(fixture.core)
+        for (index, title) in ["회의 1", "회의 2", "회의 3", "회의 4"].enumerated() {
+            _ = try fixture.core.addEvent(
+                input: event(calendar, title, on: fixture.today, from: 540, to: UInt16(600 + index)),
+                fromSuggestion: false)
+        }
+        let model = QuickEntryModel(day: fixture.today, events: nil, core: fixture.core)
+        XCTAssertEqual(model.events, [])
+
+        await model.load()
+
+        let month = try fixture.core.calendarMonth(month: KoreanCalendar.month(of: fixture.today))
+        let cell = try XCTUnwrap(month.first { $0.day == fixture.today })
+        XCTAssertEqual(cell.events.count, 4)
+        XCTAssertEqual(model.events, cell.events)
+        XCTAssertEqual(model.hiddenEventCount, 1)
+    }
+
     func testTheQuickEntryShowsTheDaysPartOfALongEvent() throws {
         let fixture = try makeFixture()
         let day = "2026-10-22"
