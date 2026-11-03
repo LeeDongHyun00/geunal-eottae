@@ -194,13 +194,14 @@ final class AppModel {
         }
         let online = connectivity.isOnline
         let state = onboardingState
-        Task {
+        // Both pieces write to the store in the App Group container, so each finishes before the app is suspended.
+        BackgroundTime.finishing("app.geunal.ios.foreground") { [self] in
             if online {
                 await PendingGuest.complete(core: core, state: state)
                 // The sync finishes what a sign-in left undone (the account, key packages, the recovery material) and
                 // once a day fetches the holidays and sends the alpha statistics; what it changes arrives through the
                 // listener. On its own task, so a slow network does not hold the next-up bar back.
-                Task {
+                BackgroundTime.finishing("app.geunal.ios.sync") { [self] in
                     do {
                         try await core.sync()
                     } catch let error as CoreError where error.isAccountDeleted {
