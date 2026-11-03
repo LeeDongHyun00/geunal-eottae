@@ -610,6 +610,22 @@ impl FakeClient {
 
     /// A fresh Kakao ID token bound to a live nonce and the device's registered key, or an Apple authorization code,
     /// for `user`'s provider account (protocol §13 "계정 삭제").
+    /// The device key's signature over `message` built from the request's nonce, which this spends. Both irreversible
+    /// requests need it (protocol §10 "새 키로 시작", §13 "계정 삭제"); the provider proofs read the same nonce.
+    fn device_signed(
+        state: &mut State,
+        key: &[u8],
+        message: fn(&str) -> Vec<u8>,
+        nonce: Option<&str>,
+        signature: Option<&[u8]>,
+    ) -> bool {
+        match nonce.zip(signature) {
+            Some((nonce, signature)) => state.nonces.remove(nonce) && verify(key, &message(nonce), signature),
+            None => false,
+        }
+    }
+
+    /// A fresh Kakao or Apple proof of `user`. The Kakao token is bound to `nonce`, which `device_signed` has spent.
     fn provider_proof(
         state: &mut State,
         user: &str,
@@ -619,9 +635,7 @@ impl FakeClient {
         nonce: Option<&str>,
     ) -> bool {
         let subject = match (kakao_id_token, apple_authorization_code, nonce) {
-            (Some(id_token), None, Some(nonce)) if state.nonces.remove(nonce) => {
-                Self::provider_subject("kakao", id_token, nonce, key).ok()
-            }
+            (Some(id_token), None, Some(nonce)) => Self::provider_subject("kakao", id_token, nonce, key).ok(),
             (None, Some(code), _) => FakeServer::apple_subject(code),
             _ => None,
         };
@@ -792,12 +806,16 @@ impl Transport for FakeClient {
             if req.new_key {
                 // Without the code the account proves itself through its provider: a session from a provider
                 // sign-in under 30 minutes old, or a fresh provider proof in the body (protocol §10 "새 키로 시작").
+                // Either way the device key signs too.
                 let device = account.device.as_ref().ok_or_else(|| err(403, "device_revoked"))?;
                 let fresh = device.by_provider_at.is_some_and(|at| now - at < Duration::minutes(30));
                 let key = device.signature_key.clone();
                 let (kakao, apple, nonce) =
                     (req.kakao_id_token.as_deref(), req.apple_authorization_code.as_deref(), req.nonce.as_deref());
-                if !fresh && !Self::provider_proof(&mut state, &user, &key, kakao, apple, nonce) {
+                let signature = req.device_signature.as_deref();
+                if !Self::device_signed(&mut state, &key, geunal_crypto::login::new_key_message, nonce, signature)
+                    || (!fresh && !Self::provider_proof(&mut state, &user, &key, kakao, apple, nonce))
+                {
                     return Err(err(403, "reauth_required"));
                 }
             } else {
@@ -932,22 +950,27 @@ impl Transport for FakeClient {
         let mut state = self.lock();
         let account = state.users.get(&user).expect("the session's account exists");
         let key = account.device.as_ref().map(|d| d.signature_key.clone()).ok_or_else(|| err(403, "device_revoked"))?;
-        let proven = if account.providers.is_empty() {
-            // A guest proves the account with its recovery key, which the server has to hold first.
-            let public_key =
-                account.recovery.as_ref().map(|r| r.public_key.clone()).ok_or_else(|| err(409, "recovery_missing"))?;
-            match (&req.nonce, &req.recovery_signature) {
-                (Some(nonce), Some(signature)) => {
-                    let message = [geunal_crypto::recovery::DELETE_LABEL, nonce.as_bytes()].concat();
-                    state.nonces.remove(nonce) && verify(&public_key, &message, signature)
+        // A guest proves the account with its recovery key, which the server has to hold first.
+        let guest = account.providers.is_empty();
+        let recovery_key = account.recovery.as_ref().map(|r| r.public_key.clone());
+        if guest && recovery_key.is_none() {
+            return Err(err(409, "recovery_missing"));
+        }
+        let nonce = req.nonce.as_deref();
+        let signature = req.device_signature.as_deref();
+        let proven = Self::device_signed(&mut state, &key, geunal_crypto::login::delete_message, nonce, signature)
+            && if guest {
+                match (nonce, &req.recovery_signature, &recovery_key) {
+                    (Some(nonce), Some(signature), Some(public_key)) => {
+                        let message = [geunal_crypto::recovery::DELETE_LABEL, nonce.as_bytes()].concat();
+                        verify(public_key, &message, signature)
+                    }
+                    _ => false,
                 }
-                _ => false,
-            }
-        } else {
-            let (kakao, apple, nonce) =
-                (req.kakao_id_token.as_deref(), req.apple_authorization_code.as_deref(), req.nonce.as_deref());
-            Self::provider_proof(&mut state, &user, &key, kakao, apple, nonce)
-        };
+            } else {
+                let (kakao, apple) = (req.kakao_id_token.as_deref(), req.apple_authorization_code.as_deref());
+                Self::provider_proof(&mut state, &user, &key, kakao, apple, nonce)
+            };
         if !proven {
             return Err(err(403, "reauth_required"));
         }

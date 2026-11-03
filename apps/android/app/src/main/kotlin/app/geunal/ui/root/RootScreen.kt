@@ -57,7 +57,8 @@ fun RootScreen(
     val nextUp = model.nextUp
     when (val current = phase) {
         AppPhase.Starting -> Box(modifier.fillMaxSize().background(LocalNeutralColors.current.background))
-        is AppPhase.Failed -> StartFailureScreen(reason = current.reason, onRetry = model::start, modifier = modifier)
+        is AppPhase.Failed ->
+            StartFailureScreen(reason = current.reason, retrying = current.retrying, onRetry = model::start, modifier = modifier)
         AppPhase.Onboarding ->
             if (core != null) {
                 OnboardingFlow(

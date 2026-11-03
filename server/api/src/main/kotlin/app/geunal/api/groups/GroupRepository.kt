@@ -77,7 +77,7 @@ class GroupRepository(
         jdbc
             .sql(
                 """
-                SELECT m.user_id, u.display_name, d.id AS device_id, m.role::text AS role, m.status::text AS status, m.joined_at
+                SELECT m.user_id, coalesce(u.display_name, '') AS display_name, d.id AS device_id, m.role::text AS role, m.status::text AS status, m.joined_at
                 FROM group_members m
                 JOIN users u ON u.id = m.user_id
                 LEFT JOIN devices d ON d.user_id = m.user_id AND d.revoked_at IS NULL

@@ -2,7 +2,6 @@ package app.geunal.api.delivery
 
 import app.geunal.api.mls.MlsHeader
 import app.geunal.api.support.ApiTest
-import app.geunal.api.support.Client
 import app.geunal.api.support.Mls
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -243,7 +242,7 @@ class DeliveryTests : ApiTest() {
             }
         val joinedBefore = ownerRow().path("joined_at").stringValue()
         // The owner switches phones; the member adds the new device by an Add commit.
-        val replacement = Client(api, "owner-with-new-phone").also { it.login() }
+        val replacement = replaceDevice("owner-with-new-phone")
 
         member.addMember(groupId, 1, replacement)
 

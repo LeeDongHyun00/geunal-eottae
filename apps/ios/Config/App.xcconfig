@@ -10,5 +10,8 @@ GEUNAL_BUILD_CHANNEL = alpha
 // The terms and privacy pages once the domain exists. xcconfig reads `//` as a comment, so write https:/$()/….
 GEUNAL_TERMS_URL =
 GEUNAL_PRIVACY_URL =
+// The API server, written the same way. A build started outside Xcode (a device, TestFlight) can get it nowhere else;
+// left empty, a debug build uses the local stack of `make up` and a release build runs without a server (AppCore).
+GEUNAL_API_BASE =
 
 #include? "Secrets.xcconfig"

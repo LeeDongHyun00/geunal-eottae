@@ -35,6 +35,15 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     // Boot's BOM does not manage Nimbus; it signs the access JWT (ES256) and serves the JWKS (api-server.md §4).
     implementation("com.nimbusds:nimbus-jose-jwt:10.10")
+    // Nor the AWS SDK; it signs the backup upload and download URLs for any S3-compatible store (protocol §10). The
+    // presigner needs no HTTP client, and the API's own HEAD and DELETE calls go through the JDK's URL connection.
+    implementation(platform("software.amazon.awssdk:bom:2.56.0"))
+    implementation("software.amazon.awssdk:s3") {
+        exclude(group = "software.amazon.awssdk", module = "netty-nio-client")
+        exclude(group = "software.amazon.awssdk", module = "apache-client")
+        exclude(group = "software.amazon.awssdk", module = "apache5-client")
+    }
+    implementation("software.amazon.awssdk:url-connection-client")
     implementation("tools.jackson.module:jackson-module-kotlin")
     runtimeOnly("org.postgresql:postgresql")
 

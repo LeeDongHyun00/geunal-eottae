@@ -374,6 +374,9 @@ CREATE TABLE holidays (
 | 파일 | 바뀐 것 |
 | --- | --- |
 | `V2__welcome_seq.sql` | `welcomes.seq`: 그 기기를 넣은 Add 커밋의 순번. 새 멤버가 로그를 그 자리부터 읽습니다 |
+| `V3__m1_sign_in.sql` | M1 로그인. `provider_links`: 카카오·Apple 계정과의 연결과 끊긴 시각(`users`의 `kakao_sub`·`apple_sub`를 옮기고 지움, 게스트는 연결이 없음). `replace_tickets`: 교체 티켓의 SHA-256. `devices.provider_auth_at`(제공자 로그인 30분 창)과 `replaced_via`(해제된 기기가 받는 교체 방식). `sessions.spent_at`(리프레시 토큰 재사용 감지). `recovery`는 `kdf_salt`를 빼고 복구 ID·복구 공개키를 더함 |
+| `V4__m1_recovery_backups_deletion.sql` | 백업의 `completed_at`(완료 전에는 목록에 없음)과 크기 제한(64MiB). `object_deletions.bucket`(버킷 짧은 이름). 계정 삭제의 자리표시자: `users.deleted_at`, 닉네임·만 14세 확인 시각을 비울 수 있게 함. `provider_revocations`: 카카오 연결 끊기와 Apple 토큰 철회의 재시도. `deleted_sessions`: 지운 계정 세션의 리프레시 해시와 만료 시각(401 `account_deleted`) |
+| `V5__m1_alpha_stats_access_log.sql` | 알파 통계에 `sessions`·`crashes`(크래시 없는 세션 비율)와 `updated_at`. `access_log_outbox`: 로그인·토큰 갱신의 시각, 사용자·기기 ID, 접속 IP를 토큰을 내주는 트랜잭션에서 적고, 몇 분 안에 `access-logs` 버킷으로 옮김. 계정을 지워도 남도록 외래 키가 없음 |
 
 ## 7. 엔드포인트
 
@@ -383,6 +386,7 @@ CREATE TABLE holidays (
 | POST | `/auth/kakao` | 카카오 로그인 + 기기 등록. 다른 활성 기기가 있으면 교체 티켓 |
 | POST | `/auth/apple` | Apple 로그인 + 기기 등록. 다른 활성 기기가 있으면 교체 티켓 |
 | POST | `/auth/apple/callback` | 안드로이드 Apple 웹 로그인의 form_post를 받아 App Links 주소로 앱에 넘기기 |
+| GET | `/auth/apple` | App Links 주소. 앱이 없을 때 열리는, 스크립트 없는 정적 페이지 |
 | POST | `/auth/guest` | 게스트 계정 + 기기 등록 |
 | POST | `/auth/recover` | 게스트 복귀: 복구 ID와 복구 서명으로 로그인 + 기기 교체 |
 | POST | `/auth/replace` | 교체 티켓으로 이 기기 등록, 이전 기기 해제 |
@@ -440,7 +444,7 @@ CREATE TABLE holidays (
 | 로그 파티션 | 매일 | 내일 파티션 만들기, 30일 지난 파티션 삭제 |
 | 미디어 정리 | 매일 | `expires_at`이 지난 `media_objects`(채팅 30일, 약속·개인 1년, 바뀐 커버·사진 7일)를 지우고 `object_deletions`에 넣기 |
 | 구독 대조 | 매일 | 만료가 가까운 구독을 스토어 API로 다시 확인(알림을 놓친 경우 대비) |
-| 오브젝트 삭제 | 10분 | `object_deletions`를 비우며 스토리지에서 삭제 |
+| 오브젝트 삭제 | 10분 | `object_deletions`에 넣은 지 1시간 지난 것을 스토리지에서 삭제하고 비움. 15분짜리 업로드 URL로 늦게 올린 객체가 남지 않게 기다림 |
 | 백업 정리 | 업로드 완료 때 | 사람마다 최근 3개만 남기기 |
 | Welcome 정리 | 매일 | 30일 지난 Welcome 삭제 |
 | 공휴일 동기화 | 매일 | 특일 정보 API로 `holidays` 갱신(같은 날 공휴일 둘 허용) |
@@ -466,6 +470,9 @@ CREATE TABLE holidays (
 - **로그에 남기지 않는 것:** 요청·응답 본문, 암호문, 토큰
 - **로그에 남기는 것:** 경로, 상태 코드, 지연, 사용자·그룹 ID, 크기
 - **접속 로그:** 로그인과 토큰 갱신 때마다 시각, 사용자·기기 ID, 접속 IP를 일반 로그와 따로 남기고 3개월 뒤 지웁니다(통신비밀보호법 시행령 제41조, [인프라](infra.md) 9장). IP는 접속 로그에만 남깁니다.
+  - 토큰을 내주는 트랜잭션에서 `access_log_outbox`에 적고, 5분마다 gzip JSON Lines(`at`, `event`, `user_id`, `device_id`, `ip`)로 `access-logs` 버킷의 `YYYY/MM/DD/<첫 id>-<끝 id>.jsonl.gz`에 옮깁니다. 버킷의 수명 규칙(92일)이 지웁니다.
+  - 버킷에 닿지 못한 행은 92일 뒤 매일 정리가 지웁니다.
+  - 접속 IP는 Caddy가 넣는 `X-Forwarded-For`입니다. Tomcat은 사설망에서 온 요청의 이 헤더만 믿습니다.
 - **지표:** 엔드포인트별 지연과 오류율, 409·410 비율, 푸시 성공률, 게이트웨이 신호 수, 파티션 크기
 
 ## 11. 테스트

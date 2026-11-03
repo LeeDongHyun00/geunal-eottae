@@ -49,20 +49,27 @@ public final class RestoreModel {
     public private(set) var problem: Problem?
     public private(set) var phase: Phase = .entering
     public private(set) var isWorking = false
+    /// `false` on a device without a passcode: "백업 없이 새로 시작" goes without the OS prompt, and the sheet
+    /// recommends a screen lock.
+    public let screenLocked: Bool
 
     @ObservationIgnored private let core: any CoreProtocol
+    @ObservationIgnored private let owner: any DeviceOwnerCheck
     @ObservationIgnored private let ageConfirmedAt: Date?
     @ObservationIgnored private let notify: @MainActor (String) -> Void
 
     /// `ageConfirmedAt` is the sign-in screen's tick, which a new guest account needs; without it "새 게스트 계정으로
     /// 시작" sends the person back to tick the box.
     public init(
-        mode: Mode, core: any CoreProtocol, ageConfirmedAt: Date? = nil, notify: @escaping @MainActor (String) -> Void
+        mode: Mode, core: any CoreProtocol, owner: any DeviceOwnerCheck, ageConfirmedAt: Date? = nil,
+        notify: @escaping @MainActor (String) -> Void
     ) {
         self.mode = mode
         self.core = core
+        self.owner = owner
         self.ageConfirmedAt = ageConfirmedAt
         self.notify = notify
+        screenLocked = owner.hasScreenLock
     }
 
     public var acceptedCount: Int { accepted.compactMap { $0 }.count }
@@ -171,6 +178,8 @@ public final class RestoreModel {
         do {
             switch mode {
             case .deviceChange, .offer:
+                // The account's backups go for good, so the OS asks first (decision 26); cancelling keeps the sheet.
+                guard await owner.confirm(.startFresh) else { return false }
                 _ = try await core.startFresh(proof: nil)
             case .guestReturn:
                 guard let ageConfirmedAt else { return false }

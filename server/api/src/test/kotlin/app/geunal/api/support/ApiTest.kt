@@ -9,13 +9,23 @@ import org.springframework.test.context.DynamicPropertySource
 import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
 
-/** One running API with the auth stub on, shared by every test class that extends this. */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = ["geunal.auth.stub=true"])
+/**
+ * One running API with the auth stub on and Kakao and Apple pointed at [FakeProviders], shared by every test class that
+ * extends this.
+ */
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    // The access log ships only when a test asks, so no scheduled round empties the outbox under a test reading it.
+    properties = ["geunal.auth.stub=true", "geunal.alpha-stats.enabled=true", "geunal.access-log.ship-every=PT24H"],
+)
 abstract class ApiTest {
     companion object {
         @JvmStatic
         @DynamicPropertySource
-        fun stack(registry: DynamicPropertyRegistry) = TestStack.register(registry)
+        fun stack(registry: DynamicPropertyRegistry) {
+            TestStack.register(registry)
+            FakeProviders.register(registry)
+        }
     }
 
     @Autowired
@@ -34,6 +44,16 @@ abstract class ApiTest {
         subject: String = "user-${UUID.randomUUID()}",
         platform: String = "ios",
     ): Client = Client(api, subject).also { it.login(platform) }
+
+    /** A new device of [subject]'s account that signs in, is told to replace the active one, and does. */
+    fun replaceDevice(
+        subject: String,
+        platform: String = "ios",
+    ): Client =
+        Client(api, subject).also {
+            val ticket = it.stubSignIn(platform).expect(200).string("ticket")
+            it.replace(ticket).expect(201)
+        }
 
     /** Listens on the Redis channels of these devices, as the gateway would. */
     fun inbox(vararg deviceIds: UUID): Inbox = Inbox(mapper, deviceIds.map { "d:$it" })
@@ -56,4 +76,10 @@ fun TestStack.register(registry: DynamicPropertyRegistry) {
     registry.add("spring.datasource.password") { postgres.password }
     registry.add("spring.data.redis.host") { redisHost }
     registry.add("spring.data.redis.port") { redisPort }
+    registry.add("geunal.s3.endpoint") { s3Endpoint }
+    registry.add("geunal.s3.region") { "us-east-1" }
+    registry.add("geunal.s3.access-key") { TestStack.S3_ACCESS_KEY }
+    registry.add("geunal.s3.secret-key") { TestStack.S3_SECRET_KEY }
+    registry.add("geunal.s3.backups-bucket") { TestStack.BACKUPS_BUCKET }
+    registry.add("geunal.s3.access-logs-bucket") { TestStack.ACCESS_LOGS_BUCKET }
 }
