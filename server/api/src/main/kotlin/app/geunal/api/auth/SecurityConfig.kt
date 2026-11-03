@@ -37,6 +37,7 @@ class SecurityConfig {
                 authorize("/actuator/health/**", permitAll)
                 authorize("/.well-known/jwks.json", permitAll)
                 authorize("/.well-known/assetlinks.json", permitAll)
+                authorize("/holidays", permitAll)
                 authorize("/auth/link", authenticated)
                 authorize("/auth/**", permitAll)
                 authorize(anyRequest, authenticated)

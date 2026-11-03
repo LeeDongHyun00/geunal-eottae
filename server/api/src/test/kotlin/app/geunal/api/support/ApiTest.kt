@@ -25,6 +25,7 @@ abstract class ApiTest {
         fun stack(registry: DynamicPropertyRegistry) {
             TestStack.register(registry)
             FakeProviders.register(registry)
+            FakeKasi.register(registry)
         }
     }
 

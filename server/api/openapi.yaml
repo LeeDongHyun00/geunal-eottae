@@ -484,7 +484,7 @@ paths:
 
   /holidays:
     get:
-      summary: "M1: Public holidays of whole years, at most two at a time (protocol §14)"
+      summary: "Public holidays of whole years, at most two at a time (protocol §14)"
       description: |
         Requests are by whole years because a device replaces each year it receives, and replacing a year from part of
         it would drop the rest. `years` lists the requested years whose holidays the server knows completely, and
@@ -498,7 +498,7 @@ paths:
         - { name: to_year, in: query, required: true, schema: { type: integer }, description: "from_year or from_year + 1" }
       responses:
         "200":
-          description: carries Cache-Control and ETag
+          description: "carries Cache-Control (public, max-age=3600) and ETag; holidays ordered by day, then name by code point"
           content:
             application/json:
               schema:
