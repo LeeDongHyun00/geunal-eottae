@@ -147,7 +147,7 @@ private fun sheetHeight(eventRows: Int) =
         val window =
             LocalWindowInfo.current.containerSize.height
                 .toDp()
-        val events = if (eventRows == 0) 0.dp else Metrics.minHitTarget + EVENTS_GAP + EVENT_ROW * eventRows + 18.dp
+        val events = if (eventRows == 0) 0.dp else EVENTS_HEADER + EVENTS_GAP + EVENT_ROW * eventRows + 18.dp
         val board = (SHEET_HEIGHT - Metrics.Sheet.paddingTop - Metrics.Sheet.grabberHeight + events) * fontScale.coerceAtLeast(1f)
         minOf(board, window * Metrics.Sheet.MAX_HEIGHT_RATIO)
     }
@@ -166,11 +166,7 @@ private fun DayEvents(
 ) {
     val neutrals = LocalNeutralColors.current
     Column(verticalArrangement = Arrangement.spacedBy(EVENTS_GAP), modifier = Modifier.testTag("quickEntry.dayEvents")) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.heightIn(min = Metrics.minHitTarget),
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(
                 painterResource(DesignR.drawable.ds_ic_calendar),
                 contentDescription = null,
@@ -184,24 +180,18 @@ private fun DayEvents(
                 modifier = Modifier.weight(1f).semantics { heading() },
             )
             if (state.foldedEvents > 0) {
-                Box(
-                    contentAlignment = Alignment.CenterEnd,
-                    modifier =
-                        Modifier
-                            .heightIn(min = Metrics.minHitTarget)
-                            .clickable(role = Role.Button, onClick = onToggle)
-                            .testTag("quickEntry.eventsToggle"),
-                ) {
-                    Text(
-                        if (state.showsAllEvents) {
-                            stringResource(R.string.quick_entry_day_events_less)
-                        } else {
-                            stringResource(R.string.quick_entry_day_events_more, state.foldedEvents)
-                        },
-                        style = GeunalType.caption.copy(fontWeight = FontWeight.SemiBold),
-                        color = neutrals.ink,
-                    )
-                }
+                // The line stays the board's 18 high: Compose widens a small clickable's touch area to the minimum
+                // touch target on its own, so the toggle is still easy to hit.
+                Text(
+                    if (state.showsAllEvents) {
+                        stringResource(R.string.quick_entry_day_events_less)
+                    } else {
+                        stringResource(R.string.quick_entry_day_events_more, state.foldedEvents)
+                    },
+                    style = GeunalType.caption.copy(fontWeight = FontWeight.SemiBold),
+                    color = neutrals.secondaryText,
+                    modifier = Modifier.clickable(role = Role.Button, onClick = onToggle).testTag("quickEntry.eventsToggle"),
+                )
             }
         }
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.input)).background(neutrals.groupedBackground)) {
@@ -574,5 +564,6 @@ private val SHEET_HEIGHT = 552.dp
 /** A row of the day's events (m1.md screen 5 "줄 44"). */
 private val EVENT_ROW = 44.dp
 
-/** Between the "이날 일정 N개" line and its group. */
-private val EVENTS_GAP = 4.dp
+/** The "이날 일정 N개" line and the gap under it, as boards/QuickEntryDay draws them. */
+private val EVENTS_HEADER = 18.dp
+private val EVENTS_GAP = 8.dp
