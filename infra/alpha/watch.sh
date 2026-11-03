@@ -31,7 +31,9 @@ else
   problems+=("\`https://$host/actuator/health\`에 닿지 않거나 오류로 답합니다: \`$(printf '%s' "$body" | tail -n 1 | head -c 200)\`")
 fi
 
-if end=$(openssl s_client -connect "$host:443" -servername "$host" </dev/null 2>/dev/null |
+# s_client has no timeout of its own for TCP, and a server that accepts the connection but never finishes the
+# handshake would hold the run until the job's limit, so no alert would ever be opened.
+if end=$(timeout 20 openssl s_client -connect "$host:443" -servername "$host" </dev/null 2>/dev/null |
   openssl x509 -noout -enddate 2>/dev/null); then
   end=${end#notAfter=}
   days=$((($(date -u -d "$end" +%s) - $(date -u +%s)) / 86400))
@@ -39,7 +41,7 @@ if end=$(openssl s_client -connect "$host:443" -servername "$host" </dev/null 2>
     problems+=("TLS 인증서가 ${days}일 뒤(${end}) 끝납니다. Caddy의 갱신이 실패하고 있을 수 있습니다.")
   fi
 else
-  problems+=("TLS 인증서를 읽지 못했습니다.")
+  problems+=("TLS 인증서를 20초 안에 읽지 못했습니다.")
 fi
 
 open=$(gh issue list --label "$label" --state open --json number --jq '.[0].number // empty')
