@@ -8,15 +8,15 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpMethod
 import java.time.LocalDate
 import java.time.ZoneId
-import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 /** `GET /holidays` and its daily sync (protocol §14): whole years the server knows, from KASI only by the daily job. */
 class HolidayTests : ApiTest() {
     @Autowired
     lateinit var sync: HolidaySync
 
-    /** A different address per test, so the hourly limit of one test does not reach another. */
-    private val address = "198.51.100.${(UUID.randomUUID().hashCode() and 0x7f) + 1}"
+    /** A different address per test (JUnit makes an instance per test), so one test's hourly count never reaches another. */
+    private val address = "198.51.100.${addresses.incrementAndGet()}"
 
     private fun get(
         from: Int,
@@ -106,5 +106,9 @@ class HolidayTests : ApiTest() {
 
         val refused = get(year, year).expectError(429, "rate_limited")
         assertThat(refused.headers.getFirst("Retry-After")!!.toLong()).isBetween(1, 3600)
+    }
+
+    private companion object {
+        val addresses = AtomicInteger()
     }
 }
