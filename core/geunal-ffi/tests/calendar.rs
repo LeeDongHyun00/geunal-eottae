@@ -544,6 +544,42 @@ fn schedules_alerts_from_the_event_then_its_calendar_then_the_app_setting() {
     assert_eq!(d.core.scheduled_alerts(1).unwrap()[0].title, "치과");
 }
 
+#[test]
+fn gives_an_event_alert_the_end_its_body_shows() {
+    let d = device();
+    let cal = personal(&d.core);
+    // "1시간 뒤 · 18:00–20:00": a timed event ends at its end time, and one that ends at midnight on the next day.
+    d.core.add_event(timed(&cal, "가족 · 저녁", "2026-10-26", 18 * 60, 20 * 60), false).unwrap();
+    let mut night = timed(&cal, "야간 근무", "2026-10-27", 22 * 60, 0);
+    night.end = at("2026-10-28", 0);
+    d.core.add_event(night, false).unwrap();
+    // "내일 · 종일" and "내일부터 11/1(일)까지" (m1.md decision 33): an all-day event ends on its last day.
+    d.core.add_event(all_day(&cal, "연차", "2026-10-29", "2026-10-29"), false).unwrap();
+    d.core.add_event(all_day(&cal, "제주 여행", "2026-10-30", "2026-11-01"), false).unwrap();
+    let mut class = timed(&cal, "전공 수업", "2026-10-26", 600, 720);
+    class.recurrence = Some(weekly(vec![Weekday::Monday]));
+    d.core.add_event(class, false).unwrap();
+    add_person(&d.core, "민수", solar(10, 31));
+
+    let alerts = d.core.scheduled_alerts(64).unwrap();
+    let end = |title: &str| alerts.iter().find(|a| a.title == title).unwrap().end.clone();
+    assert_eq!(end("가족 · 저녁"), Some(at("2026-10-26", 20 * 60)));
+    assert_eq!(end("야간 근무"), Some(at("2026-10-28", 0)));
+    assert_eq!(end("연차"), Some(at("2026-10-29", 0)));
+    assert_eq!(end("제주 여행"), Some(at("2026-11-01", 0)));
+    assert_eq!(end("민수"), None, "a birthday is the one day");
+    // Each occurrence of a repeating event ends on its own day.
+    let classes: Vec<(DayTime, Option<DayTime>)> =
+        alerts.iter().filter(|a| a.title == "전공 수업").take(2).map(|a| (a.start.clone(), a.end.clone())).collect();
+    assert_eq!(
+        classes,
+        vec![
+            (at("2026-10-26", 600), Some(at("2026-10-26", 720))),
+            (at("2026-11-02", 600), Some(at("2026-11-02", 720)))
+        ]
+    );
+}
+
 trait TargetEvent {
     fn target_event(&self) -> String;
 }
@@ -564,8 +600,10 @@ fn lists_what_is_on_now_or_next_and_writes_the_widget_snapshot() {
     // The clock reads 09:00 on Sunday the 25th.
     d.core.add_event(timed(&cal, "아침 산책", "2026-10-25", 420, 480), false).unwrap(); // already over
     d.core.add_event(timed(&cal, "브런치", "2026-10-25", 510, 600), false).unwrap(); // on now
-    d.core.add_event(timed(&cal, "가족 · 저녁", "2026-10-25", 1080, 1200), false).unwrap();
-    d.core.add_event(timed(&cal, "전공 수업", "2026-10-26", 600, 720), false).unwrap();
+    let dinner = d.core.add_event(timed(&cal, "가족 · 저녁", "2026-10-25", 1080, 1200), false).unwrap().event_id;
+    let mut class = timed(&cal, "전공 수업", "2026-10-26", 600, 720);
+    class.recurrence = Some(weekly(vec![Weekday::Monday]));
+    d.core.add_event(class, false).unwrap();
 
     let next: Vec<String> = d
         .core
@@ -591,6 +629,15 @@ fn lists_what_is_on_now_or_next_and_writes_the_widget_snapshot() {
     );
     assert_eq!(snapshot["tomorrow"][0]["title"], "전공 수업");
     assert!(snapshot["next_appointment"].is_null());
+
+    // A tapped widget event opens in the editor (m1.md 2.6): the app hands its id and occurrence to `event()`.
+    let item = &snapshot["today"][2];
+    assert_eq!((item["event_id"].as_str(), item["occurrence"].as_str()), (Some(dinner.as_str()), None));
+    let item = &snapshot["tomorrow"][0];
+    assert!(item["occurrence"].is_string(), "an occurrence of a repeating event names itself");
+    let opened =
+        d.core.event(item["event_id"].as_str().unwrap().into(), item["occurrence"].as_str().map(Into::into)).unwrap();
+    assert_eq!((opened.title.as_str(), opened.start.clone()), ("전공 수업", at("2026-10-26", 600)));
 }
 
 #[test]

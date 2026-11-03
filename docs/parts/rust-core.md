@@ -48,9 +48,10 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 
 | Rust | Swift | Kotlin | 용도 | 단계 |
 | --- | --- | --- | --- | --- |
-| `Core::open(store_dir, api_base, listener, secrets)` | `Core.open(storeDir:apiBase:listener:secrets:)` | `Core.open(storeDir, apiBase, listener, secrets)` | 저장소 열기. 데이터베이스 키를 `secrets`에서 꺼내야 파일을 열 수 있어서 `SecretStore`를 여기서 받습니다. 저장된 세션이 있으면 복원 | M0 |
+| `Core::open(store_dir, api_base, listener, secrets)` | `Core.open(storeDir:apiBase:listener:secrets:)` | `Core.open(storeDir, apiBase, listener, secrets)` | 저장소 열기. 데이터베이스 키를 `secrets`에서 꺼내야 파일을 열 수 있어서 `SecretStore`를 여기서 받습니다. 저장된 세션이 있으면 복원. 키가 없는 저장소는 옆으로 옮기고 새로 시작(4장 "열 수 없는 저장소") | M0 |
 | `sign_in_stub(subject, display_name, platform)` | `signInStub(subject:displayName:platform:) async throws` | `suspend fun signInStub(subject, displayName, platform)` | 인증 스텁(`POST /auth/stub`, 로컬·CI만)으로 로그인과 기기 등록. 세션과 기기 서명 키는 `SecretStore`에 둠. M1부터 `AuthResult`를 돌려주고, 다른 기기가 쓰는 계정이면 `ReplaceRequired`(protocol.md 13장) | M0 |
-| `sync()` | `sync() async throws` | `suspend fun sync()` | 모든 그룹 따라잡기, 대기 중 쓰기 보내기. M1부터 로그인이 마치지 못한 계정 정보, 키 패키지, 복구 자료도 처리(5장 "계정과 세션") | M0 |
+| `sync()` | `sync() async throws` | `suspend fun sync()` | 모든 그룹 따라잡기, 대기 중 쓰기 보내기. M1부터 로그인이 마치지 못한 계정 정보, 키 패키지, 복구 자료도 처리(5장 "계정과 세션"). 하루 한 번 공휴일 받기(6장 "공휴일과 연차 다리")와 알파 통계 보내기(5장 "알파 통계")도 하고, 이 둘은 실패해도 `sync()`를 실패시키지 않음 | M0 |
+| `store_reset()` | `storeReset()` | `storeReset()` | `open`이 키 없는 저장소를 옆으로 옮기고 새로 시작한 시각. 다음 로그인까지 돌려줌. 앱은 일정이 빈 이유를 알리고 로그인과 복원을 권함 | M1 |
 | `cipher_version()` | `cipherVersion()` | `cipherVersion()` | M0 화면용 SQLCipher 버전. 화면이 없어지면 지움 | M0 |
 | `cipher_provider()` | `cipherProvider()` | `cipherProvider()` | SQLCipher가 쓰는 암호 라이브러리(안드로이드 `openssl`, iOS `commoncrypto`)와, 링크된 그 라이브러리가 실행 중에 알려 주는 버전. 기기 시험이 앱에 실제로 들어간 OpenSSL을 확인 | M1 |
 | `create_group(name)`, `add_members(group_id, user_ids)`, `remove_member(group_id, user_id)` | `createGroup(name:) async throws` 등 | `suspend fun createGroup(name)` 등 | 그룹 만들기, 사용자 ID로 멤버 추가(초대 코드는 M2), 탈퇴·강퇴. 헤드리스 종단 시험이 쓰는 M0 표면 | M0 |
@@ -64,7 +65,7 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 | `suggestions(day)` | `suggestions(day:)` | `suggestions(day)` | 입력 추천 칩 5개. 칩을 누르면 `add_event(칩의 event, true)` | M1 |
 | `shift_templates()`, `save_shift_template(input)`, `delete_shift_template(template_id)`, `shift_days(month)`, `set_shift_days(days)` | `shiftTemplates()` 등 | `shiftTemplates()` 등 | 교대 템플릿과 찍기. 찍기 화면은 초안을 들고 있다가 "완료"에 `set_shift_days`로 한 번에 적용 | M1 |
 | `mirror_device_calendars(calendars)` | `mirrorDeviceCalendars(calendars:)` | `mirrorDeviceCalendars(calendars)` | 고른 기기 캘린더와 그 일정으로 미러를 바꿈. 빈 목록이면 끔 | M1 |
-| `notification_settings()`, `set_notification_settings(settings)`, `scheduled_alerts(limit)` | `notificationSettings()` 등 | `notificationSettings()` 등 | 알림 설정과, 앱이 예약할 가까운 알림(iOS는 64개) | M1 |
+| `notification_settings()`, `set_notification_settings(settings)`, `scheduled_alerts(limit)` | `notificationSettings()` 등 | `notificationSettings()` 등 | 알림 설정과, 앱이 예약할 가까운 알림(iOS는 64개). 일정 알림의 `end`는 `EventItem.end`와 같은 끝(시간 일정은 끝 시각, 종일 일정은 마지막 날)이라, 본문의 "18:00–20:00"과 "11/9(월)까지"를 앱이 일정을 다시 읽지 않고 씁니다([디자인](../design/m1.md) 결정 33). 생일과 연차 다리는 `nil`/`null` | M1 |
 | `export_ics()` | `exportIcs()` | `exportIcs()` | 내 일정의 iCalendar 내보내기. 기기 캘린더는 뺌 | M1 |
 | `people()`, `upcoming_birthdays(days)`, `save_person(input)`, `delete_person(person_id)`, `import_contacts(contacts)` | `people()` 등 | `people()` 등 | 사람·생일(11·17번 화면) | M1 |
 | `birthday_in_year(birthday, year)`, `lunar_to_solar(year, month, day, leap_month)` | `birthdayInYear(birthday:year:)` 등 | `birthdayInYear(birthday, year)` 등 | 음력 생일의 그해 양력 날짜(6장의 윤달·30일 규칙 적용), 음력 날짜 그대로의 변환. 표 범위 밖은 `nil`/`null` | M1 |
@@ -91,6 +92,15 @@ UniFFI가 Swift와 Kotlin 바인딩을 만듭니다. 아래 이름은 실제로 
 - **계정:** 구독 상태(서버가 확인한 혜택만 켬)
 
 **비밀 보관 콜백:** 앱이 `SecretStore` 콜백(`get(name)`, `put(name, value)`, `delete(name)`)을 구현합니다. 코어는 기기 서명 개인키, AMK, 복구 코드의 엔트로피 `E`([공통 계약](protocol.md) 10장), 데이터베이스 키를 이 콜백으로만 읽고 씁니다. 비밀은 SQLite에 저장하지 않습니다.
+
+- **없음과 실패:** `get`은 그 이름으로 둔 것이 없을 때만 `nil`/`null`입니다. 읽지 못하면 `SecretStoreError`(Kotlin `SecretStoreException`)를 던집니다. 코어는 읽지 못한 것을 없는 것으로 보지 않습니다. 그렇게 보면 새 키나 새 복구 코드를 만들어 진짜 값 위에 쓰기 때문입니다.
+  - `Unavailable`: 지금은 답하지 못하지만 나중에는 읽힙니다(첫 잠금 해제 전의 iOS 키체인, 실패한 키스토어 호출). 코어는 그 호출을 `CoreError::SecretStore`로 실패시키고 아무것도 바꾸지 않습니다.
+  - `Lost`: 값은 있지만 다시는 열리지 않습니다. 데이터베이스 키가 그러면 저장소를 옆으로 옮깁니다(4장 "열 수 없는 저장소"). 다른 비밀은 `Unavailable`과 같이 실패합니다.
+    - 안드로이드: keystore2(API 31 이상)가 봉인 키가 없다고 답하거나, 봉인한 파일이 태그 검사에서 실패한 경우입니다.
+    - API 26–30의 키스토어는 키가 없을 때와 데몬이 응답하지 않을 때 똑같이 답합니다. 그래서 그때는 `Unavailable`로 보고, 읽기도 쓰기도 키를 새로 만들지 않습니다. 그 버전에서 키를 정말 잃으면 앱은 시작 오류에 머뭅니다.
+  - 콜백이 그 밖의 예외를 던지면 UniFFI가 `Unavailable`로 넘깁니다. 잃었다고 말한 것이 아니므로 아무것도 옮기지 않습니다.
+- **쓰기와 지우기:** `put`·`delete`도 실패를 던집니다. 지울 것이 없는 `delete`는 성공입니다. 코어는 실패한 쓰기를 그 호출의 오류로 돌려줍니다. 기기 해제와 계정 삭제에서 지우지 못한 비밀이 있으면, 나머지를 다 지운 뒤 그 오류를 돌려줍니다.
+- **`session()`:** 화면이 어디로 갈지만 정하므로, 읽지 못하면 `nil`/`null`입니다. 계정에 무언가 하는 함수는 저장소를 직접 읽고, 읽지 못하면 실패합니다.
 
 ### 날짜와 시각
 
@@ -120,17 +130,18 @@ UniFFI는 Rust 쪽 객체 없이 만드는 생성자(Swift `Core(noHandle: Core.
   "v": 1,
   "day": "2026-10-25",
   "today": [
-    { "title": "가족 · 저녁", "color": "blossom", "all_day": false, "start": "18:00", "end": "20:00" }
+    { "event_id": "019a1f2e-…", "occurrence": null, "title": "가족 · 저녁", "color": "blossom", "all_day": false, "start": "18:00", "end": "20:00" }
   ],
   "tomorrow": [
-    { "title": "전공 수업", "color": "sea", "all_day": false, "start": "10:00", "end": "12:00" }
+    { "event_id": "019a1f30-…", "occurrence": "2026-10-26T10:00", "title": "전공 수업", "color": "sea", "all_day": false, "start": "10:00", "end": "12:00" }
   ],
   "next_appointment": null
 }
 ```
 
-- `v`는 형식 버전입니다. 위젯은 모르는 버전이면 "그날어때를 열어 주세요"로 둡니다.
+- `v`는 형식 버전입니다. 위젯은 모르는 버전이면 "그날어때를 열어 주세요"로 둡니다. 같은 버전 안에서는 키가 늘어나기만 하므로, 위젯은 모르는 키를 무시합니다(안드로이드 `kotlinx.serialization`은 `ignoreUnknownKeys`).
 - `today`, `tomorrow`는 표시 중인 캘린더의 일정을 종일 먼저, 그다음 시작 순으로 5개까지 담습니다. 전날 시작해 그날까지 이어지는 일정도 들어갑니다.
+- `event_id`와 `occurrence`는 위젯의 일정을 눌렀을 때 앱이 `event(event_id, occurrence)`로 그 일정을 여는 값입니다([디자인](../design/m1.md) 2.6). 뜻은 `EventItem`·`AlertTarget::Event`와 같아서, `occurrence`는 반복 일정에만 있고 나머지는 `null`입니다. 키의 모양은 앱이 해석하지 않습니다.
 - `color`는 [`tokens.json`](../design/tokens.json) `color.group`의 키이고, 기기 캘린더 일정은 `null`(기기 캘린더 색)입니다. `start`·`end`는 `"HH:MM"`이고 종일 일정은 둘 다 `null`입니다.
 - `next_appointment`는 M1에서 늘 `null`이고, M2에서 그룹 약속의 모양을 정합니다.
 - 자정이 지났는데 앱이 아직 다시 쓰지 않았으면 `day`가 어제입니다. 위젯은 그때 `tomorrow`를 오늘로 보여 줍니다.
@@ -139,6 +150,13 @@ UniFFI는 Rust 쪽 객체 없이 만드는 생성자(Swift `Core(noHandle: Core.
 
 - **파일:** 하나의 SQLCipher 데이터베이스입니다. iOS는 App Group 컨테이너, 안드로이드는 앱 전용 디렉터리에 둡니다. WAL 모드를 씁니다.
 - **키:** 32바이트 무작위 키를 `SecretStore`에 둡니다. iOS 파일 보호 등급은 첫 잠금 해제 후 접근 가능(`completeUntilFirstUserAuthentication`)으로 해서, 잠긴 상태에서도 알림 확장이 읽을 수 있게 합니다.
+- **열 수 없는 저장소:** 데이터베이스 파일은 있는데 키가 없거나(`get`이 `nil`/`null`) 영영 잃었으면(`Lost`), 그 파일은 다시 열 수 없습니다. 지금까지는 새 키로 열다 실패해서 앱이 시작 오류에 머물렀습니다. 이제 `open`이 다음을 합니다.
+  - 옛 파일을 WAL 파일과 함께 저장소 디렉터리의 `unreadable/<유닉스 밀리초>/`로 옮기고 빈 저장소로 시작합니다. 키가 돌아오는 경우를 위해 지우지 않고 둡니다.
+  - 세션, 기기 서명 키, `E`, AMK를 지웁니다. MLS 상태와 복구 코드의 기록이 옛 파일에 있었기 때문입니다. 그래서 기기는 로그아웃 상태가 됩니다. 키를 처음 만드는 첫 실행도 같은 길이고, 그때는 지울 것이 없습니다.
+  - `store_reset()`이 다음 로그인까지 옮긴 시각을 돌려줍니다. 서버에 있던 것은 로그인과 복원으로 돌아옵니다.
+    - 옮기기 전에 저장소 옆에 표시 파일(`geunal.reset`)을 둡니다. 옮긴 뒤 새 키를 쓰지 못해 `open`이 실패해도, 다음에 열리는 저장소가 이것을 보고 시각을 적습니다.
+  - 키를 정하는 동안 쓰기 잠금(아래)을 잡고 키를 다시 읽습니다. 알림 확장이 같은 때 열어도 키를 두 번 만들지 않습니다.
+  - 키를 지금 읽지 못하면(`Unavailable`) `open`이 실패하고 아무것도 옮기지 않습니다.
 - **MLS 상태:** mls-rs-provider-sqlite가 같은 파일의 별도 테이블로 관리합니다.
 - **프로세스 간 잠금:** iOS의 앱과 알림 확장이 같은 파일을 씁니다. 쓰기 전에 잠금 파일에 `flock`을 겁니다.
   - 알림 확장은 5초 안에 잠금을 못 얻으면 자리표시 문구로 끝냅니다.
@@ -320,6 +338,8 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
 - **추천 기록:** 같은 요일에 마지막으로 쓴 끝 시각·캘린더·종일 여부, 반복 제안을 물었는지
 - **새 테이블:** 설정(`settings`), 서버가 보낸 해의 공휴일(`holidays`, `holiday_years`), 알파 통계(`alpha_stats`), 이 기기가 만든 백업의 기록(`backup_records`)
 
+`0003_alpha_sessions.sql`은 알파 통계에 앱만 아는 두 값, 그날 앱이 앞으로 나온 횟수(`sessions`)와 OS가 알려 준 크래시 수(`crashes`)를 더합니다.
+
 ### 백업 아카이브
 
 [공통 계약](protocol.md) 10장의 백업에 들어가는 내용입니다. 형식은 `geunal-store`의 `archive`가 정하는 CBOR이고 지금은 1판입니다. 저장소의 행과 따로 정의해서, 스키마가 바뀌어도 형식은 그대로입니다.
@@ -393,6 +413,23 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
   - 내 캘린더와 일정, 직접 넣거나 연락처에서 가져온 사람, 데이터베이스 키는 남깁니다.
   - 403 본문의 `replaced_at`·`replaced_by`·`replaced_via`는 다음 로그인이 이 기기를 등록할 때까지 `revocation()`이 돌려줍니다. `revoke` 이벤트는 본문이 비어 있어서, 코어가 `GET /me`를 불러 그 403을 받습니다.
   - `GET /me`가 네트워크 오류 등으로 답하지 못해도 지웁니다. 그때 `revocation()`은 `None`입니다. `GET /me`가 성공하면, 서버가 이 기기를 아직 활성으로 보는 것이라 아무것도 지우지 않습니다.
+- **계정 삭제(`delete_account(proof)`):** `DELETE /me`에 계정 종류의 증명을 붙입니다(protocol.md 13장 "계정 삭제").
+  - 게스트(`DeletionProof::Guest`)는 코어가 새 nonce를 받아 이 기기의 코드에서 나온 복구 서명 키로 서명합니다. 사용자에게 묻지 않습니다. 서명할 코드가 기기에 없으면 `Invalid`입니다.
+  - 카카오는 `sign_in_nonce`의 `provider_nonce`로 받은 ID 토큰과 그 `nonce`, Apple은 새 인가 코드를 그대로 보냅니다.
+  - 403 `reauth_required`면 `ReauthRequired`이고, 아무것도 지우지 않으며 세션도 그대로입니다. 앱은 증명만 다시 받습니다.
+  - 409 `recovery_missing`(복구 자료를 아직 못 올린 게스트)이면 기기의 코드를 먼저 올리고 한 번 더 지웁니다(디자인 22번 화면). 그래도 안 되면 `RecoveryMissing`입니다.
+  - 204를 받으면 기기 해제 때와 같은 것(세션, 기기 서명 키, `E`, AMK, 그룹 상태, 계정을 따라가는 설정)을 지우고, 해제 기록은 남기지 않습니다. 알파 통계는 끄고 기기의 숫자를 지웁니다. 계정이 지워졌으니 새 계정은 다시 동의를 받습니다.
+  - 저장소의 주인은 지운 계정으로 남습니다. 그래서 이 기기에서 새로 가입한 계정은 남은 일정을 가져올지 먼저 묻습니다.
+- **답을 잃은 삭제(401 `account_deleted`, protocol.md 13장):** 서버는 지운 계정의 토큰에, 그 토큰이 원래 끝날 때까지(액세스 15분, 리프레시 30일) 401 `account_deleted`로 답합니다. 코어는 이것을 204와 같이 다룹니다.
+  - 다시 부른 `delete_account`는 성공(`Ok`)으로 끝납니다.
+  - 그래서 답을 잃은 뒤 앱의 "다시 누르기"는 본인 확인을 다시 받기 전에 **같은 증명으로** `delete_account`를 부르면 됩니다. 결과는 셋 중 하나입니다.
+    - `Ok`: 지워졌습니다. 서버는 증명보다 세션의 토큰을 먼저 보고 `account_deleted`로 답합니다. 앞의 시도가 서버에 닿지 않았다면, 이번 시도가 지웁니다.
+    - `ReauthRequired`: 계정이 남아 있고 그 증명은 이미 썼습니다. 이때 본인 확인을 다시 받습니다.
+    - `Network`: 아직 모릅니다.
+  - 증명 없이 확인만 하려면 `sync()`를 부릅니다. `account_deleted`면 지워진 것이고, 성공하면 계정이 남아 있는 것입니다.
+  - 그 밖의 호출(`sync()` 등)은 똑같이 지운 뒤 `CoreError::Api { status: 401, code: "account_deleted" }`를 돌려줍니다. 앱은 `Change::Account`를 받고 로그인 전 화면으로 갑니다.
+  - 갱신하지 않습니다. HTTP 전송은 401 `token_expired`일 때만 리프레시 토큰을 씁니다. 액세스 토큰이 15분을 넘겨 갱신하러 가면, 리프레시 토큰이 `account_deleted`를 받습니다.
+  - 두 토큰이 다 끝난 뒤에는 서버가 `token_expired`로만 답합니다. 그러면 세션이 다른 이유로 끊긴 것과 구별되지 않으므로, 코어는 그것을 삭제로 보지 않습니다.
 
 ### 저장소의 주인, 복원, 백업
 
@@ -414,6 +451,21 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
   - 자동 백업은 설정이 켜져 있고(기본), 백업이 담는 것이 마지막 백업 뒤 바뀌었을 때만 올립니다. 바뀜은 시각이 아니라 변경 횟수로 셉니다. 같은 초의 변경도 세고, 기기 시계를 되돌려도 놓치지 않습니다. 횟수는 아카이브를 뜬 순간의 값을 적으므로, 올리는 동안 바뀐 것은 다음 백업이 담습니다.
   - 이 저장소의 백업 기록이 없으면 모두 바뀐 것으로 봅니다. 새 계정, 복원한 폰, "새로 시작"으로 서버의 백업이 지워진 폰, 다른 계정의 일정을 가져온 폰이 그렇습니다. 백업 기록을 통째로 지우는 곳(새로 시작, 기기 해제, 다른 계정의 일정 정리)은 마지막 백업이 담은 변경 횟수도 함께 지웁니다. 지워진 백업이나 다른 계정의 백업이 이 저장소를 담고 있다고 여기지 않으려는 것입니다.
 - **고정 nonce:** 벡터를 다시 만드는 함수(`seal_with_nonce`, `encrypt_with_nonce`, `wrap_amk_with_nonce`)는 `geunal-crypto`의 `test-vectors` 기능 뒤에 둡니다. 벡터 시험만 이 기능을 켜서, 운영 코드에서 부르면 컴파일되지 않습니다.
+
+### 알파 통계
+
+[공통 계약](protocol.md) 14장의 숫자를 코어가 이렇게 세고 보냅니다.
+
+- **동의:** 기본은 꺼짐입니다. `set_alpha_stats(true)`가 동의한 날(한국 날짜)을 적고, 그 전날까지의 숫자는 보내지 않습니다. 끄면 기기가 센 숫자를 모두 지웁니다.
+- **세는 것:**
+  - `events`와 `suggested`는 일정을 넣을 때 코어가 셉니다. 5초 안의 되돌리기는 센 것을 돌려놓습니다(6장 "입력 추천").
+  - `sessions`는 앱이 앞으로 나올 때마다 부르는 `record_app_foreground()`로 셉니다.
+  - `crashes`는 다음 실행에서 OS가 알려 준 날짜별 수를 `record_crashes(day, count)`로 넘겨 셉니다.
+  - `sessions`와 `crashes`는 켜져 있을 때만 셉니다. 14일보다 오래된 날의 크래시는 버립니다.
+- **보내기:** 로그인한 기기의 `sync()`가 하루 한 번, 최근 14일 중 동의한 날 이후이고 마지막으로 보낸 뒤 바뀐 날을 보냅니다.
+  - 오늘도 그때까지의 숫자로 보내고, 다음 날 마지막 숫자로 다시 보냅니다. 앱을 다시 열지 않은 테스터의 마지막 날도 서버에 남게 하려는 것입니다.
+  - 보내는 동안 바뀐 날은 보낸 것으로 적지 않아, 다음에 새 숫자로 갑니다.
+  - 네트워크 오류면 다음 `sync()`가 다시 보내고, 그 밖의 실패는 다음 날 보냅니다. 기기 해제 말고는 `sync()`를 실패시키지 않습니다.
 
 ## 6. 도메인 로직
 
@@ -560,6 +612,11 @@ pub fn open(key: &[u8; 32], aad: &str, blob: &[u8]) -> Option<Vec<u8>> {
 ### 공휴일과 연차 다리
 
 - 코어에 2026–2027년 표가 있습니다(`core/geunal-domain/src/holidays.rs`, 출처는 파일 머리). 서버가 한 해를 보내면 그해 전체를 바꿉니다([공통 계약](protocol.md) 14장). 그래서 나중에 정한 임시공휴일도 보입니다.
+- **받기:** 로그인한 기기의 `sync()`가 하루 한 번 올해와 다음 해를 `GET /holidays`로 묻습니다(한국 날짜 기준).
+  - 서버가 다 아는 해(`years`)만 통째로 바꾸고, 모르는 해(발표 전의 다음 해)는 가진 것을 그대로 둡니다.
+  - 날짜가 아닌 날이나 이름 없는 항목이 하나라도 있으면 그날의 답은 받지 않습니다. 공휴일이 하나도 없는 해도 받지 않습니다. 잘못된 답이 내장 표가 맞게 가진 그해 공휴일을 지우지 않게 하려는 것입니다.
+  - 네트워크 오류면 다음 `sync()`에 다시 묻고, 그 밖의 실패는 다음 날 묻습니다. 캘린더는 이것을 기다리지 않으므로 `sync()`를 실패시키지 않습니다.
+  - `ETag`로 다시 묻지는 않습니다. 하루 한 번이고 두 해의 표가 작기 때문입니다.
 - 하루에 공휴일이 둘일 수 있습니다(2025-05-05의 어린이날·부처님오신날).
 - **연차 다리:** 앞뒤가 모두 쉬는 날(주말·공휴일)인 평일 하루를 쉬면 4일 이상 이어 쉬게 될 때, 그 평일을 제안합니다.
 - 그날에 제목에 "연차"나 "휴가"가 들어간 종일 일정이 있으면 이미 쉬는 것으로 보고 제안하지 않습니다. 제안 칩이 채워 넣는 일정이 "연차"이기 때문입니다. 다른 종일 일정("약속")은 쉬는 날로 보지 않습니다.

@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 12 and later. Only preferences travel; the store and the secrets are under no_backup, which neither cloud
-     backup nor device-to-device transfer reads. -->
+<!-- Android 12 and later. The store and the secrets are under no_backup, which neither cloud backup nor
+     device-to-device transfer reads. Only the app's own preferences travel, by name, so a library's file never does
+     (docs/security/app-review.md §1 "백업에서 빠짐"). -->
 <data-extraction-rules>
     <cloud-backup>
-        <include domain="sharedpref" path="." />
+        <include domain="sharedpref" path="calendar.xml" />
     </cloud-backup>
     <device-transfer>
-        <include domain="sharedpref" path="." />
+        <include domain="sharedpref" path="calendar.xml" />
     </device-transfer>
 </data-extraction-rules>

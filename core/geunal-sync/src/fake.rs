@@ -12,7 +12,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Datelike, Duration, Utc};
 use serde_json::{Value, json};
 
 use crate::api::*;
@@ -117,6 +117,12 @@ struct State {
     /// Access tokens past their 15 minutes.
     expired: std::collections::BTreeSet<String>,
     refresh: BTreeMap<String, Refresh>,
+    /// When each access and refresh token was handed out, which is when its 15 minutes or 30 days start.
+    issued: BTreeMap<String, DateTime<Utc>>,
+    /// A deleted account's access and refresh tokens, until they would have run out: they get 401 `account_deleted`
+    /// (protocol §13 "답을 잃은 삭제").
+    deleted_access: BTreeMap<String, DateTime<Utc>>,
+    deleted_refresh: BTreeMap<String, DateTime<Utc>>,
     tickets: BTreeMap<String, Ticket>,
     nonces: std::collections::BTreeSet<String>,
     groups: BTreeMap<String, Group>,
@@ -130,6 +136,11 @@ struct State {
     log_reads: u32,
     /// Calls a test made fail, by route (`FakeServer::fail_next`, `FakeServer::lose_next`).
     faults: BTreeMap<&'static str, Fault>,
+    /// The years whose holidays the server knows in full, as the daily job leaves them (protocol §14).
+    holidays: BTreeMap<i32, Vec<HolidayItem>>,
+    holiday_reads: u32,
+    /// What `POST /me/alpha-stats` kept, by account and Korean day.
+    alpha: BTreeMap<(String, String), AlphaDay>,
 }
 
 /// How a call fails as the network drops it.
@@ -160,6 +171,10 @@ impl State {
 
     fn now_text(&mut self) -> String {
         self.now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+    }
+
+    fn today(&mut self) -> chrono::NaiveDate {
+        self.now().with_timezone(&geunal_domain::KST).date_naive()
     }
 
     fn next_id(&mut self, prefix: &str) -> String {
@@ -250,6 +265,9 @@ impl State {
         let recovery = self.users.get(user_id).is_some_and(|u| u.recovery.is_some());
         let access_token = self.next_id("tok-");
         let refresh_token = self.next_id("refresh-");
+        let issued = self.now();
+        self.issued.insert(access_token.clone(), issued);
+        self.issued.insert(refresh_token.clone(), issued);
         self.tokens.insert(access_token.clone(), (user_id.to_owned(), device_id.clone()));
         self.refresh.insert(
             refresh_token.clone(),
@@ -407,14 +425,35 @@ impl FakeServer {
         state.users.get(user_id).and_then(|u| u.device.as_ref()).map(|d| d.key_packages.len()).unwrap_or(0)
     }
 
+    /// Whether the account still exists: `DELETE /me` removes it.
+    pub fn has_account(&self, user_id: &str) -> bool {
+        self.state.lock().expect("fake server").users.contains_key(user_id)
+    }
+
+    /// Makes `holidays` the server's full table for `year`, as the daily job does once the year is announced.
+    pub fn set_holidays(&self, year: i32, holidays: Vec<HolidayItem>) {
+        self.state.lock().expect("fake server").holidays.insert(year, holidays);
+    }
+
+    /// How many times `GET /holidays` was called.
+    pub fn holiday_reads(&self) -> u32 {
+        self.state.lock().expect("fake server").holiday_reads
+    }
+
+    /// The account's alpha counts as the server keeps them, oldest day first.
+    pub fn alpha_of(&self, user_id: &str) -> Vec<AlphaDay> {
+        let state = self.state.lock().expect("fake server");
+        state.alpha.iter().filter(|((user, _), _)| user == user_id).map(|(_, day)| day.clone()).collect()
+    }
+
     /// The next call of `route` fails with a connection error before the server sees it. Routes: `me`, `replace`,
-    /// `put_recovery`, `upload_key_packages`.
+    /// `put_recovery`, `upload_key_packages`, `delete_account`, `post_alpha_stats`.
     pub fn fail_next(&self, route: &'static str) {
         self.state.lock().expect("fake server").faults.insert(route, Fault::Fail);
     }
 
     /// The server handles the next call of `route` and its answer is lost: the client sees a connection error.
-    /// Routes: `put_recovery`.
+    /// Routes: `put_recovery`, `delete_account`.
     pub fn lose_next(&self, route: &'static str) {
         self.state.lock().expect("fake server").faults.insert(route, Fault::Lose);
     }
@@ -492,6 +531,18 @@ impl FakeClient {
     fn who(&self) -> Result<(String, String), ApiError> {
         let mut session = self.session.lock().ok().and_then(|s| s.clone()).ok_or_else(|| err(401, "token_expired"))?;
         let mut state = self.lock();
+        if state.deleted_access.contains_key(&session.access_token) {
+            // The access token answers so for its 15 minutes; past them, the refresh the transport tries next meets
+            // the refresh token, which does for 30 days.
+            let now = state.now();
+            let live = |until: Option<&DateTime<Utc>>| until.is_some_and(|until| *until > now);
+            let access =
+                live(state.deleted_access.get(&session.access_token)) && !state.expired.contains(&session.access_token);
+            if access || live(state.deleted_refresh.get(&session.refresh_token)) {
+                return Err(err(401, "account_deleted"));
+            }
+            return Err(err(401, "token_expired"));
+        }
         if !state.tokens.contains_key(&session.access_token) {
             return Err(err(401, "token_expired"));
         }
@@ -508,6 +559,9 @@ impl FakeClient {
             let (user_id, device_id) = (refresh.user_id.clone(), refresh.device_id.clone());
             let access_token = state.next_id("tok-");
             let refresh_token = state.next_id("refresh-");
+            let issued = state.now();
+            state.issued.insert(access_token.clone(), issued);
+            state.issued.insert(refresh_token.clone(), issued);
             state.tokens.insert(access_token.clone(), (user_id.clone(), device_id.clone()));
             state.refresh.insert(
                 refresh_token.clone(),
@@ -556,8 +610,15 @@ impl FakeClient {
 
     /// A fresh Kakao ID token bound to a live nonce and the device's registered key, or an Apple authorization code,
     /// for `user`'s provider account (protocol §13 "계정 삭제").
-    fn provider_proof(state: &mut State, user: &str, key: &[u8], req: &RecoveryUpload) -> bool {
-        let subject = match (&req.kakao_id_token, &req.apple_authorization_code, &req.nonce) {
+    fn provider_proof(
+        state: &mut State,
+        user: &str,
+        key: &[u8],
+        kakao_id_token: Option<&str>,
+        apple_authorization_code: Option<&str>,
+        nonce: Option<&str>,
+    ) -> bool {
+        let subject = match (kakao_id_token, apple_authorization_code, nonce) {
             (Some(id_token), None, Some(nonce)) if state.nonces.remove(nonce) => {
                 Self::provider_subject("kakao", id_token, nonce, key).ok()
             }
@@ -734,7 +795,9 @@ impl Transport for FakeClient {
                 let device = account.device.as_ref().ok_or_else(|| err(403, "device_revoked"))?;
                 let fresh = device.by_provider_at.is_some_and(|at| now - at < Duration::minutes(30));
                 let key = device.signature_key.clone();
-                if !fresh && !Self::provider_proof(&mut state, &user, &key, &req) {
+                let (kakao, apple, nonce) =
+                    (req.kakao_id_token.as_deref(), req.apple_authorization_code.as_deref(), req.nonce.as_deref());
+                if !fresh && !Self::provider_proof(&mut state, &user, &key, kakao, apple, nonce) {
                     return Err(err(403, "reauth_required"));
                 }
             } else {
@@ -861,6 +924,99 @@ impl Transport for FakeClient {
         }
         progress(total, total);
         Ok(object)
+    }
+
+    async fn delete_account(&self, req: DeleteAccount) -> Result<(), ApiError> {
+        self.lock().fault("delete_account", Fault::Fail)?;
+        let (user, _) = self.who()?;
+        let mut state = self.lock();
+        let account = state.users.get(&user).expect("the session's account exists");
+        let key = account.device.as_ref().map(|d| d.signature_key.clone()).ok_or_else(|| err(403, "device_revoked"))?;
+        let proven = if account.providers.is_empty() {
+            // A guest proves the account with its recovery key, which the server has to hold first.
+            let public_key =
+                account.recovery.as_ref().map(|r| r.public_key.clone()).ok_or_else(|| err(409, "recovery_missing"))?;
+            match (&req.nonce, &req.recovery_signature) {
+                (Some(nonce), Some(signature)) => {
+                    let message = [geunal_crypto::recovery::DELETE_LABEL, nonce.as_bytes()].concat();
+                    state.nonces.remove(nonce) && verify(&public_key, &message, signature)
+                }
+                _ => false,
+            }
+        } else {
+            let (kakao, apple, nonce) =
+                (req.kakao_id_token.as_deref(), req.apple_authorization_code.as_deref(), req.nonce.as_deref());
+            Self::provider_proof(&mut state, &user, &key, kakao, apple, nonce)
+        };
+        if !proven {
+            return Err(err(403, "reauth_required"));
+        }
+        // One transaction: the account with its device, sessions, recovery material, backups, memberships and alpha
+        // counts. The members left in its groups hear of the membership change. The sessions' tokens are kept apart
+        // until they would have run out, so a device that lost this answer learns of the deletion.
+        state.users.remove(&user);
+        state.subjects.retain(|_, u| *u != user);
+        // Until each token's own end, counted from when it was handed out, not from the deletion.
+        let now = state.now();
+        let ends = |token: &String, life: Duration| state.issued.get(token).copied().unwrap_or(now) + life;
+        let access: Vec<(String, DateTime<Utc>)> = state
+            .tokens
+            .iter()
+            .filter(|(_, (u, _))| *u == user)
+            .map(|(token, _)| (token.clone(), ends(token, Duration::minutes(15))))
+            .collect();
+        let refresh: Vec<(String, DateTime<Utc>)> = state
+            .refresh
+            .iter()
+            .filter(|(_, r)| r.user_id == user)
+            .map(|(token, _)| (token.clone(), ends(token, Duration::days(30))))
+            .collect();
+        state.deleted_access.extend(access);
+        state.deleted_refresh.extend(refresh);
+        state.tokens.retain(|_, (u, _)| *u != user);
+        state.refresh.retain(|_, r| r.user_id != user);
+        state.tickets.retain(|_, t| t.user_id != user);
+        state.alpha.retain(|(u, _), _| *u != user);
+        let groups: Vec<String> =
+            state.groups.iter().filter(|(_, g)| g.members.contains_key(&user)).map(|(id, _)| id.clone()).collect();
+        for group_id in groups {
+            if let Some(member) = state.groups.get_mut(&group_id).and_then(|g| g.members.get_mut(&user)) {
+                member.status = "removed".into();
+            }
+            state.publish(&group_id, None, json!({"t": "membership", "g": group_id}));
+        }
+        state.fault("delete_account", Fault::Lose)
+    }
+
+    async fn holidays(&self, from_year: i32, to_year: i32) -> Result<HolidayYears, ApiError> {
+        let mut state = self.lock();
+        state.holiday_reads += 1;
+        let next_year = state.today().year() + 1;
+        if to_year < from_year || to_year > from_year + 1 || from_year > next_year {
+            return Err(err(400, "invalid_request"));
+        }
+        let years: Vec<i32> = (from_year..=to_year).filter(|y| state.holidays.contains_key(y)).collect();
+        let holidays = years.iter().flat_map(|y| state.holidays[y].iter().cloned()).collect();
+        Ok(HolidayYears { years, holidays })
+    }
+
+    async fn post_alpha_stats(&self, days: Vec<AlphaDay>) -> Result<(), ApiError> {
+        self.lock().fault("post_alpha_stats", Fault::Fail)?;
+        let (user, _) = self.who()?;
+        let mut state = self.lock();
+        let today = state.today();
+        // The last 14 Korean days, today included.
+        let recent = |day: &str| {
+            chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d")
+                .is_ok_and(|d| d <= today && today - d < Duration::days(14))
+        };
+        if days.is_empty() || days.len() > 14 || days.iter().any(|d| d.suggested > d.events || !recent(&d.day)) {
+            return Err(err(400, "invalid_request"));
+        }
+        for day in days {
+            state.alpha.insert((user.clone(), day.day.clone()), day);
+        }
+        Ok(())
     }
 
     fn restore_session(&self, access_token: &str, refresh_token: &str) {
