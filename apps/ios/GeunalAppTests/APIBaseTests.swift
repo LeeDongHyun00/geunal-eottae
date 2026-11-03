@@ -50,5 +50,16 @@ final class APIBaseTests: XCTestCase {
         let value = try XCTUnwrap(Bundle.main.infoDictionary?["GeunalAPIBase"] as? String)
 
         XCTAssertFalse(value.contains("$("), value)
+        // The core refuses plain http outside the local stack and anything without a scheme, and then the store does not
+        // open at all; a typo in Secrets.xcconfig has to fail here, not on TestFlight.
+        XCTAssertTrue(value.isEmpty || value.hasPrefix("https://"), value)
+    }
+
+    func testOnlyDebugBuildsTakeTheAddressFromTheEnvironment() {
+        #if DEBUG
+            XCTAssertEqual(AppCore.overridingEnvironment, ProcessInfo.processInfo.environment)
+        #else
+            XCTAssertEqual(AppCore.overridingEnvironment, [:])
+        #endif
     }
 }

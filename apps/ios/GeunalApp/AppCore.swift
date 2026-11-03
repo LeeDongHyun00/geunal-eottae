@@ -9,8 +9,17 @@ enum AppCore {
     /// The API server. A device or TestFlight build starts without Xcode's environment, so the address it needs comes
     /// in at build time: `GEUNAL_API_BASE` in Config/Secrets.xcconfig fills the `GeunalAPIBase` Info.plist entry.
     static let apiBase = resolveAPIBase(
-        environment: ProcessInfo.processInfo.environment, info: Bundle.main.infoDictionary ?? [:],
-        fallback: defaultAPIBase)
+        environment: overridingEnvironment, info: Bundle.main.infoDictionary ?? [:], fallback: defaultAPIBase)
+
+    /// Only a debug build lets the environment override the address. A release build takes it from the build settings
+    /// alone, so there is one place it can come from.
+    static var overridingEnvironment: [String: String] {
+        #if DEBUG
+            return ProcessInfo.processInfo.environment
+        #else
+            return [:]
+        #endif
+    }
 
     /// Debug builds talk to the local stack that `make up` publishes (README.md). A release build has no server until
     /// it is given one: like Android's, the calendar works and every call fails.
@@ -22,8 +31,8 @@ enum AppCore {
         #endif
     }
 
-    /// The first address that is set: the `GEUNAL_API_BASE` environment variable, with which a scheme or a UI test
-    /// points the simulator elsewhere, then the `GeunalAPIBase` Info.plist entry, then `fallback`. An empty value
+    /// The first address that is set: the `GEUNAL_API_BASE` environment variable (debug builds), with which a scheme or a
+    /// UI test points the simulator elsewhere, then the `GeunalAPIBase` Info.plist entry, then `fallback`. An empty value
     /// counts as unset, because Info.plist gets an empty string from a build that has no address.
     static func resolveAPIBase(environment: [String: String], info: [String: Any], fallback: String) -> String {
         let candidates = [environment["GEUNAL_API_BASE"], info["GeunalAPIBase"] as? String]
