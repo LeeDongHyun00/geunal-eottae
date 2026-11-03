@@ -82,8 +82,11 @@ class ProviderEnvironmentTests {
     }
 }
 
-/** A server with no provider settings: Kakao and Apple are off and say so, while guests still sign in. */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+/**
+ * A server with no provider settings: Kakao and Apple are off and say so, while guests still sign in. The sign-in
+ * limit is lifted because the count for 127.0.0.1 is shared with the other test contexts through Redis.
+ */
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = ["geunal.auth.sign-ins-per-hour=1000000"])
 class ProvidersOffTests {
     companion object {
         @JvmStatic

@@ -18,6 +18,8 @@
 # - Authentication: `Authorization: Bearer <access JWT>` on everything but /auth/*, /.well-known/jwks.json, /holidays
 #   and /actuator/health. The JWT is ES256, 15 minutes, claims sub = user_id and did = device_id. A replacement
 #   ticket (protocol §13) is the bearer for GET /me/recovery, GET /me/backups and GET /me/backups/latest only.
+# - Sign-in limit: GET /auth/nonce and POST /auth/{kakao,apple,guest,recover,replace,stub} together, 30 an hour per
+#   client address (api-server.md §9); past it 429 rate_limited with Retry-After until the next clock hour.
 openapi: 3.1.0
 info:
   title: geunal-eottae API

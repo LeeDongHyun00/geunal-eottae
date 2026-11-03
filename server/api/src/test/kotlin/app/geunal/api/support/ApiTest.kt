@@ -16,7 +16,13 @@ import java.util.UUID
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     // The access log ships only when a test asks, so no scheduled round empties the outbox under a test reading it.
-    properties = ["geunal.auth.stub=true", "geunal.alpha-stats.enabled=true", "geunal.access-log.ship-every=PT24H"],
+    // Every test signs in from the same address; SignInLimitTests checks the limit on a context of its own.
+    properties = [
+        "geunal.auth.stub=true",
+        "geunal.alpha-stats.enabled=true",
+        "geunal.access-log.ship-every=PT24H",
+        "geunal.auth.sign-ins-per-hour=1000000",
+    ],
 )
 abstract class ApiTest {
     companion object {
