@@ -25,6 +25,17 @@ class CalendarEditModelTest {
     ) = CalendarEditModel(calendar, isLast, used = setOf(Palette.TANGERINE), core = core, scope = this, io = dispatcher)
 
     @Test
+    fun keepsTheNameWithinWhatTheCoreTakes() =
+        runTest(dispatcher) {
+            val model = model()
+            // 41 characters, the last an emoji of two UTF-16 units: cut at 40 characters, never inside one.
+            model.setName("가".repeat(40) + "🎒")
+            assertEquals("가".repeat(40), model.state.value.name)
+            model.setName("가".repeat(39) + "🎒")
+            assertEquals("가".repeat(39) + "🎒", model.state.value.name)
+        }
+
+    @Test
     fun aNewCalendarNeedsANameAndSavesWhatWasPicked() =
         runTest(dispatcher) {
             val model = model()

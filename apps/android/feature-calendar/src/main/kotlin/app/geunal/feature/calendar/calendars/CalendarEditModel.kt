@@ -73,8 +73,10 @@ class CalendarEditModel(
         }
     }
 
+    /** Up to [NAME_MAX] characters, the most the core takes: a longer one would only fail as "저장하지 못했어요". */
     fun setName(name: String) {
-        _state.update { it.copy(name = name) }
+        val kept = if (name.codePointCount(0, name.length) > NAME_MAX) name.substring(0, name.offsetByCodePoints(0, NAME_MAX)) else name
+        _state.update { it.copy(name = kept) }
     }
 
     fun setColor(color: Palette) {
@@ -129,3 +131,6 @@ class CalendarEditModel(
         return done
     }
 }
+
+/** The longest calendar name the core takes (`calendar.rs`, 40 characters). */
+private const val NAME_MAX = 40

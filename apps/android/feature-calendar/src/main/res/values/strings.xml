@@ -291,6 +291,8 @@
     <string name="calendar_delete_question">‘%1$s’ 캘린더를 삭제할까요?</string>
     <string name="calendar_delete_body">일정 %1$d개도 함께 지워져요. 되돌릴 수 없어요.</string>
     <string name="calendar_delete_body_empty">되돌릴 수 없어요.</string>
+    <string name="calendar_delete_body_templates">교대 템플릿 %1$d개도 함께 지워져요. 되돌릴 수 없어요.</string>
+    <string name="calendar_delete_body_both">일정 %1$d개와 교대 템플릿 %2$d개도 함께 지워져요. 되돌릴 수 없어요.</string>
     <string name="calendar_delete_confirm">캘린더 삭제</string>
 
     <!-- 19. 알림 설정 -->

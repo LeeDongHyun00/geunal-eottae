@@ -184,16 +184,12 @@ fun CalendarEditSheet(
     if (confirmsDelete) {
         DeleteSheet(
             title = stringResource(R.string.calendar_delete_question, model.calendar?.name.orEmpty()),
+            // The core deletes the calendar's shift templates with it, so the question names them too.
             body =
-                (model.calendar?.eventCount?.toInt() ?: 0).let { count ->
-                    if (count >
-                        0
-                    ) {
-                        stringResource(R.string.calendar_delete_body, count)
-                    } else {
-                        stringResource(R.string.calendar_delete_body_empty)
-                    }
-                },
+                deleteBody(
+                    events = model.calendar?.eventCount?.toInt() ?: 0,
+                    templates = model.calendar?.shiftTemplateCount?.toInt() ?: 0,
+                ),
             confirm = stringResource(R.string.calendar_delete_confirm),
             onConfirm = {
                 confirmsDelete = false
@@ -327,3 +323,16 @@ private val CALENDAR_ALERTS =
     )
 
 private const val COLUMNS = 6
+
+/** What deleting the calendar takes with it: "일정 7개와 교대 템플릿 2개도 함께 지워져요. 되돌릴 수 없어요." */
+@Composable
+private fun deleteBody(
+    events: Int,
+    templates: Int,
+): String =
+    when {
+        events > 0 && templates > 0 -> stringResource(R.string.calendar_delete_body_both, events, templates)
+        events > 0 -> stringResource(R.string.calendar_delete_body, events)
+        templates > 0 -> stringResource(R.string.calendar_delete_body_templates, templates)
+        else -> stringResource(R.string.calendar_delete_body_empty)
+    }
