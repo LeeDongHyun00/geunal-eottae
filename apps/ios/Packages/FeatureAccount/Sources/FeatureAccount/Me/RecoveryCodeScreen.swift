@@ -119,7 +119,7 @@ public struct RecoveryCodeScreen: View {
     }
 
     /// The words hide whenever the app is not in front: `inactive` is when iOS takes the app switcher's picture, and
-    /// `background` is what the picture keeps (docs/qa/m1.md D7).
+    /// `background` is what the picture keeps (docs/qa/m1.md D7). The restore screen (21) covers its words the same way.
     public static func coversWords(in phase: ScenePhase) -> Bool {
         phase != .active
     }

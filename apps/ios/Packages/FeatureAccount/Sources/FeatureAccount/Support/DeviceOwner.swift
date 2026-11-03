@@ -60,8 +60,9 @@ public protocol DeviceOwnerCheck {
             return passed
         }
 
-        /// Only a missing passcode lets the action through. Any other reason the prompt cannot run counts as not passed.
-        private static func noPasscode(_ error: NSError?) -> Bool {
+        /// Only a missing passcode lets the action through. Any other reason the prompt cannot run counts as not passed:
+        /// a wrong answer here opens the twelve words on a locked phone without asking (docs/qa/m1.md D11).
+        public static func noPasscode(_ error: NSError?) -> Bool {
             guard let error else { return false }
             return error.domain == LAErrorDomain && error.code == LAError.Code.passcodeNotSet.rawValue
         }

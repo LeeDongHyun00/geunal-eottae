@@ -167,7 +167,7 @@ public struct RestoreView: View {
         // iOS keeps a picture of the screen for the app switcher once the app leaves the front; for a guest the twelve
         // words are the account itself (docs/security/threat-model.md 3.6).
         .overlay {
-            if scenePhase != .active {
+            if RecoveryCodeScreen.coversWords(in: scenePhase) {
                 GeunalColor.groupedBackground.ignoresSafeArea()
             }
         }

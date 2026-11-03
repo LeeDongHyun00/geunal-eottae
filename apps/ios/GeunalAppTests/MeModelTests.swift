@@ -1,5 +1,6 @@
 import FeatureAccount
 import GeunalCore
+import LocalAuthentication
 import SwiftUI
 import XCTest
 
@@ -120,8 +121,24 @@ final class MeModelTests: XCTestCase {
         XCTAssertTrue(openedWithoutLock)
     }
 
-    // docs/qa/m1.md D7: the words are covered whenever the app is not in front, which is when iOS takes the app
-    // switcher's picture.
+    // The real check's one exception: only a missing passcode lets the twelve words open without the prompt.
+    func testOnlyAMissingPasscodeOpensWithoutThePrompt() {
+        XCTAssertFalse(SystemDeviceOwnerCheck.noPasscode(nil))
+        XCTAssertTrue(SystemDeviceOwnerCheck.noPasscode(laError(.passcodeNotSet)))
+        XCTAssertFalse(SystemDeviceOwnerCheck.noPasscode(laError(.biometryLockout)))
+        XCTAssertFalse(SystemDeviceOwnerCheck.noPasscode(laError(.biometryNotEnrolled)))
+        XCTAssertFalse(SystemDeviceOwnerCheck.noPasscode(laError(.userCancel)))
+        XCTAssertFalse(
+            SystemDeviceOwnerCheck.noPasscode(
+                NSError(domain: NSOSStatusErrorDomain, code: LAError.Code.passcodeNotSet.rawValue)))
+    }
+
+    private func laError(_ code: LAError.Code) -> NSError {
+        NSError(domain: LAErrorDomain, code: code.rawValue)
+    }
+
+    // docs/qa/m1.md D7: the words of the recovery code (13) and the restore screen (21) are covered whenever the app is
+    // not in front, which is when iOS takes the app switcher's picture.
     func testKeepsTheRecoveryCodeOutOfScreenshotsAndTheAppSwitcher() {
         XCTAssertFalse(RecoveryCodeScreen.coversWords(in: .active))
         XCTAssertTrue(RecoveryCodeScreen.coversWords(in: .inactive))
