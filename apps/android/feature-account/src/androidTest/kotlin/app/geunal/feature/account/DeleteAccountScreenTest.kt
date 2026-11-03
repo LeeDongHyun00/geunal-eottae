@@ -33,7 +33,9 @@ class DeleteAccountScreenTest {
 
     private val core = AccountFakeCore()
     private val providers = FakeProviders()
-    private var deleted = false
+
+    // Set on the main thread by the model, read by the test thread.
+    @Volatile private var deleted = false
 
     private fun show(
         account: AccountView,
@@ -56,9 +58,14 @@ class DeleteAccountScreenTest {
         compose.waitForText("카카오로 확인하고 삭제")
         compose.screenshot("22-delete-sheet")
 
-        compose.onNodeWithTag("delete.confirm").assertIsEnabled().performClick()
+        // The Kakao sheet is taller than the guest's, and with the keyboard up its button sits below the visible part.
+        compose
+            .onNodeWithTag("delete.confirm")
+            .performScrollTo()
+            .assertIsEnabled()
+            .performClick()
 
-        compose.waitUntil(5_000) { deleted }
+        compose.waitUntil(10_000) { deleted }
         assertEquals(listOf<DeletionProof>(DeletionProof.Kakao(nonce = "n1", idToken = "token")), core.deleteProofs)
     }
 
@@ -72,7 +79,7 @@ class DeleteAccountScreenTest {
         compose.waitForTag("delete.word")
         compose.onNodeWithTag("delete.word").performTextInput("삭제")
 
-        compose.onNodeWithTag("delete.confirm").performClick()
+        compose.onNodeWithTag("delete.confirm").performScrollTo().performClick()
 
         compose.waitForText("연결이 끊겨 삭제를 마쳤는지 확인하지 못했어요.")
         compose.onNodeWithTag("delete.confirm").assertIsNotEnabled()
