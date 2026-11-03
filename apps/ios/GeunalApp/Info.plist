@@ -21,6 +21,8 @@
 	<string>$(GEUNAL_PRIVACY_URL)</string>
 	<key>GeunalTermsURL</key>
 	<string>$(GEUNAL_TERMS_URL)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>KakaoAppKey</key>
 	<string>$(KAKAO_APP_KEY)</string>
 	<key>LSApplicationQueriesSchemes</key>
