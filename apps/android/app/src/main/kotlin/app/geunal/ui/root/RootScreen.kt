@@ -108,6 +108,8 @@ fun RootScreen(
                             DeviceNotificationAccess(context),
                             container.deviceAuth,
                             container.providers,
+                            model.accountEnded,
+                            model::accountDeleted,
                         )
                     }
                 val covers = coverModel.covers
@@ -118,7 +120,6 @@ fun RootScreen(
                     me = me,
                     toasts = model.toasts,
                     online = online,
-                    onAccountDeleted = model::accountDeleted,
                     modifier = modifier,
                 ) {
                     MainScaffold(
@@ -175,7 +176,6 @@ private fun CoveredTabs(
     me: MeCovers,
     toasts: ToastCenter,
     online: Boolean,
-    onAccountDeleted: () -> Unit,
     modifier: Modifier = Modifier,
     tabs: @Composable () -> Unit,
 ) {
@@ -192,7 +192,7 @@ private fun CoveredTabs(
                 NavEntry(route, metadata = transitions) { CalendarCoverContent(route, covers, toasts) }
             } else if (route is MeCover) {
                 NavEntry(route, metadata = pushTransitions) {
-                    MeCoverContent(route, me, toasts, online, onAccountDeleted)
+                    MeCoverContent(route, me, toasts, online)
                 }
             } else {
                 NavEntry(route) { tabs() }

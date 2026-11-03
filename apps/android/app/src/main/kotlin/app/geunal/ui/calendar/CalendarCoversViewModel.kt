@@ -9,6 +9,8 @@ import app.geunal.feature.calendar.alerts.NotificationAccess
 import app.geunal.feature.calendar.people.ContactsReader
 import app.geunal.feature.calendar.screen.CalendarCovers
 import app.geunal.ui.me.MeCovers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 
 /**
  * The full-screen covers over the tabs: the calendar's (the editor, the shift stamp screen and 나's calendar screens)
@@ -20,8 +22,21 @@ class CalendarCoversViewModel(
     notifications: NotificationAccess,
     deviceAuth: DeviceAuth,
     providers: ProviderSignIn,
+    accountEnded: Flow<Unit>,
+    onAccountDeleted: () -> Unit,
 ) : ViewModel() {
     val covers = CalendarCovers(core, viewModelScope, contacts, notifications)
 
-    val me = MeCovers(core, viewModelScope, deviceAuth, providers)
+    val me = MeCovers(core, viewModelScope, deviceAuth, providers, onAccountDeleted)
+
+    init {
+        // The view model outlives onboarding in the activity's store. Whatever ended the account (this screen or a sync
+        // that found it deleted), the covers go now, so none comes back over the tabs holding the old account's words.
+        viewModelScope.launch {
+            accountEnded.collect {
+                covers.stack.clear()
+                me.clear()
+            }
+        }
+    }
 }

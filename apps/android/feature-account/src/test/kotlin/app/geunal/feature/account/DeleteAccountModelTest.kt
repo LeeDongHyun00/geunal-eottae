@@ -32,8 +32,10 @@ class DeleteAccountModelTest {
     private val apple = AccountView("u1", "하린", listOf(Provider.APPLE))
     private val guest = AccountView("u1", "하린", emptyList())
 
+    private var endings = 0
+
     private fun TestScope.model(account: AccountView = guest) =
-        DeleteAccountModel(core, providers, deviceAuth, account, scope = this, io = dispatcher).apply {
+        DeleteAccountModel(core, providers, deviceAuth, account, scope = this, io = dispatcher, onDeleted = { endings++ }).apply {
             openSheet()
             type(DeleteAccountModel.WORD)
         }
@@ -258,6 +260,31 @@ class DeleteAccountModelTest {
             model.delete(online = true)
 
             assertEquals(Problem.RECOVERY_MISSING, model.state.value.problem)
+        }
+
+    @Test
+    fun aDeletionAnsweredAfterTheScreenClosedStillEndsTheAccount() =
+        runTest(dispatcher) {
+            val model = model()
+            core.whileDeleting = { model.closeSheet() }
+
+            model.delete(online = true)
+
+            assertEquals("the app hears it once, without the screen", 1, endings)
+        }
+
+    @Test
+    fun aDeletionFoundByTheCheckEndsTheAccountOnce() =
+        runTest(dispatcher) {
+            core.deleteResults[0] = lostAnswer()
+            core.syncResult = Result.failure(CoreException.Api(401u, "account_deleted", ""))
+            val model = model()
+            model.delete(online = true)
+
+            model.checkLostAnswer()
+            model.checkLostAnswer()
+
+            assertEquals(1, endings)
         }
 
     @Test

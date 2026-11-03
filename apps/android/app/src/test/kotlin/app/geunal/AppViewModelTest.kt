@@ -15,6 +15,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -186,6 +187,23 @@ class AppViewModelTest {
             assertFalse(onboarding.isFinished)
             assertEquals("onboarding starts from the welcome screen", round + 1, viewModel.onboardingRound)
             assertEquals(AppNotice.ACCOUNT_DELETED, viewModel.notices.first())
+        }
+
+    @Test
+    fun tellsWhatHoldsTheAccountsScreensWhenItEnds() =
+        runTest(dispatcher) {
+            onboarding.isFinished = true
+            val viewModel = viewModel { FakeCore() }
+            advanceUntilIdle()
+            var ended = 0
+            val watcher = launch { viewModel.accountEnded.collect { ended++ } }
+            advanceUntilIdle()
+
+            viewModel.accountDeleted()
+            advanceUntilIdle()
+
+            assertEquals(1, ended)
+            watcher.cancel()
         }
 
     @Test

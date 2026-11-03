@@ -46,6 +46,7 @@ class MeCovers(
     private val scope: CoroutineScope,
     private val deviceAuth: DeviceAuth,
     private val providers: ProviderSignIn,
+    private val onAccountDeleted: () -> Unit,
 ) {
     val stack: SnapshotStateList<MeCover> = mutableStateListOf()
 
@@ -75,10 +76,13 @@ class MeCovers(
     }
 
     fun deleteAccount(account: AccountView) {
-        stack += MeCover.DeleteAccount(DeleteAccountModel(core, providers, deviceAuth, account, scope))
+        stack +=
+            MeCover.DeleteAccount(
+                DeleteAccountModel(core, providers, deviceAuth, account, scope, onDeleted = onAccountDeleted),
+            )
     }
 
-    /** The account is gone: every screen of it goes too, and the app starts over (m1.md screen 22). */
+    /** The account is gone: every screen of it goes too, with what their models hold (m1.md screen 22). */
     fun clear() {
         stack.clear()
     }
@@ -106,7 +110,6 @@ fun MeCoverContent(
     covers: MeCovers,
     toasts: ToastCenter,
     online: Boolean,
-    onAccountDeleted: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when (cover) {
@@ -129,10 +132,6 @@ fun MeCoverContent(
             DeleteAccountScreen(
                 model = cover.model,
                 online = online,
-                onDeleted = {
-                    covers.clear()
-                    onAccountDeleted()
-                },
                 onClose = { covers.close(cover) },
                 modifier = modifier,
             )

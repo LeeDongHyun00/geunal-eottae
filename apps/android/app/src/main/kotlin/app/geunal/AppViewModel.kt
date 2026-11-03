@@ -16,8 +16,11 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
@@ -68,6 +71,11 @@ class AppViewModel(
 
     /** Buffered until the root collects it, so a notice raised while the screens change is not lost. */
     val notices: Flow<AppNotice> = noticeChannel.receiveAsFlow()
+
+    private val _accountEnded = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** Each time the account is gone, so what holds its screens lets them go at once. */
+    val accountEnded: SharedFlow<Unit> = _accountEnded.asSharedFlow()
 
     /** Goes up each time onboarding has to start over from the welcome screen. */
     var onboardingRound = 0
@@ -136,6 +144,7 @@ class AppViewModel(
         onboarding.isFinished = false
         onboardingRound++
         _phase.value = AppPhase.Onboarding
+        _accountEnded.tryEmit(Unit)
         noticeChannel.trySend(AppNotice.ACCOUNT_DELETED)
     }
 

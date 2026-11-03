@@ -39,10 +39,8 @@ class DeleteAccountScreenTest {
         account: AccountView,
         online: Boolean = true,
     ) {
-        val model = DeleteAccountModel(core, providers, FakeDeviceAuth(), account, MainScope())
-        compose.setContent {
-            GeunalTheme { DeleteAccountScreen(model = model, online = online, onDeleted = { deleted = true }, onClose = {}) }
-        }
+        val model = DeleteAccountModel(core, providers, FakeDeviceAuth(), account, MainScope(), onDeleted = { deleted = true })
+        compose.setContent { GeunalTheme { DeleteAccountScreen(model = model, online = online, onClose = {}) } }
     }
 
     @Test

@@ -36,6 +36,11 @@ class DeleteAccountModel(
     account: AccountView?,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /**
+     * The account is gone. Called by the model, not the screen: a deletion still waiting when the person left the
+     * screen must end the app's account all the same.
+     */
+    private val onDeleted: () -> Unit = {},
 ) {
     enum class Problem {
         OFFLINE,
@@ -154,7 +159,7 @@ class DeleteAccountModel(
             _state.update { it.copy(problem = null) }
             try {
                 send(again)
-                _state.update { it.copy(deleted = true) }
+                finish()
                 return
             } catch (e: AnswerLost) {
                 if (presentation != attempt) return
@@ -185,7 +190,7 @@ class DeleteAccountModel(
                 if (presentation != attempt) return
                 proof = made
                 send(made)
-                _state.update { it.copy(deleted = true) }
+                finish()
                 return
             } catch (e: AnswerLost) {
                 sentProof = proof
@@ -228,13 +233,19 @@ class DeleteAccountModel(
             withContext(io) { core.sync() }
             _state.update { if (it.problem == Problem.ANSWER_LOST) it.copy(problem = Problem.NOT_DELETED) else it }
         } catch (e: CoreException) {
-            if (e.isAccountDeleted) _state.update { it.copy(deleted = true) }
+            if (e.isAccountDeleted) finish()
             // Otherwise still unknown.
         } catch (e: InternalException) {
             // Still unknown.
         } finally {
             _state.update { it.copy(checking = false) }
         }
+    }
+
+    private fun finish() {
+        if (_state.value.deleted) return
+        _state.update { it.copy(deleted = true) }
+        onDeleted()
     }
 
     /** The deletion went out, and the connection broke before its answer. */

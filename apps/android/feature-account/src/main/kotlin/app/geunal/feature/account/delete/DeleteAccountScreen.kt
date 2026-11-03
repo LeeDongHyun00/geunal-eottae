@@ -61,20 +61,18 @@ import app.geunal.designsystem.R as DesignR
 /**
  * 계정 삭제 (m1.md screen 22, boards/DeleteAccount), over the tabs: what the server deletes, what stays on this device,
  * the notes, the red "계정 삭제" and "그냥 둘게요". The sheet asks for "삭제" typed out, then the provider's sign-in for
- * a Kakao or Apple account. Offline the button says it waits for a connection.
+ * a Kakao or Apple account. Offline the button says it waits for a connection. The model, not this screen, reports
+ * the end, so a deletion answered after the screen closed still ends the account.
  */
 @Composable
 fun DeleteAccountScreen(
     model: DeleteAccountModel,
     online: Boolean,
-    onDeleted: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val neutrals = LocalNeutralColors.current
-    // Deleted by the press or found deleted by the check: the same end as a 204.
-    LaunchedEffect(state.deleted) { if (state.deleted) onDeleted() }
     Column(
         modifier
             .fillMaxSize()
