@@ -13,20 +13,36 @@ struct QuickEntrySheet: View {
     private let actions: EventActions
     /// "자세히": the editor with what is typed so far.
     private let onMore: (EventInput) -> Void
+    /// A row of the day's events: that event's editor.
+    private let onEvent: (EventItem) -> Void
     @Environment(\.dismiss) private var dismiss
     @FocusState private var titleFocused: Bool
     @ScaledMetric(relativeTo: .body) private var height: CGFloat = 552
+    @ScaledMetric(relativeTo: .body) private var eventRow: CGFloat = 44
+    @ScaledMetric(relativeTo: .body) private var eventHeader: CGFloat = 32
 
-    init(model: QuickEntryModel, actions: EventActions, onMore: @escaping (EventInput) -> Void) {
+    init(
+        model: QuickEntryModel, actions: EventActions, onMore: @escaping (EventInput) -> Void,
+        onEvent: @escaping (EventItem) -> Void = { _ in }
+    ) {
         _model = State(initialValue: model)
         self.actions = actions
         self.onMore = onMore
+        self.onEvent = onEvent
+    }
+
+    /// 552 grows by the list (m1.md screen 5 "높이"); past what the screen allows, the system keeps the sheet at its
+    /// largest and the content scrolls.
+    private var sheetHeight: CGFloat {
+        guard !model.events.isEmpty else { return height }
+        return height + eventHeader + 18 + eventRow * CGFloat(model.listedEvents.count)
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                dayEvents
                 suggestions
                 Rectangle().fill(GeunalColor.separator).frame(height: 1)
                 typed
@@ -37,7 +53,7 @@ struct QuickEntrySheet: View {
         .scrollBounceBehavior(.basedOnSize)
         .safeAreaInset(edge: .bottom) { bottomRow }
         .task { await model.load() }
-        .sheetChrome(height: height)
+        .sheetChrome(height: sheetHeight)
     }
 
     private var header: some View {
@@ -64,6 +80,55 @@ struct QuickEntrySheet: View {
             }
             .padding(.top, -6)
             .padding(.trailing, -12)
+        }
+    }
+
+    /// "이날 일정 N개" and the day's events, three rows until "N개 더 보기" (m1.md decision 42).
+    @ViewBuilder private var dayEvents: some View {
+        if !model.events.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label {
+                        Text("이날 일정 \(model.events.count)개", bundle: .module)
+                    } icon: {
+                        Image(systemName: "calendar")
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(GeunalColor.secondaryText)
+                    .accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    if model.hiddenEventCount > 0 {
+                        Button {
+                            withAnimation(.snappy) { model.showsAllEvents.toggle() }
+                        } label: {
+                            if model.showsAllEvents {
+                                Text("접기", bundle: .module)
+                            } else {
+                                Text("\(model.hiddenEventCount)개 더 보기", bundle: .module)
+                            }
+                        }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(GeunalColor.secondaryText)
+                        .accessibilityIdentifier("quickEntry.moreEvents")
+                    }
+                }
+                VStack(spacing: 0) {
+                    ForEach(Array(model.listedEvents.enumerated()), id: \.offset) { index, event in
+                        Button {
+                            onEvent(event)
+                        } label: {
+                            DayEventRow(
+                                event: event, time: model.time(of: event), height: eventRow,
+                                separated: index < model.listedEvents.count - 1)
+                        }
+                        .buttonStyle(.pressable)
+                        .accessibilityLabel(Text(verbatim: model.spokenTime(of: event)))
+                        .accessibilityIdentifier("quickEntry.event.\(index)")
+                    }
+                }
+                .background(GeunalColor.groupedBackground, in: RoundedRectangle(cornerRadius: Radius.card))
+            }
+            .accessibilityElement(children: .contain)
         }
     }
 
@@ -207,6 +272,39 @@ struct QuickEntrySheet: View {
 
 /// A suggestion chip (components.md §3): white with a 1 pt border, the calendar's dot, the title in 15 · 600 and the
 /// time in 15. It saves as soon as it is tapped.
+/// One of the day's events: the calendar's dot, the title and the time on this day (m1.md screen 5 "상태").
+private struct DayEventRow: View {
+    let event: EventItem
+    let time: String
+    let height: CGFloat
+    let separated: Bool
+
+    var body: some View {
+        HStack(spacing: Space.s) {
+            Circle()
+                .fill(CalendarColors.marker(event.color))
+                .frame(width: 8, height: 8)
+            Text(verbatim: event.title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(GeunalColor.ink)
+                .lineLimit(1)
+            Spacer(minLength: Space.xs)
+            Text(verbatim: time)
+                .font(.system(size: 15))
+                .monospacedDigit()
+                .foregroundStyle(GeunalColor.secondaryText)
+        }
+        .padding(.horizontal, Space.m)
+        .frame(minHeight: height)
+        .overlay(alignment: .bottom) {
+            if separated {
+                Rectangle().fill(GeunalColor.separator).frame(height: 1)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+}
+
 private struct SuggestionChip: View {
     let suggestion: Suggestion
     let color: Palette?

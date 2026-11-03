@@ -81,6 +81,17 @@
             }
         }
 
+        /// The day of docs/design/screens/m1/05-quick-entry--day: four events today, one more than the quick entry's
+        /// list shows before "1개 더 보기" (m1.md decision 42).
+        static func seedBusyDay(_ core: any CoreProtocol, now: Date = Date()) throws {
+            let today = KoreanCalendar.day(of: now)
+            guard let personal = try core.calendars().first(where: { $0.kind == .own })?.id else { return }
+            try add(core, personal, "교양 수업", today, 540, 630)
+            try add(core, personal, "치과", today, 660, 720)
+            try add(core, personal, "팀플 회의", today, 960, 1020)
+            try add(core, personal, "동아리 회의", today, 1140, 1260)
+        }
+
         private static func calendar(
             _ core: any CoreProtocol, _ name: String, _ color: Palette, soft: Bool = false
         ) throws -> String {

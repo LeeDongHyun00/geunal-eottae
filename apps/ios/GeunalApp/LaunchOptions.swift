@@ -14,6 +14,9 @@
         /// `-GeunalDemoCalendar` writes the design's example week into the core after it opens (`DemoCalendar`).
         static var seedsDemoCalendar: Bool { arguments.contains("-GeunalDemoCalendar") }
 
+        /// `-GeunalDemoBusyDay` writes four events into today, the quick entry's day list (`DemoCalendar.seedBusyDay`).
+        static var seedsBusyDay: Bool { arguments.contains("-GeunalDemoBusyDay") }
+
         /// `-GeunalDemoPeople` writes the design's people and birthdays (`DemoCalendar.seedPeople`).
         static var seedsDemoPeople: Bool { arguments.contains("-GeunalDemoPeople") }
 

@@ -34,6 +34,29 @@ final class CalendarUITests: GeunalUITestCase {
         snapshot(app, "08-list")
     }
 
+    // docs/design/m1.md decision 42: a day of four events lists three, opens the fourth in place and edits a row.
+    func testTheQuickEntryListsTheDaysEvents() {
+        let app = launch(realCore: true, ["-GeunalOnboardingFinished", "-GeunalDemoBusyDay"])
+        let today = app.buttons["month.day.\(koreanToday)"]
+        waitFor(today)
+        tapDate(today)
+        let more = app.buttons["quickEntry.moreEvents"]
+        waitFor(more)
+        XCTAssertTrue(labeled(app.staticTexts, "이날 일정 4개").exists)
+        XCTAssertTrue(app.buttons["quickEntry.event.2"].exists)
+        XCTAssertFalse(app.buttons["quickEntry.event.3"].exists)
+        snapshot(app, "05-quick-entry--day")
+
+        more.tap()
+        waitFor(app.buttons["quickEntry.event.3"])
+        snapshot(app, "05-quick-entry--day-open")
+
+        app.buttons["quickEntry.event.1"].tap()
+        let title = app.textFields["editor.title"]
+        waitFor(title)
+        XCTAssertEqual(title.value as? String, "치과")
+    }
+
     func testTypesATitleDragsATimeAndUndoes() {
         let app = launch(realCore: true, ["-GeunalOnboardingFinished", "-GeunalToastsWait"])
         let today = app.buttons["month.day.\(koreanToday)"]

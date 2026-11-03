@@ -99,6 +99,9 @@ final class AppModel {
                 if LaunchOptions.seedsDemoCalendar {
                     try await Task.detached { try DemoCalendar.seed(core) }.value
                 }
+                if LaunchOptions.seedsBusyDay {
+                    try await Task.detached { try DemoCalendar.seedBusyDay(core) }.value
+                }
                 if LaunchOptions.seedsDemoPeople {
                     try await Task.detached { try DemoCalendar.seedPeople(core) }.value
                 }
