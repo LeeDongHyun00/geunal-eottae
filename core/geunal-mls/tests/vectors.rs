@@ -212,7 +212,7 @@ fn device_signatures_json_is_what_the_mls_signer_makes() {
         let public = hex::decode(case["signature_key"].as_str().unwrap()).unwrap();
         let secret = [hex::decode(case["seed"].as_str().unwrap()).unwrap(), public.clone()].concat();
         assert_eq!(MlsClient::public_key_of(&secret).unwrap(), public);
-        for kind in ["delete", "new_key", "replace"] {
+        for kind in ["delete", "recovery_upload", "new_key", "replace"] {
             let message = hex::decode(case[kind]["message"].as_str().unwrap()).unwrap();
             let signature = MlsClient::sign_with(&secret, &message).unwrap();
             assert_eq!(hex::encode(&signature), case[kind]["signature"], "{kind}");

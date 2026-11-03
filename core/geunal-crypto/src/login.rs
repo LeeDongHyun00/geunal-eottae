@@ -8,6 +8,7 @@ const REPLACE: &[u8] = b"geunal replace v1";
 /// other, and the server checks each against its own public key.
 const DELETE: &[u8] = crate::recovery::DELETE_LABEL;
 const NEW_KEY: &[u8] = b"geunal new key v1";
+const UPLOAD: &[u8] = b"geunal recovery upload v1";
 
 /// The nonce the app hands to Kakao or Apple: hex(SHA-256(`"geunal login v1" ‖ nonce ‖ signature_key`)), lowercase.
 /// The server computes the same from the request and compares it with the token's `nonce` claim, so a provider token
@@ -29,10 +30,21 @@ pub fn delete_message(nonce: &str) -> Vec<u8> {
     [DELETE, nonce.as_bytes()].concat()
 }
 
-/// What the device key signs for "새 키로 시작" (`PUT /me/recovery` with `new_key`), which deletes every backup. Its own
-/// words, so a signature made for one of the two irreversible requests never counts for the other.
-pub fn new_key_message(nonce: &str) -> Vec<u8> {
-    [NEW_KEY, nonce.as_bytes()].concat()
+/// What the device key signs for every `PUT /me/recovery`: its words, the nonce, then the material it puts up (recovery
+/// id, recovery public key, wrapped AMK). A stolen session alone cannot put material up while the server has none,
+/// and whoever sits between the app and the API cannot swap other material in under the device's signature (threat
+/// model §3.6). "새 키로 시작" (`new_key`), which deletes every backup, has words of its own, so a signature for an
+/// upload that keeps the backups never counts for one that deletes them. Every field has a fixed length, so the
+/// joins are unambiguous.
+pub fn recovery_upload_message(
+    new_key: bool,
+    nonce: &str,
+    recovery_id: &[u8],
+    recovery_public_key: &[u8],
+    amk_wrapped: &[u8],
+) -> Vec<u8> {
+    let words = if new_key { NEW_KEY } else { UPLOAD };
+    [words, nonce.as_bytes(), recovery_id, recovery_public_key, amk_wrapped].concat()
 }
 
 #[cfg(test)]
@@ -54,8 +66,9 @@ mod tests {
     }
 
     #[test]
-    fn delete_and_new_key_messages_prefix_the_nonce_with_their_own_words() {
+    fn delete_and_upload_messages_prefix_the_nonce_with_their_own_words() {
         assert_eq!(delete_message("n1"), b"geunal delete v1n1");
-        assert_eq!(new_key_message("n1"), b"geunal new key v1n1");
+        assert_eq!(recovery_upload_message(true, "n1", b"i", b"p", b"w"), b"geunal new key v1n1ipw");
+        assert_eq!(recovery_upload_message(false, "n1", b"i", b"p", b"w"), b"geunal recovery upload v1n1ipw");
     }
 }

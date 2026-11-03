@@ -236,14 +236,15 @@ pub struct RecoveryUpload {
     /// below. The server deletes the old backups.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub new_key: bool,
-    /// From `GET /auth/nonce`, with `proof` or `kakao_id_token`.
+    /// From `GET /auth/nonce`, on every upload: `device_signature`, and `proof` or `kakao_id_token` when they come,
+    /// all sign this one value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nonce: Option<String>,
     /// The current code's signature, to overwrite material already stored.
     #[serde(default, with = "b64::option", skip_serializing_if = "Option::is_none")]
     pub proof: Option<Vec<u8>>,
-    /// With `new_key`: the device key's signature over `"geunal new key v1" ‖ nonce`, needed whether or not a
-    /// provider proof comes too.
+    /// The device key's signature over `"geunal recovery upload v1" ‖ nonce ‖ recovery_id ‖ recovery_public_key ‖
+    /// amk_wrapped`, or `"geunal new key v1"` and the same with `new_key`. Every upload carries it.
     #[serde(default, with = "b64::option", skip_serializing_if = "Option::is_none")]
     pub device_signature: Option<Vec<u8>>,
     /// `new_key` past the 30 minutes, Kakao: an ID token bound to `nonce` and this device's registered key.
