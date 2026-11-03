@@ -90,10 +90,10 @@ fun RecoveryCodeScreen(
         delay(SensitiveClipboard.CLEAR_AFTER_MS)
         clipboard.clear()
     }
-    // Leaving the screen takes the code off at once: the app cannot clear the clipboard from the background.
+    // Leaving the screen takes the code off at once, rather than waiting out the minute.
     DisposableEffect(clipboard) { onDispose { clipboard.clear() } }
-    // Gone to another app (to paste the code there, say), the minute may run out while the clipboard cannot be
-    // touched; the code comes off as soon as the app is back in front.
+    // Gone to another app (to paste the code there, say), the timer clears the code from the background; should it
+    // not have run, the code comes off as soon as the app is back in front.
     LifecycleResumeEffect(clipboard, copiedAt) {
         val at = copiedAt
         if (at != null && SystemClock.elapsedRealtime() - at >= SensitiveClipboard.CLEAR_AFTER_MS) {
