@@ -130,8 +130,67 @@
 
     <!-- 본인 확인: the OS prompt's title and reason, and the line for a phone without a screen lock (tone.md). -->
     <string name="device_auth_title">본인 확인</string>
+    <string name="device_auth_recovery_code">복구 코드를 보려면 본인 확인이 필요해요</string>
     <string name="device_auth_wipe_backups">백업을 지우려면 본인 확인이 필요해요</string>
     <string name="device_auth_no_lock_wipe">화면 잠금을 켜 두면 다른 사람이 지우지 못해요.</string>
 
     <string name="busy">하는 중</string>
+
+    <!-- 13. 복구 코드 -->
+    <string name="recovery_back">나</string>
+    <string name="recovery_title">복구 코드</string>
+    <string name="recovery_note">새 기기에서 일정과 대화를 되찾을 때 필요해요. 이 12단어는 그날어때도 모릅니다.</string>
+    <string name="recovery_word">%1$d번 %2$s</string>
+    <string name="recovery_warning_title">코드와 기기를 함께 잃으면 되찾을 수 없어요</string>
+    <string name="recovery_warning_body">화면 캡처보다 종이에 적어 안전한 곳에 두세요. 운영자도 대신 찾아 드릴 수 없어요.</string>
+    <string name="recovery_no_lock">화면 잠금을 켜 두면 다른 사람이 복구 코드를 보지 못해요.</string>
+    <string name="recovery_backup_line">암호화 백업 · 최근 3개 보관 · 마지막 백업 %1$s</string>
+    <string name="recovery_backup_none">암호화 백업 · 최근 3개 보관 · 아직 백업 전</string>
+    <string name="recovery_backup_media">사진·파일은 백업에 들어가지 않고, 보관 기간 안이면 다시 받아요.</string>
+    <string name="recovery_copy">복사</string>
+    <string name="recovery_copied">복사했어요. 1분 뒤 클립보드에서 지워요</string>
+    <string name="recovery_written">종이에 적었어요</string>
+    <string name="recovery_failed">복구 코드를 불러오지 못했어요. 다시 시도해 주세요</string>
+
+    <!-- 20. 암호화 백업 -->
+    <string name="backup_title">암호화 백업</string>
+    <string name="backup_note">기기에서 잠근 뒤 올려요. 복구 코드가 있어야 풀 수 있고, 그날어때는 열어 볼 수 없어요.</string>
+    <string name="backup_last">마지막 백업</string>
+    <string name="backup_never">아직 백업 전</string>
+    <string name="backup_working_title">백업하는 중</string>
+    <string name="backup_working">잠그고 올리는 중…</string>
+    <string name="backup_just_now">방금</string>
+    <string name="backup_now">지금 백업</string>
+    <string name="backup_sending">올리는 중</string>
+    <string name="backup_needs_code">복구 코드를 넣으면 백업할 수 있어요</string>
+    <string name="backup_waits_for_code">복구 코드를 넣을 때까지 백업은 쉬어요.</string>
+    <string name="backup_code_not_saved">복구 코드를 저장해야 백업을 되찾을 수 있어요</string>
+    <string name="backup_offline">연결되면 다시 올릴게요</string>
+    <string name="backup_auto">자동 백업</string>
+    <string name="backup_auto_note">와이파이에서 하루 한 번. 바뀐 게 없으면 건너뛰어요</string>
+    <string name="backup_recent">최근 백업 · 3개까지 보관</string>
+    <string name="backup_kind_auto">자동</string>
+    <string name="backup_kind_manual">직접</string>
+    <string name="backup_counts">일정 %1$d개 · 사람 %2$d명</string>
+    <string name="backup_today">오늘 %1$s</string>
+    <string name="backup_yesterday">어제 %1$s</string>
+    <string name="backup_day">%1$d월 %2$d일 %3$s</string>
+    <string name="backup_day_other_year">%1$s년 %2$d월 %3$d일 %4$s</string>
+    <string name="backup_size_mb">%1$sMB</string>
+    <string name="backup_size_kb">%1$dKB</string>
+    <string name="backup_in">들어가는 것</string>
+    <string name="backup_out">안 들어가는 것</string>
+    <string-array name="backup_in_items">
+        <item>내 일정과 캘린더</item>
+        <item>사람·생일</item>
+        <item>교대 템플릿</item>
+        <item>설정</item>
+        <item>채팅 글(M3)</item>
+    </string-array>
+    <string-array name="backup_out_items">
+        <item>사진·파일</item>
+        <item>기기 캘린더 일정</item>
+        <item>그룹의 상태</item>
+    </string-array>
+    <string name="backup_out_note">사진·파일은 보관 기간 안이면 다시 받아요</string>
 </resources>

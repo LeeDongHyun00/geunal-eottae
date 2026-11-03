@@ -232,7 +232,7 @@ class AuthTests : ApiTest() {
             assertThat(revoked.string("replaced_by")).isEqualTo("android")
             assertThat(revoked.string("replaced_via")).isEqualTo("provider")
             assertThat(java.time.Instant.parse(revoked.string("replaced_at"))).isBeforeOrEqualTo(java.time.Instant.now())
-            api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to oldRefresh)).expectError(401, "token_expired")
+            api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to oldRefresh)).expectError(403, "device_revoked")
             val devices = new.get("/users/${new.userId}/devices").expect(200)["devices"]
             assertThat(devices.size()).isEqualTo(1)
             assertThat(devices[0].path("id").stringValue()).isEqualTo(new.deviceId.toString())

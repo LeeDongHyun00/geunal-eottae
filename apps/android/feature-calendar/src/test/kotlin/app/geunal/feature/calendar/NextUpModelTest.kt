@@ -6,6 +6,7 @@ import app.geunal.core.DayTime
 import app.geunal.core.EventItem
 import app.geunal.core.EventSource
 import app.geunal.core.NoHandle
+import app.geunal.core.NotificationSettings
 import app.geunal.core.Palette
 import app.geunal.core.UpNext
 import app.geunal.feature.calendar.nextup.NextUpModel
@@ -17,6 +18,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
 
@@ -24,7 +26,12 @@ import java.time.Instant
 private class NextUpFakeCore : Core(NoHandle) {
     @Volatile var upcoming: List<UpNext> = emptyList()
 
+    /** "다음 할 일 막대" in 알림 설정. */
+    @Volatile var barOn = true
+
     override fun nextUp(count: UShort): List<UpNext> = upcoming.take(count.toInt())
+
+    override fun notificationSettings(): NotificationSettings = NotificationSettings(10, 360, barOn, true, true)
 }
 
 class NextUpModelTest {
@@ -145,6 +152,20 @@ class NextUpModelTest {
             model.refresh()
 
             assertNull(model.state.value.current)
+        }
+
+    @Test
+    fun followsItsSwitchInTheAlertSettings() =
+        runTest {
+            val core = NextUpFakeCore().apply { upcoming = listOf(dinner()) }
+            val model = NextUpModel(core, now = { now }, io = StandardTestDispatcher(testScheduler))
+
+            model.refresh()
+            assertTrue(model.state.value.shown)
+
+            core.barOn = false
+            model.refresh()
+            assertFalse(model.state.value.shown)
         }
 
     @Test

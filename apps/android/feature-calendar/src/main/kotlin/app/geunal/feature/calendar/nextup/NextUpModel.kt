@@ -67,6 +67,8 @@ class NextUpModel(
     data class State(
         val items: List<Item> = emptyList(),
         val index: Int = 0,
+        /** "다음 할 일 막대" in 알림 설정 (m1.md screen 19); off leaves the slot to toasts alone. */
+        val shown: Boolean = true,
     ) {
         val current: Item? get() = items.getOrNull(index)
         val canGoBack: Boolean get() = index > 0
@@ -79,11 +81,12 @@ class NextUpModel(
     /** Reads the core again, keeping the bar on the same item when it is still there. */
     suspend fun refresh() {
         val upcoming = withContext(io) { runCatching { core.nextUp(count.toUShort()) }.getOrDefault(emptyList()) }
+        val shown = withContext(io) { runCatching { core.notificationSettings().nextUpBar }.getOrDefault(true) }
         val at = now()
         val items = upcoming.map { item(it, at) }
         val previous = _state.value.current?.source
         val index = previous?.let { source -> items.indexOfFirst { it.source == source }.takeIf { it >= 0 } } ?: 0
-        _state.value = State(items, index)
+        _state.value = State(items, index, shown)
     }
 
     /**

@@ -9,6 +9,15 @@ final class BundleSettingsTests: XCTestCase {
         XCTAssertEqual(families, [1])
     }
 
+    func testTheWidgetIsForIPhoneOnlyAsTheApp() throws {
+        // An extension whose device family differs from its app's is refused on upload as well.
+        let plugIns = try XCTUnwrap(Bundle.main.builtInPlugInsURL)
+        let widget = try XCTUnwrap(Bundle(url: plugIns.appendingPathComponent("GeunalWidget.appex")))
+        let families = try XCTUnwrap(widget.infoDictionary?["UIDeviceFamily"] as? [Int])
+
+        XCTAssertEqual(families, [1])
+    }
+
     func testTheAppIsPortraitOnly() throws {
         let orientations = try XCTUnwrap(Bundle.main.infoDictionary?["UISupportedInterfaceOrientations"] as? [String])
 
