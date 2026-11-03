@@ -140,6 +140,29 @@ object FakeProviders {
         key: RSAKey = appleKey,
     ): String = token(key, issuer, audience, sub, nonce, expiresIn)
 
+    /** An Apple server-to-server notification about [sub]; Apple sends `events` as a JSON string inside the claims. */
+    fun appleNotification(
+        type: String,
+        sub: String,
+        audience: String = APPLE_BUNDLE_ID,
+        issuer: String = APPLE_ISSUER,
+        issuedAt: Instant = Instant.now(),
+        id: String = UUID.randomUUID().toString(),
+        key: RSAKey = appleKey,
+    ): String {
+        val claims =
+            JWTClaimsSet
+                .Builder()
+                .issuer(issuer)
+                .audience(audience)
+                .issueTime(Date.from(issuedAt))
+                .jwtID(id)
+                .claim("events", """{"type":"$type","sub":"$sub","event_time":${issuedAt.toEpochMilli()}}""")
+                .build()
+        val header = JWSHeader.Builder(JWSAlgorithm.RS256).keyID(key.keyID).build()
+        return SignedJWT(header, claims).apply { sign(RSASSASigner(key)) }.serialize()
+    }
+
     private fun token(
         key: RSAKey,
         issuer: String,

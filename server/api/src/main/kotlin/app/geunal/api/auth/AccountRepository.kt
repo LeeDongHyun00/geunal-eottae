@@ -90,6 +90,21 @@ class AccountRepository(
             .update()
     }
 
+    /**
+     * Marks the link cut, as the provider told us (protocol §13): the row stays, so the same provider account signing
+     * in again comes back to this account. Returns whether a live link was cut.
+     */
+    fun cut(
+        provider: Provider,
+        sub: String,
+    ): Boolean =
+        jdbc
+            .sql(
+                "UPDATE provider_links SET unlinked_at = now() WHERE provider = :provider::provider_kind AND sub = :sub AND unlinked_at IS NULL",
+            ).param("provider", provider.id)
+            .param("sub", sub)
+            .update() > 0
+
     /** Links [userId] to the provider account; a cut link of the same provider that named another `sub` gives way. */
     fun addLink(
         userId: UUID,

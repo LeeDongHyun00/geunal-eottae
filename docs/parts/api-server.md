@@ -387,6 +387,8 @@ CREATE TABLE holidays (
 | POST | `/auth/apple` | Apple 로그인 + 기기 등록. 다른 활성 기기가 있으면 교체 티켓 |
 | POST | `/auth/apple/callback` | 안드로이드 Apple 웹 로그인의 form_post를 받아 App Links 주소로 앱에 넘기기 |
 | GET | `/auth/apple` | App Links 주소. 앱이 없을 때 열리는, 스크립트 없는 정적 페이지 |
+| GET, POST | `/auth/kakao/unlinked` | 카카오 연결 해제 웹훅(콘솔의 연결 해제 웹훅 주소). `Authorization: KakaoAK <어드민 키>`가 맞을 때만 `user_id`의 연결에 끊긴 시각을 적음. 틀리면 401 |
+| POST | `/auth/apple/notifications` | Apple 서버 간 알림(App ID의 Sign in with Apple 서버 간 알림 주소). `payload` JWT를 Apple JWKS·`iss`·`aud`로 확인하고, `consent-revoked`·`account-delete`면 연결에 끊긴 시각을 적음. 발급 하루가 지났거나 이미 받은 `jti`는 무시 |
 | POST | `/auth/guest` | 게스트 계정 + 기기 등록 |
 | POST | `/auth/recover` | 게스트 복귀: 복구 ID와 복구 서명으로 로그인 + 기기 교체 |
 | POST | `/auth/replace` | 교체 티켓으로 이 기기 등록, 이전 기기 해제 |
