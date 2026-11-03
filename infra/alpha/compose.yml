@@ -48,6 +48,10 @@ services:
       # URLs need no separate address.
       GEUNAL_S3_ENDPOINT: https://kr.object.ncloudstorage.com
       GEUNAL_S3_BACKUPS_BUCKET: geunal-alpha-backups
+      # Access logs (api-server.md §10) go to their own bucket, which keeps them 92 days (bucket-lifecycle.sh).
+      GEUNAL_S3_ACCESS_LOGS_BUCKET: geunal-alpha-access-logs
+      # The alpha statistics endpoint exists only here; release servers answer 404 (api-server.md, #102).
+      GEUNAL_ALPHA_STATS_ENABLED: "true"
       # Apple sign-in's public half; the key ID and .p8 key are in api.env. Apple stays off until all four are set.
       GEUNAL_AUTH_APPLE_TEAM_ID: BT6XQAVMKW
       GEUNAL_AUTH_APPLE_REDIRECT_URI: https://${GEUNAL_API_HOST:-api.geunaleottae.com}/auth/apple/callback
