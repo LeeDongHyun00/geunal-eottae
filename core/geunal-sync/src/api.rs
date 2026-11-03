@@ -512,6 +512,16 @@ pub struct StateBlob {
 /// The largest page of `GET /groups/{id}/log` (api-server.md §5).
 pub const LOG_PAGE: u32 = 500;
 
+/// Not a server code: what a transport answers once the server refused the refresh token itself, because it ran out
+/// after 30 days or reuse detection ended the device's sessions. The session is over, and only a new sign-in brings
+/// one; a plain 401 `token_expired` would read as "refresh and try again" for ever.
+pub const SESSION_EXPIRED: &str = "session_expired";
+
+/// The [`SESSION_EXPIRED`] answer.
+pub fn session_expired() -> ApiError {
+    ApiError::Api { status: 401, code: SESSION_EXPIRED.into(), message: String::new() }
+}
+
 /// Told the new tokens as soon as a refresh spends the old refresh token, so they are kept before anything else runs:
 /// the server ends every session of a device that presents a spent refresh token (protocol §13).
 pub type TokenListener = std::sync::Arc<dyn Fn(&SessionInfo) + Send + Sync>;

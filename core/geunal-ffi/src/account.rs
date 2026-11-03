@@ -20,7 +20,7 @@ use geunal_sync::api::{
     AlphaDay, AuthOutcome, DeleteAccount, DeviceProof, GuestSignIn, LinkRequest, NewAccountFields, ProviderSignIn,
     RecoverSignIn, RecoveryUpload, ReplaceRequest, Replaced,
 };
-use geunal_sync::{ApiError, Transport as _};
+use geunal_sync::{ApiError, SESSION_EXPIRED, Transport as _};
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -822,10 +822,11 @@ fn view_of_note(note: &BackupRecordRow) -> Result<BackupView, CoreError> {
     })
 }
 
-/// The answers after which this device has no session left: another device's sign-in (403 `device_revoked`) or the
-/// account's deletion (401 `account_deleted`). Unlike other failures, they end the call rather than wait for a retry.
+/// The answers after which this device has no session left: another device's sign-in (403 `device_revoked`), the
+/// account's deletion (401 `account_deleted`) or a refused refresh token (`SignInAgain`). Unlike other failures, they end the call rather than wait for a retry.
 fn ends_session(e: &CoreError) -> bool {
     match e {
+        CoreError::SignInAgain => true,
         CoreError::Api { status: 403, code, .. } => code == "device_revoked",
         CoreError::Api { status: 401, code, .. } => code == ACCOUNT_DELETED,
         _ => false,
@@ -1443,8 +1444,8 @@ impl Core {
         Ok(keys)
     }
 
-    /// A call made outside the engine: a 403 `device_revoked` signs this device out here too, and a 401
-    /// `account_deleted` finishes the deletion.
+    /// A call made outside the engine: a 403 `device_revoked` signs this device out here too, a 401
+    /// `account_deleted` finishes the deletion, and a refused refresh token ends the session.
     pub(crate) async fn checked<R>(&self, result: Result<R, ApiError>) -> Result<R, CoreError> {
         match result {
             Err(ApiError::Revoked { replaced }) => {
@@ -1456,8 +1457,25 @@ impl Core {
                 self.account_deleted().await?;
                 Err(account_deleted_error())
             }
+            Err(e) if e.is(401, SESSION_EXPIRED) => {
+                *self.state.lock().await = State::SignedOut;
+                self.session_expired().await?;
+                Err(CoreError::SignInAgain)
+            }
             other => other.map_err(CoreError::from),
         }
+    }
+
+    /// The server refused the session's refresh token: 30 days passed without a connection, or reuse detection ended
+    /// the device's sessions (design m1.md 22). Only the session goes. The device is still the account's, so its
+    /// signing key, code, master key, group state and calendar stay for the next sign-in, and no revocation is noted:
+    /// nobody else signed it out. The caller has set the state to signed out.
+    pub(crate) async fn session_expired(&self) -> Result<(), CoreError> {
+        self.api.clear_session();
+        *self.realtime.lock().await = None;
+        let deleted = self.secrets.delete(SESSION.to_owned());
+        self.listener.on_change(Change::Account);
+        Ok(deleted?)
     }
 
     /// After a realtime `revoke`, which signs this device out by itself (protocol §13 "기기 해제"). The server's 403
