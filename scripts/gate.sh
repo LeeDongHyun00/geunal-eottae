@@ -4,15 +4,18 @@
 # - while an open issue labelled `hold` pauses the project, unless the pull request is labelled `hold-exempt`;
 # - on a pull request that changes docs/ (renames out of docs/ included) until the user approves its head commit.
 #   The user labels it `user-approved`, and gate.yml then marks the commit the label was added on with a
-#   `user-approved` status. Both must be present, so an approval never carries over to commits pushed after it, even
-#   when the run that would drop the label is cancelled. A label stands in for a review because sessions open pull
-#   requests under the user's account, and GitHub does not let an author approve their own pull request.
-# A commit status rather than a job result, so that opening or closing a hold issue flips every open pull request at
-# once without rerunning CI.
+#   `user-approved` status. Both must be present, so an approval never carries over to commits pushed after it. A
+#   label stands in for a review because sessions open pull requests under the user's account, and GitHub does not
+#   let an author approve their own pull request.
 #
-# Usage: scripts/gate.sh [<pr-number>]   (no argument: every open pull request)
-# Needs GH_TOKEN and GITHUB_REPOSITORY. PUSHED_PR names a pull request that just received a push: if it changes
-# docs/, it loses `user-approved`, so the label on GitHub matches the approval the gate sees.
+# Every run evaluates every open pull request from what it reads now, and gate.yml runs one evaluation at a time,
+# newest last. So no run can overwrite a newer result with a stale one, and a run that a newer event cancels loses
+# nothing. Pull requests that share a head commit share its status, so a commit is green only if every pull request
+# on it is.
+#
+# Usage: scripts/gate.sh   (needs GH_TOKEN, GITHUB_REPOSITORY and jq)
+# PUSHED_PR names a pull request that just received a push: if it changes docs/, it loses `user-approved`, so the
+# label on GitHub matches the approval the gate sees.
 set -euo pipefail
 
 repo="${GITHUB_REPOSITORY:?set GITHUB_REPOSITORY to owner/name}"
@@ -21,17 +24,20 @@ if [ -n "${GITHUB_RUN_ID:-}" ]; then
   link=(-f "target_url=${GITHUB_SERVER_URL:-https://github.com}/$repo/actions/runs/$GITHUB_RUN_ID")
 fi
 
-# Up to three open hold issues as "#12, #34". The issues list also returns pull requests, which carry pull_request.
-holds() {
-  gh api "repos/$repo/issues?state=open&labels=hold&per_page=100" \
-    --jq '[.[] | select(.pull_request == null) | "#\(.number)"] | .[:3] | join(", ")'
-}
-
 has() { grep -qx "$1" <<<"$2"; }
 
-# Sets state and description from the holds, whether docs/ changed, the labels and the head commit's approval.
+# Up to three open hold issues as "#12, #34". The issues list also returns pull requests, which carry pull_request.
+held="$(gh api "repos/$repo/issues?state=open&labels=hold&per_page=100" \
+  --jq '[.[] | select(.pull_request == null) | "#\(.number)"] | .[:3] | join(", ")')"
+pulls="$(gh api --paginate "repos/$repo/pulls?state=open&per_page=100" \
+  --jq '.[] | {number, sha: .head.sha, labels: [.labels[].name]} | @json')"
+
+declare -A verdict note current
+failed=0
+
+# Sets state and description for one pull request.
 decide() {
-  local held="$1" docs="$2" labels="$3" approved="$4"
+  local docs="$1" labels="$2" approved="$3"
   if [ -n "$held" ] && ! has hold-exempt "$labels"; then
     state=failure description="보류 중입니다($held). 보류 이슈를 닫으면 풀립니다."
   elif [ "$docs" = true ] && ! has user-approved "$labels"; then
@@ -45,52 +51,53 @@ decide() {
   fi
 }
 
-post() {
-  gh api -X POST "repos/$repo/statuses/$1" -f state="$state" -f context=gate -f description="$description" \
-    "${link[@]}" >/dev/null
-}
-
-# Each step returns on failure itself: errexit does not apply inside a function called from `||`.
+# Decides one pull request and folds the result into its head commit's verdict, failure first. Each step returns on
+# failure itself: errexit does not apply inside a function called from `||`.
 evaluate() {
-  local pr="$1" sha labels files marks docs=false approved=false held now state description
-  sha="$(gh api "repos/$repo/pulls/$pr" --jq .head.sha)" || return 1
-  labels="$(gh api "repos/$repo/issues/$pr/labels?per_page=100" --jq '.[].name')" || return 1
+  local pull="$1" pr sha labels files status docs=false approved=false state description
+  pr="$(jq -r .number <<<"$pull")" || return 1
+  sha="$(jq -r .sha <<<"$pull")" || return 1
+  labels="$(jq -r '.labels[]' <<<"$pull")" || return 1
   files="$(gh api --paginate "repos/$repo/pulls/$pr/files?per_page=100" \
     --jq '.[] | .filename, (.previous_filename // empty)')" || return 1
   if grep -q '^docs/' <<<"$files"; then docs=true; fi
 
-  if [ "$docs" = true ]; then
-    if [ "${PUSHED_PR:-}" = "$pr" ] && has user-approved "$labels"; then
-      gh api -X DELETE "repos/$repo/issues/$pr/labels/user-approved" >/dev/null || return 1
-      labels="$(grep -vx user-approved <<<"$labels" || true)"
-    fi
-    marks="$(gh api "repos/$repo/commits/$sha/status?per_page=100" \
-      --jq '[.statuses[] | select(.context == "user-approved" and .state == "success")] | length')" || return 1
-    if [ "$marks" -gt 0 ]; then approved=true; fi
+  if [ "$docs" = true ] && [ "${PUSHED_PR:-}" = "$pr" ] && has user-approved "$labels"; then
+    gh api -X DELETE "repos/$repo/issues/$pr/labels/user-approved" >/dev/null || return 1
+    labels="$(grep -vx user-approved <<<"$labels" || true)"
   fi
 
-  held="$(holds)" || return 1
-  decide "$held" "$docs" "$labels" "$approved"
-  post "$sha" || return 1
-  # Another run may have posted for this commit with the other hold state while this one ran; whichever wrote last
-  # wins. Reading the holds again after writing and correcting a stale result means the last write matches them.
-  now="$(holds)" || return 1
-  if [ "$now" != "$held" ]; then
-    decide "$now" "$docs" "$labels" "$approved"
-    post "$sha" || return 1
+  status="$(gh api "repos/$repo/commits/$sha/status?per_page=100")" || return 1
+  if jq -e '.statuses | any(.context == "user-approved" and .state == "success")' <<<"$status" >/dev/null; then
+    approved=true
   fi
+  current[$sha]="$(jq -r '.statuses[] | select(.context == "gate") | "\(.state) \(.description)"' <<<"$status")"
+
+  decide "$docs" "$labels" "$approved"
   echo "#$pr ${sha:0:7}: $state, $description"
+  if [ "${verdict[$sha]:-success}" = success ]; then
+    if [ "$state" = failure ] || [ -z "${verdict[$sha]:-}" ]; then
+      verdict[$sha]="$state" note[$sha]="$description"
+    fi
+  fi
 }
 
-if [ $# -gt 0 ]; then
-  evaluate "$1"
-  exit
-fi
+# Keep going past one pull request's API error, so a hold still reaches the others, then fail the run. A pull
+# request that could not be evaluated turns its commit red rather than keeping a status it may no longer deserve.
+while IFS= read -r pull; do
+  [ -n "$pull" ] || continue
+  sha="$(jq -r .sha <<<"$pull")"
+  if ! evaluate "$pull"; then
+    echo "could not evaluate $pull" >&2
+    failed=1
+    verdict[$sha]=failure note[$sha]="이 PR을 평가하지 못했습니다. gate 워크플로를 다시 돌려 주세요."
+  fi
+done <<<"$pulls"
 
-# Keep going past one pull request's API error, so a hold still reaches the others, then fail the run.
-prs="$(gh api --paginate "repos/$repo/pulls?state=open&per_page=100" --jq '.[].number')"
-failed=0
-for pr in $prs; do
-  evaluate "$pr" || { echo "#$pr: could not post the gate status" >&2; failed=1; }
+# Post only what changed, so every run does not add a status to every open pull request.
+for sha in "${!verdict[@]}"; do
+  if [ "${current[$sha]:-}" = "${verdict[$sha]} ${note[$sha]}" ]; then continue; fi
+  gh api -X POST "repos/$repo/statuses/$sha" -f state="${verdict[$sha]}" -f context=gate \
+    -f description="${note[$sha]}" "${link[@]}" >/dev/null || { echo "${sha:0:7}: could not post" >&2; failed=1; }
 done
 exit "$failed"

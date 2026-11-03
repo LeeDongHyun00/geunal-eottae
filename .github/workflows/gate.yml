@@ -1,7 +1,8 @@
 # Posts the `gate` commit status that main's ruleset requires next to `ci-ok` (scripts/gate.sh says what it checks).
-# A pull request event evaluates that pull request; opening, closing or relabelling a `hold` issue re-evaluates every
-# open pull request, so pausing or resuming the project takes effect at once. A manual run re-evaluates them all and
-# also (re)creates the labels the gate reads, with descriptions, so the user can pick them on GitHub.
+# Every pull request event, every open, close or relabel of a `hold` issue, and a manual run re-evaluate every open
+# pull request, one run at a time with the newest last, so pausing or resuming the project takes effect at once and
+# no stale run overwrites a newer result. A manual run also (re)creates the labels the gate reads, with descriptions,
+# so the user can pick them on GitHub.
 # No job is named `gate` or `user-approved`: a check run of either name would stand in for the status the scripts
 # post, whatever that status says.
 name: gate
@@ -57,16 +58,21 @@ jobs:
   evaluate:
     needs: approve
     # Runs after `approve` whether it ran or was skipped. An issue event matters only when it opens, closes or
-    # relabels a hold issue.
+    # relabels a hold issue. A fork's pull request gets a read-only token, so its run could only cancel a run that
+    # can write; it is left out and never gets a green gate.
     if: >-
       !cancelled() && (
       github.event_name != 'issues' ||
       contains(github.event.issue.labels.*.name, 'hold') ||
-      github.event.label.name == 'hold')
+      github.event.label.name == 'hold') && (
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # One group for every event: runs never overlap, a newer run replaces an older one, and since each run evaluates
+    # every open pull request, the replaced run loses nothing.
     concurrency:
-      group: gate-${{ github.event.pull_request.number || 'all' }}
+      group: gate
       cancel-in-progress: true
     permissions:
       contents: read
@@ -82,5 +88,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PUSHED_PR: ${{ github.event.action == 'synchronize' && github.event.pull_request.number || '' }}
-          PR: ${{ github.event.pull_request.number }}
-        run: scripts/gate.sh ${PR:+"$PR"}
+        run: scripts/gate.sh
