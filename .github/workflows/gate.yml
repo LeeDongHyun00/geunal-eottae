@@ -1,0 +1,92 @@
+# Posts the `gate` commit status that main's ruleset requires next to `ci-ok` (scripts/gate.sh says what it checks).
+# Every pull request event, every open, close or relabel of a `hold` issue, and a manual run re-evaluate every open
+# pull request, one run at a time with the newest last, so pausing or resuming the project takes effect at once and
+# no stale run overwrites a newer result. A manual run also (re)creates the labels the gate reads, with descriptions,
+# so the user can pick them on GitHub.
+# No job is named `gate` or `user-approved`: a check run of either name would stand in for the status the scripts
+# post, whatever that status says.
+name: gate
+
+on:
+  pull_request:
+    # `closed` too: a closed pull request leaves the per-commit verdict, which can turn another one green.
+    types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review, closed]
+  issues:
+    types: [opened, reopened, closed, deleted, labeled, unlabeled]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  # Marks the commit the user approved. A job of its own with no concurrency group, so a later event for the same
+  # pull request cannot cancel it before the mark is written.
+  approve:
+    if: github.event.action == 'labeled' && github.event.label.name == 'user-approved' && github.event.pull_request
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - name: Mark the head commit as approved by the user
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # The head when the label was added, not the head now: a push right after must not inherit the approval.
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state=success -f context=user-approved \
+            -f description="사용자가 이 커밋을 확인했습니다." >/dev/null
+
+  labels:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Create or update the gate labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create hold --force --color B60205 \
+            --description "열린 보류 이슈가 있으면 모든 PR의 gate가 빨갛고, 세션은 바깥에 남는 일을 멈춥니다"
+          gh label create hold-exempt --force --color FBCA04 \
+            --description "보류 중에도 머지할 PR(빨간 main을 고치는 PR 등). 사용자나 조정 세션만 답니다"
+          gh label create user-approved --force --color 0E8A16 \
+            --description "사용자가 확인한 PR. docs/를 바꾸는 PR은 이 라벨이 있어야 gate가 녹색입니다"
+
+  evaluate:
+    needs: approve
+    # Runs after `approve` whether it ran or was skipped. An issue event matters only when it opens, closes or
+    # relabels a hold issue. A fork's pull request gets a read-only token, so its run could only cancel a run that
+    # can write; it is left out and never gets a green gate.
+    if: >-
+      !cancelled() && (
+      github.event_name != 'issues' ||
+      contains(github.event.issue.labels.*.name, 'hold') ||
+      github.event.label.name == 'hold') && (
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # One group for every event: runs never overlap, a newer run replaces an older one, and since each run evaluates
+    # every open pull request, the replaced run loses nothing.
+    concurrency:
+      group: gate
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      issues: read
+      # Removes `user-approved` from a docs pull request after a new push.
+      pull-requests: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Post the gate status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUSHED_PR: ${{ github.event.action == 'synchronize' && github.event.pull_request.number || '' }}
+        run: scripts/gate.sh
