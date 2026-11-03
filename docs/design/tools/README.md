@@ -22,6 +22,6 @@
 ## 로컬에서 보드 그리기
 
 1. 보드를 한 디렉터리에 모읍니다(`docs/design/boards/*.dc.html`, 새로 만든 보드).
-2. 같은 디렉터리에 Claude Design 런타임 `support.js`를 둡니다. React가 든 서드파티 번들이라 저장소에 넣지 않았습니다. 캔버스 아티팩트의 런타임 파일을 Artifact 도구의 read로 받습니다.
+2. 같은 디렉터리에 Claude Design 런타임 `support.js`를 둡니다. 보드가 이 이름으로 불러옵니다. 캔버스 아티팩트(https://claude.ai/artifact/3zAhdWP14DNVCW3dMDkhqY)의 `artifact-type/dc-runtime.js`를 Artifact 도구의 read로 받아 이름만 바꾼 것입니다. React가 든 서드파티 번들이라 저장소에는 넣지 않았습니다.
 3. `python3 -m http.server 8765 --bind 127.0.0.1`로 띄우고, 위 스크립트에 `http://127.0.0.1:8765`를 넘깁니다. Playwright와 Chromium은 클라우드 컨테이너에 미리 깔려 있습니다.
 4. 내보낸 PNG는 `docs/design/screens/<마일스톤>/`에, 보드는 `docs/design/boards/`에 두고 `canvas.json`(들여쓰기 1칸)에 자리를 더합니다.
