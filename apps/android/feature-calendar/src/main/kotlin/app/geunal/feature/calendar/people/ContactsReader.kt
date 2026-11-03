@@ -33,6 +33,12 @@ interface ContactsReader {
  * birthday events, then the structured names of only those contacts. The aggregate's display name is not used, since
  * a contact without a name falls back to its phone number or email there. A contact has no standard field saying a
  * birthday is lunar, so every one comes in as solar and the person sheet can change it (docs/parts/android.md §4).
+ *
+ * The id handed to the core is the contact's lookup key, not its row id (`CONTACT_ID`). The core finds a person it
+ * imported before by this id and overwrites their name and birthday, and the id goes into the encrypted backup. Row ids
+ * are small integers counted from 1 on each device and are renumbered when accounts sync or contacts are joined, so
+ * after a restore on a new phone row 42 can be someone else and would overwrite the person imported as 42 before. The
+ * lookup key is what Android keeps for finding the same contact across those changes.
  */
 class DeviceContactsReader(
     private val context: Context,
@@ -47,27 +53,34 @@ class DeviceContactsReader(
             val birthdays = birthdayEvents()
             val names = names(birthdays.keys)
             val found =
-                birthdays.mapNotNull { (id, birthday) ->
-                    names[id]?.let { ContactInput(id.toString(), it, birthday) }
+                birthdays.mapNotNull { (id, event) ->
+                    names[id]?.let { ContactInput(event.lookupKey, it, event.birthday) }
                 }
             ContactsFound(found.sortedBy { it.name }, withoutBirthday = (contactCount() - birthdays.size).coerceAtLeast(0))
         }
     }
 
-    /** The first readable birthday of each contact. */
-    private fun birthdayEvents(): Map<Long, Birthday> {
-        val found = mutableMapOf<Long, Birthday>()
+    private class BirthdayEvent(
+        val lookupKey: String,
+        val birthday: Birthday,
+    )
+
+    /** The first readable birthday of each contact, by row id for the name query, with the contact's lookup key. */
+    private fun birthdayEvents(): Map<Long, BirthdayEvent> {
+        val found = mutableMapOf<Long, BirthdayEvent>()
         context.contentResolver
             .query(
                 ContactsContract.Data.CONTENT_URI,
-                arrayOf(ContactsContract.Data.CONTACT_ID, Event.START_DATE),
+                arrayOf(ContactsContract.Data.CONTACT_ID, Event.START_DATE, ContactsContract.Data.LOOKUP_KEY),
                 "${ContactsContract.Data.MIMETYPE} = ? AND ${Event.TYPE} = ?",
                 arrayOf(Event.CONTENT_ITEM_TYPE, Event.TYPE_BIRTHDAY.toString()),
                 null,
             )?.use { cursor ->
                 while (cursor.moveToNext()) {
                     val birthday = ContactBirthday.parse(cursor.getString(1)) ?: continue
-                    found.putIfAbsent(cursor.getLong(0), birthday)
+                    // Without a lookup key there is no id that stays this contact's; leave it out rather than send a row id.
+                    val lookupKey = cursor.getString(2)?.takeIf { it.isNotBlank() } ?: continue
+                    found.putIfAbsent(cursor.getLong(0), BirthdayEvent(lookupKey, birthday))
                 }
             }
         return found
