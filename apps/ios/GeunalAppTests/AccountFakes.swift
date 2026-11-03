@@ -81,6 +81,10 @@ final class AccountFakeCore: Core, @unchecked Sendable {
 
     override func session() -> Session? { nil }
 
+    /// The account on this device; `nil` until a test sets one.
+    var accountView: AccountView?
+    override func account() throws -> AccountView? { accountView }
+
     override func signInNonce() async throws -> SignInNonce {
         record("nonce")
         return SignInNonce(nonce: "n1", providerNonce: "p1")

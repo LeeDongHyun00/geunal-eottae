@@ -103,10 +103,18 @@ public final class RestoreModel {
         self.ageConfirmedAt = ageConfirmedAt
         self.notify = notify
         screenLocked = owner.hasScreenLock
-        proofProvider = lastSignIn?.provider ?? .kakao
+        proofProvider = lastSignIn?.provider ?? Self.linkedProvider(core)
         needsProof =
             mode == .offer
             && (lastSignIn.map { now().timeIntervalSince($0.at) >= Self.proofWindow } ?? true)
+    }
+
+    /// Without a remembered sign-in (one made by a build before this device kept it), the proof comes from a provider
+    /// the account is linked to, Kakao first as for deleting the account; asking Kakao for an Apple account would only
+    /// end in `reauth_required`.
+    private static func linkedProvider(_ core: any CoreProtocol) -> Provider {
+        let linked = (try? core.account())?.providers ?? []
+        return linked.contains(.kakao) || !linked.contains(.apple) ? .kakao : .apple
     }
 
     public var acceptedCount: Int { accepted.compactMap { $0 }.count }

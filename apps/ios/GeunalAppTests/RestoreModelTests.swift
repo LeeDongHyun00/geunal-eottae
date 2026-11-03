@@ -338,6 +338,20 @@ final class RestoreModelTests: XCTestCase {
         XCTAssertEqual(model.phase, .startedFresh)
     }
 
+    func testChecksWithTheLinkedProviderWhenTheSignInIsNotRemembered() {
+        // A build before this one did not keep the last sign-in; an Apple account must not be sent to Kakao.
+        let f = Fixture()
+        f.core.accountView = AccountView(userId: "u1", displayName: "하린", providers: [.apple])
+        let model = f.model(.offer, signedInAgo: nil)
+
+        XCTAssertTrue(model.needsProof)
+        XCTAssertEqual(model.proofProvider, .apple)
+
+        let both = Fixture()
+        both.core.accountView = AccountView(userId: "u1", displayName: "하린", providers: [.apple, .kakao])
+        XCTAssertEqual(both.model(.offer, signedInAgo: nil).proofProvider, .kakao)
+    }
+
     func testTheDeviceChangeNeverNeedsAProof() {
         XCTAssertFalse(Fixture().model(.deviceChange, signedInAgo: nil).needsProof)
     }
