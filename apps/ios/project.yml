@@ -26,8 +26,6 @@ settings:
     SWIFT_EMIT_LOC_STRINGS: YES
     MARKETING_VERSION: 0.1.0
     CURRENT_PROJECT_VERSION: 1
-    # iPhone only, like the 390x844 boards in docs/design.
-    TARGETED_DEVICE_FAMILY: "1"
 
 packages:
   GeunalCore:
@@ -60,6 +58,10 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.geunal.ios
+        # iPhone only, like the 390x844 boards in docs/design. It sits on the target because XcodeGen's iOS preset sets
+        # 1,2 at target level, which beats the project level; an iPad bundle must allow every orientation and split
+        # view, so App Store Connect refused the portrait-only build (90474).
+        TARGETED_DEVICE_FAMILY: "1"
         # Keys the build settings cannot express (the Kakao URL scheme, custom keys, usage descriptions); merged with
         # the generated Info.plist.
         INFOPLIST_FILE: GeunalApp/Info.plist
