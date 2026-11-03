@@ -16,6 +16,7 @@ import org.springframework.transaction.support.TransactionTemplate
 @Component
 class ProviderRevocations(
     private val jdbc: JdbcClient,
+    private val accounts: AccountRepository,
     private val kakao: KakaoClient,
     private val apple: AppleClient,
     transactions: PlatformTransactionManager,
@@ -76,29 +77,43 @@ class ProviderRevocations(
     }
 
     private fun run(row: Pending) {
-        val outcome =
-            when (row.provider) {
-                "kakao" -> kakao.unlink(row.target)
-                else -> apple.revoke(row.clientId.orEmpty(), row.target.substringAfter(':'), row.target.substringBefore(':'))
-            }
-        own.executeWithoutResult {
-            when {
-                outcome == Outcome.DONE -> delete(row.id)
-                outcome == Outcome.GIVE_UP || row.attempts + 1 >= MAX_ATTEMPTS -> {
-                    log.warn("gave up the {} revocation {} after {} attempts", row.provider, row.id, row.attempts + 1)
+        if (row.provider == "kakao") {
+            // The Kakao user may have signed up again since the deletion queued this; their app connection then belongs
+            // to the new account. The identity lock, the one sign-in takes, holds the check and the call together.
+            own.executeWithoutResult {
+                accounts.lockIdentity(Provider.KAKAO, row.target)
+                if (accounts.link(Provider.KAKAO, row.target) != null) {
                     delete(row.id)
+                } else {
+                    settle(row, kakao.unlink(row.target))
                 }
-                else ->
-                    jdbc
-                        .sql(
-                            """
-                            UPDATE provider_revocations SET attempts = attempts + 1,
-                              next_attempt_at = now() + least(interval '1 minute' * power(2, attempts), interval '1 day')
-                            WHERE id = :id
-                            """,
-                        ).param("id", row.id)
-                        .update()
             }
+        } else {
+            val outcome = apple.revoke(row.clientId.orEmpty(), row.target.substringAfter(':'), row.target.substringBefore(':'))
+            own.executeWithoutResult { settle(row, outcome) }
+        }
+    }
+
+    private fun settle(
+        row: Pending,
+        outcome: Outcome,
+    ) {
+        when {
+            outcome == Outcome.DONE -> delete(row.id)
+            outcome == Outcome.GIVE_UP || row.attempts + 1 >= MAX_ATTEMPTS -> {
+                log.warn("gave up the {} revocation {} after {} attempts", row.provider, row.id, row.attempts + 1)
+                delete(row.id)
+            }
+            else ->
+                jdbc
+                    .sql(
+                        """
+                        UPDATE provider_revocations SET attempts = attempts + 1,
+                          next_attempt_at = now() + least(interval '1 minute' * power(2, attempts), interval '1 day')
+                        WHERE id = :id
+                        """,
+                    ).param("id", row.id)
+                    .update()
         }
     }
 

@@ -11,7 +11,10 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpMethod
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
 
 /** `DELETE /me` (protocol §13 "계정 삭제", api-server.md §11): proofs by account kind and what one transaction takes. */
 class AccountDeletionTests : ApiTest() {
@@ -20,6 +23,44 @@ class AccountDeletionTests : ApiTest() {
 
     @Autowired
     lateinit var cleanup: Cleanup
+
+    @Autowired
+    lateinit var transactions: PlatformTransactionManager
+
+    /**
+     * Holds [userId]'s account lock, as a deletion does, until [request] waits on it; then commits what deletion leaves
+     * (no links, devices or recovery material, a placeholder row) and returns the request's answer.
+     */
+    private fun whileDeleting(
+        userId: UUID,
+        request: () -> Reply,
+    ): Reply {
+        lateinit var pending: CompletableFuture<Reply>
+        TransactionTemplate(transactions).executeWithoutResult {
+            jdbc
+                .sql("SELECT id FROM users WHERE id = :id FOR UPDATE")
+                .param("id", userId)
+                .query()
+                .listOfRows()
+            pending = CompletableFuture.supplyAsync(request)
+            val deadline = System.nanoTime() + 10_000_000_000L
+            // pg_locks, unlike pg_stat_activity, is not a snapshot taken once per transaction.
+            val waiting = "SELECT count(*) FROM pg_locks WHERE NOT granted AND pid <> pg_backend_pid()"
+            while (jdbc.sql(waiting).query(Int::class.java).single() == 0) {
+                check(System.nanoTime() < deadline && !pending.isDone) { "the request never waited on the account lock" }
+                Thread.sleep(20)
+            }
+            for (sql in listOf(
+                "DELETE FROM recovery WHERE user_id = :id",
+                "DELETE FROM provider_links WHERE user_id = :id",
+                "DELETE FROM devices WHERE user_id = :id",
+                "UPDATE users SET display_name = NULL, age_confirmed_at = NULL, deleted_at = now() WHERE id = :id",
+            )) {
+                jdbc.sql(sql).param("id", userId).update()
+            }
+        }
+        return pending.get()
+    }
 
     private fun guest(): Client {
         val device = Client(api, "guest-${UUID.randomUUID()}")
@@ -267,5 +308,52 @@ class AccountDeletionTests : ApiTest() {
         val ticket = Client(api, subject).stubSignIn().expect(200).string("ticket")
 
         api.send(HttpMethod.DELETE, "/me", ticket, emptyMap<String, Any>()).expectError(403, "replace_required")
+    }
+
+    @Test
+    fun `a sign-in that waited on a deletion signs up afresh instead of reviving the placeholder`() {
+        val subject = "delete-race-${UUID.randomUUID()}"
+        val deleted = signIn(subject)
+        val device = Client(api, subject)
+
+        val answer = whileDeleting(deleted.userId) { device.stubSignIn() }.expect(201)
+
+        assertThat(answer["new_account"].booleanValue()).isTrue()
+        assertThat(answer.uuid("user_id")).isNotEqualTo(deleted.userId)
+        assertThat(count("SELECT count(*) FROM devices WHERE user_id = :id", deleted.userId)).isZero()
+    }
+
+    @Test
+    fun `a recovery that waited on a deletion is refused`() {
+        val account = guest()
+        val code = RecoveryCode().also { account.put("/me/recovery", it.upload()).expect(204) }
+        val device = Client(api, "recover-race")
+        val nonce = device.nonce()
+        val body = device.proof(nonce) + mapOf("recovery_id" to code.id, "recovery_signature" to code.sign("geunal recover v1", nonce))
+
+        whileDeleting(account.userId) { api.send(HttpMethod.POST, "/auth/recover", body = body) }.expectError(401, "recovery_invalid")
+
+        assertThat(count("SELECT count(*) FROM devices WHERE user_id = :id", account.userId)).isZero()
+    }
+
+    @Test
+    fun `a queued Kakao unlink is dropped once the same Kakao account signs up again`() {
+        val sub = (8_000_000_000L + (Math.random() * 1e9).toLong()).toString()
+        val account = Client(api, "kakao-again")
+        account.providerSignIn("kakao") { FakeProviders.kakaoToken(sub, it) }.expect(201)
+        FakeProviders.kakaoUnlinkStatus = 503
+        try {
+            val nonce = account.nonce()
+            delete(account, mapOf("nonce" to nonce, "kakao_id_token" to FakeProviders.kakaoToken(sub, account.binding(nonce)))).expect(204)
+        } finally {
+            FakeProviders.kakaoUnlinkStatus = 200
+        }
+        Client(api, "kakao-again-new").providerSignIn("kakao") { FakeProviders.kakaoToken(sub, it) }.expect(201)
+        jdbc.sql("UPDATE provider_revocations SET next_attempt_at = now() WHERE target = :sub").param("sub", sub).update()
+
+        revocations.retry()
+
+        assertThat(count("SELECT count(*) FROM provider_revocations WHERE target = :id", sub)).isZero()
+        assertThat(FakeProviders.callsTo("/kakao/unlink").count { it.form["target_id"] == sub }).isEqualTo(1)
     }
 }

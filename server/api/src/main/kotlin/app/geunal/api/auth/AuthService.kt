@@ -85,7 +85,8 @@ class AuthService(
         val key = accounts.recoveryKey(request.recoveryId) ?: throw recoveryInvalid()
         val message = RECOVER_LABEL + proof.nonce.toByteArray(Charsets.US_ASCII)
         if (!Ed25519.verify(key.publicKey, message, request.recoverySignature)) throw recoveryInvalid()
-        accounts.lock(key.userId)
+        // The key was read before the lock; a deletion that committed meanwhile took the recovery material with it.
+        if (!lockLive(key.userId)) throw recoveryInvalid()
         if (accounts.providersOf(key.userId).isNotEmpty()) throw recoveryInvalid()
         val active = devices.activeOf(key.userId)
         val deviceId =
@@ -104,14 +105,16 @@ class AuthService(
     @Transactional
     fun replace(request: ReplaceRequest): SignInResult {
         val hash = sha256(request.ticket)
-        val ticket =
-            accounts.ticket(hash) ?: throw ApiException(HttpStatus.UNAUTHORIZED, "token_expired", "the ticket is unknown, spent or expired")
+        val expired = ApiException(HttpStatus.UNAUTHORIZED, "token_expired", "the ticket is unknown, spent or expired")
+        // The account lock comes before the ticket's row lock, the order a deletion takes them in; the ticket is read
+        // again under both, so one a deletion (or another replacement) removed meanwhile is gone.
+        accounts.lock(accounts.ticketHolder(hash) ?: throw expired)
+        val ticket = accounts.ticket(hash) ?: throw expired
         val message = REPLACE_LABEL + request.ticket.toByteArray(Charsets.US_ASCII)
         if (!Ed25519.verify(ticket.signatureKey, message, request.signature)) {
             throw ApiException.invalid("signature does not verify with the ticket's key")
         }
         accounts.spendTicket(hash)
-        accounts.lock(ticket.userId)
         val active = devices.activeOf(ticket.userId)
         val deviceId =
             if (active.holds(ticket.signatureKey)) {
@@ -206,16 +209,20 @@ class AuthService(
         newAccount: () -> Pair<String, OffsetDateTime>,
     ): SignInResult {
         accounts.lockIdentity(provider, sub)
-        val link = accounts.link(provider, sub)
+        // The link was read before the account lock, so a deletion holding that lock may commit while this waits. The
+        // placeholder it leaves takes no device; the identity, unlinked by then, signs up afresh.
+        val link = accounts.link(provider, sub)?.takeIf { lockLive(it.userId) }
         val userId =
             if (link != null) {
                 if (!link.active) accounts.restore(provider, sub)
                 link.userId
             } else {
                 val (displayName, ageConfirmedAt) = newAccount()
-                accounts.create(displayName, ageConfirmedAt).also { accounts.addLink(it, provider, sub) }
+                accounts.create(displayName, ageConfirmedAt).also {
+                    accounts.addLink(it, provider, sub)
+                    accounts.lock(it)
+                }
             }
-        accounts.lock(userId)
         val active = devices.activeOf(userId)
         if (active != null && !active.holds(proof.signatureKey)) return replaceRequired(userId, proof, active)
         val deviceId =
@@ -317,6 +324,12 @@ class AuthService(
         }
         if (ageConfirmedAt == null) throw ApiException.invalid("a new account needs age_confirmed_at")
         return name to ageConfirmedAt
+    }
+
+    /** Locks the account; false when it turns out deleted, a placeholder that takes no device again. */
+    private fun lockLive(userId: UUID): Boolean {
+        accounts.lock(userId)
+        return !accounts.isDeleted(userId)
     }
 
     /** The same key signing in again is the same device: it keeps its id, and with it its MLS credential. */

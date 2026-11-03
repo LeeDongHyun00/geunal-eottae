@@ -161,10 +161,11 @@ class BackupController(
     ): BackupStartResponse {
         if (body.size < 1) throw ApiException.invalid("size must be at least 1 byte")
         if (body.size > MAX_BACKUP) throw ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "too_large", "a backup is at most $MAX_BACKUP bytes")
-        if (!accounts.hasRecovery(
-                caller.userId,
-            )
-        ) {
+        // Under the account lock, like "새로 시작" and deletion: a backup row inserted after their deleteAll would outlive
+        // the key it was sealed with, or the account itself.
+        accounts.lock(caller.userId)
+        devices.current(caller.deviceId) ?: throw devices.revokedError(caller.deviceId)
+        if (!accounts.hasRecovery(caller.userId)) {
             throw ApiException(HttpStatus.CONFLICT, "recovery_missing", "upload the recovery material first")
         }
         limit(caller.userId)

@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import java.time.Duration
 
 /**
  * The periodic deletions of api-server.md §8 that M1 needs: queued objects every ten minutes, and once a day the backup
@@ -24,15 +25,22 @@ class Cleanup(
     )
 
     /**
-     * Empties `object_deletions` into the store. A row whose bucket this deployment does not have yet (the media
-     * buckets before M3) waits; a store that fails stops the round, and the next one tries again.
+     * Empties `object_deletions` into the store. A row waits [UPLOAD_GRACE] after it was queued: an upload URL signed
+     * just before the deletion lives 15 minutes, and a PUT it started could otherwise put the object back after the row
+     * is gone. A row whose bucket this deployment does not have yet (the media buckets before M3) waits too; a store
+     * that fails stops the round, and the next one tries again.
      */
     @Scheduled(fixedDelayString = "PT10M", initialDelayString = "PT2M")
     fun deleteObjects() {
         if (!store.configured) return
         val queued =
             jdbc
-                .sql("SELECT object_key, bucket FROM object_deletions ORDER BY enqueued_at LIMIT 500")
+                .sql(
+                    """
+                    SELECT object_key, bucket FROM object_deletions WHERE enqueued_at < now() - CAST(:grace AS interval)
+                    ORDER BY enqueued_at LIMIT 500
+                    """,
+                ).param("grace", "${UPLOAD_GRACE.toSeconds()} seconds")
                 .query { rs, _ -> Queued(rs.getString("object_key"), rs.getString("bucket")) }
                 .list()
         for (row in queued) {
@@ -56,7 +64,9 @@ class Cleanup(
         log.info("dropped {} abandoned backup uploads, {} expired sessions and {} expired tickets", abandoned, sessions, tickets)
     }
 
-    private companion object {
-        val log = LoggerFactory.getLogger(Cleanup::class.java)
+    companion object {
+        /** Longer than any upload URL (15 minutes) plus a slow 64 MiB PUT that started just before it expired. */
+        val UPLOAD_GRACE: Duration = Duration.ofHours(1)
+        private val log = LoggerFactory.getLogger(Cleanup::class.java)
     }
 }

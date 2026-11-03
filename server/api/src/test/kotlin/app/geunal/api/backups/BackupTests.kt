@@ -143,6 +143,15 @@ class BackupTests : ApiTest() {
         assertThat(account.get("/me/backups/latest").expect(200).long("id")).isEqualTo(ids[3])
         assertThat(stored(oldest)).isTrue()
 
+        // A queued object waits out any upload URL that could still put it back.
+        cleanup.deleteObjects()
+        assertThat(stored(oldest)).isTrue()
+        jdbc
+            .sql("UPDATE object_deletions SET enqueued_at = now() - CAST(:age AS interval) WHERE object_key = :key")
+            .param("age", "${Cleanup.UPLOAD_GRACE.toSeconds() + 1} seconds")
+            .param("key", oldest)
+            .update()
+
         cleanup.deleteObjects()
 
         assertThat(stored(oldest)).isFalse()
