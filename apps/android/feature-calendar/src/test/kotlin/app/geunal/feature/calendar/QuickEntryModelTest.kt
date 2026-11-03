@@ -1,6 +1,7 @@
 package app.geunal.feature.calendar
 
 import app.geunal.core.DayTime
+import app.geunal.core.EventItem
 import app.geunal.core.Frequency
 import app.geunal.feature.calendar.quickentry.QuickEntryModel
 import app.geunal.feature.calendar.testing.CalendarFakeCore
@@ -21,8 +22,69 @@ class QuickEntryModelTest {
     // 2026-10-26 10:00 in Seoul.
     private val now = Instant.parse("2026-10-26T01:00:00Z")
 
-    private fun model(range: IntRange? = null) =
-        QuickEntryModel(day = "2026-10-30", range = range, core = core, now = { now }, io = dispatcher)
+    private fun model(
+        range: IntRange? = null,
+        events: List<EventItem>? = emptyList(),
+    ) = QuickEntryModel(day = "2026-10-30", range = range, events = events, core = core, now = { now }, io = dispatcher)
+
+    private val dayEvents =
+        listOf(
+            Samples.event("e1", "교양 수업", "2026-10-30", 540, 630),
+            Samples.event("e2", "치과", "2026-10-30", 660, 720),
+            Samples.event("e3", "팀플 회의", "2026-10-30", 960, 1020),
+            Samples.event("e4", "동아리 회의", "2026-10-30", 1140, 1260),
+        )
+
+    @Test
+    fun showsThreeOfTheDaysEventsUntilTheRestAreOpenedInPlace() =
+        runTest(dispatcher) {
+            val model = model(events = dayEvents)
+            model.load()
+
+            val folded = model.state.value
+            assertEquals(listOf("e1", "e2", "e3"), folded.shownEvents.map { it.eventId })
+            assertEquals(1, folded.foldedEvents)
+
+            model.toggleEvents()
+            assertEquals(dayEvents, model.state.value.shownEvents)
+
+            model.toggleEvents()
+            assertEquals(3, model.state.value.shownEvents.size)
+            // The month view's own cells: no second read of the month (m1.md decision 42).
+            assertFalse(core.calls.any { it.startsWith("month") })
+        }
+
+    @Test
+    fun foldsNothingWithThreeEventsOrFewer() =
+        runTest(dispatcher) {
+            val model = model(events = dayEvents.take(3))
+            model.load()
+
+            assertEquals(3, model.state.value.shownEvents.size)
+            assertEquals(0, model.state.value.foldedEvents)
+        }
+
+    @Test
+    fun readsTheDayFromTheMonthWhenTheViewDoesNotHoldItAll() =
+        runTest(dispatcher) {
+            core.events = mapOf("2026-10-30" to dayEvents, "2026-10-29" to listOf(Samples.event("x", "다른 날", "2026-10-29", 600, 660)))
+            val model = model(events = null)
+
+            model.load()
+
+            assertEquals(dayEvents, model.state.value.events)
+            assertTrue("month 2026-10" in core.calls)
+        }
+
+    @Test
+    fun cutsAnEventAtTheEdgesOfTheDay() {
+        val overnight =
+            Samples.event("n", "야간", "2026-10-29", 1320, 0).copy(end = DayTime("2026-10-31", 120u))
+        assertEquals(0..1440, QuickEntryModel.minutesOn(overnight, "2026-10-30"))
+        assertEquals(1320..1440, QuickEntryModel.minutesOn(overnight, "2026-10-29"))
+        assertEquals(0..120, QuickEntryModel.minutesOn(overnight, "2026-10-31"))
+        assertEquals(540..630, QuickEntryModel.minutesOn(dayEvents.first(), "2026-10-30"))
+    }
 
     @Test
     fun offersOnlyOwnCalendarsAndPicksTheFirst() =

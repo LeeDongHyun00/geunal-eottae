@@ -6,6 +6,7 @@ import app.geunal.core.CalendarView
 import app.geunal.core.CoreInterface
 import app.geunal.core.DayTime
 import app.geunal.core.EventInput
+import app.geunal.core.EventItem
 import app.geunal.core.Frequency
 import app.geunal.core.Palette
 import app.geunal.core.Recurrence
@@ -25,14 +26,19 @@ import kotlinx.coroutines.flow.update
 import java.time.Instant
 
 /**
- * The quick entry sheet (m1.md screen 5): five suggestion chips that save on a tap, or a title with a time range
- * dragged on the 0–24 strip. Saving goes through [EventActions], which shows the toast.
+ * The quick entry sheet (m1.md screen 5): the day's events, five suggestion chips that save on a tap, or a title with a
+ * time range dragged on the 0–24 strip. Saving goes through [EventActions], which shows the toast.
  */
 class QuickEntryModel(
     val day: String,
     /** Birthdays and holidays of the day, for the line under the title ("민수 생일 · 개천절"). */
     val notes: List<String> = emptyList(),
     range: IntRange? = null,
+    /**
+     * The day's events in the core's order, as the view that opened the sheet already holds them (m1.md decision 42:
+     * no new call). `null` when that view does not hold them all, as the week view's "+N" does not: [load] reads them.
+     */
+    events: List<EventItem>? = emptyList(),
     private val core: CoreInterface,
     now: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -49,6 +55,10 @@ class QuickEntryModel(
         val calendarId: String? = null,
         val repeat: Repeat = Repeat.NONE,
         val hasLoaded: Boolean = false,
+        /** "이날 일정 N개": the day's events, all-day first, then by start. */
+        val events: List<EventItem> = emptyList(),
+        /** "N개 더 보기" opened the list in place; "접기" closes it again. */
+        val showsAllEvents: Boolean = false,
     ) {
         val selectedCalendar: CalendarView? get() = calendars.firstOrNull { it.id == calendarId } ?: calendars.firstOrNull()
         val trimmedTitle: String get() = title.trim()
@@ -56,20 +66,33 @@ class QuickEntryModel(
 
         /** The strip has a range but the title is empty: the button says what is missing (tone.md "오류와 한계"). */
         val needsTitle: Boolean get() = trimmedTitle.isEmpty() && range != null
+
+        /** The rows the list shows: three until it is opened (m1.md screen 5, decision 42). */
+        val shownEvents: List<EventItem> get() = if (showsAllEvents) events else events.take(EVENT_ROWS)
+
+        /** What "N개 더 보기" counts; zero when nothing is folded away. */
+        val foldedEvents: Int get() = (events.size - EVENT_ROWS).coerceAtLeast(0)
     }
 
     val today: String = KoreanCalendar.day(now())
     val heading: DayTitle? = DayTitle.of(day, today)
 
-    private val _state = MutableStateFlow(State(range = range))
+    private val eventsKnown = events != null
+    private val _state = MutableStateFlow(State(range = range, events = events.orEmpty()))
     val state: StateFlow<State> = _state.asStateFlow()
 
     suspend fun load() {
-        val (calendars, suggestions) =
+        val (calendars, suggestions, events) =
             coroutineScope {
                 val calendars = async(io) { coreRead { core.calendars() }.orEmpty() }
                 val suggestions = async(io) { coreRead { core.suggestions(day) }.orEmpty() }
-                calendars.await() to suggestions.await()
+                val events =
+                    if (eventsKnown) {
+                        null
+                    } else {
+                        async(io) { coreRead { core.calendarMonth(KoreanCalendar.month(day)) }?.firstOrNull { it.day == day }?.events }
+                    }
+                Triple(calendars.await(), suggestions.await(), events?.await())
             }
         val own = calendars.filter { it.kind == CalendarKind.OWN }
         _state.update {
@@ -78,6 +101,7 @@ class QuickEntryModel(
                 suggestions = suggestions,
                 calendarId = it.calendarId ?: own.firstOrNull()?.id,
                 hasLoaded = true,
+                events = events ?: it.events,
             )
         }
     }
@@ -96,6 +120,11 @@ class QuickEntryModel(
 
     fun setRepeat(repeat: Repeat) {
         _state.update { it.copy(repeat = repeat) }
+    }
+
+    /** "N개 더 보기" and "접기". */
+    fun toggleEvents() {
+        _state.update { it.copy(showsAllEvents = !it.showsAllEvents) }
     }
 
     /** The calendar color a chip's dot shows. */
@@ -138,6 +167,22 @@ class QuickEntryModel(
     companion object {
         /** Half hours in a day: the strip's steps (m1.md screen 5 "30분 단위"). */
         const val SLOTS = 48
+
+        /** The day's events shown before "N개 더 보기": the sheet stays within 90% with four (decision 42). */
+        const val EVENT_ROWS = 3
+
+        /**
+         * An event's time on [day] as minutes from midnight, cut at the day's edges as the week view cuts its blocks:
+         * one that began the day before starts at 0 here, and one that goes on past midnight ends at 1440 ("24:00").
+         */
+        fun minutesOn(
+            event: EventItem,
+            day: String,
+        ): IntRange {
+            val start = if (event.start.day < day) 0 else event.start.minute.toInt()
+            val end = if (event.end.day > day) 1440 else event.end.minute.toInt()
+            return start..end
+        }
 
         /** A half-hour step as a day and minute; step 48 is midnight at the start of the next day (rust-core.md §3). */
         fun time(
