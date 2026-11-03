@@ -106,6 +106,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.geunal.ios.widget
+        # iPhone only, as the app (XcodeGen's target preset would say 1,2).
+        TARGETED_DEVICE_FAMILY: "1"
         INFOPLIST_FILE: GeunalWidget/Info.plist
         # App Groups, for the snapshot; signing adds the capability to the widget's App ID once a team is set.
         CODE_SIGN_ENTITLEMENTS: GeunalWidget/GeunalWidget.entitlements
