@@ -62,16 +62,17 @@ evaluate() {
     --jq '.[] | .filename, (.previous_filename // empty)')" || return 1
   if grep -q '^docs/' <<<"$files"; then docs=true; fi
 
-  if [ "$docs" = true ] && [ "${PUSHED_PR:-}" = "$pr" ] && has user-approved "$labels"; then
-    gh api -X DELETE "repos/$repo/issues/$pr/labels/user-approved" >/dev/null || return 1
-    labels="$(grep -vx user-approved <<<"$labels" || true)"
-  fi
-
   status="$(gh api "repos/$repo/commits/$sha/status?per_page=100")" || return 1
   if jq -e '.statuses | any(.context == "user-approved" and .state == "success")' <<<"$status" >/dev/null; then
     approved=true
   fi
   current[$sha]="$(jq -r '.statuses[] | select(.context == "gate") | "\(.state) \(.description)"' <<<"$status")"
+
+  # A label left from an earlier commit goes; one the user added after this push already marked the head and stays.
+  if [ "$docs" = true ] && [ "${PUSHED_PR:-}" = "$pr" ] && [ "$approved" != true ] && has user-approved "$labels"; then
+    gh api -X DELETE "repos/$repo/issues/$pr/labels/user-approved" >/dev/null || return 1
+    labels="$(grep -vx user-approved <<<"$labels" || true)"
+  fi
 
   decide "$docs" "$labels" "$approved"
   echo "#$pr ${sha:0:7}: $state, $description"

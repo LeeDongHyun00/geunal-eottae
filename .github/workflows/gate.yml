@@ -9,7 +9,8 @@ name: gate
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review]
+    # `closed` too: a closed pull request leaves the per-commit verdict, which can turn another one green.
+    types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review, closed]
   issues:
     types: [opened, reopened, closed, deleted, labeled, unlabeled]
   workflow_dispatch:
