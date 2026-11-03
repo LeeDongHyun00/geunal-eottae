@@ -75,6 +75,10 @@ geunal:
   # POST /me/alpha-stats (protocol §14). GEUNAL_ALPHA_STATS_ENABLED=true on the alpha server only; elsewhere 404.
   alpha-stats:
     enabled: false
+  # GET /holidays and its daily sync from KASI's 특일 정보 API (protocol §14). GEUNAL_HOLIDAYS_SERVICE_KEY is the
+  # 공공데이터포털 key in its "Decoding" form; without it the sync does nothing and the endpoint answers from the table.
+  holidays:
+    service-key: ""
   # How often sign-ins and refreshes move from access_log_outbox to the access-logs bucket.
   access-log:
     ship-every: PT5M
