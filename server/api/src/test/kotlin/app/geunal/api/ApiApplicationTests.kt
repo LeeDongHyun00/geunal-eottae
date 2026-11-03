@@ -14,8 +14,11 @@ import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import tools.jackson.databind.json.JsonMapper
 
-/** The API as a deployment would run it: no auth stub. */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+/**
+ * The API as a deployment would run it: no auth stub. The sign-in limit is lifted because the count for 127.0.0.1 is
+ * shared with the other test contexts through Redis.
+ */
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = ["geunal.auth.sign-ins-per-hour=1000000"])
 class ApiApplicationTests(
     @param:Autowired private val jdbc: JdbcClient,
     @param:Autowired private val mapper: JsonMapper,

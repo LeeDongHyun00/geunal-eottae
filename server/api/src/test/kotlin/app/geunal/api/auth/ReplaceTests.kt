@@ -1,13 +1,18 @@
 package app.geunal.api.auth
 
+import app.geunal.api.ops.Cleanup
 import app.geunal.api.support.ApiTest
 import app.geunal.api.support.Client
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpMethod
 
 /** Replacement tickets (protocol §13 "로그인 결과"): what they open, how they are spent, and when they end. */
 class ReplaceTests : ApiTest() {
+    @Autowired
+    lateinit var cleanup: Cleanup
+
     /** An account with an active device and a second device holding a ticket for it. */
     private fun ticket(subject: String): Pair<Client, String> {
         signIn(subject)
@@ -85,5 +90,42 @@ class ReplaceTests : ApiTest() {
         first.replace(back.string("ticket")).expect(201)
         second.get("/me").expectError(403, "device_revoked")
         first.get("/me").expect(200)
+    }
+
+    @Test
+    fun `a replaced device that was offline learns it was replaced when it refreshes`() {
+        val first = signIn("revoked-refresh")
+        replaceDevice("revoked-refresh", platform = "android")
+        val refresh = { api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to first.refreshToken)) }
+
+        // Its access token has run out by the time it is back; the refresh is where it finds out, every time it asks.
+        repeat(2) {
+            val answer = refresh().expectError(403, "device_revoked")
+            assertThat(answer.string("replaced_via")).isEqualTo("provider")
+            assertThat(answer.string("replaced_by")).isEqualTo("android")
+        }
+    }
+
+    @Test
+    fun `a replaced device kept off past its refresh token's life still learns it was replaced`() {
+        val first = signIn("revoked-long-off")
+        val tokens = mutableListOf(first.refreshToken)
+        repeat(2) {
+            first.adopt(api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to first.refreshToken)).expect(200))
+            tokens += first.refreshToken
+        }
+        replaceDevice("revoked-long-off")
+        jdbc
+            .sql("UPDATE sessions SET expires_at = expires_at - interval '400 days' WHERE device_id = :id")
+            .param("id", first.deviceId)
+            .update()
+        val refresh = { token: String -> api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to token)) }
+
+        cleanup.daily()
+
+        // Its newest token and the one before it, in case the last refresh's answer never arrived, still say why.
+        refresh(tokens[2]).expectError(403, "device_revoked")
+        refresh(tokens[1]).expectError(403, "device_revoked")
+        refresh(tokens[0]).expectError(401, "token_expired")
     }
 }
