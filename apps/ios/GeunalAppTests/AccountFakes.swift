@@ -241,9 +241,12 @@ final class FakeProviders: ProviderSignIn {
     var result: Result<ProviderCredential, ProviderSignInError> = .success(
         ProviderCredential(idToken: "token", displayName: "하린"))
     private(set) var nonces: [String] = []
+    /// Runs while the provider's sheet is up, for something that happens before the person comes back.
+    var whileSigningIn: (@MainActor () -> Void)?
 
     func kakao(providerNonce: String) async throws -> ProviderCredential {
         nonces.append(providerNonce)
+        whileSigningIn?()
         return try result.get()
     }
 
