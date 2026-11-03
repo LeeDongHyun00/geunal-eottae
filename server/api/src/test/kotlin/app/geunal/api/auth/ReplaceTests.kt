@@ -107,24 +107,25 @@ class ReplaceTests : ApiTest() {
     }
 
     @Test
-    fun `a replaced device kept off past its refresh token's life still learns it was replaced, for a year`() {
+    fun `a replaced device kept off past its refresh token's life still learns it was replaced`() {
         val first = signIn("revoked-long-off")
-        replaceDevice("revoked-long-off")
-        val age = { interval: String ->
-            jdbc
-                .sql("UPDATE sessions SET expires_at = now() - CAST(:age AS interval) WHERE device_id = :id")
-                .param("age", interval)
-                .param("id", first.deviceId)
-                .update()
+        val tokens = mutableListOf(first.refreshToken)
+        repeat(2) {
+            first.adopt(api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to first.refreshToken)).expect(200))
+            tokens += first.refreshToken
         }
-        val refresh = { api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to first.refreshToken)) }
+        replaceDevice("revoked-long-off")
+        jdbc
+            .sql("UPDATE sessions SET expires_at = expires_at - interval '400 days' WHERE device_id = :id")
+            .param("id", first.deviceId)
+            .update()
+        val refresh = { token: String -> api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to token)) }
 
-        age("40 days")
         cleanup.daily()
-        refresh().expectError(403, "device_revoked")
 
-        age("366 days")
-        cleanup.daily()
-        refresh().expectError(401, "token_expired")
+        // Its newest token and the one before it, in case the last refresh's answer never arrived, still say why.
+        refresh(tokens[2]).expectError(403, "device_revoked")
+        refresh(tokens[1]).expectError(403, "device_revoked")
+        refresh(tokens[0]).expectError(401, "token_expired")
     }
 }

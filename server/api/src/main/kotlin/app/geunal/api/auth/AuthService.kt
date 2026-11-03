@@ -175,7 +175,7 @@ class AuthService(
         val hash = sha256(refreshToken)
         val expired = ApiException(HttpStatus.UNAUTHORIZED, "token_expired", "refresh token is unknown or expired")
         // An expired session is looked up too: a replaced device that stayed off past its refresh token's life still
-        // learns it was replaced. The daily cleanup keeps a replaced device's sessions a year past their expiry.
+        // learns it was replaced. The daily cleanup keeps a replaced device's two newest sessions while the account lives.
         val (deviceId, live) =
             jdbc
                 .sql("SELECT device_id, expires_at > now() AS live FROM sessions WHERE refresh_hash = :hash")
