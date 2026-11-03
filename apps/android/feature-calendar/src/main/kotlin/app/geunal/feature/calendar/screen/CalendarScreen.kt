@@ -299,7 +299,9 @@ private fun CalendarHeader(
                 ),
             selected = kind.ordinal,
             onSelect = { onSelect(CalendarViewKind.entries[it]) },
-            modifier = Modifier.widthIn(min = SEGMENT_WIDTH).testTag("calendar.segment"),
+            // It may grow with large text, but never past SEGMENT_MAX_WIDTH: the title column, measured after it, must keep
+            // room for the heading and its tap back to today.
+            modifier = Modifier.widthIn(min = SEGMENT_WIDTH, max = SEGMENT_MAX_WIDTH).testTag("calendar.segment"),
         )
         if (onNewEvent != null) {
             AddMenu(onNewEvent = onNewEvent, onStamp = onStamp)
@@ -348,6 +350,9 @@ private fun AddMenu(
 
 /** Three short labels, as wide as the boards draw the segment. */
 private val SEGMENT_WIDTH = 132.dp
+
+/** The most the segment takes from a 320dp header, leaving the title its room. */
+private val SEGMENT_MAX_WIDTH = 176.dp
 
 /** The smallest the header title goes on a narrow phone before it ellipsizes. */
 private val TITLE_MIN_SIZE = 24.sp

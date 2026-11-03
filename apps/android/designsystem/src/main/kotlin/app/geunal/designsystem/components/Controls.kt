@@ -206,7 +206,8 @@ private fun EqualCells(
         val height = maxOf(constraints.minHeight, placeables.maxOf { it.height })
         layout(cell * placeables.size, height) {
             placeables.forEachIndexed { index, placeable ->
-                placeable.place(index * cell, (height - placeable.height) / 2)
+                // Relative, so a right-to-left layout mirrors the order as Row did.
+                placeable.placeRelative(index * cell, (height - placeable.height) / 2)
             }
         }
     }
