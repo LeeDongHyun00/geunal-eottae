@@ -66,8 +66,12 @@ class ProviderNotifications(
         val event = providers.appleEvent(body.payload) ?: throw unverified()
         val age = Duration.between(event.issuedAt, clock.instant())
         if (age > MAX_AGE || age < MAX_SKEW.negated()) throw unverified()
-        if (redis.opsForValue().setIfAbsent("apple-notification:${event.id}", "1", MAX_AGE) != true) return
+        val seen = "apple-notification:${event.id}"
+        if (redis.hasKey(seen)) return
         if (event.type in CUTTING && accounts.cut(Provider.APPLE, event.sub)) log.info("apple cut a link: {}", event.type)
+        // Marked only once the cut is done: a delivery that failed on the way stays retryable. Two copies racing
+        // here both cut, which is the same as one.
+        redis.opsForValue().set(seen, "1", MAX_AGE)
     }
 
     private fun unverified() = ApiException(HttpStatus.UNAUTHORIZED, "provider_token_invalid", "the sender could not be verified")
