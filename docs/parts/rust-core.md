@@ -397,6 +397,7 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
   - 코드가 없는 기기는 실행마다 한 번 `GET /me`로 계정에 복구 자료가 있는지 묻고, 없으면 코드를 만들어 올립니다. 코드를 만들기 전에 앱이 닫힌 로그인이 여기서 끝납니다.
 - **다시 로그인:** 교체 티켓(30분)이 지나면 `SignInAgain`입니다. 로그인부터 다시 해서 새 티켓을 받습니다.
 - **새로 시작의 증명:** 제공자 로그인으로 세션을 받은 지 30분이 지나면, 서버는 `new_key`를 제공자 증명이 있을 때만 받습니다(protocol.md 10장 "새 키로 시작").
+  - `new_key`를 보낼 때마다 코어가 기기 서명 키로 `"geunal new key v1" ‖ nonce`에 서명해 붙입니다. 카카오 증명이 있으면 그 `nonce`를, 없으면 새로 받은 nonce를 씁니다.
   - 증명 없이 보내면 403 `reauth_required`이고, 코어는 받아 주지 않은 새 코드를 지운 뒤 `ReauthRequired`를 돌려줍니다. 기기는 코드 없는 상태로 돌아갑니다.
   - 앱은 계정 삭제와 같은 증명(카카오는 `sign_in_nonce`의 `provider_nonce`로 받은 ID 토큰, Apple은 새 인가 코드)을 받아 `start_fresh(proof)`를 다시 부릅니다. 다시 로그인하지 않는 것은, 다른 카카오 계정으로 들어가 이 기기가 그 계정에 등록되는 일을 막으려는 것입니다.
 - **코드 대기:** 등록됐지만 코드가 없는 기기("나중에 넣을게요")는 그대로 둡니다. `recovery_status().created`가 거짓이고 백업은 쉬며, `restore_from_code`나 `start_fresh`를 언제든 부를 수 있습니다.
@@ -416,6 +417,7 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
 - **계정 삭제(`delete_account(proof)`):** `DELETE /me`에 계정 종류의 증명을 붙입니다(protocol.md 13장 "계정 삭제").
   - 게스트(`DeletionProof::Guest`)는 코어가 새 nonce를 받아 이 기기의 코드에서 나온 복구 서명 키로 서명합니다. 사용자에게 묻지 않습니다. 서명할 코드가 기기에 없으면 `Invalid`입니다.
   - 카카오는 `sign_in_nonce`의 `provider_nonce`로 받은 ID 토큰과 그 `nonce`, Apple은 새 인가 코드를 그대로 보냅니다.
+  - 모든 종류에 코어가 기기 서명 키로 `"geunal delete v1" ‖ nonce`에 서명해 `device_signature`로 붙입니다. nonce는 게스트·Apple은 코어가 새로 받은 값, 카카오는 증명의 값입니다. 앱이 할 일은 없습니다.
   - 403 `reauth_required`면 `ReauthRequired`이고, 아무것도 지우지 않으며 세션도 그대로입니다. 앱은 증명만 다시 받습니다.
   - 409 `recovery_missing`(복구 자료를 아직 못 올린 게스트)이면 기기의 코드를 먼저 올리고 한 번 더 지웁니다(디자인 22번 화면). 그래도 안 되면 `RecoveryMissing`입니다.
   - 204를 받으면 기기 해제 때와 같은 것(세션, 기기 서명 키, `E`, AMK, 그룹 상태, 계정을 따라가는 설정)을 지우고, 해제 기록은 남기지 않습니다. 알파 통계는 끄고 기기의 숫자를 지웁니다. 계정이 지워졌으니 새 계정은 다시 동의를 받습니다.

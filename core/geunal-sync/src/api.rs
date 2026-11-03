@@ -242,6 +242,10 @@ pub struct RecoveryUpload {
     /// The current code's signature, to overwrite material already stored.
     #[serde(default, with = "b64::option", skip_serializing_if = "Option::is_none")]
     pub proof: Option<Vec<u8>>,
+    /// With `new_key`: the device key's signature over `"geunal new key v1" ‖ nonce`, needed whether or not a
+    /// provider proof comes too.
+    #[serde(default, with = "b64::option", skip_serializing_if = "Option::is_none")]
+    pub device_signature: Option<Vec<u8>>,
     /// `new_key` past the 30 minutes, Kakao: an ID token bound to `nonce` and this device's registered key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kakao_id_token: Option<String>,
@@ -292,10 +296,14 @@ pub type Progress<'a> = &'a (dyn Fn(u64, u64) + Send + Sync);
 
 /// `DELETE /me`: the account proven again by its kind (protocol §13 "계정 삭제"). A guest fills `nonce` and
 /// `recovery_signature`, a Kakao account `nonce` and `kakao_id_token`, an Apple account `apple_authorization_code`.
+/// Every kind adds `nonce` and `device_signature`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeleteAccount {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nonce: Option<String>,
+    /// The device key's signature over `"geunal delete v1" ‖ nonce`.
+    #[serde(default, with = "b64::option", skip_serializing_if = "Option::is_none")]
+    pub device_signature: Option<Vec<u8>>,
     /// The recovery key's signature over `"geunal delete v1" ‖ nonce`.
     #[serde(default, with = "b64::option", skip_serializing_if = "Option::is_none")]
     pub recovery_signature: Option<Vec<u8>>,
@@ -840,6 +848,7 @@ mod tests {
             new_key: false,
             nonce: None,
             proof: None,
+            device_signature: None,
             kakao_id_token: None,
             apple_authorization_code: None,
         };
@@ -854,13 +863,14 @@ mod tests {
         let start_over = RecoveryUpload {
             new_key: true,
             nonce: Some("n".into()),
+            device_signature: Some(vec![7]),
             kakao_id_token: Some("tok".into()),
             ..first.clone()
         };
         let start_over = serde_json::to_value(&start_over).unwrap();
         assert_eq!(
-            (&start_over["new_key"], &start_over["kakao_id_token"]),
-            (&serde_json::json!(true), &serde_json::json!("tok"))
+            (&start_over["new_key"], &start_over["device_signature"], &start_over["kakao_id_token"]),
+            (&serde_json::json!(true), &serde_json::json!("Bw=="), &serde_json::json!("tok"))
         );
         assert!(start_over.get("apple_authorization_code").is_none() && start_over.get("proof").is_none());
     }
@@ -879,8 +889,16 @@ mod tests {
         let kakao =
             DeleteAccount { nonce: Some("n".into()), kakao_id_token: Some("tok".into()), ..DeleteAccount::default() };
         assert_eq!(serde_json::to_value(&kakao).unwrap(), serde_json::json!({"nonce": "n", "kakao_id_token": "tok"}));
-        let apple = DeleteAccount { apple_authorization_code: Some("code".into()), ..DeleteAccount::default() };
-        assert_eq!(serde_json::to_value(&apple).unwrap(), serde_json::json!({"apple_authorization_code": "code"}));
+        let apple = DeleteAccount {
+            nonce: Some("n".into()),
+            device_signature: Some(vec![7]),
+            apple_authorization_code: Some("code".into()),
+            ..DeleteAccount::default()
+        };
+        assert_eq!(
+            serde_json::to_value(&apple).unwrap(),
+            serde_json::json!({"nonce": "n", "device_signature": "Bw==", "apple_authorization_code": "code"})
+        );
 
         let day = AlphaDay { day: "2026-10-29".into(), sessions: 3, events: 2, suggested: 1, crashes: 0 };
         assert_eq!(
