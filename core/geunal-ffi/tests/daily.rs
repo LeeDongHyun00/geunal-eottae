@@ -4,7 +4,7 @@
 mod phones;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use geunal_ffi::{AlertRule, Core, CoreError, DayTime, EventInput};
+use geunal_ffi::{AlertRule, Core, CoreError, DayTime, EventInput, LocalDataChoice};
 use geunal_sync::api::{AlphaDay, HolidayItem};
 use geunal_sync::fake::FakeServer;
 use phones::{kakao, phone, user_id};
@@ -125,5 +125,58 @@ fn alpha_counts_go_once_a_day_from_the_day_the_tester_agreed() {
         a.core.set_alpha_stats(true).unwrap();
         a.core.clone().sync().await.unwrap();
         assert_eq!(server.alpha_of(&user)[1], counts("2026-10-30", 1, 0, 0, 0));
+    });
+}
+
+#[test]
+fn counts_only_events_created_on_this_device_and_sends_up_to_fourteen_missed_days() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let (a, b) = (phone(&server), phone(&server));
+        set_time(&server, &a.core, morning());
+        b.core.set_clock(Some(morning()));
+        kakao(&a.core, "olga", "올가").await.unwrap();
+        let event = |core: &Core, title: &str| {
+            let calendar = core.calendars().unwrap().remove(0).id;
+            let at = |minute| DayTime { day: "2026-10-31".into(), minute };
+            let input = EventInput {
+                calendar_id: calendar,
+                title: title.into(),
+                all_day: false,
+                start: at(10 * 60),
+                end: at(11 * 60),
+                recurrence: None,
+                alert: AlertRule::Inherit,
+                note: None,
+            };
+            core.add_event(input, false).unwrap();
+        };
+        event(&a.core, "필라테스");
+        event(&a.core, "스터디");
+        a.core.clone().backup_now(None).await.unwrap();
+        let words = a.core.recovery_words().unwrap();
+
+        // The events a restore brings are not this device's: only the one made here counts. The tester agreed before
+        // the restore, so a restore that counted what it brings in would show here.
+        let user = user_id(&kakao(&b.core, "olga", "올가").await.unwrap());
+        b.core.set_alpha_stats(true).unwrap();
+        b.core.clone().restore_from_code(words, LocalDataChoice::Keep, None).await.unwrap();
+        assert!(b.core.alpha_stats_enabled().unwrap(), "the restore keeps this device's agreement");
+        b.core.record_app_foreground().unwrap();
+        event(&b.core, "치과");
+        b.core.clone().sync().await.unwrap();
+        assert_eq!(server.alpha_of(&user), vec![counts("2026-10-29", 1, 1, 0, 0)]);
+
+        // Twenty days of use without a sync: the next one sends the last fourteen days only, today included.
+        for day in 1..=20 {
+            set_time(&server, &b.core, morning() + Duration::days(day));
+            b.core.record_app_foreground().unwrap();
+        }
+        set_time(&server, &b.core, morning() + Duration::days(21));
+        b.core.clone().sync().await.unwrap();
+        let sent: Vec<String> = server.alpha_of(&user).into_iter().map(|d| d.day).collect();
+        let day = |n| (morning() + Duration::days(n)).format("%Y-%m-%d").to_string();
+        let expected: Vec<String> = std::iter::once(day(0)).chain((8..=20).map(day)).collect();
+        assert_eq!(sent, expected);
     });
 }
