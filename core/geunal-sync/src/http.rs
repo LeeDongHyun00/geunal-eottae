@@ -159,13 +159,12 @@ impl HttpTransport {
         if self.access_token().as_deref() != expired {
             return Ok(());
         }
-        let refresh_token = self.refresh_token().ok_or_else(|| ApiError::Api {
-            status: 401,
-            code: "token_expired".into(),
-            message: String::new(),
-        })?;
+        let refresh_token = self.refresh_token().ok_or_else(crate::api::session_expired)?;
         let body = serde_json::json!({ "refresh_token": refresh_token });
-        let tokens: SessionInfo = Self::once(self.anonymous(Method::POST, "/auth/refresh").json(&body)).await?;
+        // A refused refresh token ends the session; `account_deleted` and the rest keep their own meaning.
+        let tokens: SessionInfo = Self::once(self.anonymous(Method::POST, "/auth/refresh").json(&body))
+            .await
+            .map_err(|e| if e.is(401, "token_expired") { crate::api::session_expired() } else { e })?;
         self.set_tokens(&tokens);
         let listener = self.listener.lock().ok().and_then(|l| l.clone());
         if let Some(listener) = listener {
