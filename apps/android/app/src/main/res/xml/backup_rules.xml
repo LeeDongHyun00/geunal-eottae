@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 11 and earlier. The store and the secrets are under no_backup, which auto backup skips on its own. -->
+<!-- Android 11 and earlier. The store and the secrets are under no_backup, which auto backup skips on its own. Only the
+     app's own preferences go, by name: a library's file (the Kakao SDK's, named after the app key) never travels
+     (docs/security/app-review.md §1 "백업에서 빠짐"). -->
 <full-backup-content>
-    <include domain="sharedpref" path="." />
+    <include domain="sharedpref" path="calendar.xml" />
 </full-backup-content>
