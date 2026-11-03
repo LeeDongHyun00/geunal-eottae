@@ -705,8 +705,6 @@ pub fn open(key: &[u8; 32], aad: &str, blob: &[u8]) -> Option<Vec<u8>> {
 - `applies a shift template to three days as three ordinary events`
 - `treats an end time before the start time as a shift past midnight`
 - `rounds an 18:10-19:20 event to the 18:00-19:30 slots`
-- `leaves calendars flagged blocks_free = 0 out of the group bitmap`
-- `counts timed appointments as busy and untimed ones as free`
 - `ranks weekday work above a weekend outing on a Tuesday`
 - `suggests a birthday meetup within seven days of a registered birthday`
 - `converts a lunar birthday to this year's solar date before suggesting`
@@ -714,6 +712,10 @@ pub fn open(key: &[u8; 32], aad: &str, blob: &[u8]) -> Option<Vec<u8>> {
 - `offers to make a title recurring after three same-weekday uses`
 - `marks substitute holidays and accepts two holidays on one date`
 - `suggests one leave day that bridges a holiday into a 4-day weekend`
+
+가용 시간 올리기(M2, 5장 "가용 시간 올리기"와 함께 만듦)
+- `leaves calendars flagged blocks_free = 0 out of the group bitmap`
+- `counts timed appointments as busy and untimed ones as free`
 
 그룹 캘린더
 - `counts free members per 30-minute slot without any threshold`
@@ -764,6 +766,6 @@ MLS와 동기화
 | --- | --- |
 | M0 | 위 목록 중 캘린더 반복·그룹 캘린더·투표·MLS 항목 통과. iOS·안드로이드 타깃 빌드와 SQLCipher 동작. 헤드리스 종단 시험(클라이언트 3개, 로컬 API·게이트웨이) 통과. 테스트 벡터 게시. mls-rs와 OpenMLS 비교 메모를 `docs/adr/`에 기록 |
 | M1 | 캘린더·추천·백업·복원 항목 통과. 크기 예산 충족 |
-| M2 | 날짜 잡기·투표·그룹 설정·외부 가입·상태 재봉인 항목 통과. 성능 예산 충족 |
+| M2 | 날짜 잡기·투표·가용 시간 올리기·그룹 설정·외부 가입·상태 재봉인 항목 통과. 성능 예산 충족 |
 | M3 | 채팅·첨부·`decrypt_push` 항목 통과. 실기기에서 알림 확장 메모리 예산 확인 |
 | M4 | 외부 리뷰 지적 반영. 퍼징 24시간 무중단 |
