@@ -27,6 +27,8 @@ ENDPOINT = os.environ.get("GEUNAL_SECRET_MANAGER_URL", "https://secretmanager.ap
 # Only the app's own names: a value cannot reach the JVM or Spring through JAVA_TOOL_OPTIONS or SPRING_* this way.
 NAME = re.compile(r"^GEUNAL_[A-Z0-9_]+$")
 DUMP_PREFIX = "GEUNAL_DUMP_"
+# The first line of every file this writes, so a later run can tell its own dump.env from one written by hand.
+MARKER = "# Written by fetch-secrets.py from Secret Manager; the next deploy replaces this file.\n"
 
 
 def fail(message):
@@ -111,12 +113,21 @@ def write(path, lines):
     fd, temporary = tempfile.mkstemp(dir=directory, prefix=".secrets-")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(MARKER)
             f.writelines(lines)
         os.chmod(temporary, 0o600)
         os.replace(temporary, path)
     except BaseException:
         os.unlink(temporary)
         raise
+
+
+def written_here(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.readline() == MARKER
+    except FileNotFoundError:
+        return False
 
 
 def main():
@@ -127,8 +138,14 @@ def main():
     api = [line for name, line in lines.items() if not name.startswith(DUMP_PREFIX)]
     dump = [line for name, line in lines.items() if name.startswith(DUMP_PREFIX)]
     write(os.path.join(ETC, "api.secrets.env"), api)
+    dump_path = os.path.join(ETC, "dump.env")
     if dump:
-        write(os.path.join(ETC, "dump.env"), dump)
+        write(dump_path, dump)
+    elif written_here(dump_path):
+        # The dump keys were removed from Secret Manager: the dump stays on the server again rather than going on
+        # with the old key and recipient. A dump.env from before Secret Manager, without the marker, stays.
+        os.remove(dump_path)
+        print("fetch-secrets: removed dump.env, since Secret Manager has no GEUNAL_DUMP_* keys", file=sys.stderr)
     names = ", ".join(sorted(values)) or "nothing"
     print(f"fetch-secrets: wrote {names}", file=sys.stderr)
 

@@ -69,7 +69,7 @@ GEUNAL_SECRET_ID=...
 ```
 
 4. **배포:** `make deploy-alpha`. 부트스트랩이 값을 받아 쓰고 받은 키 이름을 출력합니다.
-5. **정리:** 예전에 `api.env`에 손으로 넣은 제공자·저장소 키 줄이 있으면 지웁니다. `api.secrets.env`가 뒤에 읽혀 Secret Manager의 값이 이기지만, 같은 키를 두 곳에 두지 않으려는 것입니다. `dump.env`는 받아 쓸 때 통째로 바뀝니다.
+5. **정리:** 예전에 `api.env`에 손으로 넣은 제공자·저장소 키 줄이 있으면 지웁니다. `api.secrets.env`가 뒤에 읽혀 Secret Manager의 값이 이기지만, 같은 키를 두 곳에 두지 않으려는 것입니다. `dump.env`는 받아 쓸 때 통째로 바뀝니다. Secret Manager에서 `GEUNAL_DUMP_` 키를 모두 지우면, 이 스크립트가 썼던 `dump.env`도 지워져 덤프가 다시 서버에만 남습니다.
 
 **키를 바꿀 때:** 콘솔에서 값을 고친 뒤 `make deploy-alpha`를 돌립니다. 값이 바뀐 컨테이너만 다시 만들어집니다.
 
