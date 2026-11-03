@@ -53,6 +53,19 @@ final class SignInModelTests: XCTestCase {
         XCTAssertEqual(f.core.lastAccount.current?.ageConfirmedAt, Date(timeIntervalSince1970: 1_793_000_000))
     }
 
+    func testRemembersTheProviderAndTimeOfTheSignIn() async {
+        let f = Fixture()
+        let model = f.model()
+        model.isAgeConfirmed = true
+
+        _ = await model.signIn(with: .apple, isOnline: true)
+
+        XCTAssertEqual(f.state.lastProviderSignIn?.provider, .apple)
+        XCTAssertEqual(f.state.lastProviderSignIn?.at, Date(timeIntervalSince1970: 1_793_000_000))
+        f.state.reset()
+        XCTAssertNil(f.state.lastProviderSignIn)
+    }
+
     func testGoesToTheDeviceChangeWhenAnotherDeviceIsActive() async {
         let f = Fixture()
         f.core.authResult = .success(

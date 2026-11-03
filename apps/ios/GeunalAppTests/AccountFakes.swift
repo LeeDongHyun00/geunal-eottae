@@ -54,8 +54,18 @@ final class AccountFakeCore: Core, @unchecked Sendable {
         BackupView(id: 1, createdAt: Date(), size: 1_000, automatic: false, events: 3, people: 1))
     /// What `deleteAccount` throws, one error per call in turn; once empty it deletes.
     let deleteErrors = Locked<[CoreError]>([])
+    /// What `sync` throws, one error per call in turn; once empty it syncs.
+    let syncErrors = Locked<[CoreError]>([])
     let lastProof = Locked<DeletionProof?>(nil)
     var linkResult: Result<[Provider], CoreError> = .success([.kakao])
+    /// What `checkRecoveryCode` says about twelve words in the list.
+    var codeCheck: RecoveryCodeCheck = .valid
+    /// What `startFresh` throws, one error per call in turn; once empty it starts fresh.
+    let startFreshErrors = Locked<[CoreError]>([])
+    /// The proof each `startFresh` carried, `nil` for none.
+    let freshProofs = Locked<[DeletionProof?]>([])
+    var settleError: CoreError?
+    let settled = Locked<[LocalDataChoice]>([])
 
     init() {
         super.init(noHandle: Core.NoHandle())
@@ -69,7 +79,13 @@ final class AccountFakeCore: Core, @unchecked Sendable {
         calls.update { $0.append(call) }
     }
 
-    override func session() -> Session? { nil }
+    /// The session the core holds; `nil` (signed out) unless a test signs in.
+    var signedIn: Session?
+    override func session() -> Session? { signedIn }
+
+    /// The account on this device; `nil` until a test sets one.
+    var accountView: AccountView?
+    override func account() throws -> AccountView? { accountView }
 
     override func signInNonce() async throws -> SignInNonce {
         record("nonce")
@@ -96,7 +112,20 @@ final class AccountFakeCore: Core, @unchecked Sendable {
 
     override func startFresh(proof: DeletionProof?) async throws -> Session {
         record("startFresh")
+        freshProofs.update { $0.append(proof) }
+        var error: CoreError?
+        startFreshErrors.update { errors in
+            if !errors.isEmpty { error = errors.removeFirst() }
+        }
+        if let error { throw error }
         return Session(userId: "u1", deviceId: "d2")
+    }
+
+    override func checkRecoveryCode(words: [String]) -> RecoveryCodeCheck { codeCheck }
+
+    override func settleLocalData(choice: LocalDataChoice) throws {
+        if let settleError { throw settleError }
+        settled.update { $0.append(choice) }
     }
 
     override func checkRecoveryWord(text: String) throws -> String? {
@@ -136,7 +165,16 @@ final class AccountFakeCore: Core, @unchecked Sendable {
 
     // MARK: 나 and the account (m1.md screens 12, 13, 20, 22)
 
-    override func sync() async throws { record("sync") }
+    override func sync() async throws {
+        record("sync")
+        var next: CoreError?
+        syncErrors.update { errors in
+            if !errors.isEmpty {
+                next = errors.removeFirst()
+            }
+        }
+        if let next { throw next }
+    }
     override func meSummary() throws -> MeSummary { summary }
     override func revocation() throws -> Revocation? { revoked }
 
@@ -158,9 +196,13 @@ final class AccountFakeCore: Core, @unchecked Sendable {
 
     override func setAutoBackup(enabled: Bool) throws { record("auto \(enabled)") }
 
+    /// Runs while a deletion is on its way, for a sheet that closes before the answer.
+    var whileDeleting: (@Sendable () async -> Void)?
+
     override func deleteAccount(proof: DeletionProof) async throws {
         record("delete")
         lastProof.update { $0 = proof }
+        await whileDeleting?()
         var next: CoreError?
         deleteErrors.update { errors in
             if !errors.isEmpty {

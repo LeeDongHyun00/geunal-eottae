@@ -9,12 +9,19 @@ final class RestoreModelTests: XCTestCase {
     private struct Fixture {
         let core = AccountFakeCore()
         let owner = FakeDeviceOwner()
+        let providers = FakeProviders()
         let toasts = ToastLog()
 
-        func model(_ mode: RestoreModel.Mode = .deviceChange, ageConfirmedAt: Date? = nil) -> RestoreModel {
+        /// `signedInAgo` is the time since this device's last Kakao sign-in, `nil` when it is not known.
+        func model(
+            _ mode: RestoreModel.Mode = .deviceChange, ageConfirmedAt: Date? = nil, signedInAgo: TimeInterval? = 60
+        ) -> RestoreModel {
             let toasts = self.toasts
+            let now = Date(timeIntervalSince1970: 1_793_000_000)
             return RestoreModel(
-                mode: mode, core: core, owner: owner, ageConfirmedAt: ageConfirmedAt, notify: { toasts.append($0) })
+                mode: mode, core: core, owner: owner, providers: providers,
+                lastSignIn: signedInAgo.map { (.kakao, now.addingTimeInterval(-$0)) }, ageConfirmedAt: ageConfirmedAt,
+                now: { now }, notify: { toasts.append($0) })
         }
     }
 
@@ -245,5 +252,176 @@ final class RestoreModelTests: XCTestCase {
 
         XCTAssertFalse(started)
         XCTAssertEqual(f.core.calls.current, [])
+    }
+
+    // MARK: The checksum (m1.md screen 21)
+
+    func testTwelveWordsWithAWrongChecksumNeverReachTheServer() async {
+        let f = Fixture()
+        f.core.codeCheck = .checksum
+        let model = f.model()
+        await model.paste(code.joined(separator: " "))
+
+        XCTAssertEqual(model.problem, .checksum)
+        XCTAssertFalse(model.canStart)
+        await model.start()
+        XCTAssertEqual(f.core.calls.current, [])
+    }
+
+    func testFixingAWordClearsTheChecksumProblem() async {
+        let f = Fixture()
+        f.core.codeCheck = .checksum
+        let model = f.model()
+        await model.paste(code.joined(separator: " "))
+        f.core.codeCheck = .valid
+
+        await type("하늘", into: 11, of: model)
+
+        XCTAssertNil(model.problem)
+        XCTAssertTrue(model.canStart)
+    }
+
+    // MARK: "나중에 넣을게요" and starting fresh (decisions 24, 25)
+
+    func testTheOfferCanWaitForTheCode() {
+        let model = Fixture().model(.offer)
+
+        model.later()
+
+        XCTAssertEqual(model.phase, .later)
+    }
+
+    func testOnlyTheOfferCanWait() {
+        let model = Fixture().model(.deviceChange)
+
+        model.later()
+
+        XCTAssertEqual(model.phase, .entering)
+    }
+
+    func testCountsTheBackupsTheConfirmationDeletes() async {
+        let f = Fixture()
+        f.core.backupList = [
+            BackupView(id: 2, createdAt: Date(), size: 1, automatic: true, events: 3, people: 1),
+            BackupView(
+                id: 1, createdAt: Date(timeIntervalSinceNow: -86_400), size: 1, automatic: true, events: 2, people: 1),
+        ]
+        let model = f.model(.offer)
+
+        await model.loadBackups()
+
+        XCTAssertEqual(model.backupsToDelete?.count, 2)
+    }
+
+    func testStartsFreshWithoutAProofWithinThirtyMinutesOfTheSignIn() async {
+        let f = Fixture()
+        let model = f.model(.offer, signedInAgo: 29 * 60)
+
+        XCTAssertFalse(model.needsProof)
+        let started = await model.startWithoutCode()
+
+        XCTAssertTrue(started)
+        XCTAssertEqual(f.core.freshProofs.current, [nil])
+        XCTAssertEqual(f.providers.nonces, [])
+    }
+
+    func testChecksWithKakaoAfterThirtyMinutes() async {
+        let f = Fixture()
+        let model = f.model(.offer, signedInAgo: 31 * 60)
+
+        XCTAssertTrue(model.needsProof)
+        let started = await model.startWithoutCode()
+
+        XCTAssertTrue(started)
+        XCTAssertEqual(f.providers.nonces, ["p1"])
+        XCTAssertEqual(f.core.freshProofs.current, [.kakao(nonce: "n1", idToken: "token")])
+        XCTAssertEqual(model.phase, .startedFresh)
+    }
+
+    func testChecksWithTheLinkedProviderWhenTheSignInIsNotRemembered() {
+        // A build before this one did not keep the last sign-in; an Apple account must not be sent to Kakao.
+        let f = Fixture()
+        f.core.accountView = AccountView(userId: "u1", displayName: "하린", providers: [.apple])
+        let model = f.model(.offer, signedInAgo: nil)
+
+        XCTAssertTrue(model.needsProof)
+        XCTAssertEqual(model.proofProvider, .apple)
+
+        let both = Fixture()
+        both.core.accountView = AccountView(userId: "u1", displayName: "하린", providers: [.apple, .kakao])
+        XCTAssertEqual(both.model(.offer, signedInAgo: nil).proofProvider, .kakao)
+    }
+
+    func testTheDeviceChangeNeverNeedsAProof() {
+        XCTAssertFalse(Fixture().model(.deviceChange, signedInAgo: nil).needsProof)
+    }
+
+    func testOnlyTurnsTheButtonIntoTheCheckWhenTheThirtyMinutesRanOutMeanwhile() async {
+        let f = Fixture()
+        f.core.startFreshErrors.update { $0 = [.ReauthRequired] }
+        let model = f.model(.offer)
+
+        let started = await model.startWithoutCode()
+
+        XCTAssertFalse(started)
+        XCTAssertTrue(model.needsProof)
+        XCTAssertNil(model.freshProblem)
+        XCTAssertEqual(f.core.freshProofs.current, [nil])
+    }
+
+    func testSaysAnotherKakaoAccountCannotStartFreshAndAsksTheOwnerOnce() async {
+        let f = Fixture()
+        f.core.startFreshErrors.update { $0 = [.ReauthRequired] }
+        let model = f.model(.offer, signedInAgo: nil)
+
+        let first = await model.startWithoutCode()
+        XCTAssertFalse(first)
+        XCTAssertEqual(model.freshProblem, .otherAccount)
+        XCTAssertEqual(model.phase, .entering)
+
+        let second = await model.startWithoutCode()
+        XCTAssertTrue(second)
+        XCTAssertNil(model.freshProblem)
+        XCTAssertEqual(f.owner.asked, [.startFresh])
+        XCTAssertEqual(f.core.freshProofs.current.count, 2)
+    }
+
+    func testAClosedProviderSheetDeletesNothingAndAClosedSheetAsksTheOwnerAgain() async {
+        let f = Fixture()
+        f.providers.result = .failure(.cancelled)
+        let model = f.model(.offer, signedInAgo: nil)
+
+        let started = await model.startWithoutCode()
+        model.noCodeClosed()
+        _ = await model.startWithoutCode()
+
+        XCTAssertFalse(started)
+        XCTAssertNil(model.freshProblem)
+        XCTAssertFalse(f.core.calls.current.contains("startFresh"))
+        XCTAssertEqual(f.owner.asked, [.startFresh, .startFresh])
+    }
+
+    func testSaysTheConnectionIsMissingInTheConfirmation() async {
+        let f = Fixture()
+        f.core.startFreshErrors.update { $0 = [.Network(reason: "offline")] }
+        let model = f.model(.deviceChange)
+
+        let started = await model.startWithoutCode()
+
+        XCTAssertFalse(started)
+        XCTAssertEqual(model.freshProblem, .offline)
+        XCTAssertNil(model.problem)
+    }
+
+    func testSendsThePersonBackWhenTheTicketRanOutBeforeStartingFresh() async {
+        let f = Fixture()
+        f.core.startFreshErrors.update { $0 = [.SignInAgain] }
+        let model = f.model(.deviceChange)
+
+        let started = await model.startWithoutCode()
+
+        XCTAssertFalse(started)
+        XCTAssertEqual(model.phase, .ticketExpired)
+        XCTAssertEqual(f.toasts.messages, ["시간이 지나 처음부터 다시 로그인해 주세요"])
     }
 }

@@ -14,11 +14,14 @@ public struct OnboardingDependencies {
     public let toasts: ToastCenter
     public let state: OnboardingState
     public let channel: BuildChannel
+    /// A backup's time on the start-fresh confirmation ("10월 20일 18:20"), in the app's Korean-time style.
+    public let timeText: (Date) -> String
 
     public init(
         core: any CoreProtocol, providers: any ProviderSignIn, permissions: any SystemPermissions,
         owner: any DeviceOwnerCheck, connectivity: ConnectivityMonitor, toasts: ToastCenter,
-        state: OnboardingState = OnboardingState(), channel: BuildChannel = .current
+        state: OnboardingState = OnboardingState(), channel: BuildChannel = .current,
+        timeText: @escaping (Date) -> String
     ) {
         self.core = core
         self.providers = providers
@@ -28,6 +31,7 @@ public struct OnboardingDependencies {
         self.toasts = toasts
         self.state = state
         self.channel = channel
+        self.timeText = timeText
     }
 }
 
@@ -41,18 +45,23 @@ public struct OnboardingFlow: View {
     }
 
     private let dependencies: OnboardingDependencies
+    private let resumesOnPermissions: Bool
     private let onClose: (() -> Void)?
     private let onFinish: () -> Void
     @State private var path: [Route] = []
     @State private var signIn: SignInModel
     @State private var permissions: PermissionsModel
+    @State private var localData: LocalDataQuestion
 
     /// With `onClose` the flow opens on the sign-in screen and can be closed: signing in again over the tabs, after
-    /// another device's sign-in (m1.md screen 23) or from 나's "로그인".
+    /// another device's sign-in (m1.md screen 23) or from 나's "로그인". `resumesOnPermissions` starts on the
+    /// permissions screen, for an account decided before the app last closed (m1.md decision 30).
     public init(
-        dependencies: OnboardingDependencies, onClose: (() -> Void)? = nil, onFinish: @escaping () -> Void
+        dependencies: OnboardingDependencies, resumesOnPermissions: Bool = false, onClose: (() -> Void)? = nil,
+        onFinish: @escaping () -> Void
     ) {
         self.dependencies = dependencies
+        self.resumesOnPermissions = resumesOnPermissions
         self.onClose = onClose
         self.onFinish = onFinish
         let toasts = dependencies.toasts
@@ -64,6 +73,7 @@ public struct OnboardingFlow: View {
             initialValue: PermissionsModel(
                 core: dependencies.core, permissions: dependencies.permissions, channel: dependencies.channel,
                 notify: { toasts.show($0) }))
+        _localData = State(initialValue: LocalDataQuestion(core: dependencies.core, notify: { toasts.show($0) }))
     }
 
     public var body: some View {
@@ -74,6 +84,13 @@ public struct OnboardingFlow: View {
                 }
         }
         .tint(GeunalColor.ink)
+        .sheet(isPresented: asksLocalData) {
+            if let local = localData.asking {
+                KeepLocalSheet(local: local) { choice in
+                    Task { await localData.answer(choice) }
+                }
+            }
+        }
         .overlay(alignment: .bottom) {
             if let toast = dependencies.toasts.current {
                 ToastView(toast) { dependencies.toasts.performAction() }
@@ -97,6 +114,8 @@ public struct OnboardingFlow: View {
                         .accessibilityIdentifier("onboarding.close")
                     }
                 }
+        } else if resumesOnPermissions {
+            destination(.permissions)
         } else {
             WelcomeView(
                 onStart: { path.append(.signIn) },
@@ -114,7 +133,7 @@ public struct OnboardingFlow: View {
                 model: signIn, connectivity: dependencies.connectivity,
                 onOutcome: { outcome in
                     switch outcome {
-                    case .permissions: path.append(.permissions)
+                    case .permissions: accountDecided()
                     case .restore(let mode): openRestore(mode)
                     }
                 },
@@ -127,10 +146,13 @@ public struct OnboardingFlow: View {
             let toasts = dependencies.toasts
             RestoreScreen(
                 model: RestoreModel(
-                    mode: mode, core: dependencies.core, owner: dependencies.owner,
-                    ageConfirmedAt: signIn.ageConfirmedAt, notify: { toasts.show($0) }),
+                    mode: mode, core: dependencies.core, owner: dependencies.owner, providers: dependencies.providers,
+                    lastSignIn: dependencies.state.lastProviderSignIn, ageConfirmedAt: signIn.ageConfirmedAt,
+                    notify: { toasts.show($0) }),
+                timeText: dependencies.timeText,
                 onDone: finish,
-                onStartedFresh: { path.append(.permissions) },
+                onStartedFresh: { accountDecided() },
+                onLater: { accountDecided() },
                 // Signing in again starts on the sign-in screen, so going back is popping to the root.
                 onBackToSignIn: { path = onClose == nil ? [.signIn] : [] })
         }
@@ -138,6 +160,27 @@ public struct OnboardingFlow: View {
 
     private func openRestore(_ mode: RestoreModel.Mode) {
         path.append(.restore(mode))
+    }
+
+    /// A new sign-in, a guest, starting fresh or "나중에 넣을게요": another account's events on the device are settled
+    /// first (m1.md screen 24), then the permissions screen, whose back button is gone (decision 30). Signing in again
+    /// over the tabs skips the permissions the device already answered and returns to the calendar.
+    private func accountDecided() {
+        let signsInAgain = onClose != nil
+        Task {
+            await localData.ask {
+                if signsInAgain {
+                    finish()
+                } else {
+                    path.append(.permissions)
+                }
+            }
+        }
+    }
+
+    /// The sheet only closes with an answer.
+    private var asksLocalData: Binding<Bool> {
+        Binding(get: { localData.asking != nil }, set: { _ in })
     }
 
     private func finish() {
@@ -150,21 +193,27 @@ public struct OnboardingFlow: View {
 /// typed so far must stay.
 private struct RestoreScreen: View {
     @State private var model: RestoreModel
+    private let timeText: (Date) -> String
     private let onDone: () -> Void
     private let onStartedFresh: () -> Void
+    private let onLater: () -> Void
     private let onBackToSignIn: () -> Void
 
     init(
-        model: RestoreModel, onDone: @escaping () -> Void, onStartedFresh: @escaping () -> Void,
-        onBackToSignIn: @escaping () -> Void
+        model: RestoreModel, timeText: @escaping (Date) -> String, onDone: @escaping () -> Void,
+        onStartedFresh: @escaping () -> Void, onLater: @escaping () -> Void, onBackToSignIn: @escaping () -> Void
     ) {
         _model = State(initialValue: model)
+        self.timeText = timeText
         self.onDone = onDone
         self.onStartedFresh = onStartedFresh
+        self.onLater = onLater
         self.onBackToSignIn = onBackToSignIn
     }
 
     var body: some View {
-        RestoreView(model: model, onDone: onDone, onStartedFresh: onStartedFresh, onBackToSignIn: onBackToSignIn)
+        RestoreView(
+            model: model, timeText: timeText, onDone: onDone, onStartedFresh: onStartedFresh, onLater: onLater,
+            onBackToSignIn: onBackToSignIn)
     }
 }

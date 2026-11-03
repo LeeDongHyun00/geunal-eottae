@@ -1,10 +1,13 @@
 import Foundation
+import GeunalCore
 
 /// What onboarding remembers between launches, in the standard defaults (no secrets: those are in the keychain).
 public struct OnboardingState: Sendable {
     private static let finishedKey = "app.geunal.onboarding.finished"
     private static let pendingGuestKey = "app.geunal.onboarding.pendingGuestAgeConfirmedAt"
     private static let revocationShownKey = "app.geunal.account.revocationShownAt"
+    private static let lastProviderKey = "app.geunal.account.lastProvider"
+    private static let lastProviderSignInKey = "app.geunal.account.lastProviderSignInAt"
 
     private nonisolated(unsafe) let defaults: UserDefaults
 
@@ -24,6 +27,7 @@ public struct OnboardingState: Sendable {
         isFinished = false
         pendingGuestAgeConfirmedAt = nil
         revocationShownAt = nil
+        lastProviderSignIn = nil
     }
 
     /// A guest who started offline: the time they ticked "만 14세 이상이에요", kept until the guest account can be made
@@ -49,6 +53,30 @@ public struct OnboardingState: Sendable {
             } else {
                 defaults.removeObject(forKey: Self.revocationShownKey)
             }
+        }
+    }
+
+    /// The last Kakao or Apple sign-in on this device. Starting fresh more than 30 minutes after it needs that
+    /// provider's proof, and with both linked it is the provider asked (m1.md screen 21, decision 25).
+    public var lastProviderSignIn: (provider: Provider, at: Date)? {
+        get {
+            guard let name = defaults.string(forKey: Self.lastProviderKey),
+                let at = defaults.object(forKey: Self.lastProviderSignInKey) as? Date
+            else { return nil }
+            switch name {
+            case "kakao": return (.kakao, at)
+            case "apple": return (.apple, at)
+            default: return nil
+            }
+        }
+        nonmutating set {
+            guard let newValue else {
+                defaults.removeObject(forKey: Self.lastProviderKey)
+                defaults.removeObject(forKey: Self.lastProviderSignInKey)
+                return
+            }
+            defaults.set(newValue.provider == .kakao ? "kakao" : "apple", forKey: Self.lastProviderKey)
+            defaults.set(newValue.at, forKey: Self.lastProviderSignInKey)
         }
     }
 }

@@ -265,8 +265,9 @@ struct EditorView: View {
                     .font(.system(size: 17))
                     .foregroundStyle(GeunalColor.ink)
                 FlowLayout(spacing: 6, rowSpacing: 6) {
-                    ForEach(repeatChoices.indices, id: \.self) { index in
-                        let choice = repeatChoices[index]
+                    let choices = model.repeatChoices
+                    ForEach(choices.indices, id: \.self) { index in
+                        let choice = choices[index]
                         OutlineChip(
                             Text(verbatim: choice.label), isOn: choice.recurrence == model.recurrence
                         ) {
@@ -331,25 +332,6 @@ struct EditorView: View {
         .padding(.vertical, 14)
         .background(GeunalColor.background, in: RoundedRectangle(cornerRadius: Radius.input))
         .accessibilityElement(children: .combine)
-    }
-
-    /// The chips of m1.md screen 9: none, weekly on the start's weekday, daily, monthly, yearly, and the event's own
-    /// rule when it is none of those.
-    private var repeatChoices: [(label: String, recurrence: Recurrence?)] {
-        func rule(_ frequency: Frequency) -> Recurrence {
-            Recurrence(frequency: frequency, interval: 1, weekdays: [], until: nil, count: nil)
-        }
-        var choices: [(label: String, recurrence: Recurrence?)] = [
-            (String(localized: "안 함", bundle: .module), nil)
-        ]
-        for frequency in [Frequency.weekly, .daily, .monthly, .yearly] {
-            let recurrence = rule(frequency)
-            choices.append((RecurrenceText.describe(recurrence, startDay: model.startDay), recurrence))
-        }
-        if let own = model.recurrence, !choices.contains(where: { $0.recurrence == own }) {
-            choices.insert((RecurrenceText.describe(own, startDay: model.startDay), own), at: 2)
-        }
-        return choices
     }
 
     private var alertValue: String {

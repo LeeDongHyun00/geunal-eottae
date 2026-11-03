@@ -13,11 +13,17 @@ public final class LinkModel {
     @ObservationIgnored private let core: any CoreProtocol
     @ObservationIgnored private let providers: any ProviderSignIn
     @ObservationIgnored private let notify: @MainActor (String) -> Void
+    @ObservationIgnored private let onAccountDeleted: @MainActor () -> Void
 
-    public init(core: any CoreProtocol, providers: any ProviderSignIn, notify: @escaping @MainActor (String) -> Void) {
+    /// `onAccountDeleted` ends the app as after a deletion when linking learns the account is gone (m1.md decision 36).
+    public init(
+        core: any CoreProtocol, providers: any ProviderSignIn, notify: @escaping @MainActor (String) -> Void,
+        onAccountDeleted: @escaping @MainActor () -> Void = {}
+    ) {
         self.core = core
         self.providers = providers
         self.notify = notify
+        self.onAccountDeleted = onAccountDeleted
     }
 
     /// `true` once the provider is linked.
@@ -42,6 +48,9 @@ public final class LinkModel {
             notify(String(localized: "연결했어요", bundle: .module))
             return true
         } catch ProviderSignInError.cancelled {
+            return false
+        } catch let error as CoreError where error.isAccountDeleted {
+            onAccountDeleted()
             return false
         } catch CoreError.Api(409, "already_linked", _) {
             notify(String(localized: "이미 연결한 계정이에요", bundle: .module))

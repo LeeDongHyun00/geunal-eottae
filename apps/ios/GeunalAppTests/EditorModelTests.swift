@@ -65,6 +65,32 @@ final class EditorModelTests: XCTestCase {
         XCTAssertTrue(opened.asksScope)
     }
 
+    func testKeepsTheRuleItOpenedWithAmongTheRepeatChips() async throws {
+        let core = try makeCore()
+        let new = EditorModel(newOn: day, core: core)
+        await new.load()
+        XCTAssertEqual(new.repeatChoices.count, 5, "안 함 and the four plain rules")
+        new.title = "스터디"
+        new.recurrence = Recurrence(
+            frequency: .weekly, interval: 1, weekdays: [.tuesday, .thursday], until: nil, count: nil)
+        let saved = await new.save()
+        XCTAssertTrue(saved)
+        let item = try XCTUnwrap(core.calendarAgenda(fromDay: day, days: 7).first?.events.first)
+        let opened = EditorModel(eventId: item.eventId, occurrence: item.occurrence, core: core)
+        await opened.load()
+        let own = try XCTUnwrap(opened.recurrence)
+
+        // "안 함" leaves the rule on offer, so the next tap takes it back.
+        opened.recurrence = nil
+        XCTAssertEqual(opened.repeatChoices[2].label, "매주 화·목")
+        XCTAssertEqual(opened.repeatChoices[2].recurrence, own)
+
+        // A rule from 직접 정하기 comes after it.
+        opened.recurrence = Recurrence(
+            frequency: .weekly, interval: 1, weekdays: [.monday, .wednesday], until: nil, count: nil)
+        XCTAssertEqual(opened.repeatChoices.map { $0.label }[2...3], ["매주 화·목", "매주 월·수"])
+    }
+
     func testChangesOnlyThisOccurrenceOfARepeatingEvent() async throws {
         let core = try makeCore()
         let calendar = try XCTUnwrap(core.calendars().first { $0.kind == .own }?.id)
