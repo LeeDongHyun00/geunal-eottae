@@ -77,7 +77,8 @@ struct MeTab: View {
             .navigationDestination(for: Route.self) { route in
                 destination(route)
             }
-            .task(id: app.accountChanges) {
+            // The ended session is noticed after the account change that told of it, so it reloads the card too.
+            .task(id: "\(app.accountChanges).\(app.sessionEnded?.rawValue ?? "")") {
                 model.sessionEnd = app.sessionEnded
                 await model.load()
             }
@@ -267,26 +268,23 @@ struct MeTab: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("me.recovery")
-            // The code stays on the device after the session ended, so it can still be read (decision 43).
-            .disabled(!model.showsRecoveryCode)
-            .opacity(model.showsRecoveryCode ? 1 : 0.4)
             separator
-            Group {
-                NavigationLink(value: Route.backup) {
-                    SettingsRow(Text("암호화 백업"), value: backupValue)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("me.backup")
-                separator
-                NavigationLink(value: Route.deviceChange) {
-                    SettingsRow(Text("기기 바꾸기"))
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("me.deviceChange")
+            NavigationLink(value: Route.backup) {
+                SettingsRow(Text("암호화 백업"), value: backupValue)
             }
-            .disabled(!model.hasAccount)
-            .opacity(model.hasAccount ? 1 : 0.4)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("me.backup")
+            separator
+            NavigationLink(value: Route.deviceChange) {
+                SettingsRow(Text("기기 바꾸기"))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("me.deviceChange")
         }
+        // Decision 43 keeps the code readable after the session ended, but the core reads it only for the current
+        // session; until it can, the whole group dims as on screen 23.
+        .disabled(!model.hasAccount)
+        .opacity(model.hasAccount ? 1 : 0.4)
     }
 
     private var accountRows: some View {

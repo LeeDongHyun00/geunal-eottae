@@ -9,11 +9,13 @@ public struct RestoreCover: View {
     @State private var model: RestoreModel
     private let timeText: (Date) -> String
     private let onClose: () -> Void
+    private let onBackToSignIn: () -> Void
 
     /// `mode` is `.offer` for the account's backup after "나중에 넣을게요", or `.guestReturn` for a guest whose session
     /// ended (decision 43).
     public init(
-        dependencies: OnboardingDependencies, mode: RestoreModel.Mode = .offer, onClose: @escaping () -> Void
+        dependencies: OnboardingDependencies, mode: RestoreModel.Mode = .offer, onClose: @escaping () -> Void,
+        onBackToSignIn: (() -> Void)? = nil
     ) {
         let toasts = dependencies.toasts
         _model = State(
@@ -22,13 +24,14 @@ public struct RestoreCover: View {
                 lastSignIn: dependencies.state.lastProviderSignIn, notify: { toasts.show($0) }))
         timeText = dependencies.timeText
         self.onClose = onClose
+        self.onBackToSignIn = onBackToSignIn ?? onClose
     }
 
     public var body: some View {
         NavigationStack {
             RestoreView(
                 model: model, timeText: timeText, onDone: onClose, onStartedFresh: onClose, onLater: onClose,
-                onBackToSignIn: onClose
+                onBackToSignIn: onBackToSignIn
             )
             .toolbar {
                 // A restore under way, and "돌아왔어요" with its own button, keep the screen (decision 30).

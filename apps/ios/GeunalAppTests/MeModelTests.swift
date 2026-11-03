@@ -46,8 +46,8 @@ final class MeModelTests: XCTestCase {
     }
 
     // m1.md §4 "로그인이 끝났을 때", decision 43: the core no longer reports the account once the session is gone; the
-    // app tells the card what kind it was, and the recovery code stays readable.
-    func testShowsAnEndedSessionWithTheRecoveryCodeStillThere() async {
+    // app tells the card what kind it was.
+    func testShowsAnEndedSession() async {
         let core = AccountFakeCore()
         core.summary.account = nil
         let model = MeModel(core: core, channel: .public)
@@ -57,12 +57,10 @@ final class MeModelTests: XCTestCase {
 
         XCTAssertEqual(model.account, .sessionEnded(.guest))
         XCTAssertFalse(model.hasAccount)
-        XCTAssertTrue(model.showsRecoveryCode)
 
         model.sessionEnd = nil
         await model.load()
         XCTAssertEqual(model.account, MeModel.Account.none)
-        XCTAssertFalse(model.showsRecoveryCode)
     }
 
     func testRemembersOnlyTheKindOfAccountUntilAReset() {

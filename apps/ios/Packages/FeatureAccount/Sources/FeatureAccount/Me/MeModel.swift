@@ -49,12 +49,6 @@ public final class MeModel {
         }
     }
 
-    /// The recovery code stays on the device after the session ended, and 나 still shows it (decision 43).
-    public var showsRecoveryCode: Bool {
-        if case .sessionEnded = account { return true }
-        return hasAccount
-    }
-
     public var isGuest: Bool {
         if case .guest = account { return true }
         return false
