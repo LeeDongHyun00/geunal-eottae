@@ -123,7 +123,7 @@ class AccessLogTests : ApiTest() {
         val device = Client(api, "access-delete-${UUID.randomUUID()}")
         val guest = device.proof() + mapOf("age_confirmed_at" to "2026-10-31T00:00:00Z", "display_name" to "기록")
         device.adopt(api.send(HttpMethod.POST, "/auth/guest", body = guest, headers = forwardedFor("192.0.2.10")).expect(201))
-        val code = RecoveryCode().also { device.put("/me/recovery", it.upload()).expect(204) }
+        val code = RecoveryCode().also { device.putRecovery(it.upload()).expect(204) }
         val nonce = device.nonce()
 
         api
@@ -133,6 +133,7 @@ class AccessLogTests : ApiTest() {
                 device.token,
                 mapOf(
                     "nonce" to nonce,
+                    "device_signature" to device.sign("geunal delete v1$nonce".toByteArray()),
                     "recovery_signature" to code.sign("geunal delete v1", nonce),
                 ),
             ).expect(204)

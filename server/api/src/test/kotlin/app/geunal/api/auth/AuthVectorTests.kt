@@ -41,6 +41,38 @@ class AuthVectorTests {
     }
 
     @Test
+    fun `builds and checks the device-key signatures as the core makes them`() {
+        val file = read("device_signatures.json")
+        val material = file.path("material")
+        val id = hex.parseHex(material.path("recovery_id").stringValue())
+        val publicKey = hex.parseHex(material.path("recovery_public_key").stringValue())
+        val amk = hex.parseHex(material.path("amk_wrapped").stringValue())
+        val cases = file.path("cases").values()
+
+        assertThat(cases).isNotEmpty()
+        for (case in cases) {
+            val key = hex.parseHex(case.path("signature_key").stringValue())
+            val nonce = case.path("nonce").stringValue()
+            val signed =
+                mapOf(
+                    "delete" to DeviceSignatures.delete(nonce),
+                    "recovery_upload" to DeviceSignatures.recoveryUpload(false, nonce, id, publicKey, amk),
+                    "new_key" to DeviceSignatures.recoveryUpload(true, nonce, id, publicKey, amk),
+                )
+            for ((purpose, message) in signed) {
+                val vector = case.path(purpose)
+                val signature = hex.parseHex(vector.path("signature").stringValue())
+                assertThat(hex.formatHex(message)).describedAs(purpose).isEqualTo(vector.path("message").stringValue())
+                assertThat(Ed25519.verify(key, message, signature)).describedAs(purpose).isTrue()
+                // A signature for one act never passes for another.
+                for ((other, otherMessage) in signed - purpose) {
+                    assertThat(Ed25519.verify(key, otherMessage, signature)).describedAs("$purpose as $other").isFalse()
+                }
+            }
+        }
+    }
+
+    @Test
     fun `checks the core's recovery signatures`() {
         val codes = read("recovery.json").path("codes").values()
 

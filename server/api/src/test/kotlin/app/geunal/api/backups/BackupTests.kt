@@ -27,7 +27,7 @@ class BackupTests : ApiTest() {
     private val http: HttpClient = HttpClient.newHttpClient()
 
     private fun account(subject: String = "backup-${UUID.randomUUID()}"): Client =
-        signIn(subject).also { it.put("/me/recovery", RecoveryCode().upload()).expect(204) }
+        signIn(subject).also { it.putRecovery(RecoveryCode().upload()).expect(204) }
 
     private fun put(
         url: String,
