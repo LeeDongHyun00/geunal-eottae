@@ -5,7 +5,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 .PHONY: help setup lint test lint-repo lint-core test-core build-android build-ios lint-api test-api image-api scan-api \
-	lint-gateway test-gateway image-gateway scan-gateway lint-android test-android connected-android up down e2e \
+	lint-gateway test-gateway image-gateway scan-gateway lint-android test-android connected-android release-android up down e2e \
 	audit audit-core audit-apps \
 	lint-ios project-ios app-ios test-ios uitest-ios lock-ios archive-ios release-ios \
 	lint-terraform lock-terraform deploy-alpha
@@ -134,6 +134,9 @@ test-android: build-android ## Android: assemble (debug, R8 release, instrumente
 
 connected-android: build-android ## Android: instrumented tests on the emulator or device adb sees
 	cd apps/android && ANDROID_HOME="$$(../../scripts/tool.sh android-sdk)" ./gradlew connectedDebugAndroidTest
+
+release-android: build-android ## Android: signed bundle from the GEUNAL_* variables, sent to Play's internal track when GEUNAL_PLAY_UPLOAD=true (infra/release/README.md)
+	apps/android/scripts/release.sh
 
 # -lockfile=readonly makes a root without a committed lock file, or one missing this platform, fail here rather than
 # silently pick a provider build CI never saw.

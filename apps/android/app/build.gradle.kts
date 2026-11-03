@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ktlint)
+    alias(libs.plugins.play.publisher)
 }
 
 // The provider keys, the domain and the links come from Gradle properties (~/.gradle/gradle.properties or -P), never
@@ -21,6 +22,16 @@ val apiBase = setting("geunalApiBase")
 // Only alpha builds offer the test statistics (m1.md screen 3); a public build passes -PgeunalChannel=public.
 val channel = setting("geunalChannel", "alpha")
 
+// A release from `make release-android` (infra/release/README.md) numbers the build and signs it with the Play upload
+// key. The key and its passwords come only from the environment the release workflow fills, never from a property on
+// the command line, and a build without them (every local one) stays unsigned as before.
+val buildNumber = setting("geunalBuildNumber", "1").toInt()
+
+fun environment(name: String): String? = providers.environmentVariable(name).orNull?.takeIf { it.isNotEmpty() }
+
+val uploadKeystore = environment("GEUNAL_UPLOAD_KEYSTORE")
+val playServiceAccount = environment("GEUNAL_PLAY_SERVICE_ACCOUNT")
+
 fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
@@ -32,7 +43,7 @@ android {
         applicationId = "app.geunal"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 1
+        versionCode = buildNumber
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Screenshots go through the test storage service, which AGP copies off the device after the run.
@@ -52,6 +63,17 @@ android {
         manifestPlaceholders["geunalAppLinkHost"] = appLinkHost
     }
 
+    if (uploadKeystore != null) {
+        signingConfigs {
+            create("upload") {
+                storeFile = file(uploadKeystore)
+                storePassword = environment("GEUNAL_UPLOAD_KEYSTORE_PASSWORD") ?: error("GEUNAL_UPLOAD_KEYSTORE_PASSWORD is not set")
+                keyAlias = environment("GEUNAL_UPLOAD_KEY_ALIAS") ?: error("GEUNAL_UPLOAD_KEY_ALIAS is not set")
+                keyPassword = environment("GEUNAL_UPLOAD_KEY_PASSWORD") ?: error("GEUNAL_UPLOAD_KEY_PASSWORD is not set")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // The emulator reaches the local stack of `make up` on the host at 10.0.2.2.
@@ -63,6 +85,7 @@ android {
             buildConfigField("String", "API_BASE", quoted(apiBase))
             isMinifyEnabled = true
             isShrinkResources = true
+            if (uploadKeystore != null) signingConfig = signingConfigs.getByName("upload")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -86,6 +109,17 @@ android {
         // targetSdk follows the Play requirement of the year, not the newest release (docs/parts/android.md §1).
         disable += "OldTargetApi"
     }
+}
+
+// Play's internal testing track, only with the service account the release workflow writes; otherwise the publishing
+// tasks are off, so a local build never reaches for Play. The first bundle of a new app goes up by hand (Play does not
+// take it through the API), and later ones are rolled out to the internal testers at once.
+play {
+    enabled.set(playServiceAccount != null)
+    playServiceAccount?.let { serviceAccountCredentials.set(file(it)) }
+    track.set("internal")
+    defaultToAppBundles.set(true)
+    releaseStatus.set(com.github.triplet.gradle.androidpublisher.ReleaseStatus.COMPLETED)
 }
 
 androidComponents {
