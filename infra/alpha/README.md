@@ -12,6 +12,7 @@ M1 알파 서버(NCP Micro, 1 vCPU·1GB) 위에서 도는 구성입니다([인�
 | `db-dump.sh`, `geunal-db-dump.*` | 매일 04:00(서울) `pg_dump`, 서버에 7일 보관. 암호화한 사본을 `geunal-alpha-backups` 버킷에 7일 |
 | `deploy.sh` | 운영자 PC에서 하는 배포(`make deploy-alpha`) |
 | `fetch-secrets.py` | 배포할 때 Secret Manager에서 서버 밖에서 발급받은 키를 받아 root 전용 파일로 씀(아래 "비밀값") |
+| `watch.sh` | 바깥에서 하는 기본 경보. `.github/workflows/alpha-watch.yml`이 15분마다 돌림(아래 "경보") |
 | `bucket-lifecycle.sh` | 운영자 PC에서 한 번: `geunal-alpha-access-logs` 버킷에 92일 만료 규칙을 걺 |
 
 ## 배포
@@ -104,6 +105,29 @@ GEUNAL_LIFECYCLE_S3_ACCESS_KEY=... GEUNAL_LIFECYCLE_S3_SECRET_KEY=... infra/alph
 
 - 첫 로그가 92일이 되기 전(2027년 2월 초)에 걸어야 합니다. 걸고 나면 스크립트가 버킷이 가진 규칙을 출력합니다.
 
+## 경보
+
+`.github/workflows/alpha-watch.yml`이 15분마다 GitHub의 러너에서 `watch.sh`를 돌립니다. NCP 밖에서 보므로 테스터의 휴대폰이 보는 것과 같습니다. M2의 모니터링([인프라](../../docs/parts/infra.md) 8장, 11장) 전까지 쓰는 최소한의 경보입니다.
+
+| 검사 | 실패로 보는 것 |
+| --- | --- |
+| `https://api.geunaleottae.com/actuator/health` | 약 2분 동안 네 번 시도해 모두 200 `UP`이 아님. 배포 중 재시작으로는 울리지 않음 |
+| 디스크 | 남은 공간이 1GB보다 적으면 상태 검사가 `DOWN`(503)이 되어 위 검사로 드러남(`compose.yml`) |
+| TLS 인증서 | 남은 기간이 14일보다 짧음. Caddy가 수명의 3분의 1이 남았을 때 갱신하므로, 갱신이 며칠째 실패한다는 뜻 |
+
+- 실패하면 `alpha-alert` 라벨이 붙은 이슈를 하나 열고, 이슈 첫 줄에서 저장소 주인을 불러 GitHub 알림이 가게 합니다. 문제가 이어지는 동안에는 더 쓰지 않고, 모든 검사가 통과하면 한 줄 남기고 닫습니다.
+- 워크플로 실행은 문제를 알리는 동안에도 녹색입니다. 예약 실행이 실패하면 15분마다 메일이 가기 때문입니다. 실행이 빨갛다면 경보 자체가 고장 난 것입니다.
+- 비밀값을 쓰지 않습니다. 토큰은 이 저장소의 이슈만 다룹니다.
+
+**경보가 오면 확인할 것(서버에서)**
+
+- `cd /opt/geunal && docker compose ps`: 어느 컨테이너가 멈췄거나 unhealthy인지 봅니다.
+- `docker compose logs --tail 200 api`(또는 `caddy`): 시작 실패나 인증서 갱신 오류를 봅니다.
+- 503이면 디스크부터 봅니다: `df -h /`, `docker system df`. 쓰지 않는 이미지는 `docker image prune`으로 지웁니다. 덤프는 7일치만 남습니다.
+- 다시 띄우기: `docker compose up -d`.
+
+**아직 보지 않는 것:** 매일 덤프가 버킷에 올라갔는지는 이 경보가 보지 못합니다. 서버 안의 일이라 바깥에서 볼 방법이 없기 때문입니다. 지금은 `journalctl -u geunal-db-dump`로 확인하고, M2의 모니터링에서 다룹니다.
+
 ## 도메인과 DNS
 
 `geunaleottae.com`은 Cloudflare Registrar에서 샀고(2026-10-31, 2027-10-30까지), DNS도 Cloudflare의 무료 요금제에 있습니다. 이 이름을 다른 곳으로 돌릴 수 있는 사람은 유효한 인증서를 받아 API를 흉내 낼 수 있으므로([위협 모델](../../docs/security/threat-model.md) 3.7) 다음을 지킵니다.
@@ -119,4 +143,4 @@ GEUNAL_LIFECYCLE_S3_ACCESS_KEY=... GEUNAL_LIFECYCLE_S3_SECRET_KEY=... infra/alph
 ## 아직 없는 것
 
 - 디스크 여유: 10GB 가운데 85%를 씁니다(스왑 2GB, containerd 이미지 저장소 1.2GB). API 이미지를 더 키우기 전에 블록 스토리지를 더하거나 Docker를 이전 저장 방식(overlay2)으로 돌려야 할 수 있습니다.
-- 이미지 레지스트리와 `main` 머지 뒤 자동 배포, 기본 경보.
+- 이미지 레지스트리와 `main` 머지 뒤 자동 배포.
