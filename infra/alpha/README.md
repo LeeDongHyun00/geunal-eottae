@@ -11,6 +11,7 @@ M1 알파 서버(NCP Micro, 1 vCPU·1GB) 위에서 도는 구성입니다([인�
 | `bootstrap.sh` | 서버 준비: 스왑 2GB, 쓰지 않는 서비스 끄기, Docker와 로그 회전, 비밀값 파일, 매일 DB 덤프 타이머. 배포할 때마다 다시 돌아도 안전 |
 | `db-dump.sh`, `geunal-db-dump.*` | 매일 04:00(서울) `pg_dump`, 서버에 7일 보관. 암호화한 사본을 `geunal-alpha-backups` 버킷에 7일 |
 | `deploy.sh` | 운영자 PC에서 하는 배포(`make deploy-alpha`) |
+| `bucket-lifecycle.sh` | 운영자 PC에서 한 번: `geunal-alpha-access-logs` 버킷에 92일 만료 규칙을 걺 |
 
 ## 배포
 
@@ -59,6 +60,19 @@ GEUNAL_DUMP_S3_SECRET_KEY=...
 
 - 복원: 덤프를 내려받아 운영자 PC에서 `age -d -i <개인 키> geunal-N.dump.age > geunal.dump`로 풀고 `pg_restore`로 넣습니다.
 - 확인: `journalctl -u geunal-db-dump`에 `Uploaded db/...`가 남습니다.
+
+## 접속 로그 버킷의 만료
+
+API가 접속 로그를 `geunal-alpha-access-logs`에 올립니다([API 서버](../../docs/parts/api-server.md) 10장). 접속 로그는 3개월 보관이 법적 요건이고, 그 뒤에는 남기지 않도록 92일 만료 규칙을 겁니다([인프라](../../docs/parts/infra.md) 1장).
+
+- NCP Terraform 제공자가 수명 규칙을 다루지 못해 `bucket-lifecycle.sh`가 S3 API(`PutBucketLifecycleConfiguration`)로 겁니다. 다시 돌려도 같은 규칙으로 바뀝니다.
+- 버킷 설정을 바꿀 수 있는 키가 필요해 운영자 PC에서 돌립니다. 서버의 쓰기 전용 키로는 되지 않습니다.
+
+```bash
+GEUNAL_LIFECYCLE_S3_ACCESS_KEY=... GEUNAL_LIFECYCLE_S3_SECRET_KEY=... infra/alpha/bucket-lifecycle.sh
+```
+
+- 첫 로그가 92일이 되기 전(2027년 2월 초)에 걸어야 합니다. 걸고 나면 스크립트가 버킷이 가진 규칙을 출력합니다.
 
 ## 도메인과 DNS
 
