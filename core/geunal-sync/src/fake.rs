@@ -610,12 +610,13 @@ impl FakeClient {
 
     /// A fresh Kakao ID token bound to a live nonce and the device's registered key, or an Apple authorization code,
     /// for `user`'s provider account (protocol §13 "계정 삭제").
-    /// The device key's signature over `message` built from the request's nonce, which this spends. Both irreversible
-    /// requests need it (protocol §10 "새 키로 시작", §13 "계정 삭제"); the provider proofs read the same nonce.
+    /// The device key's signature over `message` built from the request's nonce, which this spends. Every recovery
+    /// upload and every deletion needs it (protocol §10 "기기 키의 서명", §13 "계정 삭제"); the code's and the
+    /// provider's proofs read the same nonce.
     fn device_signed(
         state: &mut State,
         key: &[u8],
-        message: fn(&str) -> Vec<u8>,
+        message: impl FnOnce(&str) -> Vec<u8>,
         nonce: Option<&str>,
         signature: Option<&[u8]>,
     ) -> bool {
@@ -794,6 +795,24 @@ impl Transport for FakeClient {
         if req.amk_wrapped.len() != 72 || req.recovery_id.len() != 16 || req.recovery_public_key.len() != 32 {
             return Err(err(400, "invalid_request"));
         }
+        let account = state.users.get(&user).expect("the session's account exists");
+        let device = account.device.as_ref().ok_or_else(|| err(403, "device_revoked"))?;
+        // A session from a provider sign-in under 30 minutes old proves the account for a new key (protocol §10 "새
+        // 키로 시작").
+        let fresh = device.by_provider_at.is_some_and(|at| now - at < Duration::minutes(30));
+        let key = device.signature_key.clone();
+        let current = account.recovery.as_ref().map(|r| r.public_key.clone());
+        // Before anything else, the device key's signature over this very material: a session alone puts nothing up,
+        // and a signed request carries no other material (protocol §10 "기기 키의 서명").
+        let refused = || if req.new_key { err(403, "reauth_required") } else { err(403, "recovery_proof_required") };
+        let nonce = req.nonce.as_deref();
+        let message = |nonce: &str| {
+            let (id, public_key, wrapped) = (&req.recovery_id, &req.recovery_public_key, &req.amk_wrapped);
+            geunal_crypto::login::recovery_upload_message(req.new_key, nonce, id, public_key, wrapped)
+        };
+        if !Self::device_signed(&mut state, &key, message, nonce, req.device_signature.as_deref()) {
+            return Err(refused());
+        }
         if state
             .users
             .iter()
@@ -801,32 +820,18 @@ impl Transport for FakeClient {
         {
             return Err(err(409, "recovery_conflict"));
         }
-        let account = state.users.get(&user).expect("the session's account exists");
-        if let Some(current) = &account.recovery {
-            if req.new_key {
-                // Without the code the account proves itself through its provider: a session from a provider
-                // sign-in under 30 minutes old, or a fresh provider proof in the body (protocol §10 "새 키로 시작").
-                // Either way the device key signs too.
-                let device = account.device.as_ref().ok_or_else(|| err(403, "device_revoked"))?;
-                let fresh = device.by_provider_at.is_some_and(|at| now - at < Duration::minutes(30));
-                let key = device.signature_key.clone();
-                let (kakao, apple, nonce) =
-                    (req.kakao_id_token.as_deref(), req.apple_authorization_code.as_deref(), req.nonce.as_deref());
-                let signature = req.device_signature.as_deref();
-                if !Self::device_signed(&mut state, &key, geunal_crypto::login::new_key_message, nonce, signature)
-                    || (!fresh && !Self::provider_proof(&mut state, &user, &key, kakao, apple, nonce))
-                {
-                    return Err(err(403, "reauth_required"));
-                }
+        if let Some(current) = current {
+            let proven = if req.new_key {
+                // Without the code the account proves itself through its provider.
+                let (kakao, apple) = (req.kakao_id_token.as_deref(), req.apple_authorization_code.as_deref());
+                fresh || Self::provider_proof(&mut state, &user, &key, kakao, apple, nonce)
             } else {
-                let Some((nonce, proof)) = req.nonce.as_ref().zip(req.proof.as_ref()) else {
-                    return Err(err(403, "recovery_proof_required"));
-                };
-                let message = [geunal_crypto::recovery::ROTATE_LABEL, nonce.as_bytes()].concat();
-                let public_key = current.public_key.clone();
-                if !state.nonces.remove(nonce) || !verify(&public_key, &message, proof) {
-                    return Err(err(403, "recovery_proof_required"));
-                }
+                // Material already stored is overwritten only with the current code's proof over the same nonce.
+                let message = |nonce: &str| [geunal_crypto::recovery::ROTATE_LABEL, nonce.as_bytes()].concat();
+                nonce.zip(req.proof.as_deref()).is_some_and(|(nonce, proof)| verify(&current, &message(nonce), proof))
+            };
+            if !proven {
+                return Err(refused());
             }
         }
         let updated_at = now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);

@@ -11,14 +11,14 @@
 | `push_payloads.json` | API 서버 | Rust 코어(`decrypt_push`) |
 | `recovery.json` (M1) | Rust 코어 | Rust 코어, API 서버(복구 서명 확인) |
 | `login_nonce.json` (M1) | Rust 코어 | API 서버(제공자 토큰의 nonce 비교) |
-| `device_signatures.json` (M1) | Rust 코어 | Rust 코어(mls-rs 서명기), API 서버(삭제·새 키로 시작·교체의 기기 키 서명 확인) |
+| `device_signatures.json` (M1) | Rust 코어 | Rust 코어(mls-rs 서명기), API 서버(삭제·복구 자료 올리기·새 키로 시작·교체의 기기 키 서명 확인) |
 | `backups.json` (M1) | Rust 코어 | Rust 코어(이전 버전 아카이브 복원) |
 | `auth_results.json` (M1) | API 서버 | Rust 코어 |
 
 M1 벡터는 [공통 계약](../../docs/parts/protocol.md) 10·13장을 따라 만드는 파트가 첫 구현과 함께 커밋합니다.
 - `recovery.json`: 단어 목록 파일의 SHA-256, `E`와 NFC 12단어의 짝(체크섬이 틀린 예 포함), `K`, 래핑 키와 고정 논스로 래핑한 AMK, 복구 ID, 복구 공개키, 게스트 복귀 서명과 덮어쓰기 서명의 예.
 - `login_nonce.json`: `nonce`와 `signature_key`에서 제공자에게 넘기는 값.
-- `device_signatures.json`: 고정 시드의 기기 키(Ed25519)로 `"geunal delete v1" ‖ nonce`, `"geunal new key v1" ‖ nonce`, `"geunal replace v1" ‖ 티켓`에 한 서명. 문장 바이트와 서명을 16진수로 둡니다.
+- `device_signatures.json`: 고정 시드의 기기 키(Ed25519)로 `"geunal delete v1" ‖ nonce`, `"geunal recovery upload v1"`·`"geunal new key v1"` ‖ nonce ‖ 고정 복구 자료(`material`: 복구 ID, 복구 공개키, 래핑된 AMK), `"geunal replace v1" ‖ 티켓`에 한 서명. 문장 바이트와 서명을 16진수로 둡니다.
 - `backups.json`: 고정 AMK와 고정 논스 접두사로 봉인한 아카이브. 아카이브 버전이 오를 때마다 항목을 더하고 지우지 않습니다.
 - `auth_results.json`: `registered`와 `replace_required` 응답 본문.
 

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use ed25519_dalek::{Signer, SigningKey};
 use geunal_crypto::kdf;
-use geunal_crypto::login::{delete_message, new_key_message, provider_nonce, replace_message};
+use geunal_crypto::login::{delete_message, provider_nonce, recovery_upload_message, replace_message};
 use geunal_crypto::recovery::{self, CodeError, Entropy, RecoveryKeys};
 use serde_json::{Value, json};
 
@@ -132,6 +132,13 @@ fn login_document() -> Value {
 /// The device key's messages and Ed25519 signatures (deterministic, RFC 8032) for a few seeds. The core's MLS signer
 /// is the same Ed25519, so the server can verify these with the public key a device registers.
 fn device_document() -> Value {
+    // The material a recovery upload puts up, with the lengths the server checks. Each field has bytes of its own, so a
+    // message that joins them in another order does not match.
+    let recovery_id: Vec<u8> = (0x00..0x10).collect();
+    let recovery_public_key: Vec<u8> = (0x10..0x30).collect();
+    let amk_wrapped: Vec<u8> = (0x30..0x78).collect();
+    let upload =
+        |new_key, nonce| recovery_upload_message(new_key, nonce, &recovery_id, &recovery_public_key, &amk_wrapped);
     let cases: Vec<Value> = [[1u8; 32], [2u8; 32]]
         .iter()
         .zip([NONCE, "nonce-1"])
@@ -145,7 +152,8 @@ fn device_document() -> Value {
                 "signature_key": hex::encode(key.verifying_key().to_bytes()),
                 "nonce": nonce,
                 "delete": signed(delete_message(nonce)),
-                "new_key": signed(new_key_message(nonce)),
+                "recovery_upload": signed(upload(false, nonce)),
+                "new_key": signed(upload(true, nonce)),
                 "replace": signed(replace_message(nonce)),
             })
         })
@@ -155,8 +163,14 @@ fn device_document() -> Value {
         "generated_by": GENERATED_BY,
         "signed": {
             "delete": "geunal delete v1 ‖ nonce",
-            "new_key": "geunal new key v1 ‖ nonce",
+            "recovery_upload": "geunal recovery upload v1 ‖ nonce ‖ recovery_id ‖ recovery_public_key ‖ amk_wrapped",
+            "new_key": "geunal new key v1 ‖ nonce ‖ recovery_id ‖ recovery_public_key ‖ amk_wrapped",
             "replace": "geunal replace v1 ‖ ticket",
+        },
+        "material": {
+            "recovery_id": hex::encode(&recovery_id),
+            "recovery_public_key": hex::encode(&recovery_public_key),
+            "amk_wrapped": hex::encode(&amk_wrapped),
         },
         "note": "replace signs the ticket; the cases reuse the nonce string as the ticket",
         "cases": cases,
