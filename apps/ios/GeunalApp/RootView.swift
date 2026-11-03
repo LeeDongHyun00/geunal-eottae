@@ -59,7 +59,7 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active: model.appBecameActive()
-            case .background: BackgroundWork.schedule()
+            case .background: Task { await BackgroundWork.schedule() }
             default: break
             }
         }

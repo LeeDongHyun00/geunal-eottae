@@ -22,8 +22,15 @@ final class DeviceCalendarMirrorTests: XCTestCase {
             return state
         }
 
+        /// Runs while the phone lists its calendars, for a change the person makes meanwhile.
+        var whileListing: (@MainActor () async -> Void)?
+
         func calendars() async -> [DeviceCalendarSummary] {
-            phone.map { DeviceCalendarSummary(id: $0.sourceId, name: $0.name, eventCount: $0.events.count) }
+            if let whileListing {
+                self.whileListing = nil
+                await whileListing()
+            }
+            return phone.map { DeviceCalendarSummary(id: $0.sourceId, name: $0.name, eventCount: $0.events.count) }
         }
 
         func read(_ ids: [String]) async -> [DeviceCalendarInput] {
@@ -153,6 +160,39 @@ final class DeviceCalendarMirrorTests: XCTestCase {
         XCTAssertEqual(try mirroredNames(core), ["회사": 3])
     }
 
+    func testRefreshShowsTheSwitchOnceCalendarsAreAllowedInSettings() async throws {
+        let core = try makeCore()
+        let phone = phone()
+        phone.state = .denied
+        let mirror = DeviceCalendarMirror(core: core, source: phone)
+        await mirror.load()
+        XCTAssertEqual(mirror.access, .denied)
+        XCTAssertEqual(mirror.calendars, [])
+
+        // "설정에서 켜기", allowed there, and back to the screen that stayed open.
+        phone.state = .granted
+        await mirror.refresh()
+
+        XCTAssertEqual(mirror.access, .granted)
+        XCTAssertEqual(mirror.calendars.map(\.id), ["work", "family"])
+        XCTAssertFalse(mirror.isOn)
+        XCTAssertEqual(try mirroredNames(core), [:])
+    }
+
+    func testSwitchingOffDuringARefreshKeepsTheMirrorEmpty() async throws {
+        let core = try makeCore()
+        let phone = phone()
+        let mirror = DeviceCalendarMirror(core: core, source: phone)
+        _ = await mirror.importAll()
+
+        // The refresh has read which calendars are mirrored when the person switches importing off.
+        phone.whileListing = { await mirror.setOn(false) }
+        await mirror.refresh()
+
+        XCTAssertFalse(mirror.isOn)
+        XCTAssertEqual(try mirroredNames(core), [:])
+    }
+
     /// Counts the mirror's writes over a store of its own.
     private final class CountingCore: Core, @unchecked Sendable {
         private(set) var writes = 0
@@ -230,5 +270,17 @@ final class DeviceCalendarMirrorTests: XCTestCase {
         XCTAssertEqual(timed.end, DayTime(day: "2026-10-30", minute: 19 * 60))
         XCTAssertEqual(
             DeviceEventDates.occurrenceId(event: "E1", start: nine), "E1@1793350800")
+    }
+
+    func testAllDayDaysAreGregorianOnAPhoneSetToAnotherCalendar() throws {
+        var buddhist = Calendar(identifier: .buddhist)
+        buddhist.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Seoul"))
+        let start = try XCTUnwrap(KoreanCalendar.start(of: "2026-11-03"))
+
+        let allDay = DeviceEventDates.input(
+            id: "a", title: "휴가", allDay: true, start: start, end: start.addingTimeInterval(86_400), local: buddhist)
+
+        XCTAssertEqual(allDay.start, DayTime(day: "2026-11-03", minute: 0))
+        XCTAssertEqual(allDay.end, DayTime(day: "2026-11-03", minute: 0))
     }
 }

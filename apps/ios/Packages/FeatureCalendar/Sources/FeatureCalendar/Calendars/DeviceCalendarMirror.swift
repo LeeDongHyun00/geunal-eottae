@@ -56,6 +56,11 @@ public final class DeviceCalendarMirror {
     /// What the core holds since this model last wrote it: coming to the front reads the phone again, and an unchanged
     /// phone writes nothing, so the views and the alerts are not read again for nothing.
     @ObservationIgnored private var written: [DeviceCalendarInput]?
+    /// Counts the person's changes (the switch, a checkbox, onboarding's import). A refresh that read the phone before
+    /// one of them writes nothing, or it would mirror again what was just switched off.
+    @ObservationIgnored private var choices = 0
+    /// The last write handed to the core; each waits for it, so writes land in the order they were made.
+    @ObservationIgnored private var lastWrite: Task<Void, Never>?
 
     public init(core: any CoreProtocol, source: any DeviceCalendarSource) {
         self.core = core
@@ -90,6 +95,7 @@ public final class DeviceCalendarMirror {
     /// off; off empties the mirror and keeps the ticks for the dimmed list.
     public func setOn(_ on: Bool) async {
         guard on != isOn, !isWorking else { return }
+        choices += 1
         if !on {
             if await mirror([]) {
                 isOn = false
@@ -114,6 +120,7 @@ public final class DeviceCalendarMirror {
     /// A checkbox. Unticking the last calendar turns the mirror off, as the core does with an empty list.
     public func toggle(_ id: String) async {
         guard isOn, !isWorking else { return }
+        choices += 1
         var next = selected
         if next.contains(id) {
             next.remove(id)
@@ -130,6 +137,7 @@ public final class DeviceCalendarMirror {
     /// Onboarding's "가져오기" after the system said yes: every calendar on the phone. The count is what the card says,
     /// "가져왔어요 · 캘린더 3개"; `nil` when the core refused.
     public func importAll() async -> Int? {
+        choices += 1
         access = source.access()
         guard access == .granted else { return nil }
         calendars = await source.calendars()
@@ -141,14 +149,22 @@ public final class DeviceCalendarMirror {
     }
 
     /// The phone's calendars may have changed: read the mirrored ones again. A calendar deleted on the phone drops
-    /// out of the mirror, and nothing happens while the mirror is off or the access was taken back in Settings.
+    /// out of the mirror, and nothing is written while the mirror is off or the access was taken back in Settings.
+    /// The access and the list are read again too, so a screen left open while the person allowed calendars in
+    /// Settings shows the switch on coming back.
     public func refresh() async {
         await coalescer.run { [self] in
-            guard source.access() == .granted else { return }
+            let started = choices
+            access = source.access()
+            guard access == .granted else {
+                calendars = []
+                return
+            }
             let mirrored = await mirrored()
+            let present = await source.calendars()
+            calendars = present
             guard !mirrored.isEmpty else { return }
-            let present = await source.calendars().map(\.id)
-            _ = await mirror(present.filter(mirrored.contains))
+            _ = await mirror(present.map(\.id).filter(mirrored.contains), unlessChangedSince: started)
         }
     }
 
@@ -156,24 +172,34 @@ public final class DeviceCalendarMirror {
         source.openSettings()
     }
 
-    private func mirror(_ ids: [String]) async -> Bool {
+    /// `unlessChangedSince` is the count of the person's changes a refresh started from: when it moved meanwhile,
+    /// the refresh's reading is stale and nothing is written.
+    private func mirror(_ ids: [String], unlessChangedSince started: Int? = nil) async -> Bool {
         isWorking = true
         defer { isWorking = false }
         let inputs = ids.isEmpty ? [] : await source.read(ids)
-        if inputs == written {
-            failed = false
-            return true
-        }
+        let before = lastWrite
         let core = self.core
-        do {
-            _ = try await offMain { try core.mirrorDeviceCalendars(calendars: inputs) }
-            written = inputs
-            failed = false
-            return true
-        } catch {
-            failed = true
-            return false
+        let write = Task { @MainActor [weak self] () -> Bool in
+            await before?.value
+            guard let self else { return false }
+            if let started, started != self.choices { return false }
+            if inputs == self.written {
+                self.failed = false
+                return true
+            }
+            do {
+                _ = try await offMain { try core.mirrorDeviceCalendars(calendars: inputs) }
+                self.written = inputs
+                self.failed = false
+                return true
+            } catch {
+                self.failed = true
+                return false
+            }
         }
+        lastWrite = Task { _ = await write.value }
+        return await write.value
     }
 }
 
@@ -194,8 +220,12 @@ public enum DeviceEventDates {
             return DeviceEventInput(
                 deviceEventId: id, title: title, allDay: false, start: korean(start), end: korean(end))
         }
-        let first = day(start, in: local)
-        let last = max(first, day(end.addingTimeInterval(-1), in: local))
+        // The phone's time zone, but always the Gregorian calendar: a phone set to the Buddhist or Japanese calendar
+        // would otherwise give the core 2569-11-03 for 2026-11-03.
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = local.timeZone
+        let first = day(start, in: gregorian)
+        let last = max(first, day(end.addingTimeInterval(-1), in: gregorian))
         return DeviceEventInput(
             deviceEventId: id, title: title, allDay: true, start: DayTime(day: first, minute: 0),
             end: DayTime(day: last, minute: 0))
