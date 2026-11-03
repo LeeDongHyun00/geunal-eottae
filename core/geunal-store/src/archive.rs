@@ -298,6 +298,12 @@ impl Db<'_> {
         // writing side must still not turn someone a group shared into a person of mine.
         let people: Vec<&Person> = archive.people.iter().filter(|p| OWN_SOURCES.contains(&p.source.as_str())).collect();
         for p in &people {
+            // A contact id means something only on the phone whose address book made it (Android's CONTACT_ID counts
+            // rows from 1 on each phone, iOS identifiers differ between phones). Matched against another phone's
+            // contacts it would make a later import overwrite someone else. It stays only where this store already
+            // holds the same person under it; elsewhere a later import adds the contact as a new person.
+            let here =
+                self.person(&p.id)?.and_then(|row| row.contact_id).filter(|id| p.contact_id.as_ref() == Some(id));
             self.put_person(&PersonRow {
                 id: p.id.clone(),
                 name: p.name.clone(),
@@ -310,7 +316,7 @@ impl Db<'_> {
                 group_id: None,
                 alert: p.alert.clone(),
                 suggest: p.suggest,
-                contact_id: p.contact_id.clone(),
+                contact_id: here,
             })?;
         }
         for (key, value) in &archive.settings {

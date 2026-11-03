@@ -213,6 +213,30 @@ fn restoring_merges_into_a_store_and_replaces_the_empty_default_calendar() {
 }
 
 #[test]
+fn keeps_a_contact_id_only_on_the_store_that_already_matched_that_person_to_it() {
+    let (_a, source) = open();
+    let archive = source
+        .write(|db| {
+            fill(db);
+            db.archive("2026-10-26T13:05:00+09:00")
+        })
+        .unwrap();
+    assert_eq!(archive.people.iter().find(|p| p.id == "p-minsu").unwrap().contact_id.as_deref(), Some("contact-7"));
+
+    // Another phone: "contact-7" there is somebody else, so the restored person carries no contact id and a later
+    // import adds that contact as a new person instead of overwriting 민수.
+    let (_b, other) = open();
+    other.write(|db| db.restore_archive(&archive)).unwrap();
+    let minsu = other.read(|db| db.person("p-minsu")).unwrap().unwrap();
+    assert_eq!((minsu.name.as_str(), minsu.contact_id), ("민수", None));
+    assert!(other.read(|db| db.person_by_contact("contact-7")).unwrap().is_none());
+
+    // The phone that made the backup, signing back in: 민수 is still its contact-7.
+    source.write(|db| db.restore_archive(&archive)).unwrap();
+    assert_eq!(source.read(|db| db.person("p-minsu")).unwrap().unwrap().contact_id.as_deref(), Some("contact-7"));
+}
+
+#[test]
 fn discarding_removes_own_data_and_keeps_device_calendars() {
     let (_dir, store) = open();
     store
