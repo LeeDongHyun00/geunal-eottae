@@ -48,6 +48,9 @@ services:
       # URLs need no separate address.
       GEUNAL_S3_ENDPOINT: https://kr.object.ncloudstorage.com
       GEUNAL_S3_BACKUPS_BUCKET: geunal-alpha-backups
+      # Apple sign-in's public half; the key ID and .p8 key are in api.env. Apple stays off until all four are set.
+      GEUNAL_AUTH_APPLE_TEAM_ID: BT6XQAVMKW
+      GEUNAL_AUTH_APPLE_REDIRECT_URI: https://${GEUNAL_API_HOST:-api.geunaleottae.com}/auth/apple/callback
       # The 256 MB heap of infra.md §2; -Xmx wins over the image's MaxRAMPercentage.
       JAVA_TOOL_OPTIONS: -Xmx256m
     # Loopback only: the internet reaches the API through Caddy, and the operator through SSH.

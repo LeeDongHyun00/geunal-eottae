@@ -31,6 +31,15 @@ GEUNAL_ALPHA_SSH=root@<서버 주소> GEUNAL_ALPHA_SSH_KEY=~/.ssh/<키> GEUNAL_A
   - 처음 부트스트랩할 때 서버에서 만들어서 서버 밖으로 나가지 않습니다.
   - M1의 제공자 키(카카오, Apple)와 백업용 Object Storage 키(`GEUNAL_S3_ACCESS_KEY`, `GEUNAL_S3_SECRET_KEY`)도 `api.env`에 줄로 더합니다. 부트스트랩은 없는 줄만 더하므로 손으로 넣은 줄은 남습니다. 백업 키가 없으면 부트스트랩이 경고합니다.
   - `dump.env`: 덤프를 서버 밖으로 올리는 설정(아래 "서버 밖 DB 덤프").
+  - 손으로 넣는 `api.env` 줄(#62, #69). 값이 없으면 그 기능만 꺼지고 서버는 뜹니다.
+
+    | 줄 | 없으면 |
+    | --- | --- |
+    | `GEUNAL_AUTH_KAKAO_APP_KEY`, `GEUNAL_AUTH_KAKAO_ADMIN_KEY` | 카카오 로그인이 404 |
+    | `GEUNAL_AUTH_APPLE_KEY_ID`, `GEUNAL_AUTH_APPLE_PRIVATE_KEY`(.p8 PEM, 줄바꿈은 `\n`) | Apple 로그인이 404. .p8을 읽지 못하면 서버가 시작하지 않음 |
+    | `GEUNAL_S3_ACCESS_KEY`, `GEUNAL_S3_SECRET_KEY` | 백업 요청이 실패 |
+
+    Apple 팀 ID와 반환 주소, 저장소 주소와 버킷은 비밀이 아니어서 `compose.yml`에 있습니다. `GEUNAL_AUTH_STUB`은 넣지 않습니다.
   - PostgreSQL 볼륨을 둔 채 이 디렉터리를 지우면 새 비밀번호가 기존 DB와 맞지 않습니다.
 - `/var/backups/geunal`: DB 덤프(7일).
 
