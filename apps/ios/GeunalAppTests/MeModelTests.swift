@@ -528,6 +528,28 @@ final class MeModelTests: XCTestCase {
         XCTAssertEqual(core.calls.current, ["nonce", "delete", "nonce", "delete"])
     }
 
+    func testAPressThatOutlivesItsSheetKeepsNoProof() async {
+        let core = AccountFakeCore()
+        core.deleteErrors.update { $0 = [.Network(reason: "timed out")] }
+        let owner = FakeDeviceOwner()
+        let providers = FakeProviders()
+        let model = deletion(core, owner, account: kakao, providers: providers)
+        // The sheet is swiped away while the deletion waits for its answer, which then never comes.
+        core.whileDeleting = { await model.sheetClosed() }
+
+        let first = await model.delete(online: true)
+        core.whileDeleting = nil
+
+        XCTAssertFalse(first)
+        XCTAssertNil(model.problem)
+        // The reopened sheet asks the OS and Kakao again rather than sending the earlier proof.
+        let second = await model.delete(online: true)
+        XCTAssertTrue(second)
+        XCTAssertEqual(owner.asked, [.deleteAccount, .deleteAccount])
+        XCTAssertEqual(providers.nonces, ["p1", "p1"])
+        XCTAssertEqual(core.calls.current, ["nonce", "delete", "nonce", "delete"])
+    }
+
     func testAnAccountAlreadyGoneEndsAsDeleted() async {
         let core = AccountFakeCore()
         core.deleteErrors.update { $0 = [accountDeleted] }

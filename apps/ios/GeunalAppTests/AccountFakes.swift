@@ -79,7 +79,9 @@ final class AccountFakeCore: Core, @unchecked Sendable {
         calls.update { $0.append(call) }
     }
 
-    override func session() -> Session? { nil }
+    /// The session the core holds; `nil` (signed out) unless a test signs in.
+    var signedIn: Session?
+    override func session() -> Session? { signedIn }
 
     /// The account on this device; `nil` until a test sets one.
     var accountView: AccountView?
@@ -194,9 +196,13 @@ final class AccountFakeCore: Core, @unchecked Sendable {
 
     override func setAutoBackup(enabled: Bool) throws { record("auto \(enabled)") }
 
+    /// Runs while a deletion is on its way, for a sheet that closes before the answer.
+    var whileDeleting: (@Sendable () async -> Void)?
+
     override func deleteAccount(proof: DeletionProof) async throws {
         record("delete")
         lastProof.update { $0 = proof }
+        await whileDeleting?()
         var next: CoreError?
         deleteErrors.update { errors in
             if !errors.isEmpty {

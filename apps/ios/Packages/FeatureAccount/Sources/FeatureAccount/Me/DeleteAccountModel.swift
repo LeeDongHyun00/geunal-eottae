@@ -45,6 +45,8 @@ public final class DeleteAccountModel {
     /// The proof of a deletion whose answer was lost, sent again before anything is asked anew (decision 36). In
     /// memory only, and only while the sheet is open (docs/security/app-review.md §4).
     @ObservationIgnored private var sentProof: DeletionProof?
+    /// Counts the sheet's closings, so a press still waiting when its sheet closed keeps nothing for the next one.
+    @ObservationIgnored private var presentation = 0
 
     public init(
         core: any CoreProtocol, providers: any ProviderSignIn, owner: any DeviceOwnerCheck, account: AccountView?
@@ -87,6 +89,8 @@ public final class DeleteAccountModel {
             isWorking = false
             preparing = false
         }
+        // A press that outlives its sheet must not hand the next sheet a proof or a passed OS prompt (app-review.md §4).
+        let attempt = presentation
         if let proof = sentProof {
             // The account was still there after a lost answer: the first proof goes again before anything is asked
             // anew (decision 36). A proof the server already took answers reauth_required, and only then the sheet
@@ -98,18 +102,21 @@ public final class DeleteAccountModel {
                 deleted = true
                 return true
             } catch is AnswerLost {
+                guard presentation == attempt else { return false }
                 sentProof = proof
                 problem = .answerLost
                 return false
             } catch CoreError.ReauthRequired {
                 ownerConfirmed = false
             } catch {
+                guard presentation == attempt else { return false }
                 problem = .failed
                 return false
             }
+            guard presentation == attempt else { return false }
         }
         if !ownerConfirmed {
-            guard await owner.confirm(.deleteAccount) else { return false }
+            guard await owner.confirm(.deleteAccount), presentation == attempt else { return false }
             ownerConfirmed = true
         }
         problem = nil
@@ -120,6 +127,8 @@ public final class DeleteAccountModel {
             try await send(made)
             deleted = true
             return true
+        } catch _ where presentation != attempt {
+            // The sheet closed meanwhile: what this press learned stays with it.
         } catch is AnswerLost {
             sentProof = proof
             problem = .answerLost
@@ -158,6 +167,7 @@ public final class DeleteAccountModel {
     /// sheet asks the OS again. A deletion left without its answer stays unknown until a call reaches the server; the
     /// next press proves the account afresh.
     public func sheetClosed() {
+        presentation += 1
         ownerConfirmed = false
         sentProof = nil
         if problem == .answerLost || problem == .notDeleted {

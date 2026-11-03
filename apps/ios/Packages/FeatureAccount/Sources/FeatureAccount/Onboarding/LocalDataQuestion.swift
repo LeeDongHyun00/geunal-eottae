@@ -23,12 +23,16 @@ public final class LocalDataQuestion {
     }
 
     /// Asks when another account's events are on the device, and goes on to `next` at once otherwise. The sheet only
-    /// closes with an answer, so `next` waits for it.
+    /// closes with an answer, so `next` waits for it. Without a session there is nothing to ask yet: the core keeps the
+    /// store's owner after a deletion or a sign-out but takes an answer only for a signed-in account, so the question
+    /// waits until the next account is registered.
     public func ask(then next: @escaping @MainActor () -> Void) async {
         guard asking == nil, !isWorking else { return }
         isWorking = true
         let core = self.core
-        let local = await Task.detached { (try? core.localDataOfOtherAccount()) ?? nil }.value
+        let local = await Task.detached {
+            core.session() == nil ? nil : ((try? core.localDataOfOtherAccount()) ?? nil)
+        }.value
         isWorking = false
         guard let local else {
             next()

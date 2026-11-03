@@ -17,8 +17,24 @@ final class LocalDataQuestionTests: XCTestCase {
         XCTAssertNil(question.asking)
     }
 
+    func testWaitsForASessionBeforeAsking() async {
+        // After a deletion or a sign-out the core still knows the old owner's events, but takes an answer only from a
+        // signed-in account; asking now would hold onboarding on a sheet whose answers both fail.
+        let core = AccountFakeCore()
+        core.otherAccountData = LocalData(events: 86, people: 5)
+        let question = LocalDataQuestion(core: core, notify: { _ in })
+        let wentOn = Locked(false)
+
+        await question.ask { wentOn.update { $0 = true } }
+
+        XCTAssertTrue(wentOn.current)
+        XCTAssertNil(question.asking)
+        XCTAssertEqual(core.settled.current, [])
+    }
+
     func testAsksThenSettlesTheAnswerAndGoesOn() async {
         let core = AccountFakeCore()
+        core.signedIn = Session(userId: "u2", deviceId: "d1")
         core.otherAccountData = LocalData(events: 86, people: 5)
         let question = LocalDataQuestion(core: core, notify: { _ in })
         let wentOn = Locked(false)
@@ -36,6 +52,7 @@ final class LocalDataQuestionTests: XCTestCase {
 
     func testKeepsAskingWhenTheAnswerCouldNotBeSaved() async {
         let core = AccountFakeCore()
+        core.signedIn = Session(userId: "u2", deviceId: "d1")
         core.otherAccountData = LocalData(events: 1, people: 0)
         core.settleError = .Store(reason: "full")
         let toasts = ToastLog()
