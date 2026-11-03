@@ -52,5 +52,5 @@ PR에서는 `plan` 결과를 검토하고, 머지한 뒤 적용합니다(인프�
 
 ## 아직 없는 것
 
-- 버킷 수명 규칙(`media-chat` 31일, `access-logs` 92일 등): 제공자 4.0.7에 리소스가 없습니다. M3에서 S3 API로 넣습니다(후보: `aws` 제공자를 NCP 엔드포인트에 붙여 `aws_s3_bucket_lifecycle_configuration`을 쓰거나, 적용 워크플로의 한 단계로 `PutBucketLifecycleConfiguration` 호출).
+- 버킷 수명 규칙(`media-chat` 31일, `access-logs` 92일 등): 제공자 4.0.7에 리소스가 없습니다. `access-logs`의 92일 규칙은 알파에서 `infra/alpha/bucket-lifecycle.sh`가 S3 API로 겁니다. 나머지는 M3에서 S3 API로 넣습니다(후보: `aws` 제공자를 NCP 엔드포인트에 붙여 `aws_s3_bucket_lifecycle_configuration`을 쓰거나, 적용 워크플로의 한 단계로 `PutBucketLifecycleConfiguration` 호출).
 - Secret Manager, Global DNS, Certificate Manager, 로드 밸런서, 관리형 DB·캐시: 각 단계에서 모듈을 더합니다(인프라 11장).

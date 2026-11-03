@@ -1,0 +1,72 @@
+# iOS release: builds the app from main, signs it in the cloud with the App Store Connect API key and uploads it to
+# TestFlight (docs/parts/infra.md §5 and §10, infra/release/README.md). It only runs by hand, and the `testflight`
+# environment holds the secrets behind the user's approval, so neither a pull request nor a fork ever sees them
+# (docs/qa.md §5.2 rule 9). The build itself is the app's `make release-ios`.
+name: release-ios
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One upload at a time; a second run waits instead of racing the first for the same build number range.
+concurrency:
+  group: release-ios
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    name: testflight
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    timeout-minutes: 90
+    environment: testflight
+    env:
+      GEUNAL_API_BASE: https://api.geunaleottae.com
+      GEUNAL_APPLE_TEAM_ID: BT6XQAVMKW
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select the pinned Xcode
+        run: apps/ios/scripts/xcode-env.sh >>"$GITHUB_ENV"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .tools
+          key: tools-${{ runner.os }}-${{ hashFiles('scripts/tool.sh') }}
+      # Same key as ios.yml, so a core that CI already built for main is reused rather than built again.
+      - id: core
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: core/out/ios
+          key: core-ios-${{ runner.os }}-${{ hashFiles('core/**', 'apps/ios/.xcode-version') }}
+      - if: steps.core.outputs.cache-hit != 'true'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: core
+          key: ios-release
+      - if: steps.core.outputs.cache-hit != 'true'
+        run: make build-ios
+      # Minutes since 2026-01-01 UTC: always larger than any earlier upload from either workflow, and far below the
+      # limits of CFBundleVersion and Android's versionCode.
+      - name: Number the build
+        run: echo "GEUNAL_BUILD_NUMBER=$(( ($(date -u +%s) - 1767225600) / 60 ))" >>"$GITHUB_ENV"
+      # The key leaves the secret store only as a file the job's user alone can read, and only for this job.
+      - name: Write the App Store Connect key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          umask 077
+          printf '%s\n' "$ASC_KEY_P8" >"$RUNNER_TEMP/asc.p8"
+          echo "GEUNAL_ASC_KEY_PATH=$RUNNER_TEMP/asc.p8" >>"$GITHUB_ENV"
+      - run: make release-ios
+        env:
+          GEUNAL_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          GEUNAL_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          GEUNAL_KAKAO_APP_KEY: ${{ secrets.KAKAO_APP_KEY }}
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/asc.p8"
+      - name: Say which build went up
+        run: echo "Uploaded build $GEUNAL_BUILD_NUMBER of $(git rev-parse --short=12 HEAD) to TestFlight" >>"$GITHUB_STEP_SUMMARY"

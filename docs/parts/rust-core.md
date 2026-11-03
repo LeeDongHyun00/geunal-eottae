@@ -390,6 +390,7 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
   - 티켓은 교체가 성공할 때까지 남습니다. 네트워크 오류로 실패한 `start_fresh`·`restore_from_code`는 다시 부르면 됩니다.
 - **복구 자료 올리기:**
   - 로그인 직후 올리지 못해도 로그인은 그대로 성공합니다. 기기는 이미 등록됐기 때문입니다. `sync()`가 그룹을 따라잡은 뒤 다시 올리고, 네트워크 오류는 다음 `sync()`를 기다리며, 서버가 거절하면 `sync()`의 오류로 돌려줍니다.
+  - 모든 업로드(다시 보내기 포함)에 코어가 기기 서명 키로 문장·nonce·올리는 자료에 서명해 붙입니다(protocol.md 10장 "기기 키의 서명"). 문장은 `new_key`면 `"geunal new key v1"`, 아니면 `"geunal recovery upload v1"`이고, nonce는 카카오 증명이 있으면 그 값, 없으면 새로 받은 값입니다. 앱이 할 일은 없습니다.
   - 서버에 이미 자료가 있으면(앞선 업로드가 저장됐는데 답만 잃은 경우) 같은 코드의 증명을 붙여 다시 보냅니다. 409 `recovery_conflict`면 `E`를 한 번 새로 만듭니다.
   - "백업 없이 새로 시작"이 만든 코드는 올라갈 때까지 `new_key`로 보냅니다. 서버는 제공자 로그인 뒤 30분 안에만 받으므로, `start_fresh`는 실패를 바로 돌려줍니다.
   - 30분이 지나 `new_key`가 403 `reauth_required`를 받아도, 같은 코드의 증명으로 한 번 더 보냅니다. 답만 잃은 앞선 시도가 이 코드를 저장했으면 이것으로 올라갑니다. 서버의 자료가 다른 코드일 때(403 `recovery_proof_required`)만 새 코드를 지웁니다.
@@ -416,6 +417,7 @@ M1은 `core/geunal-store/migrations/0002_m1.sql`로 다음을 더합니다. 모�
 - **계정 삭제(`delete_account(proof)`):** `DELETE /me`에 계정 종류의 증명을 붙입니다(protocol.md 13장 "계정 삭제").
   - 게스트(`DeletionProof::Guest`)는 코어가 새 nonce를 받아 이 기기의 코드에서 나온 복구 서명 키로 서명합니다. 사용자에게 묻지 않습니다. 서명할 코드가 기기에 없으면 `Invalid`입니다.
   - 카카오는 `sign_in_nonce`의 `provider_nonce`로 받은 ID 토큰과 그 `nonce`, Apple은 새 인가 코드를 그대로 보냅니다.
+  - 모든 종류에 코어가 기기 서명 키로 `"geunal delete v1" ‖ nonce`에 서명해 `device_signature`로 붙입니다. nonce는 게스트·Apple은 코어가 새로 받은 값, 카카오는 증명의 값입니다. 앱이 할 일은 없습니다.
   - 403 `reauth_required`면 `ReauthRequired`이고, 아무것도 지우지 않으며 세션도 그대로입니다. 앱은 증명만 다시 받습니다.
   - 409 `recovery_missing`(복구 자료를 아직 못 올린 게스트)이면 기기의 코드를 먼저 올리고 한 번 더 지웁니다(디자인 22번 화면). 그래도 안 되면 `RecoveryMissing`입니다.
   - 204를 받으면 기기 해제 때와 같은 것(세션, 기기 서명 키, `E`, AMK, 그룹 상태, 계정을 따라가는 설정)을 지우고, 해제 기록은 남기지 않습니다. 알파 통계는 끄고 기기의 숫자를 지웁니다. 계정이 지워졌으니 새 계정은 다시 동의를 받습니다.
@@ -705,8 +707,6 @@ pub fn open(key: &[u8; 32], aad: &str, blob: &[u8]) -> Option<Vec<u8>> {
 - `applies a shift template to three days as three ordinary events`
 - `treats an end time before the start time as a shift past midnight`
 - `rounds an 18:10-19:20 event to the 18:00-19:30 slots`
-- `leaves calendars flagged blocks_free = 0 out of the group bitmap`
-- `counts timed appointments as busy and untimed ones as free`
 - `ranks weekday work above a weekend outing on a Tuesday`
 - `suggests a birthday meetup within seven days of a registered birthday`
 - `converts a lunar birthday to this year's solar date before suggesting`
@@ -714,6 +714,10 @@ pub fn open(key: &[u8; 32], aad: &str, blob: &[u8]) -> Option<Vec<u8>> {
 - `offers to make a title recurring after three same-weekday uses`
 - `marks substitute holidays and accepts two holidays on one date`
 - `suggests one leave day that bridges a holiday into a 4-day weekend`
+
+가용 시간 올리기(M2, 5장 "가용 시간 올리기"와 함께 만듦)
+- `leaves calendars flagged blocks_free = 0 out of the group bitmap`
+- `counts timed appointments as busy and untimed ones as free`
 
 그룹 캘린더
 - `counts free members per 30-minute slot without any threshold`
@@ -764,6 +768,6 @@ MLS와 동기화
 | --- | --- |
 | M0 | 위 목록 중 캘린더 반복·그룹 캘린더·투표·MLS 항목 통과. iOS·안드로이드 타깃 빌드와 SQLCipher 동작. 헤드리스 종단 시험(클라이언트 3개, 로컬 API·게이트웨이) 통과. 테스트 벡터 게시. mls-rs와 OpenMLS 비교 메모를 `docs/adr/`에 기록 |
 | M1 | 캘린더·추천·백업·복원 항목 통과. 크기 예산 충족 |
-| M2 | 날짜 잡기·투표·그룹 설정·외부 가입·상태 재봉인 항목 통과. 성능 예산 충족 |
+| M2 | 날짜 잡기·투표·가용 시간 올리기·그룹 설정·외부 가입·상태 재봉인 항목 통과. 성능 예산 충족 |
 | M3 | 채팅·첨부·`decrypt_push` 항목 통과. 실기기에서 알림 확장 메모리 예산 확인 |
 | M4 | 외부 리뷰 지적 반영. 퍼징 24시간 무중단 |

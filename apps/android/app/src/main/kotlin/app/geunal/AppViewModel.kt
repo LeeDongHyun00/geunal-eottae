@@ -26,6 +26,8 @@ sealed interface AppPhase {
     /** The core did not open. Nothing on the device works without it, so the screen says so and offers a retry. */
     data class Failed(
         val reason: StartFailure,
+        /** "다시 시도" is opening the core again; the screen stays up with its button saying "여는 중…". */
+        val retrying: Boolean = false,
     ) : AppPhase
 
     data object Onboarding : AppPhase
@@ -61,27 +63,34 @@ class AppViewModel(
         private set
     private var foregroundWaiting = false
 
+    /** Between [start] and the core's answer: a second tap of "다시 시도" must not open the store twice at once. */
+    private var opening = false
+
     init {
         start()
     }
 
     /** Opens the core; "다시 시도" on the failure screen calls it again. */
     fun start() {
-        if (core != null) return
-        _phase.value = AppPhase.Starting
+        if (core != null || opening) return
+        opening = true
+        // A retry keeps the failure screen, its button saying "여는 중…", rather than blanking it while the store opens.
+        val current = _phase.value
+        _phase.value = if (current is AppPhase.Failed) current.copy(retrying = true) else AppPhase.Starting
         viewModelScope.launch {
             val opened =
                 try {
                     withContext(io) { openCore() }
                 } catch (e: CoreException) {
-                    _phase.value = AppPhase.Failed(if (e is CoreException.SecretStore) StartFailure.SECRETS else StartFailure.STORE)
+                    failed(if (e is CoreException.SecretStore) StartFailure.SECRETS else StartFailure.STORE)
                     return@launch
                 } catch (e: InternalException) {
                     // A Rust panic, which UniFFI turns into this. A SecretStore callback that throws arrives as
                     // CoreException.SecretStore instead.
-                    _phase.value = AppPhase.Failed(StartFailure.OTHER)
+                    failed(StartFailure.OTHER)
                     return@launch
                 }
+            opening = false
             val upNext = NextUpModel(opened, io = io)
             core = opened
             nextUp = upNext
@@ -91,6 +100,11 @@ class AppViewModel(
             _phase.value = if (onboarding.isFinished) AppPhase.Main else AppPhase.Onboarding
             if (foregroundWaiting) appBecameActive()
         }
+    }
+
+    private fun failed(reason: StartFailure) {
+        opening = false
+        _phase.value = AppPhase.Failed(reason)
     }
 
     fun finishOnboarding() {

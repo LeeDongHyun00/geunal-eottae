@@ -314,3 +314,21 @@ enum ShiftColors {
         return (template.color.groupColor.tint(tint), tint >= 4 ? .white : GeunalColor.ink)
     }
 }
+
+/// The shift stamp screen for the 나 tab's "교대 템플릿" row (m1.md §2.3), opening on this month.
+public struct ShiftStampScreen: View {
+    @State private var model: ShiftStampModel
+    private let core: any CoreProtocol
+    private let onClose: () -> Void
+
+    public init(core: any CoreProtocol, now: Date = Date(), onClose: @escaping () -> Void) {
+        let month = KoreanCalendar.month(of: KoreanCalendar.day(of: now))
+        _model = State(initialValue: ShiftStampModel(month: month, core: core))
+        self.core = core
+        self.onClose = onClose
+    }
+
+    public var body: some View {
+        ShiftStampView(model: model, core: core) { _ in onClose() }
+    }
+}

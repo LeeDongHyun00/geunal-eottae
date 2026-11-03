@@ -199,3 +199,24 @@ fn state_blobs_json_opens_with_the_pinned_aad_and_format() {
         );
     }
 }
+
+/// device_signatures.json comes from ed25519-dalek in geunal-crypto; the device key the core really signs with is
+/// mls-rs's, which stores the key pair (seed ‖ public key). Both must give the bytes the server checks.
+#[test]
+fn device_signatures_json_is_what_the_mls_signer_makes() {
+    if writing() {
+        return;
+    }
+    let document = read("device_signatures.json");
+    for case in document["cases"].as_array().unwrap() {
+        let public = hex::decode(case["signature_key"].as_str().unwrap()).unwrap();
+        let secret = [hex::decode(case["seed"].as_str().unwrap()).unwrap(), public.clone()].concat();
+        assert_eq!(MlsClient::public_key_of(&secret).unwrap(), public);
+        for kind in ["delete", "recovery_upload", "new_key", "replace"] {
+            let message = hex::decode(case[kind]["message"].as_str().unwrap()).unwrap();
+            let signature = MlsClient::sign_with(&secret, &message).unwrap();
+            assert_eq!(hex::encode(&signature), case[kind]["signature"], "{kind}");
+            assert!(MlsClient::verify(&public, &message, &signature).unwrap());
+        }
+    }
+}
