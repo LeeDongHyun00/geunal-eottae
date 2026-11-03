@@ -48,7 +48,7 @@ class MainScaffoldTest {
         val core = FakeCore()
         compose.setContent {
             GeunalTheme {
-                MainScaffold(nextUp = NextUpModel(core), toasts = toasts) { tab, padding ->
+                MainScaffold(nextUp = NextUpModel(core), toasts = toasts, onOpenEvent = {}) { tab, padding ->
                     when (tab) {
                         MainTab.CALENDAR -> Box(Modifier.fillMaxSize().padding(padding)) { Text("calendar") }
                         MainTab.ME -> MeScreen(core = core, pendingGuest = false, modifier = Modifier.padding(padding))

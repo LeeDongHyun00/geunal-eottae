@@ -119,6 +119,16 @@ class CalendarViewModel(
 
     val today: String get() = KoreanCalendar.day(now())
 
+    /** A new event from ＋ starts today, or on the 1st of another month the month view shows. */
+    fun newEventDay(): String {
+        val state = month.state.value
+        if (_kind.value != CalendarViewKind.MONTH || state.visibleMonth == state.currentMonth) return today
+        return "${state.visibleMonth}-01"
+    }
+
+    /** The shift stamp screen opens on the month on screen, or on this month from the other views. */
+    fun stampMonth(): String = if (_kind.value == CalendarViewKind.MONTH) month.state.value.visibleMonth else KoreanCalendar.month(today)
+
     suspend fun reload() {
         month.reload()
         week.reload()
