@@ -20,6 +20,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -113,6 +114,9 @@ private fun NextUpSlot(
     toastShown: Boolean,
     onOpen: (UpNext) -> Unit,
 ) {
+    val state by nextUp.state.collectAsState()
+    // Back from a cover over the tabs, 알림 설정 among them: the bar reads its switch and the core again.
+    LaunchedEffect(nextUp) { nextUp.refresh() }
     Box(
         Modifier
             .fillMaxWidth()
@@ -120,7 +124,7 @@ private fun NextUpSlot(
             .padding(bottom = Metrics.NextUpBar.gapAboveTabBar),
     ) {
         AnimatedVisibility(
-            visible = !toastShown,
+            visible = !toastShown && state.shown,
             enter = fadeIn(tween(Motion.TOAST_OUT_MS)),
             exit = fadeOut(tween(Motion.TOAST_IN_MS)),
         ) {
