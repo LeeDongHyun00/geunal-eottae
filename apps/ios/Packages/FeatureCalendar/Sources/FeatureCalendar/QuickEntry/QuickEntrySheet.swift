@@ -1,6 +1,7 @@
 import DesignSystem
 import GeunalCore
 import SwiftUI
+import UIKit
 
 /// The quick entry sheet (m1.md screen 5, boards/QuickEntry): the day as the title, five suggestion chips that save
 /// at once, then a title and a range on the 0–24 strip, with the calendar and repeat chips and "저장" at the bottom.
@@ -19,7 +20,9 @@ struct QuickEntrySheet: View {
     @FocusState private var titleFocused: Bool
     @ScaledMetric(relativeTo: .body) private var height: CGFloat = 552
     @ScaledMetric(relativeTo: .body) private var eventRow: CGFloat = 44
-    @ScaledMetric(relativeTo: .body) private var eventHeader: CGFloat = 32
+    /// The content's own height and the bottom row's, measured, so the sheet ends where its content does.
+    @State private var contentHeight: CGFloat?
+    @State private var bottomRowHeight: CGFloat?
 
     init(
         model: QuickEntryModel, actions: EventActions, onMore: @escaping (EventInput) -> Void,
@@ -31,11 +34,16 @@ struct QuickEntrySheet: View {
         self.onEvent = onEvent
     }
 
-    /// 552 grows by the list (m1.md screen 5 "높이"); past what the screen allows, the system keeps the sheet at its
-    /// largest and the content scrolls.
+    /// The sheet is as tall as its content (m1.md screen 5 "높이"): 552 before the first layout, then what the
+    /// header, the day's list, the chips and the typed part take. A fixed 552 plus the list left a gap above the
+    /// bottom row when the day had no suggestions. Past 90% of the screen it stays there and the content scrolls.
     private var sheetHeight: CGFloat {
-        guard !model.events.isEmpty else { return height }
-        return height + eventHeader + 18 + eventRow * CGFloat(model.listedEvents.count)
+        guard let contentHeight, let bottomRowHeight else { return height }
+        let window = UIApplication.shared.connectedScenes.lazy.compactMap { $0 as? UIWindowScene }
+            .compactMap(\.keyWindow).first
+        let measured = contentHeight + bottomRowHeight + (window?.safeAreaInsets.bottom ?? 0)
+        guard let screen = window?.bounds.height else { return measured }
+        return min(measured, screen * 0.9)
     }
 
     var body: some View {
@@ -49,9 +57,13 @@ struct QuickEntrySheet: View {
             }
             .padding(.horizontal, Metrics.Sheet.Padding.side)
             .padding(.top, Space.l)
+            .padding(.bottom, Space.m)
+            .onGeometryChange(for: CGFloat.self, of: \.size.height) { contentHeight = $0 }
         }
         .scrollBounceBehavior(.basedOnSize)
-        .safeAreaInset(edge: .bottom) { bottomRow }
+        .safeAreaInset(edge: .bottom) {
+            bottomRow.onGeometryChange(for: CGFloat.self, of: \.size.height) { bottomRowHeight = $0 }
+        }
         .task { await model.load() }
         .sheetChrome(height: sheetHeight)
     }
