@@ -60,6 +60,9 @@ services:
       # Apple sign-in's public half; the key ID and .p8 key are in api.env. Apple stays off until all four are set.
       GEUNAL_AUTH_APPLE_TEAM_ID: BT6XQAVMKW
       GEUNAL_AUTH_APPLE_REDIRECT_URI: https://${GEUNAL_API_HOST:-api.geunaleottae.com}/auth/apple/callback
+      # Health turns DOWN below 1 GB free on the 10 GB disk, which the outside watch (watch.sh) reports before the
+      # database or Docker run out of room.
+      MANAGEMENT_HEALTH_DISKSPACE_THRESHOLD: 1GB
       # The 256 MB heap of infra.md §2; -Xmx wins over the image's MaxRAMPercentage.
       JAVA_TOOL_OPTIONS: -Xmx256m
     # Loopback only: the internet reaches the API through Caddy, and the operator through SSH.
