@@ -18,13 +18,15 @@ data class ErrorBody(
 
 /**
  * An error from the protocol §11 table, such as 409 `epoch_conflict` or 410 `cursor_expired`. [details] are the extra
- * fields a code carries next to `error` and `message`, such as `replaced_at` on 403 `device_revoked`.
+ * fields a code carries next to `error` and `message`, such as `replaced_at` on 403 `device_revoked`; [headers] go on
+ * the response, such as `Retry-After` on 429 `rate_limited`.
  */
 class ApiException(
     val status: HttpStatus,
     val code: String,
     message: String,
     val details: Map<String, String> = emptyMap(),
+    val headers: Map<String, String> = emptyMap(),
 ) : RuntimeException(message) {
     companion object {
         fun invalid(message: String) = ApiException(HttpStatus.BAD_REQUEST, "invalid_request", message)
@@ -45,7 +47,11 @@ class ErrorHandler {
     private val log = LoggerFactory.getLogger(ErrorHandler::class.java)
 
     @ExceptionHandler(ApiException::class)
-    fun handle(e: ApiException): ResponseEntity<Any> = ResponseEntity.status(e.status).body(body(e))
+    fun handle(e: ApiException): ResponseEntity<Any> =
+        ResponseEntity
+            .status(e.status)
+            .apply { e.headers.forEach { (name, value) -> header(name, value) } }
+            .body(body(e))
 
     /** A body Jackson could not bind: wrong type, missing field, bad base64. The message may quote the body, so it stays out of the log. */
     @ExceptionHandler(HttpMessageNotReadableException::class)

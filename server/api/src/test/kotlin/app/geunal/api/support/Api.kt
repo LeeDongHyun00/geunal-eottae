@@ -32,13 +32,14 @@ class Api(
         if (body != null) request.contentType(MediaType.APPLICATION_JSON).body(mapper.writeValueAsString(body))
         val response = request.retrieve().toEntity(String::class.java)
         val json = response.body?.takeIf { it.isNotBlank() }?.let { mapper.readTree(it) }
-        return Reply(response.statusCode.value(), json)
+        return Reply(response.statusCode.value(), json, response.headers)
     }
 }
 
 data class Reply(
     val status: Int,
     val json: JsonNode?,
+    val headers: HttpHeaders = HttpHeaders(),
 ) {
     fun expect(status: Int): Reply {
         assertThat(this.status).describedAs("status of %s", this).isEqualTo(status)

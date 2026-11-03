@@ -72,4 +72,9 @@ fun TestStack.register(registry: DynamicPropertyRegistry) {
     registry.add("spring.datasource.password") { postgres.password }
     registry.add("spring.data.redis.host") { redisHost }
     registry.add("spring.data.redis.port") { redisPort }
+    registry.add("geunal.s3.endpoint") { s3Endpoint }
+    registry.add("geunal.s3.region") { "us-east-1" }
+    registry.add("geunal.s3.access-key") { TestStack.S3_ACCESS_KEY }
+    registry.add("geunal.s3.secret-key") { TestStack.S3_SECRET_KEY }
+    registry.add("geunal.s3.backups-bucket") { TestStack.BACKUPS_BUCKET }
 }

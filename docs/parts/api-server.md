@@ -375,6 +375,7 @@ CREATE TABLE holidays (
 | --- | --- |
 | `V2__welcome_seq.sql` | `welcomes.seq`: 그 기기를 넣은 Add 커밋의 순번. 새 멤버가 로그를 그 자리부터 읽습니다 |
 | `V3__m1_sign_in.sql` | M1 로그인. `provider_links`: 카카오·Apple 계정과의 연결과 끊긴 시각(`users`의 `kakao_sub`·`apple_sub`를 옮기고 지움, 게스트는 연결이 없음). `replace_tickets`: 교체 티켓의 SHA-256. `devices.provider_auth_at`(제공자 로그인 30분 창)과 `replaced_via`(해제된 기기가 받는 교체 방식). `sessions.spent_at`(리프레시 토큰 재사용 감지). `recovery`는 `kdf_salt`를 빼고 복구 ID·복구 공개키를 더함 |
+| `V4__m1_recovery_backups_deletion.sql` | 백업의 `completed_at`(완료 전에는 목록에 없음)과 크기 제한(64MiB). `object_deletions.bucket`(버킷 짧은 이름). 계정 삭제의 자리표시자: `users.deleted_at`, 닉네임·만 14세 확인 시각을 비울 수 있게 함. `provider_revocations`: 카카오 연결 끊기와 Apple 토큰 철회의 재시도. `deleted_sessions`: 지운 계정 세션의 리프레시 해시와 만료 시각(401 `account_deleted`) |
 
 ## 7. 엔드포인트
 
@@ -442,7 +443,7 @@ CREATE TABLE holidays (
 | 로그 파티션 | 매일 | 내일 파티션 만들기, 30일 지난 파티션 삭제 |
 | 미디어 정리 | 매일 | `expires_at`이 지난 `media_objects`(채팅 30일, 약속·개인 1년, 바뀐 커버·사진 7일)를 지우고 `object_deletions`에 넣기 |
 | 구독 대조 | 매일 | 만료가 가까운 구독을 스토어 API로 다시 확인(알림을 놓친 경우 대비) |
-| 오브젝트 삭제 | 10분 | `object_deletions`를 비우며 스토리지에서 삭제 |
+| 오브젝트 삭제 | 10분 | `object_deletions`에 넣은 지 1시간 지난 것을 스토리지에서 삭제하고 비움. 15분짜리 업로드 URL로 늦게 올린 객체가 남지 않게 기다림 |
 | 백업 정리 | 업로드 완료 때 | 사람마다 최근 3개만 남기기 |
 | Welcome 정리 | 매일 | 30일 지난 Welcome 삭제 |
 | 공휴일 동기화 | 매일 | 특일 정보 API로 `holidays` 갱신(같은 날 공휴일 둘 허용) |

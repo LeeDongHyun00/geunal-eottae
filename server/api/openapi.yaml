@@ -9,7 +9,7 @@
 #   for a device revoked by a replacement also carries replaced_at (date-time), replaced_by (ios | android, the
 #   account's active device) and replaced_via (provider | recovery), so the old device can say when, where and how
 #   the account signed in (protocol §13).
-# - M1: once DELETE /me succeeds, a request with that account's access or refresh token answers 401 account_deleted
+# - Once DELETE /me succeeds, a request with that account's access or refresh token answers 401 account_deleted
 #   until the token would have expired (15 minutes, 30 days), so a device that lost the 204 finishes the deletion
 #   instead of taking it for an ended session (protocol §11, §13).
 # - Sign-in binding: the nonce handed to Kakao or Apple is lowercase hex SHA-256("geunal login v1" ‖ nonce ‖
@@ -263,7 +263,7 @@ paths:
             schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } }
       responses:
         "200": { content: { application/json: { schema: { $ref: "#/components/schemas/Tokens" } } } }
-        "401": { description: "token_expired (unknown, spent or expired refresh token); M1: account_deleted (the token's account was deleted)" }
+        "401": { description: "token_expired (unknown, spent or expired refresh token); account_deleted (the token's account was deleted)" }
         "403": { description: device_revoked }
 
   /.well-known/jwks.json:
@@ -297,14 +297,16 @@ paths:
                   providers: { $ref: "#/components/schemas/Providers" }
                   recovery: { type: boolean, description: the server holds recovery material }
     delete:
-      summary: "M1: Delete the account (protocol §13); only the active device may call this"
+      summary: "Delete the account (protocol §13); only the active device may call this"
       description: |
         Deletes the account's identifying data, devices, sessions, key packages, recovery material, backups,
-        memberships, state blobs, media and alpha stats in one transaction; objects go to object_deletions and the
-        remaining members' devices get `membership`. Log entries the account wrote stay until their 30-day partition
+        memberships, its own state blobs (a group's shared group_meta stays), media and alpha stats in one transaction;
+        objects go to object_deletions, the remaining members' devices get `membership` (the longest-standing active
+        member becomes the owner if the account owned the group) and this device gets `revoke`. Log entries the account wrote stay until their 30-day partition
         is dropped, so other members' devices keep one group state; the account row stays as a placeholder for their
-        author_id. After the transaction the server unlinks Kakao (retried until it succeeds) and, for an account
-        linked to Apple, exchanges `apple_authorization_code` and revokes the Apple tokens at once.
+        author_id. After the transaction the server unlinks Kakao and, for an account linked to Apple, revokes the
+        tokens `apple_authorization_code` was exchanged for; a call that fails is retried with backoff. An iOS device's
+        code is exchanged with the bundle ID, an Android device's with the services ID and the callback address.
 
         The only irreversible call proves the account again, so a stolen session cannot delete it:
         - guest (or an account whose provider link was cut): `nonce` and `recovery_signature`, the recovery signing
@@ -330,7 +332,7 @@ paths:
 
   /me/recovery:
     put:
-      summary: "M1: Store the account's recovery material (protocol §10)"
+      summary: "Store the account's recovery material (protocol §10)"
       description: |
         The first upload needs no proof. When material is already stored, overwriting it needs `nonce` (GET
         /auth/nonce) and `proof`: the current recovery signing key's signature over the ASCII bytes
@@ -363,10 +365,10 @@ paths:
       responses:
         "204": { description: stored }
         "400": { description: invalid_request (a field of the wrong length) }
-        "403": { description: "recovery_proof_required (material exists and the current code's proof is missing or wrong); reauth_required (new_key past the 30 minutes without a valid provider proof for this account; nothing changes)" }
+        "403": { description: "recovery_proof_required (material exists and the current code's proof is missing or wrong); reauth_required (new_key past the 30 minutes without a valid provider proof for this account, or from a guest; nothing changes); replace_required (called with a replacement ticket)" }
         "409": { description: recovery_conflict (another account uses this recovery_id) }
     get:
-      summary: "M1: The recovery material a restoring device needs; also with a replacement ticket"
+      summary: "The recovery material a restoring device needs; also with a replacement ticket"
       responses:
         "200":
           content:
@@ -381,7 +383,7 @@ paths:
 
   /me/backups:
     post:
-      summary: "M1: Start a backup upload (protocol §10)"
+      summary: "Start a backup upload (protocol §10)"
       description: |
         Upload the sealed object with `PUT upload_url` and `Content-Length: size`, then call
         POST /me/backups/{id}/complete. The URL is signed with that Content-Length, so a larger object is refused at
@@ -406,11 +408,12 @@ paths:
                   id: { type: integer, format: int64 }
                   upload_url: { type: string, description: presigned PUT }
                   expires_in: { type: integer, description: seconds (900) }
+        "400": { description: invalid_request (a size below 1) }
         "409": { description: recovery_missing }
         "413": { description: too_large }
-        "429": { description: rate_limited (10 a day) }
+        "429": { description: "rate_limited (10 a day per account, counted per UTC day; Retry-After says until when)" }
     get:
-      summary: "M1: Completed backups, newest first, at most three; also with a replacement ticket"
+      summary: "Completed backups, newest first, at most three; also with a replacement ticket"
       responses:
         "200":
           content:
@@ -423,16 +426,16 @@ paths:
 
   /me/backups/{id}/complete:
     post:
-      summary: "M1: The upload finished; the server checks the object's size and keeps the newest three backups"
+      summary: "The upload finished; the server checks the object's size and keeps the newest three backups"
       parameters: [{ name: id, in: path, required: true, schema: { type: integer, format: int64 } }]
       responses:
-        "200": { content: { application/json: { schema: { $ref: "#/components/schemas/Backup" } } } }
+        "200": { description: "the completed backup; completing it again answers the same", content: { application/json: { schema: { $ref: "#/components/schemas/Backup" } } } }
         "404": { description: not_found (no such upload of this account) }
         "409": { description: "upload_incomplete (no object, or not the declared size)" }
 
   /me/backups/latest:
     get:
-      summary: "M1: Where to download the newest completed backup; also with a replacement ticket"
+      summary: "Where to download the newest completed backup; also with a replacement ticket"
       responses:
         "200":
           content:

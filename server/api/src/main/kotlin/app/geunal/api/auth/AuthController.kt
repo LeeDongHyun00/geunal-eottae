@@ -139,9 +139,10 @@ data class ActiveDevice(
 @RestController
 class AuthController(
     private val auth: AuthService,
+    private val nonces: Nonces,
 ) {
     @GetMapping("/auth/nonce")
-    fun nonce(): NonceResponse = NonceResponse(auth.nonce())
+    fun nonce(): NonceResponse = NonceResponse(nonces.issue())
 
     @PostMapping("/auth/kakao")
     fun kakao(
