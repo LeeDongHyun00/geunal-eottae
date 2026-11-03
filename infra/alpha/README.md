@@ -36,7 +36,7 @@ GEUNAL_ALPHA_SSH=root@<서버 주소> GEUNAL_ALPHA_SSH_KEY=~/.ssh/<키> GEUNAL_A
 
 ## 비밀값
 
-서버 밖에서 발급받는 키(카카오, Apple, Object Storage)는 NCP Secret Manager의 비밀값 하나에 넣습니다. 서버에서 만드는 값(DB 비밀번호, JWT 서명 키)은 지금처럼 서버의 root 전용 파일에만 둡니다([인프라](../../docs/parts/infra.md) 10장).
+서버 밖에서 발급받는 키(카카오, Apple, Object Storage, 공공데이터포털)는 NCP Secret Manager의 비밀값 하나에 넣습니다. 서버에서 만드는 값(DB 비밀번호, JWT 서명 키)은 지금처럼 서버의 root 전용 파일에만 둡니다([인프라](../../docs/parts/infra.md) 10장).
 
 | 어디 | 무엇 |
 | --- | --- |
@@ -51,6 +51,7 @@ GEUNAL_ALPHA_SSH=root@<서버 주소> GEUNAL_ALPHA_SSH_KEY=~/.ssh/<키> GEUNAL_A
 | `GEUNAL_AUTH_APPLE_KEY_ID`, `GEUNAL_AUTH_APPLE_PRIVATE_KEY`(.p8 PEM) | Apple 로그인이 404. .p8을 읽지 못하면 서버가 시작하지 않음 |
 | `GEUNAL_S3_ACCESS_KEY`, `GEUNAL_S3_SECRET_KEY` | 백업 요청이 실패(부트스트랩이 경고) |
 | `GEUNAL_DUMP_AGE_RECIPIENT`, `GEUNAL_DUMP_S3_ACCESS_KEY`, `GEUNAL_DUMP_S3_SECRET_KEY` | 덤프가 서버에만 남음(아래 "서버 밖 DB 덤프") |
+| `GEUNAL_HOLIDAYS_SERVICE_KEY`(공공데이터포털 "한국천문연구원_특일 정보"의 일반 인증키 Decoding 값) | 공휴일 매일 동기화가 아무것도 하지 않음. `GET /holidays`가 빈 `years`를 주고, 기기는 앱에 든 표를 씀 |
 
 - 값이 없으면 그 기능만 꺼지고 서버는 뜹니다. Apple 팀 ID와 반환 주소, 저장소 주소와 버킷은 비밀이 아니어서 `compose.yml`에 있습니다. `GEUNAL_AUTH_STUB`은 넣지 않습니다.
 - `fetch-secrets.py`는 `GEUNAL_`로 시작하는 이름만 받습니다. `GEUNAL_DUMP_`는 `dump.env`로, 나머지는 `api.secrets.env`로 갑니다. 값은 출력하지 않고 받은 이름만 출력합니다.
