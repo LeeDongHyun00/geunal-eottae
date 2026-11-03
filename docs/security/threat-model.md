@@ -47,6 +47,7 @@ flowchart LR
 - **경계 2: 기기 ↔ 다른 멤버.** 같은 그룹의 멤버는 그룹 안의 모든 내용을 봅니다. 이것은 설계입니다. 멤버가 할 수 없어야 하는 것은 **남을 사칭하는 것**과 **주도자·업로더 전용 규칙을 깨는 것**입니다.
 - **경계 3: 기기 안.** 앱, 알림 확장(iOS), 위젯이 같은 저장소와 키체인을 씁니다. 기기가 공격자 손에 있으면 이 경계는 OS가 지킵니다.
 - **경계 4: 개발·배포 경로.** 저장소, CI, 의존성, 컨테이너 이미지. 여기가 뚫리면 위 셋이 모두 무의미하므로 [의존성 취약점 검사](dependencies.md)와 CI 규칙([QA](../qa.md) 5장)으로 다룹니다.
+- **경계 5: 이름과 인증서.** 앱이 서버를 찾는 DNS 이름과, 그 이름의 인증서를 내주는 쪽입니다. 이름이 가리키는 곳을 바꿀 수 있는 사람은 서버 자리에 설 수 있으므로 경계 1의 "믿지 않는 곳"에 함께 듭니다. API 도메인은 3.7에서 다룹니다.
 
 ## 3. 공격자
 
@@ -173,6 +174,30 @@ M1부터 계정을 다른 기기로 옮기는 길이 둘입니다([공통 계약
 - PR #26 리뷰의 제안은 대부분 계약에 들어갔습니다([공통 계약](../parts/protocol.md) 10·13장). 복구 코드 화면의 기기 인증은 2026-10-26에 정했고, 새로 시작과 계정 삭제 앞에도 둡니다(위 "잠금이 풀린 기기" 줄).
 - 보안 안내 페이지(M4)에 적을 것: 게스트의 12단어는 계정과 백업을 여는 유일한 열쇠이고, 본 사람은 계정을 가져갈 수 있습니다.
 
+### 3.7 이름과 인증서: `geunaleottae.com`
+
+M1 알파부터 API 주소는 `api.geunaleottae.com`입니다([인프라](../parts/infra.md) 10장). 도메인은 2026-10-31에 Cloudflare Registrar에서 샀고, DNS도 Cloudflare에 있습니다. 앱의 서버 주소, 안드로이드 App Link 호스트, Apple 웹 로그인의 반환 주소, 제공자 알림 주소가 모두 이 이름 아래에 있습니다. 이 이름이 가리키는 곳을 바꿀 수 있는 사람은 유효한 인증서를 받아 서버 자리에 섭니다. 그런 사람은 둘입니다.
+
+- 운영자의 Cloudflare 계정을 가진 사람.
+- Cloudflare, 또는 Cloudflare를 침해한 사람. 레지스트라이자 DNS라서 이름을 직접 바꿀 수 있습니다.
+
+이름을 가진 사람은 경계 1의 "믿지 않는 곳"에 들기 때문에, 설계가 이미 막는 것이 많습니다. 처음 며칠 쓴 DuckDNS 이름(`geunaleottae.duckdns.org`)은 그 주소로 만든 빌드가 없어서 버렸습니다.
+
+| 경로 | 얻는 것 | 막는 것 | 남는 것 | 확인 |
+| --- | --- | --- | --- | --- |
+| 이름을 가져감 | 이름을 다른 IP로 돌리고 유효한 인증서를 받음. 아래 줄들의 출발점 | Cloudflare 계정의 2단계 인증. CAA로 Let's Encrypt만 인증서를 내게 함(Cloudflare의 Universal SSL을 켜 두면 Cloudflare가 자기 인증 기관들을 CAA에 더하므로, 프록시하는 레코드가 없는 동안은 끔). DNSSEC로 도중의 DNS 응답 위조를 막음. 인증서 투명성 로그로 모르는 인증서를 감시 | DNS를 가진 사람은 CAA도 바꿀 수 있어서, CAA는 다른 인증 기관의 잘못된 발급만 막습니다. 감시는 알아챌 뿐입니다. 앱이 우리 키만 믿게 하면(아래 검토할 결정) 이 줄은 장애로만 끝납니다 | 사용자: 2단계 인증, 인증서 투명성 감시 등록 |
+| Cloudflare 프록시 | 프록시(주황 구름)를 켜면 Cloudflare가 TLS를 풀어 앱의 요청(토큰, 접속 IP, 메타데이터, 암호문)을 봄. 개인정보가 국외 망을 거침 | API 레코드는 프록시 없이 DNS만(회색 구름). 프록시는 약관 같은 정적 페이지에만 | 없음(지키는 동안) | 인프라: 배포할 때 레코드 확인 |
+| 앱과 API 사이에 끼기 | 그 기기의 액세스 토큰(15분)과 리프레시 토큰, 요청의 메타데이터와 암호문. 응답을 바꾸거나 버리기. M2부터는 멤버를 추가하는 기기에 가짜 키 패키지와 기기 목록(`GET /users/{id}/devices`)을 함께 주기 | 경계 1: 서버로 가는 것은 암호문이고, 서버에서 오는 것은 모두 검증(MLS 서명, AEAD, 순번). 가로챈 리프레시 토큰을 따로 쓰면 재사용 감지가 그 기기의 세션을 끊음(3.6) | 3.2 "JWT 서명 키" 줄과 같은 능력을 그 기기에 대해 가집니다. **M2부터는 3.1 (a)와 같은 적극적 중간자입니다.** 추가하는 기기는 키 패키지를 서버의 기기 목록과 대조하는데 둘 다 공격자가 주므로, 진짜 멤버가 공격자의 키로 Add 커밋을 만들고 공격자의 기기가 다음 커밋부터 그룹 내용을 읽습니다([공통 계약](../parts/protocol.md) 2장). MLS 서명과 AEAD로는 막지 못합니다. 사람이 알아챌 수단은 3.1의 기기 변경 표시와 안전 번호 비교(2단계)입니다 | API `a reused refresh token signs the device out` |
+| 제공자 로그인 가로채기 | 카카오 ID 토큰, Apple 아이덴티티 토큰 | 토큰이 그 기기의 키에 묶임(3.6) | 없음 | API `refuses a provider token bound to another device key` |
+| 안드로이드 Apple 웹 로그인의 콜백(`/auth/apple/callback`)과 App Link | Apple이 보내는 `code`·`id_token`·`state`, 처음 로그인이면 `user`(이름과 이메일 또는 릴레이 주소). 가짜 `assetlinks.json`으로 다른 앱이 App Link를 열게 함 | `id_token`은 위처럼 기기 키에 묶임. 앱이 `state`를 확인. 인가 코드는 한 번만, 짧은 시간 안에 쓰임 | 처음 로그인한 사람의 이름과 이메일. **계정 삭제(되돌릴 수 없음):** 콜백의 `code`는 로그인에 쓰이지 않고 남는데, Apple 계정의 삭제 증명은 이 코드뿐이고 교환은 우리 서버가 합니다([공통 계약](../parts/protocol.md) "계정 삭제"). 그래서 콜백을 가로채고 앱의 로그인 요청도 중간에서 넘겨 활성 기기의 액세스 토큰까지 얻은 공격자는, client secret 없이 `DELETE /me`로 계정과 백업을 지울 수 있습니다 | 해당 없음 |
+| 카카오 연결 끊기 알림 주소 | 카카오는 이 요청의 `Authorization` 헤더에 **앱 어드민 키**를 실어 보냅니다. 어드민 키로는 앱의 모든 사용자에 대한 관리 API(연결 끊기, 사용자 정보 조회)를 부를 수 있습니다 | 첫 줄의 대책 | 이름을 잃으면 어드민 키도 샙니다. 이름을 잃었다고 의심되면 어드민 키를 다시 발급합니다 | 사용자: 사고 대응 절차에 넣음 |
+| Apple 서버 간 알림 주소 | 동의 철회·계정 삭제·이메일 변경 알림의 내용 | Apple이 서명한 JWT라 위조하지 못함 | 알림을 받지 못하는 것과, 알림에 든 메타데이터 | 해당 없음 |
+| 도메인 만료 | 갱신을 놓치면 다른 사람이 등록해 앱의 모든 요청(토큰 포함)을 받음 | Cloudflare의 자동 갱신과 결제 수단 유지 | 없음(지키는 동안) | 사용자: 자동 갱신 확인 |
+
+**검토할 결정(코어·인프라):** 앱이 API 주소에 대해서는 공용 인증 기관 대신 우리 CA(키는 오프라인)만 믿게 할지 정해야 합니다. 그러면 이름을 가져간 사람과 인증 기관의 잘못된 발급이 장애로만 끝납니다(Signal과 같은 방식). 비용은 코어의 TLS 설정(`core/geunal-sync/src/tls.rs`)과 CA 운영입니다. 브라우저가 거치는 Apple 콜백과 App Link는 공용 인증서가 있어야 해서 이 대책 밖에 남습니다.
+
+**검토할 결정(백엔드·코어, 계약):** `DELETE /me`에 기기 키의 서명(`"geunal delete v1" ‖ nonce`)을 더할지 정해야 합니다. 지금 Apple 계정의 삭제 증명은 인가 코드뿐이라, 콜백을 가로챈 중간자가 세션과 코드를 모으면 계정을 지울 수 있습니다(위 표). 기기 키는 기기를 떠나지 않으므로, 서명을 요구하면 중간자는 지우지 못합니다. 위의 CA 결정도 액세스 토큰을 가로채지 못하게 해서 같은 공격을 막습니다.
+
 ## 4. 가로지르는 것
 
 - **푸시 경로.** APNs·FCM에는 암호문(≤3KB)이나 신호만 갑니다. `cat`(`chat`/`plan`)은 종류별 알림 끄기를 위해 서버가 아는 유일한 내용 정보이고 6장 표에 있습니다. 알림 확장이 복호화한 문구는 알림 센터에 평문으로 남습니다(3.3).
@@ -208,9 +233,9 @@ M1부터 계정을 다른 기기로 옮기는 길이 둘입니다([공통 계약
 | `keeps Kakao tokens in memory only` | iOS, 안드로이드 | M1 | 3.6 |
 | `does not merge a backup into a store that belongs to another account` | 코어 | M1 | 3.6 |
 | `refuses to overwrite recovery material without the current code's signature` | API | M1 | 3.6 |
-| `a reused refresh token signs the device out` | API | M1 | 3.6 |
+| `a reused refresh token signs the device out` | API | M1 | 3.6, 3.7 |
 | `refuses to delete an account without a fresh proof and deletes nothing` | API | M1 | 3.6 |
-| `refuses a provider token bound to another device key` | API | M1 | 3.6 |
+| `refuses a provider token bound to another device key` | API | M1 | 3.6, 3.7 |
 | `refuses a replacement without the device key's signature` | API | M1 | 3.6 |
 | `allows a new recovery key only within 30 minutes of a provider sign-in or with a fresh provider proof` | API | M1 | 3.6 |
 | `tells the revoked device whether a provider sign-in or the recovery code replaced it` | API | M1 | 3.6 |
@@ -232,7 +257,7 @@ M1부터 계정을 다른 기기로 옮기는 길이 둘입니다([공통 계약
 | 단계 | 할 일 | 절 |
 | --- | --- | --- |
 | M0 | 위협 모델, 의존성 취약점 검사 | 이 문서, [의존성 취약점 검사](dependencies.md) |
-| M1 | 백업 암호 구조 검토, 키체인·키스토어 설정, 로그 점검 | 3.2(복구 자료), 3.3(가)(나), 3.6, 4, [앱 PR 보안 점검표](app-review.md) |
+| M1 | 백업 암호 구조 검토, 키체인·키스토어 설정, 로그 점검 | 3.2(복구 자료), 3.3(가)(나), 3.6, 3.7(도메인), 4, [앱 PR 보안 점검표](app-review.md) |
 | M2 | 초대 코드 남용, 그룹 메타 남용 | 3.4(초대 코드, 숨은 멤버), 3.5 |
 | M3 | 신고 경로, 첨부 암호화, 의존성 점검, 외부 리뷰어 섭외 | 3.1(신고 봉인), 3.4(악성 첨부), 3.2(미디어) |
 | M4 | 외부 리뷰 반영, 출시 전 점검, 보안 안내 페이지 | 1장 표와 3장의 "남는 것"이 안내 페이지의 내용 |

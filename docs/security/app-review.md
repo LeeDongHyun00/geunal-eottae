@@ -27,6 +27,7 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 | 위젯 스냅샷 | 오늘·내일 일정 제목이 평문으로 들어갑니다. iOS는 App Group 컨테이너에 파일 보호 `completeUntilFirstUserAuthentication`과 백업 제외(`isExcludedFromBackup`). 안드로이드는 `noBackupFilesDir` 아래. 로그아웃과 계정 삭제 때 지움 |
 | 로컬 알림 | 예약한 알림의 제목은 OS가 보관합니다. 로그아웃과 계정 삭제 때 예약과 이미 뜬 알림을 지움(iOS `removeAllPendingNotificationRequests`·`removeAllDeliveredNotifications`, 안드로이드 알람 취소와 `NotificationManager.cancelAll`) |
 | 앱 전환기 미리보기 | iOS는 앱이 뒤로 갈 때 화면을 저장합니다. 복구 코드 화면과 기기 바꾸기 입력 화면은 `scenePhase`가 `.active`가 아니면 가림 |
+| 연락처 | 이름과 생일만 읽음. iOS는 `CNContactFormatter`의 이름 키, `CNContactBirthdayKey`, `CNContactNonGregorianBirthdayKey`. 안드로이드는 `StructuredName`의 표시 이름과 `Event.TYPE_BIRTHDAY`이고 권한은 `READ_CONTACTS`뿐. 미리 고르지 않고 사람이 고른 연락처만 가져와 코어 저장소와 암호화 백업에만 둠. 앱이 따로 목록을 남기지 않음(설정, 캐시 파일). 권한 문구가 이 사실을 말함 |
 | 클립보드 | 복구 코드 복사는 iOS `UIPasteboard`에 `.localOnly`(다른 Apple 기기로 넘기지 않음)와 `.expirationDate`(60초). 안드로이드는 `ClipDescription.EXTRA_IS_SENSITIVE`(13 이상)를 붙이고, 앱은 앞에 있을 때만 클립보드를 지울 수 있으므로 화면을 떠날 때도 지움 |
 
 ## 3. 복구 코드 화면
@@ -68,7 +69,7 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 PR의 앱 변경에서 아래 줄을 찾아 하나씩 봅니다.
 
 ```sh
-git diff origin/main... -- apps/ | grep -nE '^\+.*(print\(|NSLog|debugPrint|Log\.[vdiwe]\(|println\(|privacy: \.public|UserDefaults|SharedPreferences|DataStore|kSecAttr|FLAG_SECURE|UIPasteboard|ClipboardManager|allowBackup|dataExtractionRules|TokenManager)'
+git diff origin/main... -- apps/ | grep -nE '^\+.*(print\(|NSLog|debugPrint|Log\.[vdiwe]\(|println\(|privacy: \.public|UserDefaults|SharedPreferences|DataStore|kSecAttr|FLAG_SECURE|UIPasteboard|ClipboardManager|allowBackup|dataExtractionRules|TokenManager|CNContact|ContactsContract)'
 ```
 
 PR 설명에는 다음을 적습니다.
