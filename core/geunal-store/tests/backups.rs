@@ -213,7 +213,7 @@ fn restoring_merges_into_a_store_and_replaces_the_empty_default_calendar() {
 }
 
 #[test]
-fn keeps_a_contact_id_only_on_the_store_that_already_matched_that_person_to_it() {
+fn keeps_the_contact_id_this_store_matched_and_never_takes_the_archives() {
     let (_a, source) = open();
     let archive = source
         .write(|db| {
@@ -234,6 +234,14 @@ fn keeps_a_contact_id_only_on_the_store_that_already_matched_that_person_to_it()
     // The phone that made the backup, signing back in: 민수 is still its contact-7.
     source.write(|db| db.restore_archive(&archive)).unwrap();
     assert_eq!(source.read(|db| db.person("p-minsu")).unwrap().unwrap().contact_id.as_deref(), Some("contact-7"));
+
+    // The other phone imported 민수 from its own address book after the restore; a later restore of the first phone's
+    // backup keeps this phone's id, not the archive's.
+    other
+        .write(|db| db.put_person(&PersonRow { contact_id: Some("here-3".into()), ..db.person("p-minsu")?.unwrap() }))
+        .unwrap();
+    other.write(|db| db.restore_archive(&archive)).unwrap();
+    assert_eq!(other.read(|db| db.person("p-minsu")).unwrap().unwrap().contact_id.as_deref(), Some("here-3"));
 }
 
 #[test]
