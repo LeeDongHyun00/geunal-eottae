@@ -23,19 +23,28 @@ class ProviderProofs(
     private val apple: AppleClient,
     private val nonces: Nonces,
 ) {
-    /** The proof, or null when it is missing, does not verify, or names another provider account than [links]. */
+    /**
+     * The proof, or null when it is missing, does not verify, or names another provider account than [links]. The
+     * Kakao token's [nonce] is spent here unless the caller already spent it on the device key's signature
+     * ([nonceSpent]).
+     */
     fun prove(
         links: Map<Provider, String>,
         device: DeviceRow,
         kakaoIdToken: String?,
         nonce: String?,
         appleAuthorizationCode: String?,
+        nonceSpent: Boolean = false,
     ): ProviderProof? =
         when {
             kakaoIdToken != null -> {
                 val sub =
                     try {
-                        if (nonces.spend(nonce)) providers.subject(Provider.KAKAO, kakaoIdToken, nonce!!, device.signatureKey) else null
+                        if (nonce != null && (nonceSpent || nonces.spend(nonce))) {
+                            providers.subject(Provider.KAKAO, kakaoIdToken, nonce, device.signatureKey)
+                        } else {
+                            null
+                        }
                     } catch (_: ApiException) {
                         null
                     }

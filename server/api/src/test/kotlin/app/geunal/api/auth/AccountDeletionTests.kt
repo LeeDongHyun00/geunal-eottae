@@ -69,10 +69,21 @@ class AccountDeletionTests : ApiTest() {
         return device
     }
 
+    /** The words a device signs to delete its account (protocol §13). */
+    private fun deleteWords(nonce: String) = "geunal delete v1$nonce".toByteArray(Charsets.US_ASCII)
+
+    /**
+     * `DELETE /me` as the device sends it: [body]'s proof with the device key's signature over its nonce, or over a
+     * fresh one when the proof needs none (Apple).
+     */
     private fun delete(
         account: Client,
         body: Map<String, Any?>,
-    ): Reply = api.send(HttpMethod.DELETE, "/me", account.token, body)
+    ): Reply {
+        val nonce = body["nonce"] as String? ?: account.nonce()
+        val signed = body + mapOf("nonce" to nonce, "device_signature" to account.sign(deleteWords(nonce)))
+        return api.send(HttpMethod.DELETE, "/me", account.token, signed)
+    }
 
     private fun guestProof(
         account: Client,
@@ -98,7 +109,7 @@ class AccountDeletionTests : ApiTest() {
         val account = guest()
         val member = signIn()
         val groupId = groupWith(account, member)
-        val code = RecoveryCode().also { account.put("/me/recovery", it.upload()).expect(204) }
+        val code = RecoveryCode().also { account.putRecovery(it.upload()).expect(204) }
         account.message(groupId, 1).expect(201)
         account.put("/groups/$groupId/state/availability", mapOf("epoch" to 1, "ciphertext" to ByteArray(64))).expect(200)
         account
@@ -172,7 +183,7 @@ class AccountDeletionTests : ApiTest() {
     @Test
     fun `a deleted account's refresh token answers account_deleted only until it would have expired`() {
         val account = guest()
-        val code = RecoveryCode().also { account.put("/me/recovery", it.upload()).expect(204) }
+        val code = RecoveryCode().also { account.putRecovery(it.upload()).expect(204) }
         val refresh = account.refreshToken
         delete(account, guestProof(account, code)).expect(204)
         jdbc
@@ -196,7 +207,7 @@ class AccountDeletionTests : ApiTest() {
     @Test
     fun `without the right proof nothing is deleted and the session stays`() {
         val account = guest()
-        val code = RecoveryCode().also { account.put("/me/recovery", it.upload()).expect(204) }
+        val code = RecoveryCode().also { account.putRecovery(it.upload()).expect(204) }
 
         delete(account, emptyMap()).expectError(403, "reauth_required")
         api.send(HttpMethod.DELETE, "/me", account.token).expectError(403, "reauth_required")
@@ -293,7 +304,7 @@ class AccountDeletionTests : ApiTest() {
         val sub = "cut-${UUID.randomUUID()}"
         val account = Client(api, "kakao-cut-delete")
         account.providerSignIn("kakao") { FakeProviders.kakaoToken(sub, it) }.expect(201)
-        val code = RecoveryCode().also { account.put("/me/recovery", it.upload()).expect(204) }
+        val code = RecoveryCode().also { account.putRecovery(it.upload()).expect(204) }
         jdbc.sql("UPDATE provider_links SET unlinked_at = now() WHERE sub = :sub").param("sub", sub).update()
 
         delete(account, guestProof(account, code)).expect(204)
@@ -326,7 +337,7 @@ class AccountDeletionTests : ApiTest() {
     @Test
     fun `a recovery that waited on a deletion is refused`() {
         val account = guest()
-        val code = RecoveryCode().also { account.put("/me/recovery", it.upload()).expect(204) }
+        val code = RecoveryCode().also { account.putRecovery(it.upload()).expect(204) }
         val device = Client(api, "recover-race")
         val nonce = device.nonce()
         val body = device.proof(nonce) + mapOf("recovery_id" to code.id, "recovery_signature" to code.sign("geunal recover v1", nonce))
@@ -355,5 +366,79 @@ class AccountDeletionTests : ApiTest() {
 
         assertThat(count("SELECT count(*) FROM provider_revocations WHERE target = :id", sub)).isZero()
         assertThat(FakeProviders.callsTo("/kakao/unlink").count { it.form["target_id"] == sub }).isEqualTo(1)
+    }
+
+    @Test
+    fun `refuses to delete an account or start over without the device key's signature`() {
+        val guest = guest()
+        val code = RecoveryCode().also { guest.putRecovery(it.upload()).expect(204) }
+        val kakaoSub = (6_000_000_000L + (Math.random() * 1e9).toLong()).toString()
+        val kakao = Client(api, "signed-kakao")
+        kakao.providerSignIn("kakao") { FakeProviders.kakaoToken(kakaoSub, it) }.expect(201)
+        val appleSub = "signed-apple-${UUID.randomUUID()}"
+        val apple = Client(api, appleSub)
+        apple.providerSignIn("apple") { FakeProviders.appleToken(appleSub, it) }.expect(201)
+        val appleCode = FakeProviders.appleCode(appleSub)
+        // Each account's own proof over a nonce: what a stolen session could gather without the device key.
+        val proofs: List<Pair<Client, (String) -> Map<String, Any?>>> =
+            listOf(
+                guest to { nonce -> mapOf("recovery_signature" to code.sign("geunal delete v1", nonce)) },
+                kakao to { nonce -> mapOf("kakao_id_token" to FakeProviders.kakaoToken(kakaoSub, kakao.binding(nonce))) },
+                apple to { _ -> mapOf("apple_authorization_code" to appleCode) },
+            )
+        val stranger = Client(api, "signed-stranger")
+
+        for ((account, proof) in proofs) {
+            fun send(
+                nonce: String,
+                signature: ByteArray?,
+            ) = api.send(HttpMethod.DELETE, "/me", account.token, proof(nonce) + mapOf("nonce" to nonce, "device_signature" to signature))
+
+            send(account.nonce(), null).expectError(403, "reauth_required")
+            account.nonce().let { send(it, stranger.sign(deleteWords(it))).expectError(403, "reauth_required") }
+            account.nonce().let { send(it, account.sign("geunal new key v1$it".toByteArray())).expectError(403, "reauth_required") }
+            send(account.nonce(), account.sign(deleteWords(account.nonce()))).expectError(403, "reauth_required")
+            // A good signature spends its nonce even when the rest fails, so it cannot be sent again.
+            val spent = account.nonce()
+            api
+                .send(
+                    HttpMethod.DELETE,
+                    "/me",
+                    account.token,
+                    mapOf(
+                        "nonce" to spent,
+                        "device_signature" to account.sign(deleteWords(spent)),
+                    ),
+                ).expectError(403, "reauth_required")
+            send(spent, account.sign(deleteWords(spent))).expectError(403, "reauth_required")
+            account.get("/me").expect(200)
+        }
+        // Apple was never asked: a request the device did not sign stops before the code is exchanged.
+        assertThat(FakeProviders.callsTo("/apple/token").count { it.form["code"] == appleCode }).isZero()
+
+        // Starting over, within the 30 minutes of the Kakao sign-in: the device's signature is what stays missing.
+        val fresh = RecoveryCode()
+        kakao.putRecovery(RecoveryCode().upload()).expect(204)
+        val unsigned = fresh.upload() + mapOf("new_key" to true, "nonce" to kakao.nonce())
+        kakao.put("/me/recovery", unsigned).expectError(403, "reauth_required")
+        val asUpload = kakao.nonce()
+        val uploadWords = ("geunal recovery upload v1$asUpload").toByteArray() + fresh.id + fresh.publicKey + fresh.amkWrapped
+        kakao
+            .put(
+                "/me/recovery",
+                fresh.upload() + mapOf("new_key" to true, "nonce" to asUpload, "device_signature" to kakao.sign(uploadWords)),
+            ).expectError(403, "reauth_required")
+        assertThat(kakao.get("/me/recovery").expect(200).bytes("amk_wrapped")).isNotEqualTo(fresh.amkWrapped)
+
+        for ((account, proof) in proofs) {
+            val nonce = account.nonce()
+            api
+                .send(
+                    HttpMethod.DELETE,
+                    "/me",
+                    account.token,
+                    proof(nonce) + mapOf("nonce" to nonce, "device_signature" to account.sign(deleteWords(nonce))),
+                ).expect(204)
+        }
     }
 }

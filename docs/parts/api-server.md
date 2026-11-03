@@ -399,12 +399,12 @@ CREATE TABLE holidays (
 | GET | `/.well-known/jwks.json` | 게이트웨이가 쓰는 공개키 |
 | GET | `/.well-known/assetlinks.json` | 안드로이드 App Links 확인 파일. M1부터 Apple 웹 로그인 콜백(`/auth/apple`), M2부터 초대(`/i/<code>`). 패키지 이름과 Play 앱 서명 인증서의 SHA-256 |
 | GET | `/me` | 계정, 현재 기기, 남은 키 패키지 수, 연결한 로그인(`providers`), 복구 자료가 있는지 |
-| DELETE | `/me` | 계정 삭제. 다시 증명이 필요함(게스트는 복구 서명, 카카오는 새 ID 토큰, Apple은 새 `authorization_code`로 그 자리에서 토큰 철회) |
+| DELETE | `/me` | 계정 삭제. 기기 키의 서명(`"geunal delete v1" ‖ nonce`)을 먼저 확인하고, 계정 종류에 맞게 다시 증명이 필요함(게스트는 복구 서명, 카카오는 새 ID 토큰, Apple은 새 `authorization_code`로 그 자리에서 토큰 철회). nonce는 한 번만 쓰고 증명과 같은 값 |
 | PUT | `/me/push-token` | 현재 기기 푸시 토큰 |
 | POST | `/me/key-packages` | 키 패키지 묶음 올리기 |
 | GET | `/users/{id}/devices` | 활성 기기 ID와 서명 공개키(추가 전 확인용) |
 | POST | `/devices/{id}/key-packages/claim` | 그 기기를 추가하려고 키 패키지 하나 가져가기 |
-| PUT, GET | `/me/recovery` | 래핑된 AMK, 복구 ID, 복구 공개키. 이미 있으면 지금 코드의 증명이 필요함. `new_key`는 제공자 로그인 30분 안이나 새 제공자 증명으로만 되고, 백업을 모두 지움 |
+| PUT, GET | `/me/recovery` | 래핑된 AMK, 복구 ID, 복구 공개키. 올릴 때마다(첫 업로드 포함) 기기 키가 문장·nonce·자료에 한 서명을 먼저 확인함. 이미 있으면 지금 코드의 증명이 필요함. `new_key`는 제공자 로그인 30분 안이나 새 제공자 증명으로만 되고, 백업을 모두 지움 |
 | POST, GET | `/me/backups` | 업로드 URL 발급, 완료된 백업 목록(최근 3개) |
 | POST | `/me/backups/{id}/complete` | 올리기 완료, 오래된 백업 정리 |
 | GET | `/me/backups/latest` | 다운로드 URL |
