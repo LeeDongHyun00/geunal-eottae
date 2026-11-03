@@ -1,0 +1,13 @@
+feat(ios): add the home screen widgets and move the store into the App Group
+
+- The app and the widget share the App Group group.app.geunal. The core's store moves into its core/ directory once,
+  before FreshInstall looks, and opens from the old place when it cannot move; the keychain query stays as it was.
+- Small and medium widgets (m1.md screen 14) read the snapshot the app writes: today's events and tomorrow's, the
+  empty and start states, and yesterday's tomorrow once midnight passes before the app writes again.
+- The app writes the core's widgetSnapshot() when the calendar changes, on coming to the front, after onboarding and
+  in the background refresh, only when it changed; a sign-out and a deleted account remove it.
+- Tapping a widget opens today in the month view, or its event in the editor from core #55's event ids.
+- Debug builds draw the widgets inside the app with -GeunalWidgetGallery for the 14-widgets screenshot.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01RfjiuYQGAn1o6QhASZ2Rry

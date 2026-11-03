@@ -1,0 +1,5 @@
+module GeunalCoreFFI {
+    header "GeunalCoreFFI.h"
+    link "geunal_ffi"
+    export *
+}

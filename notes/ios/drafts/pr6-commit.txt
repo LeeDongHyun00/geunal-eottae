@@ -1,0 +1,19 @@
+feat(ios): add local alerts, background work, crash counts and the device calendar mirror
+
+- Local alerts keep the core's nearest 64 scheduled in the words of tone.md: an event with its time range from the
+  core's end, a birthday counting down with its short date and lunar date, a leave suggestion. A refresh cancels
+  only what changed and schedules what is missing, and a burst of refreshes makes one.
+- A sign-out by another device or a deleted account removes every scheduled and delivered alert.
+- Tapping an alert opens its event in the editor, its person in 사람·생일, or the month view on the suggestion's
+  week; the next-up bar takes the same way in.
+- BGAppRefreshTask reads the phone's calendars again, syncs and refreshes the alerts; a daily BGProcessingTask runs
+  the automatic backup on a connection without data charges. A failed open is tried again by the next start. When
+  either task finds the account deleted, the app goes back to the start and says so on the next open.
+- MetricKit's crash diagnostics count by Korean day into the alpha statistics.
+- The device calendar mirror: a switch and a check per calendar under 캘린더 관리, onboarding's import of every
+  calendar, a year back to two years ahead, and a mirror that writes only when something changed.
+- The start failure screen (decision 37) says nothing was deleted, lists retry, restart and update, names only the
+  kind of failure, and opens the core again on "다시 시도".
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01RfjiuYQGAn1o6QhASZ2Rry

@@ -1,0 +1,21 @@
+feat(ios): settle the account flows for a later restore, a fresh start and another account's events
+
+- A restore offer (screen 21, decision 24) can wait with "나중에 넣을게요": the month view's banner and 나 ask for the
+  code, and backups wait until it is in. Over the tabs the restore can be put off again; in onboarding it holds.
+- The twelve words go through the core's checkRecoveryCode first, so a wrong checksum never reaches the server.
+- Starting fresh without the backup (decisions 24-26) shows what goes and asks the provider again (Kakao ID token,
+  Apple code) once 30 minutes have passed since the provider sign-in; reauth_required deletes nothing and says so,
+  and a device swap's ticket needs no proof.
+- Another account's events on this device (sheet 24, core #47) are asked about before a restore or a backup, in
+  onboarding and over the tabs, until the answer is saved.
+- Once the account is decided, onboarding no longer goes back (decision 30), and a reopened app resumes on the
+  permissions screen.
+- A deletion whose answer was lost (decision 36) stays on the sheet, checks with a sync once there is a connection,
+  ends as after a 204 on 401 account_deleted, and sends the first proof again before asking anything anew; the
+  proof lives in memory while the sheet is open. The foreground sync, backing up and linking end the app the same
+  way when they find the account deleted.
+- The editor keeps the rule it opened with among the repeat chips, so another tap can be taken back without 직접
+  정하기, as the Android editor does (#73).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01RfjiuYQGAn1o6QhASZ2Rry
