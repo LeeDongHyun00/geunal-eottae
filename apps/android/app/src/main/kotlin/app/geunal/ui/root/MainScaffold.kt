@@ -22,10 +22,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -36,8 +41,10 @@ import app.geunal.designsystem.LocalDarkTheme
 import app.geunal.designsystem.LocalNeutralColors
 import app.geunal.designsystem.Metrics
 import app.geunal.designsystem.Motion
+import app.geunal.designsystem.components.ProposalHost
 import app.geunal.designsystem.components.ToastCenter
 import app.geunal.designsystem.components.ToastHost
+import app.geunal.designsystem.components.ToastStyle
 import app.geunal.feature.calendar.nextup.NextUpBar
 import app.geunal.feature.calendar.nextup.NextUpModel
 import app.geunal.designsystem.R as DesignR
@@ -47,7 +54,8 @@ enum class MainTab { CALENDAR, ME }
 
 /**
  * The tab bar with the next-up bar floating 8 above it (docs/design/README.md §5). Android draws the Material 3
- * navigation bar in the brand colors; a toast takes the next-up bar's place while it shows (m1.md screen 6).
+ * navigation bar in the brand colors; a toast takes the next-up bar's place while it shows, as the bar's capsule, and
+ * a proposal card floats 8 above that (m1.md screen 6, decision 27).
  */
 @Composable
 fun MainScaffold(
@@ -59,18 +67,30 @@ fun MainScaffold(
     var tab by rememberSaveable { mutableStateOf(MainTab.CALENDAR) }
     val toast by toasts.current.collectAsState()
     val neutrals = LocalNeutralColors.current
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        containerColor = neutrals.background,
-        bottomBar = {
-            Column {
-                // The event editor opens from the bar once it exists (m1.md §2.6); until then it leads to the calendar.
-                NextUpSlot(nextUp = nextUp, toasts = toasts, toastShown = toast != null, onOpen = { tab = MainTab.CALENDAR })
-                TabBar(tab = tab, onSelect = { tab = it })
-            }
-        },
-    ) { padding ->
-        content(tab, padding)
+    // The bars' height, so the card floats over the screen above them instead of pushing it up.
+    var barsHeight by remember { mutableIntStateOf(0) }
+    Box(modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = neutrals.background,
+            bottomBar = {
+                Column(Modifier.onSizeChanged { barsHeight = it.height }) {
+                    // The event editor opens from the bar once it exists (m1.md §2.6); until then it leads to the calendar.
+                    NextUpSlot(nextUp = nextUp, toasts = toasts, toastShown = toast != null, onOpen = { tab = MainTab.CALENDAR })
+                    TabBar(tab = tab, onSelect = { tab = it })
+                }
+            },
+        ) { padding ->
+            content(tab, padding)
+        }
+        ProposalHost(
+            center = toasts,
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = Metrics.TabBar.sideInset)
+                    .padding(bottom = with(LocalDensity.current) { barsHeight.toDp() } + Metrics.Toast.gapAboveTabBar),
+        )
     }
 }
 
@@ -95,7 +115,7 @@ private fun NextUpSlot(
         ) {
             NextUpBar(model = nextUp, onOpen = { onOpen() })
         }
-        ToastHost(center = toasts)
+        ToastHost(center = toasts, style = ToastStyle.Slot)
     }
 }
 

@@ -28,5 +28,7 @@
 	</array>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>기기 캘린더의 일정을 읽어 내 캘린더에 함께 보여 줘요. 제목은 이 기기 밖으로 나가지 않아요.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>연락처의 이름과 생일을 사람·생일 목록에 가져와요. 이 기기와 암호화 백업에만 저장돼요.</string>
 </dict>
 </plist>

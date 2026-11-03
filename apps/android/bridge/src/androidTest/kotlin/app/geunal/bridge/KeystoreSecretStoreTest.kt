@@ -1,16 +1,18 @@
 package app.geunal.bridge
 
+import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import app.geunal.core.SecretStoreException
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
-import java.security.GeneralSecurityException
 import java.security.KeyStore
 
 @RunWith(AndroidJUnit4::class)
@@ -73,7 +75,30 @@ class KeystoreSecretStoreTest {
         val amk = dir.listFiles().orEmpty().first { it != files[0] }
         files[0].copyTo(amk, overwrite = true)
 
-        assertThrows(GeneralSecurityException::class.java) { store.get("amk") }
+        assertThrows(SecretStoreException.Lost::class.java) { store.get("amk") }
+    }
+
+    @Test
+    fun aSecretWhoseKeystoreKeyIsGoneIsLostOnKeystore2() {
+        assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        store.put("db_key", byteArrayOf(1, 2, 3))
+        KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(TEST_ALIAS)
+
+        assertThrows(SecretStoreException.Lost::class.java) { store.get("db_key") }
+        // Reading made no key, and a write starts over with a new one.
+        store.put("amk", byteArrayOf(4))
+        assertArrayEquals(byteArrayOf(4), store.get("amk"))
+    }
+
+    @Test
+    fun aSecretWhoseKeystoreKeyIsGoneIsUnavailableBeforeKeystore2() {
+        assumeTrue(Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+        store.put("db_key", byteArrayOf(1, 2, 3))
+        KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(TEST_ALIAS)
+
+        // This keystore returns no key also when its daemon does not answer, so neither a read nor a write replaces it.
+        assertThrows(SecretStoreException.Unavailable::class.java) { store.get("db_key") }
+        assertThrows(SecretStoreException.Unavailable::class.java) { store.put("amk", byteArrayOf(4)) }
     }
 
     private companion object {

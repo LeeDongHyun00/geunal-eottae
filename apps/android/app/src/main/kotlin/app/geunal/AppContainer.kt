@@ -1,6 +1,7 @@
 package app.geunal
 
 import android.content.Context
+import android.view.accessibility.AccessibilityManager
 import app.geunal.bridge.AppStorage
 import app.geunal.bridge.ChangeListener
 import app.geunal.bridge.ConnectivityMonitor
@@ -37,6 +38,10 @@ class AppContainer(
     /** The core keeps the listener it was opened with for its lifetime, so the whole app shares this one. */
     val changes = ChangeListener()
     val connectivity = ConnectivityMonitor(context)
+    private val accessibility = context.getSystemService(AccessibilityManager::class.java)
+
+    /** Whether TalkBack or another screen reader is on right now. */
+    val screenReaderRunning: () -> Boolean = { accessibility?.isTouchExplorationEnabled == true }
     val onboarding = OnboardingState(storage.onboardingDir)
     val permissions: SystemPermissions = DevicePermissions(context)
     val deviceAuth: DeviceAuth = SystemDeviceAuth(context)
