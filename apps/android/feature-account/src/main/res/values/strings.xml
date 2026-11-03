@@ -131,6 +131,7 @@
     <!-- 본인 확인: the OS prompt's title and reason, and the line for a phone without a screen lock (tone.md). -->
     <string name="device_auth_title">본인 확인</string>
     <string name="device_auth_recovery_code">복구 코드를 보려면 본인 확인이 필요해요</string>
+    <string name="device_auth_delete_account">계정을 삭제하려면 본인 확인이 필요해요</string>
     <string name="device_auth_wipe_backups">백업을 지우려면 본인 확인이 필요해요</string>
     <string name="device_auth_no_lock_wipe">화면 잠금을 켜 두면 다른 사람이 지우지 못해요.</string>
 
@@ -193,4 +194,45 @@
         <item>그룹의 상태</item>
     </string-array>
     <string name="backup_out_note">사진·파일은 보관 기간 안이면 다시 받아요</string>
+    <string name="delete_title">계정 삭제</string>
+    <string name="delete_note">삭제하면 되돌릴 수 없어요. 먼저 무엇이 지워지고 무엇이 남는지 확인하세요.</string>
+    <string name="delete_server_title">서버에서 지워지는 것</string>
+    <string name="delete_server_account">계정과 기기 등록.</string>
+    <string name="delete_server_account_detail">카카오·Apple 연결도 풀려요. 카카오·Apple 계정은 삭제 직전에 그 계정으로 로그인을 한 번 더 받아요. 게스트는 기기의 복구 코드 자료로 확인해서 더 할 일이 없어요.</string>
+    <string name="delete_server_backups">암호화 백업.</string>
+    <string name="delete_server_backups_detail">복구 코드로도 다시 받을 수 없어요.</string>
+    <string name="delete_server_groups">그룹 멤버십.</string>
+    <string name="delete_server_groups_detail">이미 정해진 약속은 다른 멤버에게 남고, 내 이름은 ‘나간 멤버’로 보여요.</string>
+    <string name="delete_server_media">그룹에 보낸 사진·파일.</string>
+    <string name="delete_server_media_detail">보관 기간이 남았어도 지워져요.</string>
+    <string name="delete_device_title">이 기기에 남는 것</string>
+    <string name="delete_device_body">내 일정과 캘린더, 사람·생일, 교대 템플릿은 이 기기에 그대로 있어요. 그룹 없는 캘린더로 계속 쓸 수 있어요.</string>
+    <string name="delete_legal">접속 기록은 법에 따라 3개월 보관한 뒤 지워요. 플러스 구독은 스토어에서 해지해 주세요.</string>
+    <string name="delete_start">계정 삭제</string>
+    <string name="delete_start_offline">연결되면 지울 수 있어요</string>
+    <string name="delete_keep">그냥 둘게요</string>
+    <string name="delete_sheet_title">%1$s님의 계정을 삭제할까요?</string>
+    <string name="delete_sheet_title_unnamed">계정을 삭제할까요?</string>
+    <string name="delete_sheet_warning">백업과 그룹 멤버십이 바로 지워지고 되돌릴 수 없어요. 이 기기의 일정은 남아요.</string>
+    <string name="delete_reason_kakao">카카오 계정이라 ‘삭제’를 적은 뒤 카카오 로그인을 한 번 더 받아요. 세션만 훔친 사람이 계정을 지우지 못하게 하려는 거예요.</string>
+    <string name="delete_reason_apple">Apple 계정이라 ‘삭제’를 적은 뒤 Apple 로그인을 한 번 더 받아요. 세션만 훔친 사람이 계정을 지우지 못하게 하려는 거예요.</string>
+    <string name="delete_reauth_kakao">이 계정에 연결된 카카오 계정으로 다시 확인해 주세요. 다른 계정으로 로그인하면 지울 수 없어요.</string>
+    <string name="delete_reauth_apple">이 계정에 연결된 Apple 계정으로 다시 확인해 주세요. 다른 계정으로 로그인하면 지울 수 없어요.</string>
+    <string name="delete_word_label">확인을 위해 ‘%1$s’라고 적어 주세요</string>
+    <string name="delete_confirm">삭제</string>
+    <string name="delete_confirm_kakao">카카오로 확인하고 삭제</string>
+    <string name="delete_confirm_apple">Apple로 확인하고 삭제</string>
+    <string name="delete_again_kakao">카카오로 다시 확인</string>
+    <string name="delete_again_apple">Apple로 다시 확인</string>
+    <string name="delete_type_word">‘삭제’를 적어 주세요</string>
+    <string name="delete_type_word_kakao">‘삭제’를 적으면 카카오로 확인해요</string>
+    <string name="delete_type_word_apple">‘삭제’를 적으면 Apple로 확인해요</string>
+    <string name="delete_working">지우는 중</string>
+    <string name="delete_wait_connection">연결되면 확인할게요</string>
+    <string name="delete_checking">확인하는 중…</string>
+    <string name="delete_problem_offline">연결되면 지울 수 있어요.</string>
+    <string name="delete_problem_failed">지우지 못했어요. 다시 시도해 주세요.</string>
+    <string name="delete_problem_recovery_missing">지울 준비가 아직 끝나지 않았어요. 잠시 뒤에 다시 시도해 주세요.</string>
+    <string name="delete_problem_answer_lost">연결이 끊겨 삭제를 마쳤는지 확인하지 못했어요.</string>
+    <string name="delete_problem_not_deleted">연결이 끊겨 삭제하지 못했어요. 다시 눌러 주세요.</string>
 </resources>

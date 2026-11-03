@@ -59,6 +59,7 @@ class MainScaffoldTest {
                                 onAlerts = { openedAlerts = true },
                                 onRecoveryCode = {},
                                 onBackup = {},
+                                onDeleteAccount = {},
                                 modifier = Modifier.padding(padding),
                             )
                     }

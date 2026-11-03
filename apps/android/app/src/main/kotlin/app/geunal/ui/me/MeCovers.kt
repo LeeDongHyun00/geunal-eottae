@@ -4,10 +4,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
+import app.geunal.core.AccountView
 import app.geunal.core.CoreInterface
 import app.geunal.designsystem.components.ToastCenter
 import app.geunal.feature.account.backup.BackupModel
 import app.geunal.feature.account.backup.BackupScreen
+import app.geunal.feature.account.delete.DeleteAccountModel
+import app.geunal.feature.account.delete.DeleteAccountScreen
+import app.geunal.feature.account.providers.ProviderSignIn
 import app.geunal.feature.account.security.RecoveryCodeModel
 import app.geunal.feature.account.security.RecoveryCodeScreen
 import app.geunal.feature.account.support.DeviceAuth
@@ -15,7 +19,7 @@ import app.geunal.feature.account.support.DeviceAuthPurpose
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
-/** A screen of 나's security and backup group, over the tabs: 복구 코드 and 암호화 백업 (m1.md screens 13, 20). */
+/** A screen of 나 over the tabs: 복구 코드, 암호화 백업 and 계정 삭제 (m1.md screens 13, 20, 22). */
 sealed interface MeCover {
     class RecoveryCode(
         val model: RecoveryCodeModel,
@@ -25,6 +29,10 @@ sealed interface MeCover {
 
     class Backup(
         val model: BackupModel,
+    ) : MeCover
+
+    class DeleteAccount(
+        val model: DeleteAccountModel,
     ) : MeCover
 }
 
@@ -37,6 +45,7 @@ class MeCovers(
     private val core: CoreInterface,
     private val scope: CoroutineScope,
     private val deviceAuth: DeviceAuth,
+    private val providers: ProviderSignIn,
 ) {
     val stack: SnapshotStateList<MeCover> = mutableStateListOf()
 
@@ -65,6 +74,15 @@ class MeCovers(
         stack += MeCover.Backup(BackupModel(core, scope))
     }
 
+    fun deleteAccount(account: AccountView) {
+        stack += MeCover.DeleteAccount(DeleteAccountModel(core, providers, deviceAuth, account, scope))
+    }
+
+    /** The account is gone: every screen of it goes too, and the app starts over (m1.md screen 22). */
+    fun clear() {
+        stack.clear()
+    }
+
     fun close(cover: MeCover) {
         if (stack.remove(cover)) closed(cover)
     }
@@ -87,6 +105,8 @@ fun MeCoverContent(
     cover: MeCover,
     covers: MeCovers,
     toasts: ToastCenter,
+    online: Boolean,
+    onAccountDeleted: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when (cover) {
@@ -102,6 +122,17 @@ fun MeCoverContent(
             BackupScreen(
                 model = cover.model,
                 onRecoveryCode = covers::recoveryCode,
+                onClose = { covers.close(cover) },
+                modifier = modifier,
+            )
+        is MeCover.DeleteAccount ->
+            DeleteAccountScreen(
+                model = cover.model,
+                online = online,
+                onDeleted = {
+                    covers.clear()
+                    onAccountDeleted()
+                },
                 onClose = { covers.close(cover) },
                 modifier = modifier,
             )

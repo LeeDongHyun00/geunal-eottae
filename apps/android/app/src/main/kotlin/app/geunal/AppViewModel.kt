@@ -1,5 +1,6 @@
 package app.geunal
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.geunal.core.Change
@@ -7,15 +8,18 @@ import app.geunal.core.CoreException
 import app.geunal.core.CoreInterface
 import app.geunal.core.InternalException
 import app.geunal.designsystem.components.ToastCenter
+import app.geunal.feature.account.delete.isAccountDeleted
 import app.geunal.feature.account.onboarding.PendingGuest
 import app.geunal.feature.account.support.OnboardingState
 import app.geunal.feature.calendar.nextup.NextUpModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -35,6 +39,13 @@ sealed interface AppPhase {
     data object Main : AppPhase
 }
 
+/** What the app's toast says about the account; the root turns it into text. */
+enum class AppNotice(
+    @param:StringRes val text: Int,
+) {
+    ACCOUNT_DELETED(R.string.account_deleted),
+}
+
 /** Why the core did not open, by kind only: its messages are never shown (docs/security/app-review.md §5 "코어 오류"). */
 enum class StartFailure { STORE, SECRETS, OTHER }
 
@@ -52,6 +63,15 @@ class AppViewModel(
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     val toasts = ToastCenter(viewModelScope, screenReaderRunning = screenReaderRunning)
+
+    private val noticeChannel = Channel<AppNotice>(Channel.BUFFERED)
+
+    /** Buffered until the root collects it, so a notice raised while the screens change is not lost. */
+    val notices: Flow<AppNotice> = noticeChannel.receiveAsFlow()
+
+    /** Goes up each time onboarding has to start over from the welcome screen. */
+    var onboardingRound = 0
+        private set
 
     private val _phase = MutableStateFlow<AppPhase>(AppPhase.Starting)
     val phase: StateFlow<AppPhase> = _phase.asStateFlow()
@@ -107,6 +127,18 @@ class AppViewModel(
         _phase.value = AppPhase.Failed(reason)
     }
 
+    /**
+     * The account is gone, deleted here or found deleted by any call that reached the server (401 `account_deleted`,
+     * m1.md decision 36). The core has already forgotten its secrets and kept the calendar; the app starts over at the
+     * welcome screen and says so (m1.md screen 22).
+     */
+    fun accountDeleted() {
+        onboarding.isFinished = false
+        onboardingRound++
+        _phase.value = AppPhase.Onboarding
+        noticeChannel.trySend(AppNotice.ACCOUNT_DELETED)
+    }
+
     fun finishOnboarding() {
         _phase.value = AppPhase.Main
         viewModelScope.launch { nextUp?.refresh() }
@@ -139,7 +171,10 @@ class AppViewModel(
                 try {
                     core.sync()
                 } catch (e: CoreException) {
-                    // Refused or cut off: the calendar works without it, and the next time in front tries again.
+                    // Deleted while this device had no answer, or before the app last closed: the core has finished as
+                    // after a 204, and the app ends the same way (m1.md decision 36). Anything else, refused or cut
+                    // off: the calendar works without it, and the next time in front tries again.
+                    if (e.isAccountDeleted && _phase.value == AppPhase.Main) accountDeleted()
                 } catch (e: InternalException) {
                     // As above; a panic in the core must not take the app down.
                 }

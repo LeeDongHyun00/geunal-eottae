@@ -21,6 +21,7 @@ enum class DeviceAuthPurpose(
 ) {
     WIPE_BACKUPS(R.string.device_auth_wipe_backups),
     SHOW_RECOVERY_CODE(R.string.device_auth_recovery_code),
+    DELETE_ACCOUNT(R.string.device_auth_delete_account),
 }
 
 /**

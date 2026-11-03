@@ -3,6 +3,7 @@ package app.geunal.ui.calendar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.geunal.core.CoreInterface
+import app.geunal.feature.account.providers.ProviderSignIn
 import app.geunal.feature.account.support.DeviceAuth
 import app.geunal.feature.calendar.alerts.NotificationAccess
 import app.geunal.feature.calendar.people.ContactsReader
@@ -18,8 +19,9 @@ class CalendarCoversViewModel(
     contacts: ContactsReader,
     notifications: NotificationAccess,
     deviceAuth: DeviceAuth,
+    providers: ProviderSignIn,
 ) : ViewModel() {
     val covers = CalendarCovers(core, viewModelScope, contacts, notifications)
 
-    val me = MeCovers(core, viewModelScope, deviceAuth)
+    val me = MeCovers(core, viewModelScope, deviceAuth, providers)
 }

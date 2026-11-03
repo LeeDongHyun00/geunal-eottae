@@ -170,6 +170,23 @@ open class AccountFakeCore : Core(NoHandle) {
         return backupsResult.getOrThrow()
     }
 
+    /** The answers of `deleteAccount`, one per call; the last one repeats. */
+    val deleteResults: ArrayDeque<Result<Unit>> = ArrayDeque(listOf(Result.success(Unit)))
+    val deleteProofs: MutableList<DeletionProof> = Collections.synchronizedList(mutableListOf())
+    var syncResult: Result<Unit> = Result.success(Unit)
+
+    override suspend fun deleteAccount(proof: DeletionProof) {
+        calls += "deleteAccount"
+        deleteProofs += proof
+        val result = if (deleteResults.size > 1) deleteResults.removeFirst() else deleteResults.first()
+        result.getOrThrow()
+    }
+
+    override suspend fun sync() {
+        calls += "sync"
+        syncResult.getOrThrow()
+    }
+
     override fun alphaStatsEnabled(): Boolean = statsOn
 
     override fun setAlphaStats(enabled: Boolean) {
