@@ -1,0 +1,15 @@
+# infra/alpha/Caddyfile: TLS in front of the API (docs/parts/infra.md §2). Caddy gets and renews the Let's Encrypt
+# certificate for GEUNAL_API_HOST through port 80 and passes every request to the API on the compose network.
+{
+	# The ACG opens TCP 80 and 443 only, so HTTP/3 over UDP would never arrive; do not advertise it.
+	servers {
+		protocols h1 h2
+	}
+}
+
+{$GEUNAL_API_HOST} {
+	# Browsers pass through this host in Android's Apple sign-in and on the App Link pages; HSTS keeps them on HTTPS
+	# even on a network that rewrites DNS or strips TLS.
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy api:8080
+}
