@@ -453,6 +453,15 @@
    "w": 390,
    "x": 1410,
    "y": 1244
+  },
+  "WeekOverlap.dc.html": {
+   "h": 844,
+   "is_interactive": true,
+   "page": "m1",
+   "title": "주 보기 · 겹치는 일정",
+   "w": 390,
+   "x": 1410,
+   "y": 2488
   }
  },
  "createdOnFiles": {
@@ -603,6 +612,7 @@
   "SignIn.dc.html",
   "Permissions.dc.html",
   "Week.dc.html",
+  "WeekOverlap.dc.html",
   "List.dc.html",
   "Editor.dc.html",
   "Shift.dc.html",
