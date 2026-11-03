@@ -1314,6 +1314,7 @@ impl Core {
                 new_key,
                 nonce: None,
                 proof: None,
+                device_signature: None,
                 kakao_id_token: None,
                 apple_authorization_code: None,
             };
@@ -1325,6 +1326,17 @@ impl Core {
                     RecoveryUpload { apple_authorization_code: Some(authorization_code.clone()), ..upload }
                 }
                 _ => upload,
+            };
+            // A new key deletes every backup, so the device key signs it over the Kakao token's nonce or a fresh one.
+            let upload = if new_key {
+                let nonce = match upload.nonce.clone() {
+                    Some(nonce) => nonce,
+                    None => self.checked(self.api.nonce().await).await?,
+                };
+                let device_signature = Some(self.sign_with_device_key(&login::new_key_message(&nonce))?);
+                RecoveryUpload { nonce: Some(nonce), device_signature, ..upload }
+            } else {
+                upload
             };
             let result = match self.api.put_recovery(upload.clone()).await {
                 // The server may hold this code already, from a try whose answer was lost: the code then proves
@@ -1338,6 +1350,7 @@ impl Core {
                         new_key: false,
                         proof: Some(keys.sign_rotation(&nonce).to_vec()),
                         nonce: Some(nonce),
+                        device_signature: None,
                         kakao_id_token: None,
                         apple_authorization_code: None,
                         ..upload
@@ -1375,8 +1388,9 @@ impl Core {
 
     /// The body of `DELETE /me` for `proof`. A guest's is signed here with the recovery key of this device's code over
     /// a fresh nonce, without asking the user (protocol §13 "계정 삭제").
+    /// Every kind also carries the device key's signature over the nonce, the Kakao token's own or a fresh one.
     async fn deletion_request(&self, proof: &DeletionProof) -> Result<DeleteAccount, CoreError> {
-        Ok(match proof {
+        let request = match proof {
             DeletionProof::Guest => {
                 let (entropy, _) = self.recovery_secrets()?.ok_or_else(|| CoreError::Invalid {
                     reason: "this device holds no recovery code to sign with".into(),
@@ -1394,10 +1408,22 @@ impl Core {
                 kakao_id_token: Some(id_token.clone()),
                 ..DeleteAccount::default()
             },
-            DeletionProof::Apple { authorization_code } => {
-                DeleteAccount { apple_authorization_code: Some(authorization_code.clone()), ..DeleteAccount::default() }
-            }
-        })
+            DeletionProof::Apple { authorization_code } => DeleteAccount {
+                nonce: Some(self.checked(self.api.nonce().await).await?),
+                apple_authorization_code: Some(authorization_code.clone()),
+                ..DeleteAccount::default()
+            },
+        };
+        let nonce = request.nonce.as_deref().unwrap_or_default();
+        let device_signature = Some(self.sign_with_device_key(&login::delete_message(nonce))?);
+        Ok(DeleteAccount { device_signature, ..request })
+    }
+
+    /// Signs with this device's registered key, which never leaves the device: what the two irreversible requests add
+    /// so that a stolen session with a provider proof is not enough (threat model §3.7).
+    fn sign_with_device_key(&self, message: &[u8]) -> Result<Vec<u8>, CoreError> {
+        let secret = signing_secret(self.secrets.as_ref())?;
+        Ok(MlsClient::sign_with(&secret, message)?)
     }
 
     /// The keys of `entropy`, from memory after the first derivation of this run.

@@ -5,12 +5,15 @@ mod phones;
 
 use std::sync::Arc;
 
+use geunal_crypto::login::provider_nonce;
 use geunal_crypto::recovery;
 use geunal_ffi::{
     AlertRule, AuthResult, Core, CoreError, DeletionProof, PersonInput, Provider, RecoveryCodeCheck, RevokedVia,
     SecretStore,
 };
+use geunal_sync::api::{DeleteAccount, RecoveryUpload};
 use geunal_sync::fake::FakeServer;
+use geunal_sync::{ApiError, Session, Transport};
 use phones::{Fault, MemorySecrets, Quiet, kakao, kakao_deletion, keys_of, new_account, phone, user_id};
 
 #[test]
@@ -167,6 +170,65 @@ fn deleting_an_account_takes_a_fresh_proof_of_it_and_leaves_the_calendar() {
         let again = kakao(&a.core, "dana", "다나").await.unwrap();
         assert!(matches!(again, AuthResult::Registered { new_account: true, .. }), "{again:?}");
         assert!(a.core.local_data_of_other_account().unwrap().is_some());
+    });
+}
+
+#[test]
+fn a_stolen_session_with_a_fresh_provider_proof_neither_deletes_nor_starts_over_without_the_device_key() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let a = phone(&server);
+        let user = user_id(&kakao(&a.core, "fern", "펀").await.unwrap());
+        // What a man in the middle collects (threat model §3.7): the session's tokens and provider proofs bound to
+        // this device's public key. The device's secret key stays on the phone.
+        let session: Session = serde_json::from_slice(&a.secrets.get("session".into()).unwrap().unwrap()).unwrap();
+        let device_key = a.secrets.get("device_signing_key".into()).unwrap().unwrap()[32..].to_vec();
+        let thief = server.client();
+        thief.restore_session(&session.access_token, &session.refresh_token);
+        let kakao_proof = |nonce: &str| FakeServer::id_token("kakao", "fern", &provider_nonce(nonce, &device_key));
+        let refused = |result: Result<(), ApiError>| matches!(result, Err(ref e) if e.is(403, "reauth_required"));
+
+        let nonce = thief.nonce().await.unwrap();
+        let unsigned =
+            DeleteAccount { kakao_id_token: Some(kakao_proof(&nonce)), nonce: Some(nonce), ..DeleteAccount::default() };
+        assert!(refused(thief.delete_account(unsigned).await));
+        let nonce = thief.nonce().await.unwrap();
+        let forged = DeleteAccount {
+            kakao_id_token: Some(kakao_proof(&nonce)),
+            nonce: Some(nonce),
+            device_signature: Some(vec![7; 64]),
+            ..DeleteAccount::default()
+        };
+        assert!(refused(thief.delete_account(forged).await));
+        let nonce = thief.nonce().await.unwrap();
+        let apple = DeleteAccount {
+            nonce: Some(nonce),
+            apple_authorization_code: Some(FakeServer::apple_code("fern")),
+            ..DeleteAccount::default()
+        };
+        assert!(refused(thief.delete_account(apple).await));
+
+        // Within the 30 minutes of the sign-in, too: a new key would delete every backup.
+        let (wrapped, recovery_id, public_key) = server.recovery_of(&user).unwrap();
+        let nonce = thief.nonce().await.unwrap();
+        let start_over = RecoveryUpload {
+            amk_wrapped: wrapped,
+            recovery_id: vec![9; 16],
+            recovery_public_key: public_key,
+            new_key: true,
+            kakao_id_token: Some(kakao_proof(&nonce)),
+            nonce: Some(nonce),
+            proof: None,
+            device_signature: None,
+            apple_authorization_code: None,
+        };
+        assert!(refused(thief.put_recovery(start_over).await));
+        assert_eq!(server.recovery_of(&user).unwrap().1, recovery_id);
+        assert!(server.has_account(&user));
+
+        // The phone itself signs, and goes through.
+        a.core.clone().delete_account(kakao_deletion(&a.core, "fern").await).await.unwrap();
+        assert!(!server.has_account(&user));
     });
 }
 
