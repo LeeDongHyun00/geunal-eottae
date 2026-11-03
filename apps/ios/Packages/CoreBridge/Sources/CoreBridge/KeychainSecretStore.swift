@@ -22,22 +22,25 @@ public final class KeychainSecretStore: SecretStore {
         self.accessGroup = accessGroup
     }
 
-    public func get(name: String) -> Data? {
+    /// `nil` only for an item that is not there. Any other failure throws: the core would take a keychain it could
+    /// not read, as before the first unlock, for one without the key, and write a new key over the real one.
+    public func get(name: String) throws -> Data? {
         var query = baseQuery(name: name)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess else {
-            if status != errSecItemNotFound {
-                log.error("get failed: \(status)")
-            }
+        if status == errSecItemNotFound {
             return nil
         }
-        return item as? Data
+        guard status == errSecSuccess, let data = item as? Data else {
+            log.error("get failed: \(status)")
+            throw SecretStoreError.Unavailable(reason: "keychain status \(status)")
+        }
+        return data
     }
 
-    public func put(name: String, value: Data) {
+    public func put(name: String, value: Data) throws {
         let update: [String: Any] = [
             kSecValueData as String: value,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
@@ -49,15 +52,16 @@ public final class KeychainSecretStore: SecretStore {
             status = SecItemAdd(attributes as CFDictionary, nil)
         }
         if status != errSecSuccess {
-            // The trait has no error channel; the core notices when the next `get` comes back empty.
             log.error("put failed: \(status)")
+            throw SecretStoreError.Unavailable(reason: "keychain status \(status)")
         }
     }
 
-    public func delete(name: String) {
+    public func delete(name: String) throws {
         let status = SecItemDelete(baseQuery(name: name) as CFDictionary)
         if status != errSecSuccess && status != errSecItemNotFound {
             log.error("delete failed: \(status)")
+            throw SecretStoreError.Unavailable(reason: "keychain status \(status)")
         }
     }
 

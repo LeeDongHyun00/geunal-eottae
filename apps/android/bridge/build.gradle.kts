@@ -11,7 +11,8 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.minSdk.get().toInt()
-        // The Keystore only exists on a device, so SecretStore's tests are instrumented (make connected-android).
+        // The Keystore only exists on a device, so SecretStore's tests are instrumented (make connected-android); what
+        // it decides from the SDK level alone runs as a unit test.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -35,6 +36,7 @@ dependencies {
     api(project(":core"))
     implementation(libs.kotlinx.coroutines.core)
 
+    testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
 }

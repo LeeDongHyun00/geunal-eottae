@@ -88,6 +88,15 @@ object Metrics {
         val icon = 26.dp
     }
 
+    /** The calendar views' parts (components.md §8, tokens.json `component.calendar`). */
+    object Grid {
+        val monthCell = 88.dp
+        val eventBar = 16.dp
+        val weekHour = 48.dp
+        val handleWidth = 20.dp
+        val handleHeight = 44.dp
+    }
+
     object NextUpBar {
         val height = 56.dp
         val gapAboveTabBar = 8.dp
@@ -103,6 +112,9 @@ object Motion {
     const val TOAST_IN_MS = 200
     const val TOAST_OUT_MS = 200
     const val TOAST_DURATION_MS = 5_000L
+
+    /** components.md "제안 카드": the question a toast carries stays twice as long, since it is asked once. */
+    const val PROPOSAL_DURATION_MS = 10_000L
     const val NEXT_UP_MS = 160
     const val REDUCED_MOTION_FADE_MS = 120
 }

@@ -45,9 +45,11 @@ class AppViewModel(
     private val onboarding: OnboardingState,
     private val changes: Flow<Change>,
     private val isOnline: StateFlow<Boolean>,
+    /** TalkBack and the like: a proposal card then stays until it is answered (m1.md decision 28). */
+    screenReaderRunning: () -> Boolean = { false },
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
-    val toasts = ToastCenter(viewModelScope)
+    val toasts = ToastCenter(viewModelScope, screenReaderRunning = screenReaderRunning)
 
     private val _phase = MutableStateFlow<AppPhase>(AppPhase.Starting)
     val phase: StateFlow<AppPhase> = _phase.asStateFlow()
@@ -75,7 +77,8 @@ class AppViewModel(
                     _phase.value = AppPhase.Failed(if (e is CoreException.SecretStore) StartFailure.SECRETS else StartFailure.STORE)
                     return@launch
                 } catch (e: InternalException) {
-                    // A Rust panic, which UniFFI turns into this; a SecretStore callback that threw also ends up here.
+                    // A Rust panic, which UniFFI turns into this. A SecretStore callback that throws arrives as
+                    // CoreException.SecretStore instead.
                     _phase.value = AppPhase.Failed(StartFailure.OTHER)
                     return@launch
                 }
@@ -97,7 +100,8 @@ class AppViewModel(
 
     /**
      * Each time the app comes to the front: the day's session count for the alpha statistics (protocol §14), the guest
-     * account an offline start still owes (m1.md decision 16), and a fresh next-up bar.
+     * account an offline start still owes (m1.md decision 16), a sync when online, and a fresh next-up bar. The sync also
+     * finishes what a sign-in left undone, such as uploading the recovery material (protocol §10 "올리는 때").
      */
     fun appBecameActive() {
         val core = core
@@ -115,6 +119,16 @@ class AppViewModel(
                     // Counted only while the statistics are on; the core says when it cannot, and nothing depends on it.
                 }
                 if (isOnline.value) PendingGuest.complete(core, onboarding)
+            }
+            // Offline it could only fail; the next time in front with a connection tries again, as on iOS.
+            if (isOnline.value) {
+                try {
+                    core.sync()
+                } catch (e: CoreException) {
+                    // Refused or cut off: the calendar works without it, and the next time in front tries again.
+                } catch (e: InternalException) {
+                    // As above; a panic in the core must not take the app down.
+                }
             }
             nextUp?.refresh()
         }

@@ -3,7 +3,8 @@
 //!
 //! An authenticated call that meets 401 `token_expired` trades the refresh token for new tokens and goes once more.
 //! The trade runs one at a time: the server ends every session of a device that presents a refresh token twice, and
-//! two calls can find the access token expired together.
+//! two calls can find the access token expired together. No other answer is traded: 401 `account_deleted` means the
+//! account is gone (protocol §13), and the core finishes the deletion.
 
 use std::sync::Mutex;
 
@@ -471,6 +472,37 @@ mod tests {
         let err = api.get_object(url, &|_, _| {}).await.unwrap_err();
         let ApiError::Network(text) = err else { panic!("{err:?}") };
         assert!(!text.contains("X-Amz-Signature") && !text.contains("secret"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn a_deleted_accounts_token_is_not_traded_for_new_ones() {
+        // A server that answers every request as it does a deleted account's token (protocol §13 "답을 잃은 삭제").
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let requests = std::sync::Arc::new(Mutex::new(Vec::<String>::new()));
+        let seen = requests.clone();
+        tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let mut head = vec![0; 4096];
+                let read = socket.read(&mut head).await.unwrap_or(0);
+                let line = String::from_utf8_lossy(&head[..read]).lines().next().unwrap_or_default().to_owned();
+                seen.lock().unwrap().push(line);
+                let body = r#"{"error":"account_deleted","message":"m"}"#;
+                let answer = format!(
+                    "HTTP/1.1 401 Unauthorized\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(answer.as_bytes()).await;
+            }
+        });
+        let api = HttpTransport::new(&base).unwrap();
+        api.restore_session("access", "refresh");
+
+        let err = api.me().await.unwrap_err();
+        assert!(err.is(401, "account_deleted"), "{err:?}");
+        // One request and no `POST /auth/refresh`: refreshing is for 401 `token_expired` only.
+        assert_eq!(requests.lock().unwrap().as_slice(), ["GET /me HTTP/1.1"]);
     }
 
     #[test]
