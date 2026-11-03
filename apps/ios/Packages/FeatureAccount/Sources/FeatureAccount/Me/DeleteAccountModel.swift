@@ -123,6 +123,9 @@ public final class DeleteAccountModel {
         var proof: DeletionProof?
         do {
             let made = try await self.proof()
+            // The provider's sign-in can outlast the sheet (another device signing this one out closes it); a closed
+            // sheet sends nothing.
+            guard presentation == attempt else { return false }
             proof = made
             try await send(made)
             deleted = true

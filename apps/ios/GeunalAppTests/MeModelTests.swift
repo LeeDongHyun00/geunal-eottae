@@ -550,6 +550,18 @@ final class MeModelTests: XCTestCase {
         XCTAssertEqual(core.calls.current, ["nonce", "delete", "nonce", "delete"])
     }
 
+    func testASheetClosedDuringTheProviderSignInSendsNothing() async {
+        let core = AccountFakeCore()
+        let providers = FakeProviders()
+        let model = deletion(core, FakeDeviceOwner(), account: kakao, providers: providers)
+        providers.whileSigningIn = { model.sheetClosed() }
+
+        let deleted = await model.delete(online: true)
+
+        XCTAssertFalse(deleted)
+        XCTAssertEqual(core.calls.current, ["nonce"])
+    }
+
     func testAnAccountAlreadyGoneEndsAsDeleted() async {
         let core = AccountFakeCore()
         core.deleteErrors.update { $0 = [accountDeleted] }

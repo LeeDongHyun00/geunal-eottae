@@ -33,23 +33,33 @@ public final class PermissionsModel {
     @ObservationIgnored private let core: any CoreProtocol
     @ObservationIgnored private let permissions: any SystemPermissions
     @ObservationIgnored private let notify: @MainActor (String) -> Void
+    @ObservationIgnored private let importCalendars: @MainActor () async -> Int?
 
+    /// `importCalendars` mirrors every calendar of the phone once access is given and says how many; `nil` leaves
+    /// the count to the system's list.
     public init(
         core: any CoreProtocol, permissions: any SystemPermissions, channel: BuildChannel = .current,
-        notify: @escaping @MainActor (String) -> Void
+        importCalendars: @escaping @MainActor () async -> Int? = { nil }, notify: @escaping @MainActor (String) -> Void
     ) {
         self.core = core
         self.permissions = permissions
         self.showsAlphaStats = channel == .alpha
+        self.importCalendars = importCalendars
         self.notify = notify
     }
 
     /// "캘린더 열기" waits until both system permissions are answered either way; "나중에 할게요" never waits.
     public var canOpenCalendar: Bool { calendar != .notAsked && notifications != .notAsked }
 
+    /// Also after Settings: access given there imports the calendars here, as a yes to the system's question does.
     public func refresh() async {
+        let before = calendar
         calendar = permissions.calendarState()
-        calendarCount = calendar == .granted ? permissions.deviceCalendarCount() : 0
+        if calendar != .granted {
+            calendarCount = 0
+        } else if before != .granted {
+            calendarCount = await imported()
+        }
         notifications = await permissions.notificationState()
         if showsAlphaStats {
             alphaStats = (try? core.alphaStatsEnabled()) ?? false
@@ -60,12 +70,20 @@ public final class PermissionsModel {
         switch calendar {
         case .notAsked:
             calendar = await permissions.requestCalendar()
-            calendarCount = calendar == .granted ? permissions.deviceCalendarCount() : 0
+            calendarCount = calendar == .granted ? await imported() : 0
         case .denied:
             permissions.openSettings()
         case .granted:
             break
         }
+    }
+
+    /// "가져왔어요 · 캘린더 3개" (m1.md screen 3): the calendars the mirror took.
+    private func imported() async -> Int {
+        if let count = await importCalendars() {
+            return count
+        }
+        return permissions.deviceCalendarCount()
     }
 
     public func notificationsTapped() async {
