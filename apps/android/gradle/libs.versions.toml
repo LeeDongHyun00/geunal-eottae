@@ -5,6 +5,8 @@
 agp = "9.3.3"
 kotlin = "2.4.21"
 ktlint-gradle = "14.2.0"
+# Gradle Play Publisher: `make release-android` sends the signed bundle to the internal track (infra/release/README.md).
+play-publisher = "4.1.1"
 # The revision scripts/tool.sh android-ndk pins (r28c). AGP strips the core's libraries with its llvm-strip.
 ndk = "28.2.13676358"
 compileSdk = "37"
@@ -74,3 +76,4 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint-gradle" }
+play-publisher = { id = "com.github.triplet.play", version.ref = "play-publisher" }
