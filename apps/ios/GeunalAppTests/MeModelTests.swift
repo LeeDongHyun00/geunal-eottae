@@ -45,6 +45,52 @@ final class MeModelTests: XCTestCase {
         XCTAssertFalse(model.hasAccount)
     }
 
+    // m1.md §4 "로그인이 끝났을 때", decision 43: the core no longer reports the account once the session is gone; the
+    // app tells the card what kind it was.
+    func testShowsAnEndedSession() async {
+        let core = AccountFakeCore()
+        core.summary.account = nil
+        let model = MeModel(core: core, channel: .public)
+        model.sessionEnd = .guest
+
+        await model.load()
+
+        XCTAssertEqual(model.account, .sessionEnded(.guest))
+        XCTAssertFalse(model.hasAccount)
+
+        model.sessionEnd = nil
+        await model.load()
+        XCTAssertEqual(model.account, MeModel.Account.none)
+    }
+
+    func testRemembersOnlyTheKindOfAccountUntilAReset() {
+        let state = OnboardingState(defaults: scratchDefaults())
+        XCTAssertNil(state.knownAccount)
+        XCTAssertFalse(state.sessionEnded)
+
+        state.knownAccount = .provider
+        state.sessionEnded = true
+        XCTAssertEqual(state.knownAccount, .provider)
+        XCTAssertTrue(state.sessionEnded)
+
+        state.reset()
+        XCTAssertNil(state.knownAccount)
+        XCTAssertFalse(state.sessionEnded)
+    }
+
+    func testAnotherDevicesSignInWinsOverAnEndedSession() async {
+        let core = AccountFakeCore()
+        core.summary.account = nil
+        let revocation = Revocation(at: Date(), byPlatform: "ios", via: .provider)
+        core.revoked = revocation
+        let model = MeModel(core: core, channel: .public)
+        model.sessionEnd = .provider
+
+        await model.load()
+
+        XCTAssertEqual(model.account, .signedOut(revocation))
+    }
+
     func testShowsTheAlphaSwitchOnlyInAlphaBuilds() async {
         let core = AccountFakeCore()
         core.alphaStats = true

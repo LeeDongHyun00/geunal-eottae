@@ -15,9 +15,14 @@ public final class MeModel {
         case provider(AccountView)
         /// Another device's sign-in signed this one out (screen 23); the calendar goes on.
         case signedOut(Revocation)
+        /// The core ended the session: the server refused its refresh token (m1.md §4 "로그인이 끝났을 때", decision
+        /// 43). The device still holds the account, and signing in again goes on from here.
+        case sessionEnded(AccountKind)
     }
 
     public private(set) var account: Account = .loading
+    /// What the app knows of an ended session, which the core no longer reports once the session is gone.
+    public var sessionEnd: AccountKind?
     public private(set) var summary: MeSummary?
     public private(set) var alphaStats = false
     public let showsAlphaStats: Bool
@@ -57,6 +62,8 @@ public final class MeModel {
             account = .signedOut(revocation)
         } else if let view = read?.0.account {
             account = view.providers.isEmpty ? .guest(view) : .provider(view)
+        } else if let sessionEnd {
+            account = .sessionEnded(sessionEnd)
         } else {
             account = .none
         }

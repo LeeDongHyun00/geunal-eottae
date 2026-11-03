@@ -10,6 +10,8 @@ struct RootView: View {
     @State private var model = AppModel.shared
     /// "이 기기에서 다시 로그인" waits for the sheet to go: SwiftUI drops a cover asked for while a sheet is closing.
     @State private var signInAfterSheet = false
+    /// The restore over the tabs sent a returning guest to the sign-in; it opens once the restore is gone.
+    @State private var signInAfterRestore = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -43,8 +45,17 @@ struct RootView: View {
                                 dependencies: dependencies(core), onClose: { model.signingIn = false },
                                 onFinish: { model.signedInAgain() })
                         }
-                        .fullScreenCover(isPresented: $model.enteringRecoveryCode) {
-                            RestoreCover(dependencies: dependencies(core), onClose: { model.recoveryCodeClosed() })
+                        .fullScreenCover(
+                            isPresented: $model.enteringRecoveryCode, onDismiss: signInAfterRestoreIfAsked
+                        ) {
+                            RestoreCover(
+                                dependencies: dependencies(core), mode: model.returningAsGuest ? .guestReturn : .offer,
+                                onClose: { model.recoveryCodeClosed() },
+                                onBackToSignIn: {
+                                    // A returning guest's "새 게스트 계정으로 시작" needs the sign-in screen's age tick.
+                                    signInAfterRestore = true
+                                    model.recoveryCodeClosed()
+                                })
                         }
                         .sheet(isPresented: asksLocalData) {
                             if let question = model.localData, let local = question.asking {
@@ -87,6 +98,12 @@ struct RootView: View {
                     model.revocationShown()
                 }
             })
+    }
+
+    private func signInAfterRestoreIfAsked() {
+        guard signInAfterRestore else { return }
+        signInAfterRestore = false
+        model.signInAgain()
     }
 
     private func signInIfAsked() {

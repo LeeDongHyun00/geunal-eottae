@@ -41,6 +41,10 @@ final class AppModel {
     private(set) var recoveryPending = false
     /// "백업 가져오기" over the tabs, from the banner or 나.
     var enteringRecoveryCode = false
+    /// The core ended the session (m1.md §4 "로그인이 끝났을 때", decision 43): what kind of account signs in again.
+    private(set) var sessionEnded: AccountKind?
+    /// Screen 21 opened for a guest whose session ended, rather than for the account's backup.
+    private(set) var returningAsGuest = false
     /// Another account's events, asked about over the tabs when a guest who started offline gets the account later
     /// (m1.md screen 24); onboarding asks its own.
     private(set) var localData: LocalDataQuestion?
@@ -315,12 +319,20 @@ final class AppModel {
     }
 
     func enterRecoveryCode() {
+        returningAsGuest = false
+        enteringRecoveryCode = true
+    }
+
+    /// 나's "다시 들어가기" after a guest's session ended: the guest's code on screen 21.
+    func returnAsGuest() {
+        returningAsGuest = true
         enteringRecoveryCode = true
     }
 
     /// The restore over the tabs closed: restored, started fresh, or "나중에" once more.
     func recoveryCodeClosed() {
         enteringRecoveryCode = false
+        returningAsGuest = false
         accountChanges += 1
         Task { await refreshAccount() }
     }
@@ -338,6 +350,9 @@ final class AppModel {
         alerts?.removeAll()
         removeWidgetSnapshot()
         onboardingState.isFinished = false
+        onboardingState.knownAccount = nil
+        onboardingState.sessionEnded = false
+        sessionEnded = nil
         onboardingResumes = false
         accountChanges += 1
         recoveryUnsaved = false
@@ -351,7 +366,10 @@ final class AppModel {
     /// A revocation the sheet has not shown, and whether the recovery code still waits for the paper.
     func refreshAccount() async {
         guard let core else { return }
-        let read = await Task.detached { (try? core.revocation(), try? core.recoveryStatus(), core.session()) }.value
+        let read = await Task.detached {
+            (try? core.revocation(), try? core.recoveryStatus(), core.session(), try? core.account())
+        }.value
+        noteSession(account: read.3 ?? nil, revoked: read.0 != nil)
         if let revoked = read.0, revoked.at != onboardingState.revocationShownAt {
             if revocation == nil {
                 // Signed out from another device: the alerts and the widget snapshot go with their titles, as on a
@@ -364,6 +382,30 @@ final class AppModel {
         recoveryUnsaved = read.0 == nil && read.1.map { $0.created && !$0.saved } == true
         // A signed-in device makes or receives the code at sign-in, unless the account's backup is waiting for it.
         recoveryPending = read.0 == nil && read.2 != nil && read.1.map { !$0.created } == true
+    }
+
+    /// Keeps the kind of account a session was for, and notices when the core ended it: no session, no revocation (that
+    /// is screen 23), and an account this device had (m1.md §4 "로그인이 끝났을 때", decision 43). The toast comes once;
+    /// signing in again clears it and says so.
+    private func noteSession(account: AccountView?, revoked: Bool) {
+        if let account {
+            onboardingState.knownAccount = account.providers.isEmpty ? .guest : .provider
+            if onboardingState.sessionEnded {
+                onboardingState.sessionEnded = false
+                toasts.show(String(localized: "다시 로그인했어요"))
+            }
+            sessionEnded = nil
+            return
+        }
+        guard !revoked, case .main = phase, let known = onboardingState.knownAccount else {
+            sessionEnded = nil
+            return
+        }
+        if !onboardingState.sessionEnded {
+            onboardingState.sessionEnded = true
+            toasts.show(String(localized: "로그인이 끝났어요. 다시 로그인해 주세요"))
+        }
+        sessionEnded = known
     }
 
     /// The core reports a change of the 알림 settings as a calendar change.

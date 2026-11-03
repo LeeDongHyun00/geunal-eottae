@@ -1,6 +1,13 @@
 import Foundation
 import GeunalCore
 
+/// What kind of account this device last had a session for: what "다시 로그인" means once the core ended the session
+/// (m1.md §4 "로그인이 끝났을 때", decision 43). No name, no id: only the kind.
+public enum AccountKind: String, Sendable {
+    case guest
+    case provider
+}
+
 /// What onboarding remembers between launches, in the standard defaults (no secrets: those are in the keychain).
 public struct OnboardingState: Sendable {
     private static let finishedKey = "app.geunal.onboarding.finished"
@@ -8,6 +15,8 @@ public struct OnboardingState: Sendable {
     private static let revocationShownKey = "app.geunal.account.revocationShownAt"
     private static let lastProviderKey = "app.geunal.account.lastProvider"
     private static let lastProviderSignInKey = "app.geunal.account.lastProviderSignInAt"
+    private static let knownAccountKey = "app.geunal.account.kind"
+    private static let sessionEndedKey = "app.geunal.account.sessionEnded"
 
     private nonisolated(unsafe) let defaults: UserDefaults
 
@@ -28,6 +37,26 @@ public struct OnboardingState: Sendable {
         pendingGuestAgeConfirmedAt = nil
         revocationShownAt = nil
         lastProviderSignIn = nil
+        knownAccount = nil
+        sessionEnded = false
+    }
+
+    /// The kind of the account this device last had a session for; `nil` before any, and after a deletion.
+    public var knownAccount: AccountKind? {
+        get { defaults.string(forKey: Self.knownAccountKey).flatMap(AccountKind.init(rawValue:)) }
+        nonmutating set {
+            if let newValue {
+                defaults.set(newValue.rawValue, forKey: Self.knownAccountKey)
+            } else {
+                defaults.removeObject(forKey: Self.knownAccountKey)
+            }
+        }
+    }
+
+    /// The core ended the session and the toast said so: it comes once, until the next sign-in (decision 43).
+    public var sessionEnded: Bool {
+        get { defaults.bool(forKey: Self.sessionEndedKey) }
+        nonmutating set { defaults.set(newValue, forKey: Self.sessionEndedKey) }
     }
 
     /// A guest who started offline: the time they ticked "만 14세 이상이에요", kept until the guest account can be made
