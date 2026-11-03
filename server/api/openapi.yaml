@@ -152,6 +152,43 @@ paths:
         "303": { description: redirect to the App Links address carrying the fields in the fragment }
         "404": { description: not_found (Sign in with Apple is not configured on this server) }
 
+  /auth/kakao/unlinked:
+    get: &kakaoUnlinked
+      summary: "Kakao's unlink webhook (protocol §13): the user cut the link from Kakao's side"
+      description: |
+        Registered in the Kakao console as the unlink webhook (GET or POST). Kakao sends the primary admin key as
+        `Authorization: KakaoAK <key>`; anything else changes nothing and gets 401. The link of `user_id` (the member
+        number, the ID token's `sub`) is marked cut and kept, so the account opens with its recovery code until the
+        same Kakao account signs in again. Kakao wants 200 within 3 seconds, also for a member number we do not know.
+      security: []
+      parameters:
+        - { name: user_id, in: query, schema: { type: string }, description: Kakao member number }
+        - { name: app_id, in: query, schema: { type: string } }
+        - { name: referrer_type, in: query, schema: { type: string }, description: "ACCOUNT_DELETE, FORCED_ACCOUNT_DELETE, UNLINK_FROM_ADMIN, UNLINK_FROM_APPS, INCOMPLETE_SIGN_UP" }
+      responses:
+        "200": { description: handled }
+        "401": { description: provider_token_invalid (not Kakao's admin key) }
+        "404": { description: not_found (Kakao sign-in is off) }
+    post: *kakaoUnlinked
+
+  /auth/apple/notifications:
+    post:
+      summary: "Sign in with Apple server-to-server notifications (protocol §13)"
+      description: |
+        Registered as the App ID's server-to-server notification endpoint. The `payload` JWT must verify with Apple's
+        JWKS, `iss` https://appleid.apple.com and `aud` our bundle ID or services ID, and be issued within the last day;
+        each `jti` counts once. `consent-revoked` and `account-delete` mark the link of the event's `sub` cut and keep
+        it; the email events change nothing.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [payload], properties: { payload: { type: string, description: JWS signed by Apple } } }
+      responses:
+        "200": { description: handled }
+        "401": { description: "provider_token_invalid (signature, iss, aud or age does not verify)" }
+        "404": { description: not_found (Apple sign-in is off) }
+
   /.well-known/assetlinks.json:
     get:
       summary: Android App Links statement for app.geunal and the Play app signing certificate's SHA-256 (infra.md §10)
