@@ -76,11 +76,20 @@ print(json.dumps({"keys": [key]}, separators=(",", ":")))
 ')
   echo "GEUNAL_AUTH_JWT_KEYS='$keys'" >>/etc/geunal/api.env
 fi
+
+# Keys issued outside the server (providers, storage) come from Secret Manager once its read-only key is in place
+# (README.md "비밀값"). A failed fetch stops the deploy, so the stack never restarts with half of them.
+if [ -f /etc/geunal/secret-manager.env ]; then
+  python3 -I /opt/geunal/fetch-secrets.py
+else
+  echo "warning: /etc/geunal/secret-manager.env is missing; using only the keys written into /etc/geunal by hand" >&2
+fi
 umask 022
-# The Object Storage keys are made in the NCP console, so the operator adds them by hand (README.md). Say what is
-# missing rather than stop: the API refuses only backup calls without them, and the dump stays local.
+# Say what is missing rather than stop: the API refuses only backup calls without the storage keys, and the dump
+# stays local without dump.env.
 for name in GEUNAL_S3_ACCESS_KEY GEUNAL_S3_SECRET_KEY; do
-  grep -q "^$name=." /etc/geunal/api.env || echo "warning: $name is not in /etc/geunal/api.env; backups will fail" >&2
+  grep -qs "^$name=." /etc/geunal/api.env /etc/geunal/api.secrets.env ||
+    echo "warning: $name is in neither Secret Manager nor /etc/geunal/api.env; backups will fail" >&2
 done
 [ -f /etc/geunal/dump.env ] || echo "warning: /etc/geunal/dump.env is missing; the daily dump stays on this server" >&2
 

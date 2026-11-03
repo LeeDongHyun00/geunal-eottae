@@ -38,7 +38,12 @@ services:
     pull_policy: never
     read_only: true
     tmpfs: [/tmp]
-    env_file: /etc/geunal/api.env
+    # api.env holds what bootstrap.sh makes on the server; api.secrets.env, from Secret Manager (fetch-secrets.py),
+    # comes second so its keys win, and may not exist yet.
+    env_file:
+      - path: /etc/geunal/api.env
+      - path: /etc/geunal/api.secrets.env
+        required: false
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/geunal

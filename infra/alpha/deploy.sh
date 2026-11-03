@@ -35,7 +35,7 @@ tag=$(git log -1 --format=%h --abbrev=12 -- server/api)
 echo "Copying infra/alpha to $target:/opt/geunal" >&2
 # COPYFILE_DISABLE and --no-xattrs keep macOS's tar from adding AppleDouble files and extended attributes.
 COPYFILE_DISABLE=1 tar -C infra/alpha --no-xattrs -cf - compose.yml Caddyfile bootstrap.sh db-dump.sh \
-  geunal-db-dump.service geunal-db-dump.timer |
+  fetch-secrets.py geunal-db-dump.service geunal-db-dump.timer |
   remote 'install -d -m 755 /opt/geunal && tar -C /opt/geunal --no-same-owner --warning=no-unknown-keyword -xf -'
 remote /opt/geunal/bootstrap.sh
 
