@@ -27,7 +27,7 @@ struct MainTabView: View {
         TabView(selection: $tab) {
             CalendarTab(
                 model: model, core: core, openEvent: $openEvent,
-                onRecoveryBanner: model.recoveryUnsaved ? { openRecoveryCode() } : nil
+                recoveryBanner: recoveryBanner
             )
             .toastProposal(model.toasts)
             .nextUpInset(isEnabled: slotIsEnabled) { slot }
@@ -83,6 +83,13 @@ struct MainTabView: View {
             }
             .toastSlot(model.toasts, chrome: Self.drawsOwnChrome)
         }
+    }
+
+    private var recoveryBanner: CalendarScreen.RecoveryBanner? {
+        if model.recoveryPending {
+            return .pending { model.enterRecoveryCode() }
+        }
+        return model.recoveryUnsaved ? .unsaved { openRecoveryCode() } : nil
     }
 
     /// The banner's "저장": the OS prompt comes on the calendar, and only a pass opens 나 › 복구 코드 (decision 26).

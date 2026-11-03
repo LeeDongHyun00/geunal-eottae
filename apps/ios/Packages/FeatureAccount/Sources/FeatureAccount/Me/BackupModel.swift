@@ -18,15 +18,21 @@ public final class BackupModel {
     public private(set) var status: BackupStatus?
     /// "종이에 적었어요" was pressed; until then the screen says a backup only comes back with the code.
     public private(set) var recoverySaved = true
+    /// "나중에 넣을게요": the account's code is not on this device, so backups wait until it is entered (m1.md screen 20).
+    public private(set) var recoveryPending = false
     public private(set) var backups: [BackupView] = []
     public private(set) var phase: Phase = .idle
     /// The backup this screen just made, for "방금".
     public private(set) var justMade = false
 
     @ObservationIgnored private let core: any CoreProtocol
+    @ObservationIgnored private let onAccountDeleted: @MainActor () -> Void
 
-    public init(core: any CoreProtocol) {
+    /// `onAccountDeleted` ends the app as after a deletion when a call here learns the account is gone (m1.md
+    /// decision 36).
+    public init(core: any CoreProtocol, onAccountDeleted: @escaping @MainActor () -> Void = {}) {
         self.core = core
+        self.onAccountDeleted = onAccountDeleted
     }
 
     public var isRunning: Bool {
@@ -35,16 +41,20 @@ public final class BackupModel {
     }
 
     /// Backups wait for the recovery material on the server; until then the button stays off.
-    public var canBackUp: Bool { status?.ready == true && !isRunning }
+    public var canBackUp: Bool { status?.ready == true && !recoveryPending && !isRunning }
 
     public func load() async {
         let core = self.core
         status = try? await offMain { try core.backupStatus() }
-        recoverySaved = (try? await offMain { try core.recoveryStatus() })?.saved ?? true
+        let recovery = try? await offMain { try core.recoveryStatus() }
+        recoverySaved = recovery?.saved ?? true
+        recoveryPending = recovery.map { !$0.created } ?? false
         // The list comes from the server; offline it stays as it was.
-        if let list = try? await core.backups() {
-            backups = list
-        }
+        do {
+            backups = try await core.backups()
+        } catch let error as CoreError where error.isAccountDeleted {
+            onAccountDeleted()
+        } catch {}
     }
 
     /// Reads the readiness again from the device, without asking the server for the list: an account change (the
@@ -52,7 +62,9 @@ public final class BackupModel {
     public func refreshStatus() async {
         let core = self.core
         status = try? await offMain { try core.backupStatus() }
-        recoverySaved = (try? await offMain { try core.recoveryStatus() })?.saved ?? true
+        let recovery = try? await offMain { try core.recoveryStatus() }
+        recoverySaved = recovery?.saved ?? true
+        recoveryPending = recovery.map { !$0.created } ?? false
     }
 
     public func backUpNow() async {
@@ -68,6 +80,10 @@ public final class BackupModel {
             _ = try await core.backupNow(progress: relay)
             phase = .idle
             justMade = true
+        } catch let error as CoreError where error.isAccountDeleted {
+            phase = .idle
+            onAccountDeleted()
+            return
         } catch CoreError.Network(_) {
             phase = .waitingForNetwork
         } catch {

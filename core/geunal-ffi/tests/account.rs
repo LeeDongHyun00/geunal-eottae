@@ -477,11 +477,67 @@ fn a_deleted_accounts_tokens_read_as_expired_once_they_would_have_run_out() {
         assert!(a.core.clone().delete_account(kakao_deletion(&a.core, "hugo").await).await.is_err());
 
         // The refresh token handed out at t0 ends 30 days on, whenever the deletion came. Past that the server cannot
-        // tell any more, and a session that merely ended is no deletion.
+        // tell any more, and a session that merely ended is no deletion: the session goes, the account's keys stay.
         server.set_now(t0 + chrono::Duration::days(30) + chrono::Duration::minutes(5));
         let error = a.core.clone().sync().await.unwrap_err();
-        assert!(matches!(&error, CoreError::Api { status: 401, code, .. } if code == "token_expired"), "{error:?}");
-        assert!(a.core.session().is_some() && a.secrets.has("device_signing_key"));
+        assert!(matches!(error, CoreError::SignInAgain), "{error:?}");
+        assert!(a.core.session().is_none() && a.secrets.has("device_signing_key") && a.secrets.has("recovery_entropy"));
+    });
+}
+
+#[test]
+fn ends_only_the_session_when_the_server_refuses_the_refresh_token() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let t0 = chrono::Utc::now();
+        server.set_now(t0);
+        let a = phone(&server);
+        let user = user_id(&kakao(&a.core, "ivan", "이반").await.unwrap());
+        let person =
+            PersonInput { id: None, name: "엄마".into(), birthday: None, alert: AlertRule::Inherit, suggest: true };
+        a.core.save_person(person).unwrap();
+        let words = a.core.recovery_words().unwrap();
+
+        // Thirty days without a connection: the refresh token handed out at the sign-in has run out.
+        server.set_now(t0 + chrono::Duration::days(30) + chrono::Duration::minutes(1));
+        let error = a.core.clone().sync().await.unwrap_err();
+        assert!(matches!(error, CoreError::SignInAgain), "{error:?}");
+        assert!(a.core.session().is_none() && !a.secrets.has("session"));
+        a.core.clone().sync().await.unwrap();
+        assert!(a.core.session().is_none(), "a signed-out sync tries no refresh again");
+        // Nobody else signed this device out, and what the account keeps here stays for the next sign-in.
+        assert!(a.core.revocation().unwrap().is_none());
+        for secret in ["device_signing_key", "recovery_entropy", "account_master_key", "db_key"] {
+            assert!(a.secrets.has(secret), "{secret} stays");
+        }
+        assert_eq!(a.core.people().unwrap().len(), 1);
+
+        // Signing in again on the same phone picks the account up with the same code, without a restore.
+        let again = kakao(&a.core, "ivan", "이반").await.unwrap();
+        assert!(matches!(again, AuthResult::Registered { new_account: false, .. }), "{again:?}");
+        assert_eq!(user_id(&again), user);
+        assert_eq!(a.core.recovery_words().unwrap(), words);
+        a.core.clone().sync().await.unwrap();
+    });
+}
+
+#[test]
+fn ends_the_session_when_reuse_detection_refuses_the_refresh_token() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let a = phone(&server);
+        kakao(&a.core, "jade", "제이드").await.unwrap();
+        // Someone holding a copy of the session refreshes first; the phone's own refresh then presents a spent token,
+        // and the server ends every session of the device.
+        let session: Session = serde_json::from_slice(&a.secrets.get("session".into()).unwrap().unwrap()).unwrap();
+        let copy = server.client();
+        copy.restore_session(&session.access_token, &session.refresh_token);
+        server.expire_access_tokens();
+        copy.me().await.unwrap();
+        let error = a.core.clone().sync().await.unwrap_err();
+        assert!(matches!(error, CoreError::SignInAgain), "{error:?}");
+        assert!(a.core.session().is_none() && a.secrets.has("device_signing_key"));
+        assert!(copy.me().await.is_err(), "the copy's session ended too");
     });
 }
 

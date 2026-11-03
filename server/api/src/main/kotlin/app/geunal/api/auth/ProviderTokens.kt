@@ -8,6 +8,7 @@ import com.nimbusds.jose.proc.BadJOSEException
 import com.nimbusds.jose.proc.JWSVerificationKeySelector
 import com.nimbusds.jose.proc.SecurityContext
 import com.nimbusds.jose.util.DefaultResourceRetriever
+import com.nimbusds.jose.util.JSONObjectUtils
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.proc.DefaultJWTClaimsVerifier
 import com.nimbusds.jwt.proc.DefaultJWTProcessor
@@ -58,6 +59,12 @@ class ProviderTokens(
             Verifier(it.issuer, it.jwksUri, setOf(it.bundleId, it.serviceId))
         }
 
+    /** Apple's server-to-server notifications: the same keys and audiences, but no `exp` or top-level `sub`. */
+    private val appleNotifications =
+        properties.apple.takeIf { it.enabled }?.let {
+            Verifier(it.issuer, it.jwksUri, setOf(it.bundleId, it.serviceId), required = setOf("iat", "jti", "events"))
+        }
+
     fun enabled(provider: Provider): Boolean = verifier(provider) != null
 
     /**
@@ -88,6 +95,23 @@ class ProviderTokens(
         return claims.subject.takeIf { clientId in claims.audience }
     }
 
+    /**
+     * The event of an Apple server-to-server notification whose `payload` JWT verifies (signature, `iss`, `aud`), or
+     * null. `events` arrives as a JSON string inside the claims.
+     */
+    fun appleEvent(payload: String): AppleEvent? {
+        val claims = appleNotifications?.verify(payload) ?: return null
+        val events =
+            when (val raw = claims.getClaim("events")) {
+                is String -> runCatching { JSONObjectUtils.parse(raw) }.getOrNull()
+                is Map<*, *> -> raw
+                else -> null
+            } ?: return null
+        val type = events["type"] as? String ?: return null
+        val sub = events["sub"] as? String ?: return null
+        return AppleEvent(type, sub, claims.jwtid, claims.issueTime.toInstant())
+    }
+
     private fun verifier(provider: Provider): Verifier? =
         when (provider) {
             Provider.KAKAO -> kakao
@@ -103,6 +127,7 @@ class ProviderTokens(
         issuer: String,
         jwksUri: String,
         audiences: Set<String>,
+        required: Set<String> = setOf("sub", "iat", "exp"),
     ) {
         private val processor =
             DefaultJWTProcessor<SecurityContext>().apply {
@@ -119,7 +144,7 @@ class ProviderTokens(
                     DefaultJWTClaimsVerifier(
                         audiences,
                         JWTClaimsSet.Builder().issuer(issuer).build(),
-                        setOf("sub", "iat", "exp"),
+                        required,
                         null,
                     )
             }
@@ -187,3 +212,11 @@ class ProviderTokens(
             ApiException(HttpStatus.UNAUTHORIZED, "provider_token_invalid", "the provider token does not verify for this app and device")
     }
 }
+
+/** One Sign in with Apple account event (`consent-revoked`, `account-delete`, `email-disabled`, `email-enabled`). */
+data class AppleEvent(
+    val type: String,
+    val sub: String,
+    val id: String,
+    val issuedAt: java.time.Instant,
+)

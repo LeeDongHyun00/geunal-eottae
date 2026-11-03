@@ -377,6 +377,7 @@ CREATE TABLE holidays (
 | `V3__m1_sign_in.sql` | M1 로그인. `provider_links`: 카카오·Apple 계정과의 연결과 끊긴 시각(`users`의 `kakao_sub`·`apple_sub`를 옮기고 지움, 게스트는 연결이 없음). `replace_tickets`: 교체 티켓의 SHA-256. `devices.provider_auth_at`(제공자 로그인 30분 창)과 `replaced_via`(해제된 기기가 받는 교체 방식). `sessions.spent_at`(리프레시 토큰 재사용 감지). `recovery`는 `kdf_salt`를 빼고 복구 ID·복구 공개키를 더함 |
 | `V4__m1_recovery_backups_deletion.sql` | 백업의 `completed_at`(완료 전에는 목록에 없음)과 크기 제한(64MiB). `object_deletions.bucket`(버킷 짧은 이름). 계정 삭제의 자리표시자: `users.deleted_at`, 닉네임·만 14세 확인 시각을 비울 수 있게 함. `provider_revocations`: 카카오 연결 끊기와 Apple 토큰 철회의 재시도. `deleted_sessions`: 지운 계정 세션의 리프레시 해시와 만료 시각(401 `account_deleted`) |
 | `V5__m1_alpha_stats_access_log.sql` | 알파 통계에 `sessions`·`crashes`(크래시 없는 세션 비율)와 `updated_at`. `access_log_outbox`: 로그인·토큰 갱신의 시각, 사용자·기기 ID, 접속 IP를 토큰을 내주는 트랜잭션에서 적고, 몇 분 안에 `access-logs` 버킷으로 옮김. 계정을 지워도 남도록 외래 키가 없음 |
+| `V6__m1_holiday_years.sql` | `holiday_years`: 서버가 공휴일을 모두 아는 해. 매일 동기화가 한 해를 통째로 받았을 때만(신정과 기독탄신일이 있을 때) 그해 `holidays`를 바꾸고 여기에 적음. `GET /holidays`의 `years`는 이 표에서 옴 |
 
 ## 7. 엔드포인트
 
@@ -387,6 +388,8 @@ CREATE TABLE holidays (
 | POST | `/auth/apple` | Apple 로그인 + 기기 등록. 다른 활성 기기가 있으면 교체 티켓 |
 | POST | `/auth/apple/callback` | 안드로이드 Apple 웹 로그인의 form_post를 받아 App Links 주소로 앱에 넘기기 |
 | GET | `/auth/apple` | App Links 주소. 앱이 없을 때 열리는, 스크립트 없는 정적 페이지 |
+| GET, POST | `/auth/kakao/unlinked` | 카카오 연결 해제 웹훅(콘솔의 연결 해제 웹훅 주소). `Authorization: KakaoAK <어드민 키>`가 맞을 때만 `user_id`의 연결에 끊긴 시각을 적음. 틀리면 401 |
+| POST | `/auth/apple/notifications` | Apple 서버 간 알림(App ID의 Sign in with Apple 서버 간 알림 주소). `payload` JWT를 Apple JWKS·`iss`·`aud`로 확인하고, `consent-revoked`·`account-delete`면 연결에 끊긴 시각을 적음. 발급 하루가 지났거나 이미 받은 `jti`는 무시 |
 | POST | `/auth/guest` | 게스트 계정 + 기기 등록 |
 | POST | `/auth/recover` | 게스트 복귀: 복구 ID와 복구 서명으로 로그인 + 기기 교체 |
 | POST | `/auth/replace` | 교체 티켓으로 이 기기 등록, 이전 기기 해제 |

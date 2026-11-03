@@ -27,7 +27,8 @@ use geunal_mls::{Identity, MlsClient};
 use geunal_store::{DB_FILE, Store};
 use geunal_sync::realtime::{Event, Realtime};
 use geunal_sync::{
-    Alert, ApiError, Engine, HttpTransport, Listener, Session as SyncSession, SyncError, Transport as _,
+    Alert, ApiError, Engine, HttpTransport, Listener, SESSION_EXPIRED, Session as SyncSession, SyncError,
+    Transport as _,
 };
 use rand_core::{OsRng, RngCore};
 use tokio::sync::Mutex;
@@ -84,8 +85,10 @@ pub enum CoreError {
     /// account and no backup can be made. The core uploads it first; try again after the next `sync()`.
     #[error("recovery material not uploaded yet")]
     RecoveryMissing,
-    /// The replacement ticket's 30 minutes ran out (401 `token_expired`, protocol §13): sign in with Kakao or Apple
-    /// again, which brings a new ticket.
+    /// Sign in with Kakao or Apple again (a guest: come back with the recovery code). The replacement ticket's 30
+    /// minutes ran out (401 `token_expired`, protocol §13), which a new sign-in replaces; or the server refused the
+    /// session's refresh token, after 30 days without a connection or when reuse detection ended the session. Then
+    /// `session()` is `None` and `Change::Account` has gone out; the device keeps what it holds for the account.
     #[error("sign in again")]
     SignInAgain,
     /// A function of the M1 surface whose body had not landed yet. No function returns it any more; it stays while the
@@ -811,7 +814,8 @@ impl Core {
     }
 
     /// One engine operation at a time, under the state lock. A 403 `device_revoked` on the way signs this device out
-    /// (protocol §13 "기기 해제"), and a 401 `account_deleted` finishes a deletion whose answer was lost.
+    /// (protocol §13 "기기 해제"), a 401 `account_deleted` finishes a deletion whose answer was lost, and a refused
+    /// refresh token ends the session (`SignInAgain`).
     async fn engine<R>(&self, f: EngineOp<'_, R>) -> Result<R, CoreError> {
         let mut state = self.state.lock().await;
         let State::SignedIn(engine) = &mut *state else { return Err(CoreError::NotSignedIn) };
@@ -827,6 +831,12 @@ impl Core {
                 drop(state);
                 self.account_deleted().await?;
                 Err(account_deleted_error())
+            }
+            Err(SyncError::Api(e)) if e.is(401, SESSION_EXPIRED) => {
+                *state = State::SignedOut;
+                drop(state);
+                self.session_expired().await?;
+                Err(CoreError::SignInAgain)
             }
             other => other.map_err(CoreError::from),
         }

@@ -1,5 +1,5 @@
 // Google's repository comes first: AGP, AndroidX and Compose live there, and Maven Central serves the rest (Kotlin,
-// JNA, coroutines). The plugin portal only answers for what neither has (the ktlint plugin).
+// JNA, coroutines). The plugin portal only answers for what neither has (the ktlint plugin, Gradle Play Publisher).
 pluginManagement {
     repositories {
         google()

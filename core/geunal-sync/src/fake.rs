@@ -541,19 +541,28 @@ impl FakeClient {
             if access || live(state.deleted_refresh.get(&session.refresh_token)) {
                 return Err(err(401, "account_deleted"));
             }
-            return Err(err(401, "token_expired"));
+            // Both tokens ran out: the refresh the transport tries is refused like any other dead refresh token.
+            return Err(crate::api::session_expired());
         }
-        if !state.tokens.contains_key(&session.access_token) {
-            return Err(err(401, "token_expired"));
-        }
-        if state.expired.contains(&session.access_token) {
-            let refresh = state.refresh.get_mut(&session.refresh_token).ok_or_else(|| err(401, "token_expired"))?;
+        // An access token the server no longer knows (reuse detection ended its sessions) or one that ran out: the
+        // transport refreshes, and a refresh token the server refuses ends the session.
+        let now = state.now();
+        // An access token lives 15 minutes, as the server's JWT does.
+        let ran_out = state.issued.get(&session.access_token).is_some_and(|at| now - *at >= Duration::minutes(15));
+        if !state.tokens.contains_key(&session.access_token) || state.expired.contains(&session.access_token) || ran_out
+        {
+            let issued = state.issued.get(&session.refresh_token).copied().unwrap_or(now);
+            if now - issued >= Duration::days(30) {
+                // A refresh token lives 30 days (api-server.md §4 "인증과 기기").
+                return Err(crate::api::session_expired());
+            }
+            let refresh = state.refresh.get_mut(&session.refresh_token).ok_or_else(crate::api::session_expired)?;
             if refresh.spent {
                 // Reuse: whoever holds the spent token is not the device; end every session of the device.
                 let device = refresh.device_id.clone();
                 state.tokens.retain(|_, (_, d)| *d != device);
                 state.refresh.retain(|_, r| r.device_id != device);
-                return Err(err(401, "token_expired"));
+                return Err(crate::api::session_expired());
             }
             refresh.spent = true;
             let (user_id, device_id) = (refresh.user_id.clone(), refresh.device_id.clone());

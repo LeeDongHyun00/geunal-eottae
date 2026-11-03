@@ -99,11 +99,12 @@ apps/ios/
 - **CI 순서:**
   1. 코어 XCFramework 빌드(캐시)
   2. 앱 빌드
-  3. 단위 테스트
-  4. 시뮬레이터 UI 테스트
-- **서명과 배포:** App Store Connect API 키와 인증서를 CI 비밀값으로 두고, M1부터 TestFlight로 올립니다.
+  3. Release 아카이브(서명 없이, `make archive-ios`): TestFlight가 빌드하는 구성이 컴파일되는지 PR에서 미리 봅니다.
+  4. 단위 테스트
+  5. 시뮬레이터 UI 테스트
+- **서명과 배포:** M1부터 TestFlight로 올립니다. `release-ios` 워크플로를 손으로 돌리면 `make release-ios`가 App Store Connect API 키로 클라우드 서명해 올립니다. 키와 카카오 앱 키는 사용자가 승인한 실행에만 열리는 `testflight` 환경의 비밀값입니다([앱 배포](../../infra/release/README.md)).
 - **엔타이틀먼트:** App Groups, Keychain Sharing, Push Notifications, Sign in with Apple, Associated Domains, Sensitive Content Analysis.
-- **수출 규정:** `ITSAppUsesNonExemptEncryption`을 설정하고 연간 자가분류 보고 대상인지 확인합니다([개요](../kickoff.md) 7장).
+- **수출 규정:** `Info.plist`의 `ITSAppUsesNonExemptEncryption`은 `NO`(면제 신고)입니다. 근거와 조건(공개된 표준 알고리즘만 씀, 프랑스 App Store에 내지 않음)은 [앱 PR 보안 점검표](../security/app-review.md) 7장에 있습니다. 조건이 바뀌면 이 값도 다시 정합니다.
 
 ## 9. 테스트
 
