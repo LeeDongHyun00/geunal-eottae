@@ -129,6 +129,34 @@ final class AlertSchedulerTests: XCTestCase {
         XCTAssertEqual(center.pending.count, 2)
     }
 
+    // docs/qa/m1.md D4: iOS keeps 64 pending alerts, so only the nearest 64 go in, and once one has fired the next
+    // refresh fills the freed place with the 65th.
+    func testKeepsTheNearestSixtyFourAndRefillsOnceOneHasFired() async {
+        let core = AlertFakeCore()
+        core.alerts = (0..<70).map { index in
+            ScheduledAlert(
+                id: "event:e\(index):k:60", fireAt: evening.addingTimeInterval(Double(index) * 3600),
+                target: .event(eventId: "e\(index)", occurrence: nil), title: "일정 \(index)",
+                start: DayTime(day: "2026-10-30", minute: 18 * 60), allDay: false, end: nil)
+        }
+        let center = FakeCenter()
+        let scheduler = AlertScheduler(core: core, center: center)
+
+        await scheduler.refresh()
+        XCTAssertEqual(center.pending.count, 64)
+        XCTAssertFalse(center.pending.contains { $0.id == "alert.event:e64:k:60" })
+
+        // The first alert rang: iOS drops it from the pending ones and the core no longer lists it.
+        core.alerts.removeFirst()
+        center.pending.removeAll { $0.id == "alert.event:e0:k:60" }
+        await scheduler.refresh()
+
+        XCTAssertEqual(center.pending.count, 64)
+        XCTAssertTrue(center.pending.contains { $0.id == "alert.event:e64:k:60" })
+        XCTAssertEqual(center.added.count, 65)
+        XCTAssertEqual(center.cancelled, [])
+    }
+
     func testLeavesAnUnchangedCalendarAlone() async {
         let core = AlertFakeCore()
         core.alerts = [dinner()]
