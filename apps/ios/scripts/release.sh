@@ -67,8 +67,22 @@ case "$mode" in
         exit 1
         ;;
     esac
+    # Each value becomes a line of an xcconfig file, so a stray newline or $(...) could set something else; checking the
+    # shape also says early which secret was pasted wrong, without printing it.
     if ! [[ "$GEUNAL_BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
       echo "GEUNAL_BUILD_NUMBER must be a whole number" >&2
+      exit 1
+    fi
+    if ! [[ "$GEUNAL_KAKAO_APP_KEY" =~ ^[0-9a-f]{32}$ ]]; then
+      echo "GEUNAL_KAKAO_APP_KEY must be the 32 hex digits of the Kakao native app key" >&2
+      exit 1
+    fi
+    if ! [[ "$GEUNAL_APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+      echo "GEUNAL_APPLE_TEAM_ID must be the 10-character Apple team ID" >&2
+      exit 1
+    fi
+    if ! [[ "$GEUNAL_API_BASE" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._/-]*)?$ ]]; then
+      echo "GEUNAL_API_BASE must be a plain https:// address" >&2
       exit 1
     fi
 
