@@ -182,6 +182,10 @@ class AuthService(
                 .optional()
                 .orElse(null) ?: throw if (accounts.isDeletedSession(hash)) accountDeleted() else expired
         devices.lock(deviceId)
+        // A replaced device keeps its sessions so that its refresh, whenever it comes back online, learns why it was
+        // signed out (403 device_revoked with how) instead of a bare token_expired. Checked before rotating, so a
+        // retried refresh answers the same.
+        devices.current(deviceId) ?: throw devices.revokedError(deviceId)
         val rotated =
             jdbc
                 .sql(
@@ -264,7 +268,7 @@ class AuthService(
     ): UUID {
         val revoked = devices.revokeActive(userId, via)
         if (revoked != null) {
-            jdbc.sql("DELETE FROM sessions WHERE device_id = :id").param("id", revoked).update()
+            // Its sessions stay until they expire: refreshing one answers device_revoked (see refresh).
             signals.send(listOf(revoked), RevokeEvent)
             for (groupId in groups.activeGroupIdsOf(userId)) {
                 signals.send(groups.activeDeviceIds(groupId, except = revoked), MembershipEvent(groupId))

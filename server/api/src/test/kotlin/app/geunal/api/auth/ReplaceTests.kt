@@ -86,4 +86,18 @@ class ReplaceTests : ApiTest() {
         second.get("/me").expectError(403, "device_revoked")
         first.get("/me").expect(200)
     }
+
+    @Test
+    fun `a replaced device that was offline learns it was replaced when it refreshes`() {
+        val first = signIn("revoked-refresh")
+        replaceDevice("revoked-refresh", platform = "android")
+        val refresh = { api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to first.refreshToken)) }
+
+        // Its access token has run out by the time it is back; the refresh is where it finds out, every time it asks.
+        repeat(2) {
+            val answer = refresh().expectError(403, "device_revoked")
+            assertThat(answer.string("replaced_via")).isEqualTo("provider")
+            assertThat(answer.string("replaced_by")).isEqualTo("android")
+        }
+    }
 }
