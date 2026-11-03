@@ -9,7 +9,8 @@ import android.os.PersistableBundle
 /**
  * The recovery code on the clipboard (m1.md screen 13, docs/security/app-review.md §2 "클립보드"). The clip is marked
  * sensitive, so Android 13's preview and keyboards hide it, and it is taken off after a minute or when the screen
- * goes away, whichever comes first: an app may clear the clipboard only while it is in front, hence both.
+ * goes away, whichever comes first. Clearing works from the background too: Android 10 and later keep only reading
+ * from an app that is not in front (AOSP ClipboardService: "Writing is allowed without focus").
  */
 class SensitiveClipboard(
     context: Context,
@@ -23,10 +24,14 @@ class SensitiveClipboard(
         manager?.setPrimaryClip(clip)
     }
 
-    /** Takes the code off if it is still what the clipboard holds; something copied since stays. */
+    /**
+     * Takes the code off if it is still what the clipboard holds; something copied since stays. In the background the
+     * clipboard cannot be read, and the code is taken off unchecked rather than left there past its minute.
+     */
     fun clear() {
         val manager = manager ?: return
-        if (manager.primaryClipDescription?.label != LABEL) return
+        val description = manager.primaryClipDescription
+        if (!mayClear(readable = description != null, label = description?.label)) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             manager.clearPrimaryClip()
         } else {
@@ -41,5 +46,14 @@ class SensitiveClipboard(
 
         /** How long the code may stay on the clipboard. */
         const val CLEAR_AFTER_MS = 60_000L
+
+        /**
+         * Whether [clear] goes ahead: always when the clipboard cannot be read (the app is in the background, or it
+         * holds nothing), and otherwise only for our own clip, so something copied since is left alone.
+         */
+        internal fun mayClear(
+            readable: Boolean,
+            label: CharSequence?,
+        ): Boolean = !readable || label == LABEL
     }
 }
