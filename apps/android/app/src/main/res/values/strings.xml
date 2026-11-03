@@ -22,6 +22,12 @@
     <string name="me_people">사람·생일</string>
     <string name="me_count_items">%1$d개</string>
     <string name="me_count_people">%1$d명</string>
+    <string name="me_section_security">보안과 백업</string>
+    <string name="me_recovery">복구 코드</string>
+    <string name="me_recovery_saved">저장함</string>
+    <string name="me_recovery_not_saved">저장 안 함</string>
+    <string name="me_backup">암호화 백업</string>
+    <string name="me_backup_none">아직 없음</string>
     <string name="me_section_account">계정</string>
     <string name="me_alerts">알림</string>
 

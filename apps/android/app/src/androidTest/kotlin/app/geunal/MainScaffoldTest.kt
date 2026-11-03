@@ -57,6 +57,8 @@ class MainScaffoldTest {
                                 onPeople = { openedPeople = true },
                                 onCalendars = {},
                                 onAlerts = { openedAlerts = true },
+                                onRecoveryCode = {},
+                                onBackup = {},
                                 modifier = Modifier.padding(padding),
                             )
                     }

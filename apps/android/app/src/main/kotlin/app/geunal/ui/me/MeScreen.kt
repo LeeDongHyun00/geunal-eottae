@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -44,8 +45,10 @@ import app.geunal.designsystem.Space
 import app.geunal.designsystem.components.SettingsDivider
 import app.geunal.designsystem.components.SettingsGroup
 import app.geunal.designsystem.components.SettingsRow
+import app.geunal.feature.account.backup.BackupText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.Instant
 
 /**
  * The 나 tab (m1.md screen 12): the account card, the calendar group (캘린더 관리, the shift templates and 사람·생일 with
@@ -60,9 +63,12 @@ fun MeScreen(
     onPeople: () -> Unit,
     onCalendars: () -> Unit,
     onAlerts: () -> Unit,
+    onRecoveryCode: () -> Unit,
+    onBackup: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val neutrals = LocalNeutralColors.current
+    val resources = LocalResources.current
     var summary by remember { mutableStateOf<MeSummary?>(null) }
     var loaded by remember { mutableStateOf(false) }
     // Read again each time the tab comes back, so the counts follow what the covers over it changed.
@@ -113,6 +119,36 @@ fun MeScreen(
                 value = summary?.let { stringResource(R.string.me_count_people, it.people.toInt()) },
                 onClick = onPeople,
                 modifier = Modifier.testTag("me.people"),
+            )
+        }
+        Text(
+            stringResource(R.string.me_section_security),
+            style = GeunalType.caption.copy(fontWeight = FontWeight.SemiBold),
+            color = neutrals.secondaryText,
+            modifier = Modifier.padding(start = Space.m).semantics { heading() },
+        )
+        SettingsGroup(Modifier.background(neutrals.background, RoundedCornerShape(Radius.card))) {
+            // A code never written down reads red (m1.md screen 12).
+            SettingsRow(
+                title = stringResource(R.string.me_recovery),
+                value =
+                    summary?.let {
+                        stringResource(if (it.recoverySaved) R.string.me_recovery_saved else R.string.me_recovery_not_saved)
+                    },
+                valueColor = if (summary?.recoverySaved == false) neutrals.sunday else neutrals.secondaryText,
+                onClick = onRecoveryCode,
+                modifier = Modifier.testTag("me.recovery"),
+            )
+            SettingsDivider()
+            SettingsRow(
+                title = stringResource(R.string.me_backup),
+                value =
+                    summary?.let { me ->
+                        me.lastBackupAt?.let { BackupText.time(it, Instant.now(), resources) }
+                            ?: stringResource(R.string.me_backup_none)
+                    },
+                onClick = onBackup,
+                modifier = Modifier.testTag("me.backup"),
             )
         }
         Text(
