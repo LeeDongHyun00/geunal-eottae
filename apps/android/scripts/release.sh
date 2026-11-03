@@ -54,8 +54,9 @@ if [ -d "$outputs" ]; then
   find "$outputs" -maxdepth 1 -name '*.aab' -delete
 fi
 
-# Without the configuration cache: its entry would keep the passwords Gradle read from the environment on disk.
-./gradlew --no-configuration-cache "${tasks[@]}"
+# Without the configuration cache: its entry would keep the passwords Gradle read from the environment on disk. And
+# without a daemon: one left running would hold that environment after the release, on a runner that is reused.
+./gradlew --no-configuration-cache --no-daemon "${tasks[@]}"
 
 bundles=("$outputs"/*.aab)
 [ -f "${bundles[0]}" ] || fail "no bundle in $outputs"
