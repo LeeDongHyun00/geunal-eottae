@@ -379,6 +379,10 @@ final class AppModel {
         if !inBackground {
             noteSession(account: read.3 ?? nil, revoked: read.0 != nil)
         }
+        if read.2 == nil {
+            // Without a session the core takes no answer to screen 24; the next sign-in asks again.
+            localData?.withdraw()
+        }
         if let revoked = read.0, revoked.at != onboardingState.revocationShownAt {
             if revocation == nil {
                 // Signed out from another device: the alerts and the widget snapshot go with their titles, as on a

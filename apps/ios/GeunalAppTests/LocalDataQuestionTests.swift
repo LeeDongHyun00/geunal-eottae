@@ -66,4 +66,23 @@ final class LocalDataQuestionTests: XCTestCase {
         XCTAssertFalse(wentOn.current)
         XCTAssertEqual(toasts.messages, ["지금은 할 수 없어요. 잠시 뒤에 다시 시도해 주세요"])
     }
+
+    // A sign-out from another device while the sheet was up: the core takes no answer, so the sheet goes instead of
+    // holding the screen until the app is opened again.
+    func testWithdrawsWhenTheSessionEndedBeforeTheAnswer() async {
+        let core = AccountFakeCore()
+        core.signedIn = Session(userId: "u2", deviceId: "d1")
+        core.otherAccountData = LocalData(events: 3, people: 0)
+        core.settleError = .NotSignedIn
+        let toasts = ToastLog()
+        let question = LocalDataQuestion(core: core, notify: { toasts.append($0) })
+        let wentOn = Locked(false)
+        await question.ask { wentOn.update { $0 = true } }
+
+        await question.answer(.keep)
+
+        XCTAssertNil(question.asking)
+        XCTAssertFalse(wentOn.current)
+        XCTAssertEqual(toasts.messages, [])
+    }
 }

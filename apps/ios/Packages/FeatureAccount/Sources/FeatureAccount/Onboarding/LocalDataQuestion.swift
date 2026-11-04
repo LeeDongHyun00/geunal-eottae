@@ -42,7 +42,9 @@ public final class LocalDataQuestion {
         asking = local
     }
 
-    /// The person's answer, taken once. A failure keeps the sheet, since the core still waits for an answer.
+    /// The person's answer, taken once. A failure keeps the sheet, since the core still waits for an answer; a session
+    /// that ended meanwhile withdraws the question instead, as the sheet only closes with an answer the core can no
+    /// longer take.
     public func answer(_ choice: LocalDataChoice) async {
         guard asking != nil, !isWorking else { return }
         isWorking = true
@@ -50,6 +52,9 @@ public final class LocalDataQuestion {
         let core = self.core
         do {
             try await Task.detached { try core.settleLocalData(choice: choice) }.value
+        } catch CoreError.NotSignedIn {
+            withdraw()
+            return
         } catch {
             notify(Strings.somethingFailed)
             return
@@ -58,5 +63,13 @@ public final class LocalDataQuestion {
         let next = self.next
         self.next = nil
         next?()
+    }
+
+    /// The session ended while the question was up (a sign-out from another device, a refused refresh token): the core
+    /// takes an answer only from a signed-in account, so the sheet goes and the next sign-in asks again. What waited for
+    /// the answer does not go on.
+    public func withdraw() {
+        asking = nil
+        next = nil
     }
 }
