@@ -241,13 +241,26 @@ impl MlsClient {
 
     /// Joins from a Welcome addressed to this device.
     pub fn join_welcome(&self, welcome: &[u8]) -> Result<MlsGroup, Error> {
+        self.join_welcome_from(welcome).map(|(group, _)| group)
+    }
+
+    /// Joins from a Welcome and names the member whose commit added this device: the signer of the GroupInfo inside
+    /// it, which MLS has verified, not whatever the server says.
+    pub fn join_welcome_from(&self, welcome: &[u8]) -> Result<(MlsGroup, Identity), Error> {
         let message = MlsMessage::from_bytes(welcome)?;
-        let (mut group, _) = self.client.join_group(None, &message, None)?;
+        let (group, info) = self.client.join_group(None, &message, None)?;
         if group.cipher_suite() != SUITE {
             return Err(Error::WrongCipherSuite(group.cipher_suite()));
         }
-        group.write_to_storage()?;
-        Ok(MlsGroup { inner: group })
+        let mut group = MlsGroup { inner: group };
+        let adder = group
+            .roster()?
+            .into_iter()
+            .find(|m| m.index == info.sender)
+            .map(|m| m.identity)
+            .ok_or(Error::WrongMessageType("welcome sender"))?;
+        group.inner.write_to_storage()?;
+        Ok((group, adder))
     }
 
     /// Rejoins by external commit from the server's GroupInfo, removing this device's previous leaf when it still has
