@@ -1316,8 +1316,9 @@ impl Transport for FakeClient {
         let mut state = self.lock();
         let group_id = state.live_invite(code)?.group_id.clone();
         let group = state.groups.get(&group_id).ok_or_else(|| err(404, "invite_invalid"))?;
-        if group.members.get(&user).is_some_and(|m| m.status == "active") {
-            return Ok(InviteJoined { group_id, status: "active".into() });
+        // Asking again changes nothing and uses no seat of the code: a device that lost the answer may call again.
+        if let Some(m) = group.members.get(&user).filter(|m| m.status == "active" || m.status == "pending") {
+            return Ok(InviteJoined { group_id, status: m.status.clone() });
         }
         let mine = state
             .groups
@@ -1336,6 +1337,23 @@ impl Transport for FakeClient {
         state.live_invite(code)?.uses += 1;
         state.publish(&group_id, None, json!({"t": "membership", "g": group_id}));
         Ok(InviteJoined { group_id, status: "pending".into() })
+    }
+
+    async fn revoke_invite(&self, group_id: &str, code: &str) -> Result<(), ApiError> {
+        let (user, _) = self.who()?;
+        let mut state = self.lock();
+        let group = Self::require_active(&mut state, group_id, &user)?;
+        let owner = group.members.get(&user).is_some_and(|m| m.role == "owner");
+        match state.invites.get(code) {
+            Some(invite) if invite.group_id == group_id => {
+                if invite.created_by != user && !owner {
+                    return Err(err(403, "not_owner"));
+                }
+            }
+            _ => return Err(err(404, "invite_invalid")),
+        }
+        state.invites.remove(code);
+        Ok(())
     }
 
     async fn post_commit(&self, group_id: &str, req: CommitRequest) -> Result<CommitAccepted, ApiError> {

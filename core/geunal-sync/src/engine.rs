@@ -277,6 +277,11 @@ impl<T: Transport> Engine<T> {
         Ok(joined)
     }
 
+    /// Withdraws a code: its maker or the group's owner only (protocol §15).
+    pub async fn revoke_invite(&self, group_id: &str, code: &str) -> Result<(), SyncError> {
+        Ok(self.api.revoke_invite(group_id, &invite_code(code)?).await?)
+    }
+
     /// Removes a member (leave or kick) and, as the device that saw the change first, queues the Remove commit.
     pub async fn remove_member(&mut self, group_id: &str, user_id: &str) -> Result<(), SyncError> {
         self.api.remove_member(group_id, user_id).await?;

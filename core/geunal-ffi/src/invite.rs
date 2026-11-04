@@ -86,6 +86,16 @@ impl Core {
         })
     }
 
+    /// Withdraws a code so nobody can join with it any more. Its maker or the group's owner only. API errors: 403
+    /// `not_owner`, 404 `invite_invalid`.
+    pub async fn revoke_invite(self: Arc<Self>, group_id: String, code: String) -> Result<(), CoreError> {
+        let this = self.clone();
+        self.run(async move {
+            this.engine(Box::new(|e| Box::pin(async move { e.revoke_invite(&group_id, &code).await }))).await
+        })
+        .await
+    }
+
     /// What the server shows the holder of `code` (typed or pasted as is). API errors: 404 `invite_invalid` (also for
     /// a string that is no code), 429 `rate_limited`.
     pub async fn invite_preview(self: Arc<Self>, code: String) -> Result<InvitePreview, CoreError> {

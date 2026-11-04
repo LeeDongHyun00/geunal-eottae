@@ -389,7 +389,7 @@ pub struct InvitePreview {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InviteJoined {
     pub group_id: String,
-    /// `pending`, or `active` for someone already in the group.
+    /// `pending` (also for someone who already was, without using the code again), or `active` for a member.
     pub status: String,
 }
 
@@ -618,6 +618,7 @@ pub trait Transport: Send + Sync {
     /// `code` is already normalised (protocol §15), so it is safe in a path.
     fn invite_preview(&self, code: &str) -> impl Future<Output = Result<InvitePreview, ApiError>> + Send;
     fn join_invite(&self, code: &str) -> impl Future<Output = Result<InviteJoined, ApiError>> + Send;
+    fn revoke_invite(&self, group_id: &str, code: &str) -> impl Future<Output = Result<(), ApiError>> + Send;
     fn post_commit(
         &self,
         group_id: &str,
@@ -740,6 +741,9 @@ impl<T: Transport> Transport for std::sync::Arc<T> {
     }
     async fn join_invite(&self, code: &str) -> Result<InviteJoined, ApiError> {
         (**self).join_invite(code).await
+    }
+    async fn revoke_invite(&self, group_id: &str, code: &str) -> Result<(), ApiError> {
+        (**self).revoke_invite(group_id, code).await
     }
     async fn post_commit(&self, group_id: &str, req: CommitRequest) -> Result<CommitAccepted, ApiError> {
         (**self).post_commit(group_id, req).await

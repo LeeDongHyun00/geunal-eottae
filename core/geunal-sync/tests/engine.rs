@@ -672,3 +672,30 @@ async fn cannot_look_up_the_devices_of_someone_the_group_did_not_invite() {
         Ok(devices) => panic!("listed {devices:?}"),
     }
 }
+
+#[tokio::test]
+async fn asking_again_with_the_same_code_stays_pending_and_a_revoked_code_lets_nobody_in() {
+    let server = server();
+    let mut a = device(&server, "a", 1).await;
+    let mut b = device(&server, "b", 2).await;
+    let mut c = device(&server, "c", 3).await;
+    let group = a.engine.create_group(Some("모임")).await.unwrap();
+    let code = a.engine.create_invite(&group).await.unwrap().code;
+
+    // B lost the first answer and asks again: still pending.
+    assert_eq!(b.engine.join_invite(&code).await.unwrap().status, "pending");
+    assert_eq!(b.engine.join_invite(&code).await.unwrap().status, "pending");
+
+    // Someone who did not make the code and is not the owner cannot withdraw it.
+    a.engine.sync().await.unwrap();
+    b.engine.sync().await.unwrap();
+    match b.engine.revoke_invite(&group, &code).await {
+        Err(SyncError::Api(e)) => assert!(e.is(403, "not_owner"), "{e}"),
+        other => panic!("{other:?}"),
+    }
+    a.engine.revoke_invite(&group, &code).await.unwrap();
+    match c.engine.join_invite(&code).await {
+        Err(SyncError::Api(e)) => assert!(e.is(404, "invite_invalid"), "{e}"),
+        other => panic!("{other:?}"),
+    }
+}

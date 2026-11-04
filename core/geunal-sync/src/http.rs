@@ -416,6 +416,11 @@ impl Transport for HttpTransport {
         self.send(|t| t.request(Method::POST, &path)).await
     }
 
+    async fn revoke_invite(&self, group_id: &str, code: &str) -> Result<(), ApiError> {
+        let path = format!("/groups/{group_id}/invites/{code}");
+        self.send_empty(|t| t.request(Method::DELETE, &path)).await
+    }
+
     async fn post_commit(&self, group_id: &str, req: CommitRequest) -> Result<CommitAccepted, ApiError> {
         let path = format!("/groups/{group_id}/commits");
         self.send(|t| t.request(Method::POST, &path).json(&req)).await

@@ -121,6 +121,9 @@ impl Transport for Api {
     async fn join_invite(&self, code: &str) -> Result<InviteJoined, ApiError> {
         each!(self, t => t.join_invite(code).await)
     }
+    async fn revoke_invite(&self, group_id: &str, code: &str) -> Result<(), ApiError> {
+        each!(self, t => t.revoke_invite(group_id, code).await)
+    }
     async fn post_commit(&self, group_id: &str, req: CommitRequest) -> Result<CommitAccepted, ApiError> {
         each!(self, t => t.post_commit(group_id, req).await)
     }
