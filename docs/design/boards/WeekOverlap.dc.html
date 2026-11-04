@@ -32,18 +32,30 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 </div>
 </header>
 
-<div aria-hidden="true" style="position: absolute; top: 124px; left: 40px; width: 342px; height: 52px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center">
-<sc-for list="{{days}}" as="d" hint-placeholder-count="7">
-<span style="display: flex; flex-direction: column; align-items: center; gap: 4px">
-<span style="font-size: 12px; font-weight: 600; color: {{d.fg}}">{{d.w}}</span>
-<span style="width: 26px; height: 26px; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: {{d.numFg}}; background: {{d.numBg}}">{{d.n}}</span>
-</span>
-</sc-for>
+<sc-if value="{{focused}}" hint-placeholder-val="{{false}}">
+<div aria-hidden="true" style="position: absolute; top: 120px; left: {{fp.x}}px; width: {{fp.w}}px; height: 574px; border-radius: 14px; background: #f4f4f6"></div>
+</sc-if>
+
+<sc-for list="{{heads}}" as="d" hint-placeholder-count="7">
+<sc-if value="{{d.plain}}" hint-placeholder-val="{{true}}">
+<div aria-hidden="true" style="position: absolute; top: 124px; left: {{d.x}}px; width: {{d.w}}px; height: 52px; display: flex; flex-direction: column; align-items: center; gap: 4px">
+<span style="font-size: {{d.wf}}px; font-weight: 600; color: {{d.fg}}">{{d.w0}}</span>
+<span style="width: {{d.c}}px; height: {{d.c}}px; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-size: {{d.nf}}px; font-weight: 600; font-variant-numeric: tabular-nums; color: {{d.numFg}}; background: {{d.numBg}}">{{d.n}}</span>
 </div>
+</sc-if>
+<sc-if value="{{d.focus}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; top: 128px; left: {{d.x}}px; width: {{d.w}}px; height: 44px; box-sizing: border-box; padding: 0 0 0 10px; display: flex; align-items: center; gap: 6px">
+<h2 style="margin: 0; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em">{{d.n}}</h2>
+<span style="font-size: 13px; font-weight: 600; color: #5c5c66">{{d.dow}}</span>
+<span style="height: 20px; padding: 0 7px; border-radius: 10px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; font-size: 11px; font-weight: 700">{{d.badge}}</span>
+<button type="button" onClick="{{unfocus}}" aria-label="넓힌 열 닫기" style="margin-left: auto; width: 44px; height: 44px; border: none; background: none; display: flex; align-items: center; justify-content: center; color: #1b1b1f; cursor: pointer"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg></button>
+</div>
+</sc-if>
+</sc-for>
 
 <div style="position: absolute; top: 180px; left: 0; width: 390px; height: 26px; border-top: 1px solid #e1e1e6; border-bottom: 1px solid #e1e1e6">
 <span style="position: absolute; left: 8px; top: 6px; font-size: 11px; color: #696973">종일</span>
-<span style="position: absolute; left: 286px; top: 4px; width: 46px; height: 18px; box-sizing: border-box; padding: 0 3px; border-radius: 4px; display: flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 600; letter-spacing: -0.03em; white-space: nowrap; overflow: hidden"><svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" style="flex: none; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M3.5 7.5h17v2.5h-17zM12 7.5V20"></path></svg>민수</span>
+<span style="position: absolute; left: {{bd.x}}px; top: 4px; width: {{bd.w}}px; height: 18px; box-sizing: border-box; padding: 0 3px; display: flex; align-items: center; justify-content: center; gap: 2px; font-size: 11px; font-weight: 600; letter-spacing: -0.03em; white-space: nowrap; overflow: hidden"><svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" style="flex: none; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M3.5 7.5h17v2.5h-17zM12 7.5V20"></path></svg>{{bd.t}}</span>
 </div>
 
 <div style="position: absolute; top: 214px; left: 0; width: 390px; height: 480px">
@@ -53,19 +65,21 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 <span style="position: absolute; left: 40px; right: 8px; top: 0; height: 1px; background: #ebebef"></span>
 </div>
 </sc-for>
-<sc-for list="{{events}}" as="e" hint-placeholder-count="8">
-<a href="Editor.dc.html" aria-label="{{e.label}}" style="position: absolute; left: {{e.x}}px; top: {{e.y}}px; width: {{e.w}}px; height: {{e.h}}px; box-sizing: border-box; padding: 3px 4px; border-radius: 6px; background: {{e.bg}}; color: {{e.fg}}; overflow: hidden; display: flex; flex-direction: column; gap: 1px">
-<span style="font-size: 11px; font-weight: 600; line-height: 13px; letter-spacing: -0.03em">{{e.t}}</span>
-<span style="font-size: 11px; line-height: 13px; font-variant-numeric: tabular-nums">{{e.time}}</span>
+<sc-for list="{{cards}}" as="e" hint-placeholder-count="10">
+<div style="position: absolute; left: {{e.x}}px; top: {{e.y}}px; width: {{e.w}}px; height: {{e.h}}px">
+<a href="Editor.dc.html" aria-label="{{e.label}}" style="position: absolute; inset: 0; box-sizing: border-box; padding: {{e.pad}}; border-radius: 6px; background: {{e.bg}}; box-shadow: {{e.edge}}; color: {{e.fg}}; overflow: hidden; display: flex; flex-direction: {{e.dir}}; gap: 1px; writing-mode: {{e.wm}}">
+<span style="font-size: {{e.tf}}px; font-weight: 600; line-height: {{e.lh}}px; letter-spacing: -0.03em; overflow-wrap: normal">{{e.t}}</span>
+<span style="font-size: 11px; line-height: 13px; font-variant-numeric: tabular-nums; opacity: 0.85">{{e.time}}</span>
 </a>
+<sc-for list="{{e.ribbons}}" as="r" hint-placeholder-count="0">
+<button type="button" onClick="{{e.open}}" tabindex="-1" aria-hidden="true" style="position: absolute; right: {{r.right}}px; top: {{r.top}}px; width: 4px; height: {{r.h}}px; padding: 0; border: none; border-radius: 2px; background: {{r.c}}; cursor: pointer"></button>
 </sc-for>
-<sc-for list="{{groups}}" as="g" hint-placeholder-count="1">
-<button type="button" onClick="{{g.open}}" aria-label="{{g.label}}" style="position: absolute; left: {{g.x}}px; top: {{g.y}}px; width: {{g.w}}px; height: {{g.h}}px; box-sizing: border-box; padding: 4px 4px 4px {{g.pad}}px; border: none; border-radius: 6px; background: #ffffff; box-shadow: inset 0 0 0 1.5px #1b1b1f; color: #1b1b1f; overflow: hidden; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; cursor: pointer; text-align: left">
-<span aria-hidden="true" style="position: absolute; left: 4px; top: 4px; bottom: 4px; display: flex; gap: 1px">
-<sc-for list="{{g.stripes}}" as="c" hint-placeholder-count="3"><span style="position: relative; width: 3px"><span style="position: absolute; left: 0; right: 0; top: {{c.top}}%; height: {{c.h}}%; border-radius: 1.5px; background: {{c.c}}"></span></span></sc-for>
-</span>
-<span style="font-size: 13px; font-weight: 700; line-height: 15px; font-variant-numeric: tabular-nums">{{g.n}}</span>
+<sc-if value="{{e.hasMore}}" hint-placeholder-val="{{false}}">
+<button type="button" onClick="{{e.open}}" aria-label="{{e.moreLabel}}" style="position: absolute; left: -2px; bottom: -2px; width: 44px; height: 32px; padding: 0 0 6px 6px; border: none; background: none; display: flex; align-items: flex-end; cursor: pointer">
+<span style="height: 18px; padding: 0 6px; border-radius: 9px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums">{{e.more}}</span>
 </button>
+</sc-if>
+</div>
 </sc-for>
 </div>
 
@@ -107,155 +121,166 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 </a>
 </nav>
 
-<sc-if value="{{open}}" hint-placeholder-val="{{false}}">
-<div aria-hidden="true" onClick="{{closeSheet}}" style="position: absolute; inset: 0; background: rgba(10,10,14,0.32)"></div>
-<section role="dialog" aria-modal="true" aria-label="{{sel.label}}" style="position: absolute; left: 0; bottom: 0; width: 390px; box-sizing: border-box; padding: 8px 20px 34px; background: #ffffff; border-radius: 20px 20px 0 0; box-shadow: 0 -8px 32px rgba(0,0,0,0.12); display: flex; flex-direction: column; gap: 16px">
-<div aria-hidden="true" style="align-self: center; width: 36px; height: 5px; border-radius: 3px; background: #d1d1d6"></div>
-<div style="display: flex; align-items: flex-start; justify-content: space-between; margin-top: -4px">
-<div style="display: flex; flex-direction: column; gap: 4px">
-<h2 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em">{{sel.day}}</h2>
-<span style="font-size: 14px; color: #5c5c66; font-variant-numeric: tabular-nums">{{sel.sub}}</span>
-</div>
-<button type="button" onClick="{{closeSheet}}" aria-label="닫기" style="width: 44px; height: 44px; margin: -6px -12px 0 0; border: none; background: none; display: flex; align-items: center; justify-content: center; color: #5c5c66; cursor: pointer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg></button>
-</div>
-<div aria-hidden="true" style="display: flex; justify-content: space-between; margin: 0 14px -10px 32px; font-size: 11px; color: #696973; font-variant-numeric: tabular-nums"><span>{{sel.a}}</span><span>{{sel.b}}</span><span>{{sel.c}}</span></div>
-<ul style="margin: 0; padding: 0; list-style: none; border-radius: 12px; background: #f4f4f6; overflow: hidden">
-<sc-for list="{{sel.rows}}" as="r" hint-placeholder-count="3">
-<li style="border-top: {{r.line}}">
-<a href="Editor.dc.html" aria-label="{{r.label}}" style="min-height: 56px; box-sizing: border-box; padding: 8px 14px; display: flex; flex-direction: column; justify-content: center; gap: 6px">
-<span style="display: flex; align-items: center; gap: 10px">
-<span aria-hidden="true" style="flex: none; width: 8px; height: 8px; border-radius: 4px; background: {{r.c}}"></span>
-<span style="flex: 1 1 0; min-width: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span>
-<span style="flex: none; font-size: 15px; color: #5c5c66; font-variant-numeric: tabular-nums">{{r.time}}</span>
-</span>
-<span aria-hidden="true" style="position: relative; margin-left: 18px; height: 6px; border-radius: 3px; background: #e1e1e6">
-<span style="position: absolute; top: 0; bottom: 0; left: {{r.l}}%; width: {{r.w}}%; border-radius: 3px; background: {{r.c}}"></span>
-</span>
-</a>
-</li>
-</sc-for>
-</ul>
-<a href="QuickEntryDay.dc.html" style="align-self: flex-start; height: 44px; margin: -6px 0 -6px -2px; padding: 0 2px; display: flex; align-items: center; font-size: 15px; font-weight: 600; color: #5c5c66">이날 일정 모두 보기</a>
-</section>
-</sc-if>
-
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { ni: 1, open: -1 };
+    this.state = { ni: 1, focus: -1 };
   }
   renderVals() {
     const W = ['일', '월', '화', '수', '목', '금', '토'];
-    const days = W.map((w, i) => {
-      const today = i === 0;
-      let fg = '#5c5c66';
-      if (i === 0) fg = '#c92f26';
-      if (i === 6) fg = '#2958c8';
-      return { w, n: String(25 + i), fg, numFg: today ? '#ffffff' : (i === 0 ? '#c92f26' : i === 6 ? '#2958c8' : '#1b1b1f'), numBg: today ? '#1b1b1f' : 'transparent' };
-    });
     const H0 = 8;
     const PX = 34;
+    const GX = 40;
+    const GW = 342;
+    const focus = this.state.focus;
+    // Column focus (m1.md decision 45): the tapped day widens in place and the other six keep a narrow strip each,
+    // so the week stays on screen while that day's overlapping events get room for their titles.
+    const FW = 196;
+    const widths = W.map((_, i) => (focus < 0 ? GW / 7 : i === focus ? FW : (GW - FW) / 6));
+    const xs = [];
+    widths.reduce((x, w, i) => { xs[i] = x; return x + w; }, GX);
+
     const hours = [];
     for (let h = H0; h <= 22; h++) hours.push({ t: String(h), y: (h - H0) * PX });
-    const colW = 342 / 7;
-    const soft = 'repeating-linear-gradient(135deg, #d3dfbb 0 4px, #e4ecd5 4px 8px)';
-    const E = [
-      [0, 10, 11, '헬스', soft, '#1b1b1f'],
-      [0, 18, 20, '가족 · 저녁', '#c04c7b', '#ffffff'],
-      [1, 19, 20, '헬스', soft, '#1b1b1f'],
-      [2, 13, 15, '교양 수업', '#a0c0fa', '#1b1b1f'],
-      [3, 10, 12, '전공 수업', '#a0c0fa', '#1b1b1f'],
-      [3, 19, 20, '헬스', soft, '#1b1b1f'],
-      [4, 13, 15, '교양 수업', '#a0c0fa', '#1b1b1f'],
+    const pad2 = (n) => (n < 10 ? '0' : '') + n;
+    const hm = (h) => pad2(Math.floor(h)) + ':' + (h % 1 ? '30' : '00');
 
-      [5, 17, 22, '카페 마감', '#77d1c2', '#1b1b1f'],
-      [6, 8, 13, '카페 오픈', '#77d1c2', '#1b1b1f'],
-    ];
-    const pad = (n) => (n < 10 ? '0' : '') + n;
-    const events = E.map(([d, s, e, t, bg, fg]) => ({
-      t, bg, fg,
-      time: e - s >= 2 ? pad(s) + ':00' : '',
-      x: (40 + d * colW + 1.5).toFixed(1),
-      w: (colW - 3).toFixed(1),
-      y: (s - H0) * PX + 1,
-      h: (e - s) * PX - 2,
-      label: '10월 ' + (25 + d) + '일 ' + t + ' ' + pad(s) + ':00부터 ' + pad(e) + ':00까지',
-    }));
+    const soft = 'repeating-linear-gradient(135deg, #d3dfbb 0 4px, #e4ecd5 4px 8px)';
+    // Tint for the card, strong color for ribbons and edges.
+    const K = {
+      school: ['#a0c0fa', '#1b1b1f', '#4172d1'],
+      personal: ['#efb08a', '#1b1b1f', '#ba5a00'],
+      device: ['#d5b9aa', '#1b1b1f', '#966b54'],
+      cafe: ['#77d1c2', '#1b1b1f', '#008476'],
+      family: ['#c04c7b', '#ffffff', '#c04c7b'],
+      soft: [soft, '#1b1b1f', '#667e00'],
+    };
+    const E = [
+      [0, 10, 11, '헬스', 'soft'], [0, 18, 20, '가족 · 저녁', 'family'],
+      [1, 10, 14, '전공 수업', 'school'], [1, 10, 11, '교수 면담', 'personal'], [1, 19, 20, '헬스', 'soft'],
+      [2, 13, 15, '교양 수업', 'school'],
+      [3, 10, 12, '전공 수업', 'school'], [3, 19, 20, '헬스', 'soft'],
+      [4, 13, 15, '교양 수업', 'school'], [4, 16, 18, '동아리 회의', 'personal'], [4, 16, 17, '팀플 회의', 'device'], [4, 17, 18, '과제', 'school'],
+      [5, 17, 22, '카페 마감', 'cafe'],
+      [6, 8, 13, '카페 오픈', 'cafe'],
+    ].map(([d, s, e, t, k]) => ({ d, s, e, t, bg: K[k][0], fg: K[k][1], c: K[k][2] }));
+
+    // Clusters: events of one day that overlap one another, transitively; touching ends do not overlap.
+    // Order is the core's: by start, then the longer first.
+    const days = W.map((_, d) => E.filter((e) => e.d === d).sort((a, b) => a.s - b.s || (b.e - b.s) - (a.e - a.s)));
+    const clustersOf = (list) => {
+      const out = [];
+      list.forEach((e) => {
+        const last = out[out.length - 1];
+        if (last && e.s < last.end) { last.ev.push(e); last.end = Math.max(last.end, e.e); } else out.push({ ev: [e], start: e.s, end: e.e });
+      });
+      return out;
+    };
+    // Greedy lanes: an event goes to the first lane whose last event has ended.
+    const lanesOf = (ev) => {
+      const ends = [];
+      return ev.map((e) => {
+        let l = ends.findIndex((end) => end <= e.s);
+        if (l < 0) { l = ends.length; ends.push(e.e); } else ends[l] = e.e;
+        return l;
+      });
+    };
+    const dayName = (d) => '10월 ' + (25 + d) + '일 ' + W[d] + '요일';
+    const spoken = (e) => e.t + ', ' + hm(e.s) + '부터 ' + hm(e.e) + '까지';
+
+    const cards = [];
+    let focusCount = 0;
+    days.forEach((list, d) => {
+      const x0 = xs[d];
+      const w = widths[d];
+      const wide = focus === d;
+      const narrow = focus >= 0 && !wide;
+      clustersOf(list).forEach((cl) => {
+        const y = (cl.start - H0) * PX + 1;
+        const h = (cl.end - cl.start) * PX - 2;
+        if (cl.ev.length === 1 || wide || narrow) {
+          // One event, or a cluster laid out in lanes (the focused day, and bars in the narrow days).
+          const lanes = lanesOf(cl.ev);
+          const n = Math.max(...lanes) + 1;
+          if (wide && cl.ev.length > 1) focusCount += cl.ev.length;
+          cl.ev.forEach((e, i) => {
+            const lw = (w - 3 - (n - 1) * 3) / n;
+            const showText = !(narrow && cl.ev.length > 1);
+            cards.push({
+              x: (x0 + 1.5 + lanes[i] * (lw + 3)).toFixed(1), w: lw.toFixed(1),
+              y: (e.s - H0) * PX + 1, h: (e.e - e.s) * PX - 2,
+              bg: e.bg, fg: e.fg, t: showText ? e.t : '',
+              time: wide ? hm(e.s) + '–' + hm(e.e) : (!narrow && e.e - e.s >= 2 ? hm(e.s) : ''),
+              tf: wide ? 13 : narrow ? 10 : 11, lh: wide ? 16 : narrow ? 11 : 13,
+              wm: narrow ? 'vertical-rl' : 'horizontal-tb', dir: 'column',
+              pad: narrow ? '4px 2px' : wide ? '5px 7px' : '3px 4px',
+              edge: wide ? 'inset 3px 0 0 ' + e.c : 'none',
+              label: dayName(d) + ' ' + spoken(e),
+              ribbons: [], hasMore: false,
+            });
+          });
+          return;
+        }
+        // Week at rest: the longest event stays a card over the cluster's time, the rest become ribbons on its
+        // right edge at their own times, and "+n" opens the column focus.
+        const rep = cl.ev.reduce((a, b) => ((b.e - b.s) > (a.e - a.s) ? b : a));
+        const others = cl.ev.filter((e) => e !== rep);
+        const lanes = lanesOf(others);
+        const n = Math.max(...lanes) + 1;
+        const span = cl.end - cl.start;
+        cards.push({
+          x: (x0 + 1.5).toFixed(1), w: (w - 3).toFixed(1), y, h,
+          // The time shows only when the card is tall enough to keep it clear of "+n"; the focus shows it in full.
+          bg: rep.bg, fg: rep.fg, t: rep.t, time: span >= 3 ? hm(rep.s) : '',
+          tf: 11, lh: 13, wm: 'horizontal-tb', dir: 'column',
+          pad: '3px ' + (3 + n * 6) + 'px 3px 4px', edge: 'none',
+          label: dayName(d) + ' ' + spoken(rep) + ', 겹치는 일정 ' + others.length + '개 더',
+          ribbons: others.map((e, i) => ({
+            c: e.c, right: 2 + lanes[i] * 6,
+            top: (3 + (e.s - cl.start) / span * (h - 6)).toFixed(1),
+            h: ((e.e - e.s) / span * (h - 6)).toFixed(1),
+          })),
+          hasMore: true, more: '+' + others.length,
+          moreLabel: dayName(d) + ' ' + hm(cl.start) + '부터 ' + hm(cl.end) + '까지 겹치는 일정 ' + cl.ev.length + '개 펼치기',
+          open: () => this.setState({ focus: d }),
+        });
+      });
+    });
+
+    const heads = W.map((w0, i) => {
+      const today = i === 0;
+      const narrow = focus >= 0 && focus !== i;
+      return {
+        plain: focus !== i, focus: focus === i,
+        x: xs[i].toFixed(1), w: widths[i].toFixed(1), w0, n: String(25 + i),
+        dow: w0 + '요일', badge: '겹침 ' + focusCount,
+        wf: narrow ? 11 : 12, nf: narrow ? 13 : 14, c: narrow ? 22 : 26,
+        fg: i === 0 ? '#c92f26' : i === 6 ? '#2958c8' : '#5c5c66',
+        numFg: today ? '#ffffff' : (i === 0 ? '#c92f26' : i === 6 ? '#2958c8' : '#1b1b1f'),
+        numBg: today ? '#1b1b1f' : 'transparent',
+      };
+    });
+    const bd = { x: (xs[5] + 1).toFixed(1), w: (widths[5] - 2).toFixed(1), t: widths[5] > 40 ? '민수' : '' };
 
     const NEXT = [
       { t: '헬스', s: '오늘 10:00–11:00 · 끝남', kind: 'event', bg: soft, fg: '#1b1b1f', href: 'Editor.dc.html' },
       { t: '가족 · 저녁', s: '오늘 18:00–20:00 · 3시간 40분 뒤', kind: 'group', bg: '#c04c7b', fg: '#ffffff', href: 'Editor.dc.html' },
-      { t: '전공 수업', s: '내일(월) 10:00–12:00', kind: 'event', bg: '#a0c0fa', fg: '#1b1b1f', href: 'Editor.dc.html' },
-      { t: '교양 수업', s: '10월 27일(화) 13:00–15:00', kind: 'event', bg: '#a0c0fa', fg: '#1b1b1f', href: 'Editor.dc.html' },
-      { t: '민수 생일', s: '10월 30일(금) · 종일', kind: 'bday', bg: '#ffffff', fg: '#1b1b1f', href: 'People.dc.html' },
-      { t: '카페 마감', s: '10월 30일(금) 17:00–22:00', kind: 'event', bg: '#77d1c2', fg: '#1b1b1f', href: 'Editor.dc.html' },
-      { t: '주말모임 · 날짜 잡기', s: '11월 7일(토) · 가안, 시간 투표 중', kind: 'group', bg: '#7d63cb', fg: '#ffffff', href: 'Appointment.dc.html' },
+      { t: '전공 수업', s: '내일(월) 10:00–14:00', kind: 'event', bg: '#a0c0fa', fg: '#1b1b1f', href: 'Editor.dc.html' },
     ];
     const ni = Math.max(0, Math.min(NEXT.length - 1, this.state.ni));
     const cur = NEXT[ni];
     const nx = Object.assign({}, cur, {
       isGroup: cur.kind === 'group', isEvent: cur.kind === 'event', isBday: cur.kind === 'bday',
-      ring: cur.kind === 'bday' ? 'inset 0 0 0 1px #e1e1e6' : 'none',
+      ring: 'none',
     });
-    // A day column draws events that overlap one another as one group instead of narrow lanes (m1.md decision 44).
-    // Each stripe spans its own event inside the group, so a long event with a short one at its start reads as
-    // one full stripe and one short one. Events are in the core's order: by start, then the longer first.
-    const GROUPS = [
-      { d: 1, day: '10월 26일 월요일', ev: [
-        { t: '전공 수업', s: 10, e: 14, c: '#4172d1' },
-        { t: '교수 면담', s: 10, e: 11, c: '#ba5a00' },
-      ] },
-      { d: 4, day: '10월 29일 목요일', ev: [
-        { t: '동아리 회의', s: 16, e: 18, c: '#ba5a00' },
-        { t: '팀플 회의', s: 16, e: 17, c: '#966b54' },
-        { t: '과제', s: 17, e: 18, c: '#4172d1' },
-      ] },
-    ];
-    const hm = (h) => pad(Math.floor(h)) + ':' + (h % 1 ? '30' : '00');
-    const built = GROUPS.map((G, gi) => {
-      const gs = Math.min(...G.ev.map((e) => e.s));
-      const ge = Math.max(...G.ev.map((e) => e.e));
-      const span = ge - gs;
-      const shown = G.ev.slice(0, 3);
-      const label = G.day.replace(/ [^ ]+요일$/, '') + ' ' + hm(gs) + '부터 ' + hm(ge) + '까지 겹치는 일정 ' + G.ev.length + '개: ' + G.ev.map((e) => e.t).join(', ');
-      return {
-        block: {
-          n: G.ev.length + '개',
-          stripes: shown.map((e) => ({ c: e.c, top: ((e.s - gs) / span * 100).toFixed(1), h: ((e.e - e.s) / span * 100).toFixed(1) })),
-          pad: 4 + shown.length * 4 + 4,
-          x: (40 + G.d * colW + 1.5).toFixed(1),
-          w: (colW - 3).toFixed(1),
-          y: (gs - H0) * PX + 1,
-          h: span * PX - 2,
-          label,
-          open: () => this.setState({ open: gi }),
-        },
-        sheet: {
-          day: G.day,
-          sub: hm(gs) + '–' + hm(ge) + ' · 겹치는 일정 ' + G.ev.length + '개',
-          a: hm(gs), b: hm((gs + ge) / 2), c: hm(ge),
-          label,
-          rows: G.ev.map((e, i) => ({
-            t: e.t, c: e.c,
-            time: hm(e.s) + '–' + hm(e.e),
-            line: i === 0 ? 'none' : '1px solid #e1e1e6',
-            l: ((e.s - gs) / span * 100).toFixed(1),
-            w: ((e.e - e.s) / span * 100).toFixed(1),
-            label: e.t + ', ' + hm(e.s) + '부터 ' + hm(e.e) + '까지',
-          })),
-        },
-      };
-    });
-    const groups = built.map((g) => g.block);
-    const openIdx = this.state.open;
     return {
-      days, hours, events, nx, groups,
-      open: openIdx >= 0,
-      sel: built[Math.max(0, openIdx)].sheet,
-      closeSheet: () => this.setState({ open: -1 }),
+      heads, hours, cards, nx, bd,
+      focused: focus >= 0,
+      fp: { x: focus >= 0 ? xs[focus].toFixed(1) : 0, w: FW },
+      unfocus: () => this.setState({ focus: -1 }),
       atStart: ni === 0, atEnd: ni === NEXT.length - 1,
       prevOp: ni === 0 ? 0.3 : 1, nextOp: ni === NEXT.length - 1 ? 0.3 : 1,
       prevNext: () => this.setState({ ni: Math.max(0, ni - 1) }),
