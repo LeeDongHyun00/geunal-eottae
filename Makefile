@@ -158,7 +158,7 @@ lock-terraform: ## Terraform: rewrite each root's lock file with checksums for L
 	    -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_amd64 -platform=darwin_arm64; \
 	done
 
-deploy-alpha: ## Alpha server: copy infra/alpha, bootstrap it, ship the API image, restart (GEUNAL_ALPHA_SSH=root@<address>)
+deploy-alpha: ## Alpha server: copy infra/alpha, bootstrap it, ship the API and gateway images, restart (GEUNAL_ALPHA_SSH=root@<address>)
 	infra/alpha/deploy.sh
 
 # The alpha server runs these images as Docker Hub publishes them; its API image is scan-api's. They are pulled through
