@@ -993,10 +993,9 @@ impl<T: Transport> Engine<T> {
                 group.clear_pending_commit();
                 Ok(SendOutcome::Later)
             }
-            Err(e) if is_refusal(&e) => {
-                group.clear_pending_commit();
-                Ok(SendOutcome::Refused(e))
-            }
+            // No refusal is final here: the intent is rebuilt from the roster and the devices listed at the next
+            // try, so an answer about the commit as built (a device replaced since its key package was claimed) is
+            // not one about the intent.
             Err(e) => {
                 group.clear_pending_commit();
                 Err(e.into())
@@ -1015,8 +1014,8 @@ enum SendOutcome {
     Later,
 }
 
-/// Answers that sending the same row again cannot change (protocol §11): a malformed or oversized request, a group
-/// that is gone, or a member this device may not act on. Session and device answers (401, `device_revoked`,
+/// Answers that sending the same entry or state blob again cannot change (protocol §11): a malformed or oversized
+/// request, a group that is gone, or a member this device may not act on. Commit intents are not judged by it. Session and device answers (401, `device_revoked`,
 /// `replace_required`) and the 409s the engine resolves are not among them: they say nothing about the row.
 fn is_refusal(e: &ApiError) -> bool {
     match e {
