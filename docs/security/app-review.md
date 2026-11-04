@@ -24,7 +24,7 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 
 | 곳 | 기준 |
 | --- | --- |
-| 위젯 스냅샷 | 오늘·내일 일정 제목이 평문으로 들어갑니다. iOS는 App Group 컨테이너에 파일 보호 `completeUntilFirstUserAuthentication`과 백업 제외(`isExcludedFromBackup`). 안드로이드는 `noBackupFilesDir` 아래. 로그아웃과 계정 삭제 때 지움 |
+| 위젯 스냅샷 | 오늘·내일 일정 제목이 평문으로 들어갑니다. iOS는 App Group 컨테이너에 파일 보호 `completeUntilFirstUserAuthentication`과 백업 제외(`isExcludedFromBackup`). 안드로이드는 `noBackupFilesDir` 아래. 로그아웃과 계정 삭제 때 지움. iOS 위젯은 일정 제목에 `.privacySensitive()`를 붙여, 잠긴 화면과 StandBy에서 보일지를 OS 설정이 정하게 함([위협 모델](threat-model.md) 3.3) |
 | 로컬 알림 | 예약한 알림의 제목은 OS가 보관합니다. 로그아웃과 계정 삭제 때 예약과 이미 뜬 알림을 지움(iOS `removeAllPendingNotificationRequests`·`removeAllDeliveredNotifications`, 안드로이드 알람 취소와 `NotificationManager.cancelAll`). 잠긴 화면에서는 OS 설정을 따름([위협 모델](threat-model.md) 3.3): 안드로이드 알림은 `VISIBILITY_PRIVATE`와 일반 문구의 공개 버전(`setPublicVersion`)을 가짐 |
 | 앱 전환기 미리보기 | iOS는 앱이 뒤로 갈 때 화면을 저장합니다. 복구 코드 화면과 기기 바꾸기 입력 화면은 `scenePhase`가 `.active`가 아니면 가림 |
 | 연락처 | 이름과 생일만 읽음. iOS는 `CNContactFormatter`의 이름 키, `CNContactBirthdayKey`, `CNContactNonGregorianBirthdayKey`. 안드로이드는 `StructuredName`의 표시 이름과 `Event.TYPE_BIRTHDAY`이고 권한은 `READ_CONTACTS`뿐. 미리 고르지 않고 사람이 고른 연락처만 가져와 코어 저장소와 암호화 백업에만 둠. 앱이 따로 목록을 남기지 않음(설정, 캐시 파일). 권한 문구가 이 사실을 말함 |
@@ -58,6 +58,7 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 | --- | --- |
 | 남기지 않는 것 | 일정 제목·메모·시각, 사람 이름·생일, 12단어와 `E`, AMK·키·토큰·nonce·서명, 서버 응답 본문, 기기 캘린더 내용 |
 | 남겨도 되는 것 | 상태 코드(OSStatus, HTTP), 계약의 오류 코드(`error`), 개수, 걸린 시간, 화면 이름 |
+| 단계 측정 | 고정된 단계 이름과 숫자(걸린 시간, CPU, 메모리)만 남김. iOS는 `OSSignposter`에 `StaticString` 이름만 넘기고 메시지 인자를 넣지 않음(출시 빌드에도 남음). 안드로이드는 디버그 빌드에서만 logcat에 남기고, 실패는 예외의 클래스 이름만 남김(메시지에는 서버의 답이 실릴 수 있음) |
 | iOS | `Logger`(OSLog)만 씀. `print`, `NSLog`, `debugPrint`는 쓰지 않음. 문자열 보간에 `privacy: .public`을 붙이지 않음(기본이 비공개) |
 | 안드로이드 | `Log.v`·`Log.d`·`Log.i`는 릴리스에서 R8이 지우게 함(`-assumenosideeffects`). `Log.w`·`Log.e`에는 내용을 넣지 않음. `println`은 쓰지 않음 |
 | 예외 메시지 | 예외와 오류 메시지에 내용을 넣지 않음. 크래시 보고(Xcode Organizer, Play Console)로 Apple·Google 서버에 올라감 |
