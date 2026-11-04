@@ -11,5 +11,11 @@
 	# Browsers pass through this host in Android's Apple sign-in and on the App Link pages; HSTS keeps them on HTTPS
 	# even on a network that rewrites DNS or strips TLS.
 	header Strict-Transport-Security "max-age=31536000"
+	# Refuses a body over 512 KB with 413 before the API reads it, so a large body cannot fill the API's small heap.
+	# The largest body a device sends is a commit with its group info and welcome, each at most 64 KiB and base64 in
+	# JSON, about 270 KB; backups go straight to object storage through presigned URLs.
+	request_body {
+		max_size 512KB
+	}
 	reverse_proxy api:8080
 }

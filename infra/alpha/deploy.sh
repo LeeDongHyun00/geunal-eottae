@@ -53,7 +53,11 @@ else
   docker save "geunal/api:$tag" | gzip -1 | remote 'gunzip | docker load --quiet' >/dev/null
 fi
 
-remote "printf 'GEUNAL_API_TAG=%s\nGEUNAL_API_HOST=%s\n' '$tag' '$host' >/opt/geunal/.env"
+# Caddy reads its Caddyfile only when it starts, and tar above replaced the file instead of writing into it, so a
+# running Caddy keeps the old one. The file's hash goes into a label (compose.yml): a changed Caddyfile recreates the
+# container, an unchanged one leaves it running.
+caddyfile=$(git hash-object infra/alpha/Caddyfile)
+remote "printf 'GEUNAL_API_TAG=%s\nGEUNAL_API_HOST=%s\nGEUNAL_CADDYFILE=%s\n' '$tag' '$host' '$caddyfile' >/opt/geunal/.env"
 if [ -n "$host" ]; then
   remote 'cd /opt/geunal && docker compose --profile https up --detach --wait --wait-timeout 300 --remove-orphans'
 else
