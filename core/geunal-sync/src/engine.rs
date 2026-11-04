@@ -419,8 +419,8 @@ impl<T: Transport> Engine<T> {
 
     async fn pull_welcomes(&mut self) -> Result<(), SyncError> {
         for welcome in self.api.welcomes().await? {
-            let mut group = match self.mls.join_welcome(&welcome.data) {
-                Ok(group) => group,
+            let (mut group, adder) = match self.mls.join_welcome_from(&welcome.data) {
+                Ok(joined) => joined,
                 // A Welcome for a suite or group we cannot use is dropped; the server deletes it once fetched.
                 Err(_) => continue,
             };
@@ -432,7 +432,10 @@ impl<T: Transport> Engine<T> {
             // by design. A server that names no seq restarts the read at 0, and those items are skipped by epoch
             // without decryption: a read of the mailbox, not of keys.
             self.store.upsert_group(&welcome.group_id, GroupKind::Circle, None)?;
-            self.store.set_cursor(&welcome.group_id, welcome.seq.unwrap_or(0))?;
+            let through = welcome.seq.unwrap_or(0);
+            self.store.set_cursor(&welcome.group_id, through)?;
+            // The member whose commit added this device owes it one bundle of what came before (protocol §5).
+            self.store.expect_bundle(&welcome.group_id, &adder.user_id, group.epoch() as i64, through)?;
             self.remember_state_key(&welcome.group_id, &group)?;
             group.save()?;
             self.pull_state(&welcome.group_id).await?;
@@ -506,7 +509,8 @@ impl<T: Transport> Engine<T> {
                 }
             },
             _ => {
-                if self.store.has_entry(group_id, item.seq)? {
+                let stored = self.store.entry_author(group_id, item.seq)?;
+                if stored.as_deref() == Some(self.me.user_id.as_str()) {
                     // Our own message, stored when the server accepted it; the server's clock replaces the local one.
                     if item.author_id == self.me.user_id {
                         self.store.set_entry_received_at(group_id, item.seq, &item.received_at)?;
@@ -514,7 +518,12 @@ impl<T: Transport> Engine<T> {
                     self.store.set_cursor(group_id, item.seq)?;
                     return Ok(());
                 }
+                // Another member's entry already here was decrypted by the extension, and MLS will not open it again;
+                // if it does open, the log's item is the one that belongs at this seq.
                 if let Ok(Received::Application { sender, data }) = group.process(&item.ciphertext) {
+                    if stored.is_some() {
+                        self.store.remove_entry(group_id, item.seq)?;
+                    }
                     self.store_entry(group_id, item.seq, &sender.user_id, &data, &item.received_at)?;
                 }
                 self.store.set_cursor(group_id, item.seq)?;
@@ -611,6 +620,7 @@ impl<T: Transport> Engine<T> {
     /// open, leaves its owner absent from the group calendar (protocol §5).
     pub async fn pull_state(&mut self, group_id: &str) -> Result<(), SyncError> {
         let blobs = self.api.state(group_id).await?;
+        let expected = self.store.expected_bundle(group_id)?;
         let mut bundle: Option<Vec<u8>> = None;
         let mut seen_availability = BTreeSet::new();
         for blob in &blobs {
@@ -634,7 +644,15 @@ impl<T: Transport> Engine<T> {
                     }
                 }
                 ("availability", None) => self.store.remove_availability(group_id, &blob.owner_id)?,
-                ("newcomer_bundle", Some(plain)) => bundle = Some(plain),
+                // Only the bundle the Welcome promised: sealed by the member who added this device, in the epoch it
+                // joined in or later.
+                ("newcomer_bundle", Some(plain))
+                    if expected
+                        .as_ref()
+                        .is_some_and(|x| blob.owner_id == x.from_user && blob.epoch as i64 >= x.epoch) =>
+                {
+                    bundle = Some(plain)
+                }
                 _ => {}
             }
         }
@@ -643,8 +661,10 @@ impl<T: Transport> Engine<T> {
                 self.store.remove_availability(group_id, &row.user_id)?;
             }
         }
-        if let Some(bundle) = bundle {
-            self.absorb_bundle(group_id, &bundle)?;
+        if let (Some(bundle), Some(expected)) = (bundle, expected) {
+            // Taken once: a later bundle in the group is for a later newcomer.
+            self.store.clear_expected_bundle(group_id)?;
+            self.absorb_bundle(group_id, &bundle, expected.through)?;
         }
         self.notify(Change::Group { group_id: group_id.to_owned() });
         Ok(())
@@ -652,9 +672,10 @@ impl<T: Transport> Engine<T> {
 
     /// Entries of live appointments from before this device joined, taken on trust from the member who added it
     /// (protocol §5). An item that names its seq lands at that seq, so it sorts exactly as the server ordered it and a
-    /// copy this device already has is a no-op; one without a seq (an older bundle) takes a negative seq in bundle
-    /// order, ahead of the log, unless a matching entry exists.
-    fn absorb_bundle(&self, group_id: &str, bundle: &[u8]) -> Result<(), SyncError> {
+    /// copy this device already has is a no-op; it must come before the Add commit at `through`, since every later
+    /// seq is the log's to fill. One without a seq (an older bundle) takes a negative seq in bundle order, ahead of the
+    /// log, unless a matching entry exists.
+    fn absorb_bundle(&self, group_id: &str, bundle: &[u8], through: i64) -> Result<(), SyncError> {
         let items: Vec<BundleItem> =
             ciborium::from_reader(bundle).map_err(|e| SyncError::Malformed(format!("newcomer bundle: {e}")))?;
         let existing = self.store.entries(group_id)?;
@@ -668,6 +689,9 @@ impl<T: Transport> Engine<T> {
         let (placed, unplaced): (Vec<&BundleItem>, Vec<&BundleItem>) = items.iter().partition(|i| i.seq.is_some());
         for item in placed {
             let seq = item.seq.expect("partitioned");
+            if seq <= 0 || seq > through {
+                continue;
+            }
             self.store_entry(group_id, seq, &item.author_id, &item.entry, &item.received_at)?;
         }
         let fresh: Vec<&BundleItem> = unplaced

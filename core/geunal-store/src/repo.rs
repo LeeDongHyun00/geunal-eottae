@@ -39,6 +39,17 @@ pub struct GroupRow {
     pub cursor: i64,
 }
 
+/// The newcomer bundle a Welcome promised this device (protocol §5), until it is taken.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExpectedBundle {
+    /// The user whose device signed the Add commit.
+    pub from_user: String,
+    /// The epoch the device joined in, which the bundle is sealed in.
+    pub epoch: i64,
+    /// The seq of the Add commit: bundle items name seqs up to it, never after.
+    pub through: i64,
+}
+
 /// A decrypted log entry as received; `body` is the CBOR envelope so unknown kinds survive an upgrade (protocol §4).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntryRow {
@@ -151,6 +162,36 @@ impl Store {
         Ok(())
     }
 
+    /// Records the newcomer bundle a Welcome promises: from `from_user`, sealed in `epoch`, items up to `through`.
+    pub fn expect_bundle(&self, group_id: &str, from_user: &str, epoch: i64, through: i64) -> Result<()> {
+        self.conn().execute(
+            "UPDATE groups SET bundle_from = ?2, bundle_epoch = ?3, bundle_through = ?4 WHERE id = ?1",
+            params![group_id, from_user, epoch, through],
+        )?;
+        Ok(())
+    }
+
+    /// The newcomer bundle the group still owes this device, if any.
+    pub fn expected_bundle(&self, group_id: &str) -> Result<Option<ExpectedBundle>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT bundle_from, bundle_epoch, bundle_through FROM groups
+                 WHERE id = ?1 AND bundle_from IS NOT NULL AND bundle_epoch IS NOT NULL AND bundle_through IS NOT NULL",
+                [group_id],
+                |row| Ok(ExpectedBundle { from_user: row.get(0)?, epoch: row.get(1)?, through: row.get(2)? }),
+            )
+            .optional()?)
+    }
+
+    pub fn clear_expected_bundle(&self, group_id: &str) -> Result<()> {
+        self.conn().execute(
+            "UPDATE groups SET bundle_from = NULL, bundle_epoch = NULL, bundle_through = NULL WHERE id = ?1",
+            [group_id],
+        )?;
+        Ok(())
+    }
+
     // ----- entries -----
 
     /// Stores a decrypted entry. The same (group, seq) twice is ignored: MLS cannot decrypt a message twice, so the
@@ -170,6 +211,26 @@ impl Store {
             params![group_id, seq, received_at],
         )?;
         Ok(())
+    }
+
+    /// Removes the entry at `seq` and its search row, so the log's own item can take the seq.
+    pub fn remove_entry(&self, group_id: &str, seq: i64) -> Result<()> {
+        let conn = self.conn();
+        conn.execute("DELETE FROM chat_fts WHERE group_id = ?1 AND seq = ?2", params![group_id, seq])?;
+        conn.execute("DELETE FROM entries WHERE group_id = ?1 AND seq = ?2", params![group_id, seq])?;
+        Ok(())
+    }
+
+    /// Who wrote the entry stored at `seq`, if one is.
+    pub fn entry_author(&self, group_id: &str, seq: i64) -> Result<Option<String>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT author_id FROM entries WHERE group_id = ?1 AND seq = ?2",
+                params![group_id, seq],
+                |row| row.get(0),
+            )
+            .optional()?)
     }
 
     pub fn has_entry(&self, group_id: &str, seq: i64) -> Result<bool> {
