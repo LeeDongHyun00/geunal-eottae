@@ -574,12 +574,17 @@ impl<T: Transport> Engine<T> {
         if !self.store.insert_entry(&row)? {
             return Ok(());
         }
+        if let Some(text) = chat_text(body) {
+            self.store.index_text(group_id, seq, &text)?;
+        }
+        self.announce_entry(group_id, body);
+        Ok(())
+    }
+
+    /// Tells the app which screens a newly stored entry changes.
+    fn announce_entry(&self, group_id: &str, body: &[u8]) {
         match entry::decode(body) {
-            Ok(Entry::Text { body: text, .. }) => {
-                self.store.index_text(group_id, seq, &text)?;
-                self.notify(Change::Chat { group_id: group_id.to_owned() });
-            }
-            Ok(Entry::Media { .. } | Entry::MediaRemove { .. }) => {
+            Ok(Entry::Text { .. } | Entry::Media { .. } | Entry::MediaRemove { .. }) => {
                 self.notify(Change::Chat { group_id: group_id.to_owned() });
             }
             _ => {
@@ -587,7 +592,6 @@ impl<T: Transport> Engine<T> {
                 self.notify(Change::Calendar);
             }
         }
-        Ok(())
     }
 
     fn remember_state_key(&self, group_id: &str, group: &MlsGroup) -> Result<(), SyncError> {
@@ -684,11 +688,12 @@ impl<T: Transport> Engine<T> {
             }
         }
         if let (Some(bundle), Some(expected)) = (bundle, expected) {
-            // Taken once: a later bundle in the group is for a later newcomer. The promise is kept until the entries
-            // are in, so a failed write is tried again by the next sync (taking an entry twice is a no-op); a bundle
-            // that does not decode never will, and is let go.
+            // Taken once: a later bundle in the group is for a later newcomer. The entries and the end of the promise
+            // are one write, so a failed one is tried again whole by the next sync; a bundle that does not decode
+            // never will, and is let go.
             match self.absorb_bundle(group_id, &bundle, expected.through) {
-                Ok(()) | Err(SyncError::Malformed(_)) => self.store.clear_expected_bundle(group_id)?,
+                Ok(()) => {}
+                Err(SyncError::Malformed(_)) => self.store.clear_expected_bundle(group_id)?,
                 Err(e) => return Err(e),
             }
         }
@@ -714,12 +719,13 @@ impl<T: Transport> Engine<T> {
         };
         let (placed, unplaced): (Vec<&BundleItem>, Vec<&BundleItem>) =
             items.iter().partition(|i| i.seq.is_some() && through.is_some());
+        let mut rows = Vec::new();
         for item in placed {
             let (seq, through) = (item.seq.expect("partitioned"), through.expect("partitioned"));
             if seq <= 0 || seq > through {
                 continue;
             }
-            self.store_entry(group_id, seq, &item.author_id, &item.entry, &item.received_at)?;
+            rows.push(bundle_row(group_id, seq, item));
         }
         let fresh: Vec<&BundleItem> = unplaced
             .into_iter()
@@ -730,8 +736,9 @@ impl<T: Transport> Engine<T> {
             })
             .collect();
         let first = self.store.lowest_entry_seq(group_id)? - fresh.len() as i64;
-        for (seq, item) in (first..).zip(fresh) {
-            self.store_entry(group_id, seq, &item.author_id, &item.entry, &item.received_at)?;
+        rows.extend((first..).zip(fresh).map(|(seq, item)| bundle_row(group_id, seq, item)));
+        for row in self.store.absorb_bundle(group_id, &rows)? {
+            self.announce_entry(group_id, &row.body);
         }
         Ok(())
     }
@@ -1105,6 +1112,27 @@ struct BundleItem {
     received_at: String,
     #[serde(with = "geunal_domain::entry::cbor_bytes")]
     entry: Vec<u8>,
+}
+
+/// The text a chat entry adds to the search index.
+fn chat_text(body: &[u8]) -> Option<String> {
+    match entry::decode(body) {
+        Ok(Entry::Text { body, .. }) => Some(body),
+        _ => None,
+    }
+}
+
+/// A newcomer bundle item as the row it is stored as, with its text for the search index.
+fn bundle_row(group_id: &str, seq: i64, item: &BundleItem) -> (EntryRow, Option<String>) {
+    let row = EntryRow {
+        group_id: group_id.to_owned(),
+        seq,
+        author_id: item.author_id.clone(),
+        kind: entry::peek_kind(&item.entry).unwrap_or_else(|| "unknown".to_owned()),
+        body: item.entry.clone(),
+        received_at: item.received_at.clone(),
+    };
+    (row, chat_text(&item.entry))
 }
 
 fn appointment_of(entry: &Entry) -> Option<&str> {

@@ -197,6 +197,36 @@ impl Store {
 
     /// Stores a decrypted entry. The same (group, seq) twice is ignored: MLS cannot decrypt a message twice, so the
     /// first copy (possibly written by the notification extension) is the only one (rust-core §4).
+    /// Stores a newcomer bundle's entries, each with its chat text to index, and forgets the bundle the group owed
+    /// this device, in one transaction: an absorb that stops part way leaves the bundle owed and nothing of it stored,
+    /// so the next try places every item where the bundle order puts it. Answers the rows that were new.
+    pub fn absorb_bundle(&self, group_id: &str, rows: &[(EntryRow, Option<String>)]) -> Result<Vec<EntryRow>> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let mut inserted = Vec::new();
+        for (row, text) in rows {
+            let new = tx.execute(
+                "INSERT OR IGNORE INTO entries (group_id, seq, author_id, kind, body, received_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![row.group_id, row.seq, row.author_id, row.kind, row.body, row.received_at],
+            )? == 1;
+            if new {
+                if let Some(text) = text {
+                    tx.execute(
+                        "INSERT INTO chat_fts (body, group_id, seq) VALUES (?1, ?2, ?3)",
+                        params![text, row.group_id, row.seq],
+                    )?;
+                }
+                inserted.push(row.clone());
+            }
+        }
+        tx.execute(
+            "UPDATE groups SET bundle_from = NULL, bundle_epoch = NULL, bundle_through = NULL WHERE id = ?1",
+            [group_id],
+        )?;
+        tx.commit()?;
+        Ok(inserted)
+    }
+
     pub fn insert_entry(&self, row: &EntryRow) -> Result<bool> {
         let inserted = self.conn().execute(
             "INSERT OR IGNORE INTO entries (group_id, seq, author_id, kind, body, received_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
