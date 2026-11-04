@@ -564,3 +564,17 @@ async fn leaves_out_of_an_add_someone_the_server_will_not_list_and_keeps_sending
     b.engine.sync().await.unwrap();
     assert_eq!(texts(&b, &group), vec!["그 뒤의 말"]);
 }
+
+#[tokio::test]
+async fn queues_availability_only_when_it_differs_from_what_the_group_has() {
+    let server = server();
+    let (mut a, _b, group) = pair(&server).await;
+    let mut availability = Availability::all_free("2026-11-01".into(), 14);
+    availability.mark_busy(20, 24);
+    assert!(a.engine.share_availability(&group, &availability).unwrap());
+    assert!(!a.engine.share_availability(&group, &availability).unwrap(), "already queued");
+    a.engine.flush_outbox().await.unwrap();
+    assert!(!a.engine.share_availability(&group, &availability).unwrap(), "already sent");
+    availability.mark_busy(30, 32);
+    assert!(a.engine.share_availability(&group, &availability).unwrap());
+}
