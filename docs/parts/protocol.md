@@ -493,16 +493,18 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
 
 | 메서드 | 경로 | 응답 | 비고 |
 | --- | --- | --- | --- |
-| POST | `/groups/{id}/invites` | 201 `{code, expires_at}` | 활성 멤버만. 그룹이 20명이면 409 `group_full` |
+| POST | `/groups/{id}/invites` | 201 `{code, expires_at}` | 활성 멤버만. `code`는 하이픈 없는 10자이고, 하이픈은 앱이 보일 때 붙임. 그룹이 20명이면 409 `group_full` |
 | GET | `/invites/{code}` | 200 `{group_id, inviter_name, member_count, expires_at, full}` | 참여 전 미리보기. 로그인이 필요하고, 참여와 같은 IP 한도를 씀 |
-| POST | `/invites/{code}/join` | 200 `{group_id, status}` | 나를 그 그룹의 `pending`으로. 이미 활성 멤버면 `status: "active"`이고 아무것도 바꾸지 않음 |
+| POST | `/invites/{code}/join` | 200 `{group_id, status}` | 나를 그 그룹의 `pending`으로. 이미 `pending`이거나 활성 멤버면 그 상태(`"pending"`, `"active"`)를 그대로 돌려주고 사용 횟수를 쓰지 않음. 응답을 잃은 기기가 다시 불러도 되게 하려는 것 |
+| DELETE | `/groups/{id}/invites/{code}` | 204 | 초대 거두기. 코드를 만든 사람이나 방장만. 그 뒤 코드는 404 `invite_invalid` |
 
 - **미리보기는 멤버 이름을 주지 않습니다.** 코드를 가진 사람은 아직 멤버가 아니므로, 초대한 사람의 표시 이름(`display_name`)과 멤버 수만 줍니다. `full`은 활성·대기 멤버가 20명인지입니다.
 - **오류:**
   - 404 `invite_invalid`: 없는 코드, 끝난 코드, 다 쓴 코드. 셋을 구별하지 않습니다. 코드를 맞혀 보는 사람에게 단서를 주지 않으려는 것입니다.
   - 409 `group_full`: 그룹이 20명.
-  - 409 `group_limit`: 내가 든 그룹(활성·대기)이 20개.
+  - 409 `group_limit`: 내가 든 그룹(활성·대기)이 20개. 1:1은 세지 않습니다.
   - 429 `rate_limited`: IP당 시간당 10회(api-server.md 9장).
+- **대기는 7일입니다.** 7일 동안 추가되지 않은 `pending`은 서버가 `removed`로 돌리고 그룹에 `membership`을 보냅니다. 대기도 20명 자리를 차지하기 때문입니다. 다시 들어오려면 코드부터 다시 씁니다.
 - 참여 뒤의 일은 2장 "멤버 추가"를 따릅니다. 온라인인 활성 멤버 기기가 `membership`을 받고 Add 커밋과 Welcome을 올리면, 새 기기는 실시간 `welcome`이나 다음 동기화로 들어옵니다.
 
 ### 받아들인 그룹의 Welcome만 받기
