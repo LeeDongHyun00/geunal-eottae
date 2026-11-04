@@ -5,11 +5,11 @@ defmodule GatewayWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :gateway
 
   # Devices connect over WebSocket only and send nothing but heartbeats, hence the small frames (gateway.md §4, §7).
-  # `peer_data` feeds the per-address connection limit.
-  socket "/socket", GatewayWeb.DeviceSocket,
+  # `peer_data` and, behind a trusted proxy, X-Forwarded-For (`x_headers`) feed the per-address connection limit.
+  socket "/socket", GatewayWeb.DeviceTransport,
     websocket: [
       max_frame_size: 16_384,
-      connect_info: [:peer_data],
+      connect_info: [:peer_data, :x_headers],
       error_handler: {GatewayWeb.DeviceSocket, :handle_error, []}
     ],
     longpoll: false

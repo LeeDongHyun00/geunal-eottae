@@ -1,13 +1,13 @@
 # 알파 서버
 
-M1 알파 서버(NCP Micro, 1 vCPU·1GB) 위에서 도는 구성입니다([인프라](../../docs/parts/infra.md) 2장). 서버 자체(VPC, ACG, 공인 IP)는 [Terraform](../terraform/README.md)이 만들고, 이 디렉터리는 그 위에 올리는 것을 둡니다.
+알파 서버(NCP Micro, 1 vCPU·1GB) 위에서 도는 구성입니다([인프라](../../docs/parts/infra.md) 2장). M2도 서버를 키우지 않고 이 서버에 실시간 게이트웨이를 더해 돌립니다. 서버 자체(VPC, ACG, 공인 IP)는 [Terraform](../terraform/README.md)이 만들고, 이 디렉터리는 그 위에 올리는 것을 둡니다.
 
-알파 주소는 `https://api.geunaleottae.com`입니다(아래 "도메인과 DNS"). 앱의 서버 주소(안드로이드 `geunalApiBase`, iOS `GEUNAL_API_BASE`)와 App Link 호스트에 이 주소를 넣습니다.
+알파 주소는 API `https://api.geunaleottae.com`, 실시간 게이트웨이 `wss://rt.geunaleottae.com`입니다(아래 "도메인과 DNS"). 앱의 서버 주소(안드로이드 `geunalApiBase`, iOS `GEUNAL_API_BASE`)와 App Link 호스트에 API 주소를 넣습니다.
 
 | 파일 | 하는 일 |
 | --- | --- |
-| `compose.yml` | API·PostgreSQL·Valkey. 호스트 이름이 있으면 Caddy(TLS)도 띄움. 게이트웨이는 M2부터 |
-| `Caddyfile` | `GEUNAL_API_HOST`의 Let's Encrypt 인증서를 받아 API로 넘김 |
+| `compose.yml` | API·PostgreSQL·Valkey. 호스트 이름이 있으면 Caddy(TLS)와 실시간 게이트웨이도 띄움 |
+| `Caddyfile` | `GEUNAL_API_HOST`와 `GEUNAL_RT_HOST`의 Let's Encrypt 인증서를 받아 API와 게이트웨이로 넘김. 접속 로그는 남기지 않고, 오류 로그의 요청 주소에서 `token` 쿼리를 지움 |
 | `bootstrap.sh` | 서버 준비: 스왑 2GB, 쓰지 않는 서비스 끄기, Docker와 로그 회전, 비밀값 파일, 매일 DB 덤프 타이머. 배포할 때마다 다시 돌아도 안전 |
 | `db-dump.sh`, `geunal-db-dump.*` | 매일 04:00(서울) `pg_dump`, 서버에 7일 보관. 암호화한 사본을 `geunal-alpha-backups` 버킷에 7일 |
 | `deploy.sh` | 운영자 PC에서 하는 배포(`make deploy-alpha`) |
@@ -18,15 +18,27 @@ M1 알파 서버(NCP Micro, 1 vCPU·1GB) 위에서 도는 구성입니다([인�
 ## 배포
 
 ```bash
-GEUNAL_ALPHA_SSH=root@<서버 주소> GEUNAL_ALPHA_SSH_KEY=~/.ssh/<키> GEUNAL_API_HOST=<호스트 이름> make deploy-alpha
+GEUNAL_ALPHA_SSH=root@<서버 주소> GEUNAL_ALPHA_SSH_KEY=~/.ssh/<키> \
+  GEUNAL_API_HOST=api.geunaleottae.com GEUNAL_RT_HOST=rt.geunaleottae.com make deploy-alpha
 ```
 
 - ACG가 SSH를 운영자 주소(`admin_cidr`)에만 열어 두어서, CI가 아니라 운영자 PC에서 돌립니다.
 - `<서버 주소>`는 운영자 PC의 `known_hosts`에 들어 있는 형태로 씁니다(처음 접속한 주소, 지금은 IP). `deploy.sh`는 SSH에 `BatchMode`와 `-i`만 넘기므로, 처음 보는 이름으로 쓰면 호스트 키 확인에서 멈춥니다.
-- API 이미지 태그는 `server/api`를 마지막으로 바꾼 커밋입니다([인프라](../../docs/parts/infra.md) 3장). 서버에 그 태그가 있으면 빌드와 전송을 건너뜁니다. 레지스트리 없이 SSH로 보냅니다.
+- 이미지 태그는 API는 `server/api`, 게이트웨이는 `server/gateway`를 마지막으로 바꾼 커밋입니다([인프라](../../docs/parts/infra.md) 3장). 서버에 그 태그가 있으면 빌드와 전송을 건너뜁니다. 레지스트리 없이 SSH로 보냅니다.
 - 서버가 amd64라서, 이미지를 arm64로 만드는 Apple 실리콘 Mac에서는 스크립트가 멈춥니다.
-- `GEUNAL_API_HOST`가 없으면 Caddy를 띄우지 않습니다. 그러면 API는 서버의 루프백(`127.0.0.1:8080`)에만 열리고, `ssh -L 8080:127.0.0.1:8080 …`로 확인합니다.
-- 되돌리기: 서버의 `/opt/geunal/.env`에서 `GEUNAL_API_TAG`를 이전 태그로 바꾸고 `docker compose up -d`를 실행합니다. 직전 태그 하나는 남겨 둡니다.
+- `GEUNAL_API_HOST`와 `GEUNAL_RT_HOST`는 함께 주거나 함께 뺍니다. 둘 다 없으면 Caddy와 게이트웨이를 띄우지 않습니다. 그러면 API는 서버의 루프백(`127.0.0.1:8080`)에만 열리고, `ssh -L 8080:127.0.0.1:8080 …`로 확인합니다.
+- 되돌리기: 서버의 `/opt/geunal/.env`에서 `GEUNAL_API_TAG`나 `GEUNAL_GATEWAY_TAG`를 이전 태그로 바꾸고 `docker compose --profile https up -d`를 실행합니다. 이미지마다 직전 태그 하나는 남겨 둡니다.
+- **게이트웨이를 처음 띄우는 배포:** compose 네트워크의 주소 범위를 고정했기 때문에(`compose.yml`의 `x-subnet`), 그 전에 만든 네트워크는 스택을 한 번 내렸다 올려 다시 만듭니다. 볼륨(DB)은 그대로이고, API가 다시 뜰 때까지 1~2분 끊깁니다.
+
+## 실시간 게이트웨이
+
+기기가 앱을 연 동안 WebSocket 하나로 붙어, 그룹의 기록·상태·멤버가 바뀌면 바로 알림을 받습니다([실시간](../../docs/parts/gateway.md), 공통 계약 7장). 메모리가 1GB뿐이라 다음처럼 둡니다.
+
+- **메모리 상한 160MB, 스왑 없음:** 유휴 약 55MB, 기기 1,000개에 약 115MB입니다. 상한을 넘으면 게이트웨이 컨테이너만 죽고 바로 다시 뜹니다. 기기는 다시 붙어 API로 따라잡습니다. VM 전체가 모자랄 때도 커널이 게이트웨이를 먼저 고릅니다(`oom_score_adj`).
+- **CPU:** 쉬는 스케줄러가 CPU를 붙잡고 기다리지 않게 해(`ERL_AFLAGS`), vCPU 하나를 API·PostgreSQL에 양보합니다.
+- **접속 제한:** 게이트웨이는 기기 주소마다 접속 수를 셉니다. Caddy 뒤에서는 모든 연결이 Caddy에서 오므로, 고정한 compose 네트워크 범위(`TRUSTED_PROXIES`)에서 온 `X-Forwarded-For`만 믿고 그 헤더의 기기 주소로 셉니다. 게이트웨이는 호스트에 포트를 열지 않아 이 네트워크 밖에서는 닿지 않습니다.
+- **로그에 토큰 없음:** 기기의 WebSocket 주소에 접근 토큰이 들어 있어서 Caddy는 접속 로그를 남기지 않고, 오류 로그(게이트웨이가 다시 뜨는 동안의 502 등)에 들어가는 요청 주소에서는 `token` 쿼리를 지웁니다.
+- **메모리가 모자라면:** `cd /opt/geunal && docker compose stop gateway`로 게이트웨이만 멈춥니다. 기기는 앱을 열 때 API에서 따라잡으므로 기록은 그대로이고, 바로 반영되지만 않습니다. 다시 띄우려면 `docker compose --profile https up -d gateway`.
 
 ## 서버에 있는 것
 
@@ -141,7 +153,8 @@ GEUNAL_LIFECYCLE_S3_ACCESS_KEY=... GEUNAL_LIFECYCLE_S3_SECRET_KEY=... infra/alph
 
 `geunaleottae.com`은 Cloudflare Registrar에서 샀고(2026-10-31, 2027-10-30까지), DNS도 Cloudflare의 무료 요금제에 있습니다. 이 이름을 다른 곳으로 돌릴 수 있는 사람은 유효한 인증서를 받아 API를 흉내 낼 수 있으므로([위협 모델](../../docs/security/threat-model.md) 3.7) 다음을 지킵니다.
 
-- **API 레코드는 프록시 없이 DNS만(회색 구름)입니다.** 프록시를 켜면 Cloudflare가 TLS를 풀어 앱의 요청(토큰, 접속 IP, 메타데이터)을 보고, 개인정보가 국외 망을 거칩니다. 프록시는 약관 같은 정적 페이지에만 씁니다.
+- **API와 게이트웨이 레코드는 프록시 없이 DNS만(회색 구름)입니다.** 프록시를 켜면 Cloudflare가 TLS를 풀어 앱의 요청(토큰, 접속 IP, 메타데이터)을 보고, 개인정보가 국외 망을 거칩니다. 프록시는 약관 같은 정적 페이지에만 씁니다.
+  - `api`와 `rt`는 같은 서버를 가리키는 A 레코드입니다. 서버의 공인 IP가 바뀌면 둘 다 고칩니다.
 - CAA로 Let's Encrypt만 인증서를 내게 하고, DNSSEC를 켭니다. Cloudflare의 Universal SSL이 켜져 있으면 Cloudflare가 자기 인증 기관들(DigiCert, Google, SSL.com, Comodo)을 CAA에 자동으로 더합니다. 그래서 프록시하는 레코드가 없는 동안은 Universal SSL을 꺼 둡니다. 정적 페이지를 프록시할 때 다시 켭니다.
 - 암호화 모드는 Full (strict)입니다. 프록시하는 레코드가 생기면 Cloudflare가 우리 서버의 인증서를 확인합니다.
 - Cloudflare의 인증서 투명성 감시를 켜 두어, 이 도메인으로 인증서가 나오면 메일이 옵니다.
@@ -153,3 +166,4 @@ GEUNAL_LIFECYCLE_S3_ACCESS_KEY=... GEUNAL_LIFECYCLE_S3_SECRET_KEY=... infra/alph
 
 - 디스크 여유: 10GB 가운데 85%를 씁니다(스왑 2GB, containerd 이미지 저장소 1.2GB). API 이미지를 더 키우기 전에 블록 스토리지를 더하거나 Docker를 이전 저장 방식(overlay2)으로 돌려야 할 수 있습니다.
 - 이미지 레지스트리와 `main` 머지 뒤 자동 배포.
+- 게이트웨이의 바깥 경보: `watch.sh`는 아직 API만 봅니다. 게이트웨이를 처음 배포한 뒤 `https://rt.geunaleottae.com/healthz` 검사를 더합니다(배포 전에 더하면 DNS가 없어 바로 울림).

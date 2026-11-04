@@ -136,6 +136,8 @@ struct State {
     log_reads: u32,
     /// Calls a test made fail, by route (`FakeServer::fail_next`, `FakeServer::lose_next`).
     faults: BTreeMap<&'static str, Fault>,
+    /// Answers a test set for the next call of a route, as the server would refuse it (`FakeServer::refuse_next`).
+    refusals: BTreeMap<&'static str, (u16, &'static str)>,
     /// The years whose holidays the server knows in full, as the daily job leaves them (protocol §14).
     holidays: BTreeMap<i32, Vec<HolidayItem>>,
     holiday_reads: u32,
@@ -450,6 +452,12 @@ impl FakeServer {
     /// `put_recovery`, `upload_key_packages`, `delete_account`, `post_alpha_stats`.
     pub fn fail_next(&self, route: &'static str) {
         self.state.lock().expect("fake server").faults.insert(route, Fault::Fail);
+    }
+
+    /// The next call of `route` is refused with `status` and `code`, as the API answers a request it will not take.
+    /// Routes: `post_message`.
+    pub fn refuse_next(&self, route: &'static str, status: u16, code: &'static str) {
+        self.state.lock().expect("fake server").refusals.insert(route, (status, code));
     }
 
     /// The server handles the next call of `route` and its answer is lost: the client sees a connection error.
@@ -1273,6 +1281,9 @@ impl Transport for FakeClient {
     async fn post_message(&self, group_id: &str, req: MessageRequest) -> Result<MessageAccepted, ApiError> {
         let (user, _) = self.who()?;
         let mut state = self.lock();
+        if let Some((status, code)) = state.refusals.remove("post_message") {
+            return Err(err(status, code));
+        }
         let received_at = state.now_text();
         let group = Self::require_active(&mut state, group_id, &user)?;
         if req.epoch != group.epoch {

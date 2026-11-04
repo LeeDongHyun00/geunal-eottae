@@ -48,8 +48,9 @@ defmodule GatewayWeb.DeviceSocket do
   def handle_error(conn, _reason), do: send_resp(conn, 403, "")
 
   # The transport fills in `peer_data` for real connections; a test socket built without it is not limited.
-  defp check_rate(%{peer_data: %{address: address}}) do
-    if Gateway.ConnectLimiter.allow?(address), do: :ok, else: {:error, :rate_limited}
+  defp check_rate(%{peer_data: %{address: peer}} = connect_info) do
+    client = Gateway.ClientAddress.of(peer, Map.get(connect_info, :x_headers, []))
+    if Gateway.ConnectLimiter.allow?(client), do: :ok, else: {:error, :rate_limited}
   end
 
   defp check_rate(_connect_info), do: :ok

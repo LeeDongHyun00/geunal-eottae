@@ -214,3 +214,11 @@ fn refuses_key_packages_and_group_info_on_any_cipher_suite_but_0x0003() {
     assert!(matches!(a.client.external_join(&info, None), Err(Error::WrongCipherSuite(s)) if s == p256::OTHER));
     assert_eq!(SUITE, mls_rs::CipherSuite::CURVE25519_CHACHA);
 }
+
+#[test]
+fn an_entry_at_the_limit_encrypts_within_the_message_size_the_server_takes() {
+    use geunal_domain::entry::{MAX_ENTRY_BYTES, MAX_MESSAGE_BYTES};
+    let (_a, _b, _c, mut ga, _gb, _gc) = trio();
+    let message = ga.encrypt(&vec![0x61; MAX_ENTRY_BYTES]).unwrap();
+    assert!(message.len() <= MAX_MESSAGE_BYTES, "{} bytes", message.len());
+}

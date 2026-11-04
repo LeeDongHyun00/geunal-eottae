@@ -6,12 +6,14 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.test.context.TestPropertySource
 
-/** The per-minute limits of api-server.md §9 on messages, commits and key package claims. */
+/** The limits of api-server.md §9 on messages, commits, key package claims and state blobs. */
 @TestPropertySource(
     properties = [
         "geunal.rate-limits.messages-per-minute=60",
         "geunal.rate-limits.commits-per-minute=30",
         "geunal.rate-limits.claims-per-minute=30",
+        "geunal.rate-limits.states-per-minute=60",
+        "geunal.rate-limits.group-meta-per-minute=30",
     ],
 )
 class RateLimitTests : ApiTest() {
@@ -55,5 +57,24 @@ class RateLimitTests : ApiTest() {
 
         assertThat(statuses).contains(429)
         assertThat(statuses.filter { it == 200 }.size).isLessThanOrEqualTo(60)
+    }
+
+    @Test
+    fun `answers 429 past 30 group_meta writes a minute from one member`() {
+        val owner = signIn()
+        val member = signIn()
+        val groupId = groupWith(owner, member)
+        val write = { who: app.geunal.api.support.Client ->
+            who.put("/groups/$groupId/state/group_meta", mapOf("epoch" to 1, "base_version" to 0, "ciphertext" to ByteArray(64)))
+        }
+
+        // Conflicts count too: the limit is on writes, whatever they find. A minute turning over only lets more through.
+        val statuses = (1..61).map { write(owner).status }
+
+        assertThat(statuses).contains(429)
+        assertThat(statuses.filter { it != 429 }.size).isLessThanOrEqualTo(60)
+        // Per member: another member still writes, and the owner's own availability is under the wider state limit.
+        assertThat(write(member).status).isNotEqualTo(429)
+        owner.put("/groups/$groupId/state/availability", mapOf("epoch" to 1, "ciphertext" to ByteArray(64))).expect(200)
     }
 }

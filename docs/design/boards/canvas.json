@@ -144,7 +144,7 @@
    "y": 3732
   },
   "GroupSettings.dc.html": {
-   "h": 2080,
+   "h": 2028,
    "is_interactive": true,
    "page": "m2",
    "title": "그룹 설정",
@@ -462,6 +462,42 @@
    "w": 390,
    "x": 1410,
    "y": 2488
+  },
+  "CreateGroup.dc.html": {
+   "h": 844,
+   "is_interactive": true,
+   "page": "m2",
+   "title": "13 그룹 만들기",
+   "w": 390,
+   "x": 1410,
+   "y": 0
+  },
+  "LeadSet.dc.html": {
+   "h": 844,
+   "is_interactive": true,
+   "page": "m2",
+   "title": "15 시간·활동 정하기 (주도자)",
+   "w": 390,
+   "x": 1880,
+   "y": 1244
+  },
+  "GroupProfile.dc.html": {
+   "h": 844,
+   "is_interactive": true,
+   "page": "m2",
+   "title": "19 그룹 프로필 · 취향",
+   "w": 390,
+   "x": 940,
+   "y": 3732
+  },
+  "InviteWeb.dc.html": {
+   "h": 844,
+   "is_interactive": true,
+   "page": "m2",
+   "title": "21 초대 웹 페이지 (앱이 없을 때)",
+   "w": 390,
+   "x": 1880,
+   "y": 0
   }
  },
  "createdOnFiles": {
@@ -603,6 +639,7 @@
   "DayTable.dc.html",
   "DateSheet.dc.html",
   "Appointment.dc.html",
+  "LeadSet.dc.html",
   "Respond.dc.html",
   "Vote.dc.html",
   "Decided.dc.html",
@@ -623,8 +660,11 @@
   "Groups.dc.html",
   "Invite.dc.html",
   "Join.dc.html",
+  "CreateGroup.dc.html",
+  "InviteWeb.dc.html",
   "GroupSettings.dc.html",
   "GroupCalDark.dc.html",
+  "GroupProfile.dc.html",
   "Chat.dc.html",
   "Gallery.dc.html",
   "Notify.dc.html",

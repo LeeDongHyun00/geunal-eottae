@@ -197,6 +197,36 @@ impl Store {
 
     /// Stores a decrypted entry. The same (group, seq) twice is ignored: MLS cannot decrypt a message twice, so the
     /// first copy (possibly written by the notification extension) is the only one (rust-core §4).
+    /// Stores a newcomer bundle's entries, each with its chat text to index, and forgets the bundle the group owed
+    /// this device, in one transaction: an absorb that stops part way leaves the bundle owed and nothing of it stored,
+    /// so the next try places every item where the bundle order puts it. Answers the rows that were new.
+    pub fn absorb_bundle(&self, group_id: &str, rows: &[(EntryRow, Option<String>)]) -> Result<Vec<EntryRow>> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let mut inserted = Vec::new();
+        for (row, text) in rows {
+            let new = tx.execute(
+                "INSERT OR IGNORE INTO entries (group_id, seq, author_id, kind, body, received_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![row.group_id, row.seq, row.author_id, row.kind, row.body, row.received_at],
+            )? == 1;
+            if new {
+                if let Some(text) = text {
+                    tx.execute(
+                        "INSERT INTO chat_fts (body, group_id, seq) VALUES (?1, ?2, ?3)",
+                        params![text, row.group_id, row.seq],
+                    )?;
+                }
+                inserted.push(row.clone());
+            }
+        }
+        tx.execute(
+            "UPDATE groups SET bundle_from = NULL, bundle_epoch = NULL, bundle_through = NULL WHERE id = ?1",
+            [group_id],
+        )?;
+        tx.commit()?;
+        Ok(inserted)
+    }
+
     pub fn insert_entry(&self, row: &EntryRow) -> Result<bool> {
         let inserted = self.conn().execute(
             "INSERT OR IGNORE INTO entries (group_id, seq, author_id, kind, body, received_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -396,40 +426,6 @@ impl Store {
         self.conn().execute("DELETE FROM outbox WHERE group_id = ?1 AND kind = 'commit'", [group_id])?;
         Ok(())
     }
-
-    // ----- chat search -----
-
-    /// Indexes a chat text for search. Korean keeps particles attached, so the index is trigram (rust-core §4).
-    pub fn index_text(&self, group_id: &str, seq: i64, body: &str) -> Result<()> {
-        self.conn()
-            .execute("INSERT INTO chat_fts (body, group_id, seq) VALUES (?1, ?2, ?3)", params![body, group_id, seq])?;
-        Ok(())
-    }
-
-    /// (group_id, seq) of chat texts containing `query`. Trigram needs three characters; shorter queries fall back to
-    /// LIKE.
-    pub fn search_text(&self, query: &str) -> Result<Vec<(String, i64)>> {
-        let query = query.trim();
-        if query.is_empty() {
-            return Ok(Vec::new());
-        }
-        let (sql, arg) = if query.chars().count() >= 3 {
-            (
-                "SELECT group_id, seq FROM chat_fts WHERE chat_fts MATCH ?1 ORDER BY seq",
-                format!("\"{}\"", query.replace('"', "\"\"")),
-            )
-        } else {
-            ("SELECT group_id, seq FROM chat_fts WHERE body LIKE ?1 ORDER BY seq", format!("%{}%", like_escape(query)))
-        };
-        let conn = self.conn();
-        let mut stmt = conn.prepare(sql)?;
-        let rows = stmt.query_map([arg], |row| Ok((row.get(0)?, row.get(1)?)))?;
-        rows.map(|r| r.map_err(StoreError::from)).collect()
-    }
-}
-
-fn like_escape(s: &str) -> String {
-    s.replace(['%', '_'], "")
 }
 
 fn group_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Result<GroupRow>> {

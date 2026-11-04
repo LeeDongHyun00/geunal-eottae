@@ -32,8 +32,10 @@ RUN --mount=type=secret,id=ca,required=false,mode=0444 \
     && groupadd --system --gid 10001 gateway && useradd --system --uid 10001 --gid gateway --no-create-home gateway
 # C.UTF-8 is built into glibc, so no locales package is needed. Nodes never talk to each other (gateway.md §5), so the
 # release starts without Erlang distribution, and its scratch files go to /tmp so the root file system can be
-# read-only.
-ENV LANG=C.UTF-8 RELEASE_DISTRIBUTION=none RELEASE_TMP=/tmp
+# read-only. Interactive mode loads a module when it is first called rather than every module at boot: the gateway
+# uses a fraction of its dependencies, and the JIT code for the rest would double its idle memory (about 55 MB instead
+# of 116 MB), which matters on the 1 GB alpha server it shares with the API and the databases.
+ENV LANG=C.UTF-8 RELEASE_DISTRIBUTION=none RELEASE_TMP=/tmp RELEASE_MODE=interactive
 WORKDIR /app
 COPY --from=build /build/_build/prod/rel/gateway ./
 USER 10001:10001
