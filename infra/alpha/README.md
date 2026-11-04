@@ -7,7 +7,7 @@
 | 파일 | 하는 일 |
 | --- | --- |
 | `compose.yml` | API·PostgreSQL·Valkey. 호스트 이름이 있으면 Caddy(TLS)와 실시간 게이트웨이도 띄움 |
-| `Caddyfile` | `GEUNAL_API_HOST`와 `GEUNAL_RT_HOST`의 Let's Encrypt 인증서를 받아 API와 게이트웨이로 넘김. 접속 로그는 남기지 않음 |
+| `Caddyfile` | `GEUNAL_API_HOST`와 `GEUNAL_RT_HOST`의 Let's Encrypt 인증서를 받아 API와 게이트웨이로 넘김. 접속 로그는 남기지 않고, 오류 로그의 요청 주소에서 `token` 쿼리를 지움 |
 | `bootstrap.sh` | 서버 준비: 스왑 2GB, 쓰지 않는 서비스 끄기, Docker와 로그 회전, 비밀값 파일, 매일 DB 덤프 타이머. 배포할 때마다 다시 돌아도 안전 |
 | `db-dump.sh`, `geunal-db-dump.*` | 매일 04:00(서울) `pg_dump`, 서버에 7일 보관. 암호화한 사본을 `geunal-alpha-backups` 버킷에 7일 |
 | `deploy.sh` | 운영자 PC에서 하는 배포(`make deploy-alpha`) |
@@ -37,7 +37,7 @@ GEUNAL_ALPHA_SSH=root@<서버 주소> GEUNAL_ALPHA_SSH_KEY=~/.ssh/<키> \
 - **메모리 상한 160MB, 스왑 없음:** 유휴 약 55MB, 기기 1,000개에 약 115MB입니다. 상한을 넘으면 게이트웨이 컨테이너만 죽고 바로 다시 뜹니다. 기기는 다시 붙어 API로 따라잡습니다. VM 전체가 모자랄 때도 커널이 게이트웨이를 먼저 고릅니다(`oom_score_adj`).
 - **CPU:** 쉬는 스케줄러가 CPU를 붙잡고 기다리지 않게 해(`ERL_AFLAGS`), vCPU 하나를 API·PostgreSQL에 양보합니다.
 - **접속 제한:** 게이트웨이는 기기 주소마다 접속 수를 셉니다. Caddy 뒤에서는 모든 연결이 Caddy에서 오므로, 고정한 compose 네트워크 범위(`TRUSTED_PROXIES`)에서 온 `X-Forwarded-For`만 믿고 그 헤더의 기기 주소로 셉니다. 게이트웨이는 호스트에 포트를 열지 않아 이 네트워크 밖에서는 닿지 않습니다.
-- **접속 로그 없음:** 기기의 WebSocket 주소에 접근 토큰이 들어 있어서 Caddy는 접속 로그를 남기지 않습니다.
+- **로그에 토큰 없음:** 기기의 WebSocket 주소에 접근 토큰이 들어 있어서 Caddy는 접속 로그를 남기지 않고, 오류 로그(게이트웨이가 다시 뜨는 동안의 502 등)에 들어가는 요청 주소에서는 `token` 쿼리를 지웁니다.
 - **메모리가 모자라면:** `cd /opt/geunal && docker compose stop gateway`로 게이트웨이만 멈춥니다. 기기는 앱을 열 때 API에서 따라잡으므로 기록은 그대로이고, 바로 반영되지만 않습니다. 다시 띄우려면 `docker compose --profile https up -d gateway`.
 
 ## 서버에 있는 것

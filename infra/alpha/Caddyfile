@@ -2,14 +2,22 @@
 # renews the Let's Encrypt certificates for GEUNAL_API_HOST and GEUNAL_RT_HOST through port 80 and passes every request
 # to the API or the gateway on the compose network.
 #
-# No site has a `log` directive, so Caddy writes no access log. That matters for the gateway: a device's WebSocket URL
-# carries its access token in the query (protocol §7), and an access log would keep it on disk.
+# A device's WebSocket URL carries its access token in the query (protocol §7), so no request URI may reach a log
+# with it: no site has a `log` directive, so Caddy writes no access log, and the default logger below drops the
+# `token` query from the requests that its error entries carry (a 502 while the gateway restarts, for one).
 {
 	# The ACG opens TCP 80 and 443 only, so HTTP/3 over UDP would never arrive; do not advertise it. HTTP/2 stays off
 	# until a Caddy image built with the fix for CVE-2026-78669 (an HTTP/2 frame flood) is published: bring it back
 	# with that bump (infra/alpha/.trivyignore). The apps and browsers talk HTTP/1.1 just as well.
 	servers {
 		protocols h1
+	}
+	log default {
+		format filter {
+			request>uri query {
+				delete token
+			}
+		}
 	}
 }
 
