@@ -270,3 +270,23 @@ fn finds_a_word_inside_a_longer_word_and_falls_back_to_like_for_two_letter_queri
     assert_eq!(store.search_text("요일").unwrap(), vec![("g".to_owned(), 1), ("g".to_owned(), 2)]);
     assert!(store.search_text("").unwrap().is_empty());
 }
+
+#[test]
+fn absorbs_a_newcomer_bundle_whole_or_not_at_all() {
+    let (_dir, store) = open();
+    store.upsert_group("g1", GroupKind::Circle, None).unwrap();
+    store.expect_bundle("g1", "adder", 1, Some(5)).unwrap();
+    let text = |row: EntryRow| (row, Some("저녁 어때".to_owned()));
+
+    // A row that cannot be stored (its group is not on this device) undoes the whole absorb: the bundle is still owed.
+    let broken = [text(entry("g1", -2, "2026-11-01T09:00:00Z")), text(entry("elsewhere", -1, "2026-11-01T09:00:01Z"))];
+    assert!(store.absorb_bundle("g1", &broken).is_err());
+    assert!(store.entries("g1").unwrap().is_empty());
+    assert!(store.expected_bundle("g1").unwrap().is_some());
+
+    let rows = [text(entry("g1", -2, "2026-11-01T09:00:00Z")), text(entry("g1", -1, "2026-11-01T09:00:01Z"))];
+    assert_eq!(store.absorb_bundle("g1", &rows).unwrap().len(), 2);
+    assert_eq!(store.entries("g1").unwrap().iter().map(|e| e.seq).collect::<Vec<_>>(), [-2, -1]);
+    assert!(store.expected_bundle("g1").unwrap().is_none());
+    assert_eq!(store.search_text("저녁 어").unwrap().len(), 2);
+}

@@ -564,3 +564,17 @@ async fn leaves_out_of_an_add_someone_the_server_will_not_list_and_keeps_sending
     b.engine.sync().await.unwrap();
     assert_eq!(texts(&b, &group), vec!["그 뒤의 말"]);
 }
+
+#[tokio::test]
+async fn files_a_newcomer_bundle_in_its_own_order_and_owes_nothing_after() {
+    let server = server();
+    let mut a = device(&server, "a", 1).await;
+    let mut b = device(&server, "b", 2).await;
+    let group = a.engine.create_group(Some("동네 친구")).await.unwrap();
+    a.engine.add_members(&group, &[b.user().to_owned()]).await.unwrap();
+    let (one, two, three) = (text("t1", "첫째"), text("t2", "둘째"), text("t3", "셋째"));
+    put_bundle(&a, &group, &[(None, &one), (None, &two), (None, &three)]).await;
+    b.engine.sync().await.unwrap();
+    assert_eq!(texts(&b, &group), vec!["첫째", "둘째", "셋째"]);
+    assert!(b.engine.store().expected_bundle(&group).unwrap().is_none());
+}
