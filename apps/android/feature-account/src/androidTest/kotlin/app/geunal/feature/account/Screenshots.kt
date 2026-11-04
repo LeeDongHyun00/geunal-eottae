@@ -17,15 +17,14 @@ import androidx.test.espresso.matcher.RootMatchers.isDialog
 import androidx.test.espresso.matcher.ViewMatchers
 import androidx.test.services.storage.TestStorage
 import org.hamcrest.Matcher
-import org.hamcrest.Matchers.not
 
 /**
  * Saves what is on screen as `screenshots/<name>.png` through the test storage service, which AGP copies off the device
  * (connected_android_test_additional_output) and the android workflow keeps as the android-screenshots artifact. Names
  * follow docs/design/screens/m1.
  *
- * Compose's capture only ever reads the activity's window. A sheet is a dialog window of its own, so with [sheet] both
- * windows' root views are drawn in software and the sheet's is laid over the activity's, its scrim included. UiAutomation's
+ * Compose's capture only ever reads the activity's window. A sheet is a dialog window of its own, so with [sheet] that
+ * window's root view is drawn in software and laid over the activity's picture, its scrim included. UiAutomation's
  * screenshot, which would see both, comes back black on the CI emulator.
  */
 fun ComposeTestRule.screenshot(
@@ -35,21 +34,29 @@ fun ComposeTestRule.screenshot(
     waitForIdle()
     val captured =
         runCatching {
+            // Any root's capture reads the activity's window; espresso's root for it would wait for the focus the
+            // dialog holds.
             val picture =
-                if (sheet) {
-                    // Which Compose root comes first is not fixed once a dialog is up, so both windows are drawn the
-                    // same way: the activity's, then the sheet's over it, anchored to the bottom of the screen.
-                    val screen = drawWindow(not(isDialog()))
-                    val window = drawWindow(isDialog())
-                    Canvas(screen).drawBitmap(window, 0f, (screen.height - window.height).toFloat(), null)
-                    screen
-                } else {
-                    onAllNodes(isRoot()).onFirst().captureToImage().asAndroidBitmap()
-                }
+                onAllNodes(isRoot())
+                    .onFirst()
+                    .captureToImage()
+                    .asAndroidBitmap()
+                    .copy(Bitmap.Config.ARGB_8888, true)
+            if (sheet) {
+                val window = drawWindow(isDialog())
+                // The sheet's window is anchored to the bottom of the screen.
+                Canvas(picture).drawBitmap(window, 0f, (picture.height - window.height).toFloat(), null)
+            }
             TestStorage().openOutputFile("screenshots/$name.png").use { picture.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
-    // A picture is for review only; a device that cannot take one must not fail the behaviour the test checks.
-    if (captured.isFailure) Log.w("Screenshots", "no screenshot for $name", captured.exceptionOrNull())
+    // A picture is for review only; a device that cannot take one must not fail the behaviour the test checks. Why it
+    // failed goes next to the pictures, where the artifact keeps it; the CI keeps no logcat.
+    captured.exceptionOrNull()?.let { error ->
+        Log.w("Screenshots", "no screenshot for $name", error)
+        runCatching {
+            TestStorage().openOutputFile("screenshots/$name-error.txt").use { it.write(error.stackTraceToString().toByteArray()) }
+        }
+    }
 }
 
 /** Draws the root view of the window [root] picks into a bitmap, in software, on the main thread. */
