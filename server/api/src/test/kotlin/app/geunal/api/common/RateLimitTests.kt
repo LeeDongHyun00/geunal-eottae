@@ -6,12 +6,15 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.test.context.TestPropertySource
 
-/** The per-minute limits of api-server.md §9 on messages, commits and key package claims. */
+/** The limits of api-server.md §9 on messages, commits, key package claims, invites and new groups. */
 @TestPropertySource(
     properties = [
         "geunal.rate-limits.messages-per-minute=60",
         "geunal.rate-limits.commits-per-minute=30",
         "geunal.rate-limits.claims-per-minute=30",
+        "geunal.rate-limits.invite-uses-per-hour=10",
+        "geunal.rate-limits.invites-per-hour=20",
+        "geunal.rate-limits.groups-per-hour=10",
     ],
 )
 class RateLimitTests : ApiTest() {
@@ -55,5 +58,37 @@ class RateLimitTests : ApiTest() {
 
         assertThat(statuses).contains(429)
         assertThat(statuses.filter { it == 200 }.size).isLessThanOrEqualTo(60)
+    }
+
+    @Test
+    fun `answers 429 past 10 invite joins an hour from one address`() {
+        val joiner = signIn()
+
+        // Every test comes from the same address, so earlier ones may have spent some of the hour already.
+        val statuses = (1..11).map { joiner.post("/invites/AAAAA-AAAAA/join").status }
+
+        assertThat(statuses).contains(429)
+        assertThat(statuses.filter { it == 404 }.size).isLessThanOrEqualTo(10)
+    }
+
+    @Test
+    fun `answers 429 past 20 invite codes an hour from one user`() {
+        val owner = signIn()
+        val groupId = owner.post("/groups").expect(201).uuid("id")
+
+        val statuses = (1..21).map { owner.post("/groups/$groupId/invites").status }
+
+        assertThat(statuses.take(20)).containsOnly(201)
+        assertThat(statuses.last()).isEqualTo(429)
+    }
+
+    @Test
+    fun `answers 429 past 10 new groups an hour from one user`() {
+        val owner = signIn()
+
+        val statuses = (1..11).map { owner.post("/groups").status }
+
+        assertThat(statuses.take(10)).containsOnly(201)
+        assertThat(statuses.last()).isEqualTo(429)
     }
 }

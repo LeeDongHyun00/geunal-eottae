@@ -82,13 +82,16 @@ class Cleanup(
         // A Welcome nobody fetched in 30 days is past use: its Add commit has left the mailbox, and a device that comes
         // back later rejoins by an external commit (api-server.md §8).
         val welcomes = jdbc.sql("DELETE FROM welcomes WHERE created_at < now() - interval '30 days'").update()
+        // An ended code answers like an unknown one (protocol §15), so nothing is lost by dropping it at once.
+        val invites = jdbc.sql("DELETE FROM group_invites WHERE expires_at < now()").update()
         accessLog.expire()
         log.info(
-            "dropped {} abandoned backup uploads, {} expired sessions, {} expired tickets and {} stale Welcomes",
+            "dropped {} abandoned backup uploads, {} expired sessions, {} expired tickets, {} stale Welcomes and {} ended invites",
             abandoned,
             sessions,
             tickets,
             welcomes,
+            invites,
         )
     }
 
