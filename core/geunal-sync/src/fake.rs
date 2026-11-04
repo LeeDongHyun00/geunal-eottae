@@ -422,6 +422,16 @@ impl FakeServer {
     }
 
     /// The key packages the account's active device has waiting on the server.
+    /// Leaves the account's device with `left` unclaimed key packages, as claims by other members would.
+    pub fn use_key_packages(&self, user_id: &str, left: usize) {
+        let mut state = self.state.lock().expect("fake server");
+        if let Some(device) = state.users.get_mut(user_id).and_then(|u| u.device.as_mut()) {
+            while device.key_packages.len() > left {
+                device.key_packages.pop_front();
+            }
+        }
+    }
+
     pub fn key_packages_of(&self, user_id: &str) -> usize {
         let state = self.state.lock().expect("fake server");
         state.users.get(user_id).and_then(|u| u.device.as_ref()).map(|d| d.key_packages.len()).unwrap_or(0)

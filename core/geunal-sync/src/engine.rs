@@ -985,10 +985,22 @@ impl<T: Transport> Engine<T> {
                             self.notify(Change::Group { group_id: group_id.to_owned() });
                             continue;
                         }
+                        Err(e) if is_transient(&e) => return Ok(SendOutcome::Later),
                         Err(e) => return Err(e.into()),
                     };
                     for device in devices {
-                        let package = self.api.claim_key_package(&device.id).await?;
+                        // No key package to claim (none left, the device replaced, or no longer someone this member
+                        // may add): that device is left out instead of holding the group's queue. Someone still
+                        // pending is tried again when a sync next reconciles the members.
+                        let package = match self.api.claim_key_package(&device.id).await {
+                            Ok(package) => package,
+                            Err(e) if e.is(404, "not_found") => {
+                                self.notify(Change::Group { group_id: group_id.to_owned() });
+                                continue;
+                            }
+                            Err(e) if is_transient(&e) => return Ok(SendOutcome::Later),
+                            Err(e) => return Err(e.into()),
+                        };
                         let info = MlsClient::inspect_key_package(&package)?;
                         if info.identity != Identity::new(user_id.clone(), device.id.clone())
                             || info.signature_key != device.signature_key
