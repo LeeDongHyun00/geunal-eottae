@@ -20,11 +20,13 @@ import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import app.geunal.core.CoreInterface
+import app.geunal.core.LocalDataChoice
 import app.geunal.core.Provider
 import app.geunal.designsystem.Space
 import app.geunal.designsystem.components.ToastCenter
 import app.geunal.designsystem.components.ToastHost
 import app.geunal.feature.account.providers.ProviderSignIn
+import app.geunal.feature.account.restore.KeepLocalSheet
 import app.geunal.feature.account.restore.RestoreMode
 import app.geunal.feature.account.restore.RestoreModel
 import app.geunal.feature.account.restore.RestoreScreen
@@ -127,6 +129,7 @@ class OnboardingViewModel(
     val finished: StateFlow<Boolean> = _finished.asStateFlow()
     val signIn = SignInModel(dependencies.core, dependencies.providers, dependencies.state, notify, timing = dependencies.timing)
     val permissions = PermissionsModel(dependencies.core, dependencies.permissions, dependencies.channel, notify)
+    val localData = LocalDataQuestion(dependencies.core, notify, io)
 
     init {
         if (start == OnboardingStart.GUEST_RETURN) openRestore(RestoreMode.GUEST_RETURN)
@@ -169,7 +172,7 @@ class OnboardingViewModel(
         if (backStack.lastOrNull() != OnboardingRoute.SignIn) return
         when (outcome) {
             // A new account or a guest's: it is set, so the permissions come next with nothing behind them.
-            SignInModel.Outcome.Permissions -> settle(OnboardingRoute.Permissions)
+            SignInModel.Outcome.Permissions -> accountDecided()
             is SignInModel.Outcome.Restore -> openRestore(outcome.mode)
         }
     }
@@ -198,13 +201,25 @@ class OnboardingViewModel(
         }
     }
 
+    /**
+     * The account is set without a restore: another account's events on the device are settled first (m1.md screen 24),
+     * then the permissions. The restore takes that answer itself before it starts.
+     */
+    private fun accountDecided() {
+        viewModelScope.launch { localData.ask { settle(OnboardingRoute.Permissions) } }
+    }
+
+    fun answerLocalData(choice: LocalDataChoice) {
+        viewModelScope.launch { localData.answer(choice) }
+    }
+
     private fun restoreMoved(
         route: OnboardingRoute.Restore,
         phase: RestoreModel.Phase,
     ) {
         when (phase) {
             // The account is set without a restore: the permissions come next, as after a new account.
-            RestoreModel.Phase.StartedFresh, RestoreModel.Phase.Later -> settle(OnboardingRoute.Permissions)
+            RestoreModel.Phase.StartedFresh, RestoreModel.Phase.Later -> accountDecided()
             // "돌아왔어요" stays, alone: back from it opens the calendar.
             is RestoreModel.Phase.Finished -> settle(route)
             // The age box first, or a new sign-in after the ticket's 30 minutes.
@@ -314,6 +329,9 @@ fun OnboardingFlow(
                 }
             },
         )
+        val asking by model.localData.asking.collectAsStateWithLifecycle()
+        val answering by model.localData.isWorking.collectAsStateWithLifecycle()
+        asking?.let { KeepLocalSheet(it, answering, model::answerLocalData) }
         ToastHost(
             center = dependencies.toasts,
             modifier =
