@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>그룹 프로필</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+input{font:inherit;letter-spacing:inherit;color:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #ffffff; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+<div aria-hidden="true" style="position: absolute; inset: 0">
+<div style="height: 176px; box-sizing: border-box; padding: 104px 20px 0; background: {{g.s5}}; color: #ffffff; font-size: 28px; font-weight: 600; letter-spacing: -0.025em">주말모임</div>
+<div style="padding: 16px 8px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px 0">
+<sc-for list="{{bg}}" as="b" hint-placeholder-count="14">
+<span style="margin: 0 3px; height: 12px; border-radius: 3px; background: {{b}}"></span>
+</sc-for>
+</div>
+<div style="position: absolute; inset: 0; background: rgba(10,10,14,0.32)"></div>
+</div>
+
+<form aria-label="이 그룹에서 나" style="position: absolute; left: 0; top: 56px; width: 390px; height: 788px; box-sizing: border-box; margin: 0; padding: 8px 0 34px; background: #ffffff; border-radius: 20px 20px 0 0; box-shadow: 0 -8px 32px rgba(0,0,0,0.12); display: flex; flex-direction: column; gap: 0">
+<div aria-hidden="true" style="align-self: center; width: 36px; height: 5px; border-radius: 3px; background: #d1d1d6"></div>
+<div style="padding: 12px 20px 0">
+<div style="display: flex; align-items: flex-start; justify-content: space-between; margin-top: -6px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em">이 그룹에서 나</h2>
+<span style="font-size: 14px; line-height: 1.5; color: #5c5c66">주말모임 멤버에게만 보여요</span>
+</div>
+<a href="GroupSettings.dc.html" aria-label="닫기" style="flex: none; width: 44px; height: 44px; margin: -6px -12px 0 0; display: flex; align-items: center; justify-content: center; color: #5c5c66"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg></a>
+</div>
+</div>
+<div data-scroll style="flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 12px 20px 16px; display: flex; flex-direction: column; gap: 20px">
+<div style="flex: none; display: flex; align-items: flex-start; gap: 16px">
+<div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px">
+<span aria-hidden="true" style="width: 80px; height: 80px; border-radius: 999px; background: {{g.s2}}; color: #1b1b1f; display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 600">하</span>
+<button type="button" style="height: 32px; padding: 0 8px; border: none; background: none; font-size: 14px; font-weight: 600; color: {{g.s5}}; cursor: pointer">바꾸기</button>
+</div>
+<div style="flex: 1 1 0; min-width: 0; padding-top: 6px; display: flex; flex-direction: column; gap: 8px">
+<label for="gp-name" style="font-size: 13px; font-weight: 600; color: #5c5c66">이 그룹에서 쓸 이름</label>
+<input id="gp-name" type="text" value="하린" style="height: 52px; box-sizing: border-box; padding: 0 16px; border: none; border-radius: 12px; background: #f4f4f6; font-size: 17px; outline: none; width: 100%; height: 48px">
+</div>
+</div>
+
+<section aria-label="취향" style="flex: none; display: flex; flex-direction: column; gap: 4px">
+<h3 style="margin: 0; font-size: 17px; font-weight: 600">취향 · 활동 추천에 쓰여요</h3>
+<p style="margin: 0 0 8px; font-size: 14px; line-height: 1.5; color: #5c5c66">고르지 않아도 돼요. 한 명이라도 싫어하는 활동은 추천에서 뒤로 가요. {{summary}}</p>
+<sc-for list="{{cats}}" as="c" hint-placeholder-count="20">
+<div role="group" aria-label="{{c.name}}" style="min-height: 52px; display: flex; align-items: center; gap: 8px; box-shadow: inset 0 -1px 0 #ececf0">
+<span style="flex: 1 1 0; font-size: 16px">{{c.name}}</span>
+<button type="button" aria-pressed="{{c.likeOn}}" onClick="{{c.like}}" style="height: 34px; padding: 0 12px; border: {{c.likeBorder}}; border-radius: 999px; background: {{c.likeBg}}; color: {{c.likeFg}}; font-size: 14px; font-weight: 600; cursor: pointer">좋아요</button>
+<button type="button" aria-pressed="{{c.dislikeOn}}" onClick="{{c.dislike}}" style="height: 34px; padding: 0 12px; border: {{c.dislikeBorder}}; border-radius: 999px; background: {{c.dislikeBg}}; color: {{c.dislikeFg}}; font-size: 14px; font-weight: 600; cursor: pointer">싫어요</button>
+</div>
+</sc-for>
+</section>
+</div>
+<div style="padding: 12px 20px 0; box-shadow: 0 -1px 0 #ececf0">
+<a href="GroupSettings.dc.html" style="height: 52px; border: none; border-radius: 999px; background: {{g.s5}}; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600; cursor: pointer">저장</a>
+</div>
+</form>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"groupColor":{"editor":"enum","options":["토마토","귤","겨자","올리브","숲","민트","하늘","바다","포도","자두","벚꽃","코코아"],"default":"포도"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    // Mock picks; untouched categories stay neutral and are left out of the group taste score.
+    this.state = { tags: { '보드게임 카페': 'like', '방탈출': 'like', '등산': 'dislike', '노래방': 'like', 'PC방': 'dislike' } };
+  }
+  renderVals() {
+    const RAMPS = {
+      '토마토': ['#f9cdc8', '#f5aaa1', '#ed887d', '#de685d', '#c54e45'],
+      '귤': ['#f5d1bc', '#efb08a', '#e5905a', '#d57128', '#ba5a00'],
+      '겨자': ['#ead7b4', '#dcba7b', '#cd9d3d', '#b58400', '#976d00'],
+      '올리브': ['#d3dfbb', '#b5c887', '#98b152', '#7d9911', '#667e00'],
+      '숲': ['#c3e3c8', '#94cf9f', '#64b979', '#32a256', '#00873d'],
+      '민트': ['#b6e5db', '#77d1c2', '#19bdaa', '#00a090', '#008476'],
+      '하늘': ['#b8e0f3', '#7dcaec', '#36b3e2', '#0099c6', '#007ea4'],
+      '바다': ['#c7dafb', '#a0c0fa', '#7ba6f5', '#5a8be9', '#4172d1'],
+      '포도': ['#d9d4f8', '#c1b6f6', '#aa98f0', '#937ce3', '#7d63cb'],
+      '자두': ['#ecceea', '#e1acde', '#d38cd1', '#c16dbf', '#aa54a9'],
+      '벚꽃': ['#f6ccd9', '#f1a9c0', '#e786a9', '#d86691', '#c04c7b'],
+      '코코아': ['#e5d5cd', '#d5b9aa', '#c29d89', '#ae836c', '#966b54'],
+    };
+    const ramp = RAMPS[this.props.groupColor ?? '포도'] || RAMPS['포도'];
+    const g = { s1: ramp[0], s2: ramp[1], s3: ramp[2], s4: ramp[3], s5: ramp[4] };
+    const bg = [2, 4, 1, 3, 4, 2, 0, 3, 1, 4, 2, 3, 1, 4].map((i) => ramp[i]);
+    const tags = this.state.tags;
+    // Tapping the active choice again clears it back to neutral.
+    const set = (n, v) => this.setState({ tags: { ...tags, [n]: tags[n] === v ? undefined : v } });
+    const cats = ['식사', '술', '카페', '보드게임 카페', '영화', '노래방', '볼링', '전시·공연', '산책·공원', '등산', '쇼핑', '방탈출', '스포츠 관람', '집 모임', '드라이브', '당일 여행', 'PC방', '놀이공원', '공방·원데이 클래스', '운동(풋살·배드민턴 등)'].map((n) => {
+      const t = tags[n];
+      return {
+        name: n,
+        likeOn: t === 'like',
+        dislikeOn: t === 'dislike',
+        like: () => set(n, 'like'),
+        dislike: () => set(n, 'dislike'),
+        likeBg: t === 'like' ? g.s5 : '#ffffff', likeFg: t === 'like' ? '#ffffff' : '#5c5c66', likeBorder: t === 'like' ? 'none' : '1px solid #e1e1e6',
+        dislikeBg: t === 'dislike' ? '#1b1b1f' : '#ffffff', dislikeFg: t === 'dislike' ? '#ffffff' : '#5c5c66', dislikeBorder: t === 'dislike' ? 'none' : '1px solid #e1e1e6',
+      };
+    });
+    const likes = Object.values(tags).filter((v) => v === 'like').length;
+    const dislikes = Object.values(tags).filter((v) => v === 'dislike').length;
+    return { g, bg, cats, summary: '좋아요 ' + likes + ' · 싫어요 ' + dislikes };
+  }
+}
+</script>
+</body>
+</html>
