@@ -202,8 +202,14 @@ pub struct Envelope {
 /// The envelope version this build writes.
 pub const ENVELOPE_VERSION: u8 = 1;
 
-/// An entry is at most 64KB (protocol §4); bigger content goes out as media.
-pub const MAX_ENTRY_BYTES: usize = 64 * 1024;
+/// The largest encoded entry this build sends; bigger content goes out as media. The limit of protocol §4 is on the
+/// MLS message the server stores, 65,536 bytes with padding: mls-rs pads a message of this size to 57,344 bytes of
+/// content and anything larger to 65,536 before the framing, which the server then refuses. The MLS tests check that
+/// this many bytes still fit.
+pub const MAX_ENTRY_BYTES: usize = 57_216;
+
+/// The largest MLS message the server takes (protocol §4).
+pub const MAX_MESSAGE_BYTES: usize = 65_536;
 
 pub type DecodeError = ciborium::de::Error<std::io::Error>;
 
