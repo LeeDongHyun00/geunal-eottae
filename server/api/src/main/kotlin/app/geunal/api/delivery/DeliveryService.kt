@@ -2,6 +2,8 @@ package app.geunal.api.delivery
 
 import app.geunal.api.auth.Caller
 import app.geunal.api.common.ApiException
+import app.geunal.api.common.HourlyLimit
+import app.geunal.api.common.RateLimitProperties
 import app.geunal.api.devices.DeviceRepository
 import app.geunal.api.groups.GroupRepository
 import app.geunal.api.mls.MlsHeader
@@ -21,6 +23,8 @@ class DeliveryService(
     private val devices: DeviceRepository,
     private val repository: DeliveryRepository,
     private val signals: Signals,
+    private val limits: HourlyLimit,
+    private val rates: RateLimitProperties,
 ) {
     @Transactional
     fun commit(
@@ -29,6 +33,7 @@ class DeliveryService(
         request: CommitRequest,
     ): Accepted {
         groups.requireActive(groupId, caller.userId)
+        limits.check("commit", groupId.toString(), rates.commitsPerMinute, HourlyLimit.MINUTE)
         checkSize(request.commit, "commit", MAX_ENTRY)
         checkSize(request.groupInfo, "group_info", MAX_ENTRY)
         val header = MlsHeader.parse(request.commit).expectWireFormat(MlsHeader.PUBLIC_MESSAGE).expectGroup(groupId, request.epoch)
@@ -71,6 +76,7 @@ class DeliveryService(
         request: MessageRequest,
     ): Appended {
         groups.requireActive(groupId, caller.userId)
+        limits.check("message", "${caller.userId}:$groupId", rates.messagesPerMinute, HourlyLimit.MINUTE)
         checkSize(request.message, "message", MAX_ENTRY)
         MlsHeader.parse(request.message).expectWireFormat(MlsHeader.PRIVATE_MESSAGE).expectGroup(groupId, request.epoch)
         request.validateAlert()

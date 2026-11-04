@@ -3,6 +3,8 @@ package app.geunal.api.devices
 import app.geunal.api.auth.AccountRepository
 import app.geunal.api.auth.Caller
 import app.geunal.api.common.ApiException
+import app.geunal.api.common.HourlyLimit
+import app.geunal.api.common.RateLimitProperties
 import app.geunal.api.mls.MlsHeader
 import org.springframework.http.HttpStatus
 import org.springframework.jdbc.core.simple.JdbcClient
@@ -66,6 +68,8 @@ class DeviceController(
     private val devices: DeviceRepository,
     private val accounts: AccountRepository,
     private val jdbc: JdbcClient,
+    private val limits: HourlyLimit,
+    private val rates: RateLimitProperties,
 ) {
     @GetMapping("/me")
     fun me(
@@ -130,8 +134,10 @@ class DeviceController(
     @PostMapping("/devices/{id}/key-packages/claim")
     @Transactional
     fun claim(
+        @AuthenticationPrincipal caller: Caller,
         @PathVariable id: UUID,
     ): ClaimResponse {
+        limits.check("key package claim", caller.userId.toString(), rates.claimsPerMinute, HourlyLimit.MINUTE)
         devices.current(id) ?: throw ApiException.notFound("device")
         val data = devices.claimKeyPackage(id) ?: throw ApiException.notFound("an unused key package of this device")
         return ClaimResponse(data)
