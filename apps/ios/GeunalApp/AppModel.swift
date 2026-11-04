@@ -218,8 +218,9 @@ final class AppModel {
                     } catch {}
                 }
             }
-            // The core backs nothing up while another account's events wait for an answer.
-            if case .main = phase {
+            // The core backs nothing up while another account's events wait for an answer. The sign-in over the tabs
+            // asks its own question; asking here too would show a second sheet whose answer the core no longer takes.
+            if case .main = phase, !signingIn {
                 await localData?.ask {}
             }
             await nextUp?.refresh()
