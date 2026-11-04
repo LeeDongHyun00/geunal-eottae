@@ -1,5 +1,6 @@
 package app.geunal
 
+import app.geunal.core.AccountView
 import app.geunal.core.Change
 import app.geunal.core.Core
 import app.geunal.core.CoreException
@@ -7,8 +8,13 @@ import app.geunal.core.CoreInterface
 import app.geunal.core.InternalException
 import app.geunal.core.NewAccount
 import app.geunal.core.NoHandle
+import app.geunal.core.Provider
+import app.geunal.core.Revocation
+import app.geunal.core.RevokedVia
 import app.geunal.core.Session
 import app.geunal.core.UpNext
+import app.geunal.feature.account.onboarding.OnboardingStart
+import app.geunal.feature.account.support.AccountKind
 import app.geunal.feature.account.support.OnboardingState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -223,6 +229,82 @@ class AppViewModelTest {
         }
 
     @Test
+    fun anotherDevicesSignInShowsTheSheetOnceAndSignsOut() =
+        runTest(dispatcher) {
+            onboarding.isFinished = true
+            val core = FakeCore()
+            core.revoked = Revocation(Instant.parse("2026-10-25T09:20:00Z"), "ios", RevokedVia.PROVIDER)
+            val viewModel = viewModel { core }
+            var ended = 0
+            val watcher = launch { viewModel.accountEnded.collect { ended++ } }
+            advanceUntilIdle()
+
+            assertEquals(core.revoked, viewModel.revocation.value)
+            assertEquals(SignedOut.Revoked, viewModel.signedOut.value)
+            assertEquals("the recovery code's screens close", 1, ended)
+
+            viewModel.revocationShown()
+            viewModel.refreshAccount()
+
+            assertNull("the sheet comes once", viewModel.revocation.value)
+            assertEquals(SignedOut.Revoked, viewModel.signedOut.value)
+            watcher.cancel()
+        }
+
+    @Test
+    fun anEndedSessionSaysSoOnceAndAgainWhenSignedIn() =
+        runTest(dispatcher) {
+            onboarding.isFinished = true
+            val core = FakeCore()
+            core.currentSession = Session("u1", "d1")
+            core.currentAccount = AccountView("u1", "하린", listOf(Provider.KAKAO))
+            val viewModel = viewModel { core }
+            advanceUntilIdle()
+            assertNull(viewModel.signedOut.value)
+
+            core.currentSession = null
+            changes.emit(Change.Account)
+            advanceUntilIdle()
+            viewModel.refreshAccount()
+
+            assertEquals(SignedOut.SessionEnded(AccountKind.PROVIDER), viewModel.signedOut.value)
+            assertEquals(AppNotice.SESSION_ENDED, viewModel.notices.first())
+
+            core.currentSession = Session("u1", "d2")
+            viewModel.refreshAccount()
+
+            assertNull(viewModel.signedOut.value)
+            assertEquals("no second session-ended toast came between", AppNotice.SIGNED_IN_AGAIN, viewModel.notices.first())
+        }
+
+    @Test
+    fun aGuestsEndedSessionLeadsBackByCode() =
+        runTest(dispatcher) {
+            onboarding.isFinished = true
+            onboarding.knownAccount = AccountKind.GUEST
+            val viewModel = viewModel { FakeCore() }
+            advanceUntilIdle()
+
+            assertEquals(SignedOut.SessionEnded(AccountKind.GUEST), viewModel.signedOut.value)
+
+            viewModel.returnAsGuest()
+            assertEquals(OnboardingStart.GUEST_RETURN, viewModel.signingIn.value)
+            viewModel.signInClosed()
+            assertNull(viewModel.signingIn.value)
+        }
+
+    @Test
+    fun aDeviceThatNeverSignedInHasNothingEnded() =
+        runTest(dispatcher) {
+            onboarding.isFinished = true
+            val viewModel = viewModel { FakeCore() }
+            advanceUntilIdle()
+
+            assertNull(viewModel.signedOut.value)
+            assertFalse(onboarding.sessionEnded)
+        }
+
+    @Test
     fun makesTheGuestAccountAnOfflineStartOwesOnceOnline() =
         runTest(dispatcher) {
             onboarding.pendingGuestAgeConfirmedAt = Instant.ofEpochSecond(1_793_000_000)
@@ -272,7 +354,15 @@ class AppViewModelTest {
             foregrounds++
         }
 
-        override fun session(): Session? = null
+        var currentSession: Session? = null
+        var currentAccount: AccountView? = null
+        var revoked: Revocation? = null
+
+        override fun session(): Session? = currentSession
+
+        override fun account(): AccountView? = currentAccount
+
+        override fun revocation(): Revocation? = revoked
 
         override suspend fun signInGuest(account: NewAccount): Session {
             guests++
