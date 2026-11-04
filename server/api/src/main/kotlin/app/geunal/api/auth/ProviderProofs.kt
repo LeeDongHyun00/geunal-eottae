@@ -52,8 +52,14 @@ class ProviderProofs(
             }
             appleAuthorizationCode != null && links.containsKey(Provider.APPLE) -> {
                 val tokens = apple.exchange(appleAuthorizationCode, device.platform)
+                // AppleClient logs why an exchange failed; this tells a code from another Apple account apart from that.
+                if (tokens != null && tokens.sub != links[Provider.APPLE]) {
+                    log.info("Apple's code names another Apple account than the one linked")
+                }
                 tokens?.takeIf { it.sub == links[Provider.APPLE] }?.let { ProviderProof(Provider.APPLE, it.sub, it) }
             }
             else -> null
         }
 }
+
+private val log = org.slf4j.LoggerFactory.getLogger(ProviderProofs::class.java)

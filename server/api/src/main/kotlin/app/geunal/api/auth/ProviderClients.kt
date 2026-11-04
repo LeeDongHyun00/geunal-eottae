@@ -95,9 +95,23 @@ class AppleClient(
                 "grant_type" to "authorization_code",
             )
         if (platform == "android") form["redirect_uri"] = apple.redirectUri
-        val response = post(apple.tokenUri, form)?.takeIf { it.statusCode() == 200 } ?: return null
+        val response = post(apple.tokenUri, form)
+        if (response == null) {
+            log.warn("Apple did not answer a code exchange for {}", platform)
+            return null
+        }
+        if (response.statusCode() != 200) {
+            // Apple's error code says which side is wrong: invalid_client is our key, Key ID or team ID; invalid_grant is
+            // the code (used, expired, or issued to the other client). Only the code is logged, never the body.
+            log.warn("Apple refused a code exchange for {}: {} {}", platform, response.statusCode(), appleError(response.body()))
+            return null
+        }
         val body = runCatching { mapper.readTree(response.body()) }.getOrNull() ?: return null
-        val sub = providers.appleSubject(body.path("id_token").asString(""), clientId) ?: return null
+        val sub = providers.appleSubject(body.path("id_token").asString(""), clientId)
+        if (sub == null) {
+            log.warn("Apple's identity token from a code exchange for {} did not verify", platform)
+            return null
+        }
         val refresh = body.path("refresh_token").asString("").ifEmpty { null }
         val token = refresh ?: body.path("access_token").asString("").ifEmpty { null }
         return AppleTokens(sub, clientId, token, if (refresh != null) "refresh_token" else "access_token")
@@ -116,7 +130,17 @@ class AppleClient(
                 "token" to token,
                 "token_type_hint" to tokenType,
             )
-        return outcome(post(apple.revokeUri, form)?.statusCode())
+        val response = post(apple.revokeUri, form)
+        if (response != null && response.statusCode() !in 200..299) {
+            log.warn("Apple refused a revocation: {} {}", response.statusCode(), appleError(response.body()))
+        }
+        return outcome(response?.statusCode())
+    }
+
+    /** Apple's `error` field, kept only when it looks like one of its codes. */
+    private fun appleError(body: String?): String {
+        val error = runCatching { mapper.readTree(body.orEmpty()).path("error").asString("") }.getOrDefault("")
+        return error.takeIf { it.matches(ERROR_CODE) } ?: "(no error code)"
     }
 
     /** ES256, issued by the team, for one client, valid five minutes: Apple accepts up to six months, but nothing needs more. */
@@ -137,6 +161,8 @@ class AppleClient(
 
     private companion object {
         const val MAX_CODE = 1024
+        val ERROR_CODE = Regex("[a-z_]{1,40}")
+        val log = LoggerFactory.getLogger(AppleClient::class.java)
     }
 }
 

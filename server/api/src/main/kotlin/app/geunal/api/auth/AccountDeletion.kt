@@ -81,17 +81,21 @@ class AccountDeletion(
         val message = DeviceSignatures.delete(nonce.orEmpty())
         val deviceSignature = request.deviceSignature
         if (deviceSignature == null || !nonces.spend(nonce) || !Ed25519.verify(device.signatureKey, message, deviceSignature)) {
-            throw reauthRequired()
+            throw reauthRequired("the device signature or its nonce")
         }
         val proof =
             if (recovery != null) {
                 val signature = request.recoverySignature
                 // The same words as the device's signature, under another key: neither stands in for the other.
-                if (signature == null || !Ed25519.verify(recovery.publicKey, message, signature)) throw reauthRequired()
+                if (signature == null ||
+                    !Ed25519.verify(recovery.publicKey, message, signature)
+                ) {
+                    throw reauthRequired("the recovery signature")
+                }
                 null
             } else {
                 proofs.prove(links, device, request.kakaoIdToken, nonce, request.appleAuthorizationCode, nonceSpent = true)
-                    ?: throw reauthRequired()
+                    ?: throw reauthRequired("the ${links.keys.joinToString { it.id }} proof")
             }
         erase(caller.userId)
         val queued = revocations.queue(links[Provider.KAKAO], proof?.apple)
@@ -123,10 +127,15 @@ class AccountDeletion(
         signals.send(deviceIds, RevokeEvent)
     }
 
-    private fun reauthRequired() =
-        ApiException(HttpStatus.FORBIDDEN, "reauth_required", "deleting the account needs a fresh proof for its kind")
+    /** Logs which check failed (never a value), so a deletion refused in the field can be told apart. */
+    private fun reauthRequired(failed: String): ApiException {
+        log.info("deletion refused: {} did not verify", failed)
+        return ApiException(HttpStatus.FORBIDDEN, "reauth_required", "deleting the account needs a fresh proof for its kind")
+    }
 
     private companion object {
+        val log = org.slf4j.LoggerFactory.getLogger(AccountDeletion::class.java)
+
         /**
          * In order; devices last but one, since their sessions, key packages and Welcomes go with them. The sessions'
          * refresh hashes stay behind in `deleted_sessions` until they would have expired.
