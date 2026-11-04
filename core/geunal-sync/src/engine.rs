@@ -292,6 +292,29 @@ impl<T: Transport> Engine<T> {
         Ok(())
     }
 
+    /// Queues this member's availability unless it is what the group already has from this device: the last one queued,
+    /// or else the last one sent. Returns whether it queued, so a caller may recompute it on every sync for free.
+    pub fn share_availability(&self, group_id: &str, availability: &Availability) -> Result<bool, SyncError> {
+        let queued = self.store.outbox(group_id)?.iter().rev().find_map(|row| match Outgoing::decode(&row.payload) {
+            Ok(Outgoing::State { kind, plaintext }) if kind == "availability" => Availability::decode(&plaintext),
+            _ => None,
+        });
+        let last = match queued {
+            Some(queued) => Some(queued),
+            None => self
+                .store
+                .availability(group_id)?
+                .into_iter()
+                .find(|a| a.user_id == self.me.user_id)
+                .map(|row| Availability { window_start: row.window_start, days: row.days as u16, bits: row.bits }),
+        };
+        if last.as_ref() == Some(availability) {
+            return Ok(false);
+        }
+        self.set_availability(group_id, availability)?;
+        Ok(true)
+    }
+
     /// The group's decoded log in order. Entries this build cannot decode are left out here and shown by kind.
     pub fn log(&self, group_id: &str) -> Result<Vec<LogEntry>, SyncError> {
         let rows = self.store.entries(group_id)?;

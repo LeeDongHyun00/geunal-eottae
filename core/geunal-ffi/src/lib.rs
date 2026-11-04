@@ -12,6 +12,7 @@ pub mod calendar;
 pub mod chat;
 mod local;
 pub mod people;
+pub mod sharing;
 mod transport;
 
 pub use account::*;
@@ -475,6 +476,8 @@ impl Core {
         let this = self.clone();
         self.run(async move {
             this.engine(Box::new(|e| Box::pin(async move { e.sync().await }))).await?;
+            // After the groups caught up, so new appointments and newly joined groups are in the bitmaps.
+            this.share_availability(None).await?;
             this.refresh_holidays().await?;
             this.send_alpha_stats().await?;
             // After the groups, so what the server keeps refusing does not hold up the calendar.

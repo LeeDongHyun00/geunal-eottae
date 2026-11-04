@@ -591,3 +591,17 @@ async fn files_a_newcomer_bundle_in_its_own_order_and_owes_nothing_after() {
     assert_eq!(texts(&b, &group), vec!["첫째", "둘째", "셋째"]);
     assert!(b.engine.store().expected_bundle(&group).unwrap().is_none());
 }
+
+#[tokio::test]
+async fn queues_availability_only_when_it_differs_from_what_the_group_has() {
+    let server = server();
+    let (mut a, _b, group) = pair(&server).await;
+    let mut availability = Availability::all_free("2026-11-01".into(), 14);
+    availability.mark_busy(20, 24);
+    assert!(a.engine.share_availability(&group, &availability).unwrap());
+    assert!(!a.engine.share_availability(&group, &availability).unwrap(), "already queued");
+    a.engine.flush_outbox().await.unwrap();
+    assert!(!a.engine.share_availability(&group, &availability).unwrap(), "already sent");
+    availability.mark_busy(30, 32);
+    assert!(a.engine.share_availability(&group, &availability).unwrap());
+}
