@@ -207,7 +207,7 @@ class StubAuthController(
     ): ResponseEntity<Any> = AuthController.answer(auth.stubLogin(body))
 
     /**
-     * Stands in for the invite code until it exists: makes [StubInviteRequest.userId] pending in the group, so that a
+     * Skips the invite code for tests and e2e: makes [StubInviteRequest.userId] pending in the group, so that a
      * member can then add them (protocol §2). Like the stub sign-in it asks for no session, since a server with the
      * stub lets anyone in anyway.
      */

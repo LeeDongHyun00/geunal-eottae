@@ -73,7 +73,7 @@ paths:
     post:
       summary: Make an account pending in a group (only with GEUNAL_AUTH_STUB; otherwise 404)
       description: |
-        Stands in for the invite code (protocol §2) until it exists, so that a member can then add the account. Someone
+        Skips the invite code (protocol §2) for tests and e2e: no code, no limits, so that a member can then add the account. Someone
         removed earlier is invited again; an active member stays as they are.
       security: []
       requestBody:
@@ -712,6 +712,71 @@ paths:
                   kind: { type: string }
                   epoch: { type: integer, format: int64, const: 0 }
                   last_seq: { type: integer, format: int64, const: 0 }
+        "409": { description: "group_limit (the caller is already pending or active in 20 groups)" }
+        "429": { description: rate_limited }
+
+  /groups/{id}/invites:
+    post:
+      summary: Make an invite code for a group (any active member; not for a 1:1). No body.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, expires_at, max_uses]
+                properties:
+                  code: { type: string, pattern: "^[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}$", description: "Crockford base32, shown as two groups of five" }
+                  expires_at: { type: string, format: date-time, description: seven days from now }
+                  max_uses: { type: integer, const: 20 }
+        "400": { description: invalid_request (a 1:1) }
+        "403": { description: not_member }
+        "404": { description: not_found (no such group) }
+        "429": { description: rate_limited }
+
+  /invites/{code}:
+    get:
+      summary: What a code leads to, before joining. Member names are not shown until the caller joins.
+      description: >
+        `code` is read regardless of case, spaces and dashes, with O read as 0 and I or L as 1. An ended code still
+        answers here (`full` or a past `expires_at`) until it is cleared 30 days after it ended.
+      parameters: [{ $ref: "#/components/parameters/InviteCode" }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inviter_name, member_count, expires_at, full]
+                properties:
+                  inviter_name: { type: [string, "null"], description: null once the inviter deleted their account }
+                  member_count: { type: integer, description: active members }
+                  expires_at: { type: string, format: date-time }
+                  full: { type: boolean, description: the code is used up or the group has 20 members with pending ones }
+        "404": { description: not_found }
+        "429": { description: rate_limited }
+
+  /invites/{code}/join:
+    post:
+      summary: Become pending in the code's group; the group's active devices hear `membership` and one adds the caller
+      description: >
+        Someone already pending or active gets their status back, and no use is spent, so a lost answer may be retried.
+      parameters: [{ $ref: "#/components/parameters/InviteCode" }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [group_id, status]
+                properties:
+                  group_id: { $ref: "#/components/schemas/Uuid" }
+                  status: { type: string, enum: [pending, active] }
+        "404": { description: not_found }
+        "409": { description: "group_full (20 members with pending ones), group_limit (the caller is in 20 groups)" }
+        "410": { description: invite_expired (past seven days or used 20 times) }
+        "429": { description: rate_limited }
 
   /groups/{id}/members:
     get:
@@ -920,6 +985,7 @@ components:
     bearer: { type: http, scheme: bearer, bearerFormat: JWT }
   parameters:
     Id: { name: id, in: path, required: true, schema: { $ref: "#/components/schemas/Uuid" } }
+    InviteCode: { name: code, in: path, required: true, schema: { type: string, maxLength: 20 } }
   schemas:
     Uuid: { type: string, format: uuid }
     Bytes: { type: string, contentEncoding: base64 }

@@ -211,6 +211,47 @@ class GroupRepository(
             .param("user", userId)
             .update() == 1
 
+    /**
+     * Serializes the writes that count one account's groups, so two at once cannot both pass the cap of
+     * [GroupLimits.GROUPS_PER_ACCOUNT].
+     */
+    fun lockAccount(userId: UUID) {
+        jdbc
+            .sql("SELECT 1 FROM users WHERE id = :user FOR UPDATE")
+            .param("user", userId)
+            .query()
+            .listOfRows()
+    }
+
+    /** Serializes the joins of one group, so two at once cannot both take its last seat. */
+    fun lockGroup(groupId: UUID) {
+        jdbc
+            .sql("SELECT 1 FROM groups WHERE id = :group FOR UPDATE")
+            .param("group", groupId)
+            .query()
+            .listOfRows()
+    }
+
+    /** The groups (not 1:1s) the account is pending or active in: what [GroupLimits.GROUPS_PER_ACCOUNT] counts. */
+    fun circleCount(userId: UUID): Int =
+        jdbc
+            .sql(
+                """
+                SELECT count(*) FROM group_members m JOIN groups g ON g.id = m.group_id
+                WHERE m.user_id = :user AND m.status IN ('pending', 'active') AND g.kind = 'circle'
+                """,
+            ).param("user", userId)
+            .query(Int::class.java)
+            .single()
+
+    /** Pending and active members: an invited account holds a seat until it is added or its invitation lapses. */
+    fun seatCount(groupId: UUID): Int =
+        jdbc
+            .sql("SELECT count(*) FROM group_members WHERE group_id = :group AND status IN ('pending', 'active')")
+            .param("group", groupId)
+            .query(Int::class.java)
+            .single()
+
     /** When no active owner is left, the longest-standing active member takes over (api-server.md §8). */
     fun succeedOwner(groupId: UUID) {
         jdbc

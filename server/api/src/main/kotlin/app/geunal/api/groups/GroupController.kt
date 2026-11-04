@@ -2,6 +2,8 @@ package app.geunal.api.groups
 
 import app.geunal.api.auth.Caller
 import app.geunal.api.common.ApiException
+import app.geunal.api.common.HourlyLimit
+import app.geunal.api.common.RateLimitProperties
 import app.geunal.api.realtime.MembershipEvent
 import app.geunal.api.realtime.Signals
 import org.springframework.http.HttpStatus
@@ -55,6 +57,8 @@ data class MembersResponse(
 class GroupController(
     private val groups: GroupRepository,
     private val signals: Signals,
+    private val limits: HourlyLimit,
+    private val rates: RateLimitProperties,
 ) {
     /** The API mints the group ID; the creator's device then creates the MLS group with these 16 bytes (protocol §2). */
     @PostMapping("/groups")
@@ -62,7 +66,12 @@ class GroupController(
     @Transactional
     fun create(
         @AuthenticationPrincipal caller: Caller,
-    ): GroupResponse = groups.create(caller.userId).let { GroupResponse(it.id, it.kind, it.epoch, it.lastSeq) }
+    ): GroupResponse {
+        limits.check("group", caller.userId.toString(), rates.groupsPerHour)
+        groups.lockAccount(caller.userId)
+        if (groups.circleCount(caller.userId) >= GroupLimits.GROUPS_PER_ACCOUNT) throw GroupLimits.tooManyGroups()
+        return groups.create(caller.userId).let { GroupResponse(it.id, it.kind, it.epoch, it.lastSeq) }
+    }
 
     @GetMapping("/me/groups")
     fun mine(
