@@ -95,9 +95,14 @@ defmodule GatewayWeb.DeviceChannelTest do
         ["PUBLISH", "d:" <> device_id, ~s({"t":"membership","g":"g1"})]
       ])
 
-    assert_push "entry", %{"s" => 7}
-    assert_push "state", %{"kind" => "group_meta", "epoch" => 3}
-    assert_push "membership", %{"g" => "g1"}
+    # Taken in mailbox order: assert_push would pick each event out wherever it sits and miss a reordering.
+    received =
+      for _ <- 1..3 do
+        assert_receive %Phoenix.Socket.Message{event: event, payload: payload}
+        {event, payload}
+      end
+
+    assert [{"entry", %{"s" => 7}}, {"state", %{"epoch" => 3}}, {"membership", %{"g" => "g1"}}] = received
   end
 
   test "reaches every member device the API signals, and no other", %{socket: socket, device_id: device_id} do
