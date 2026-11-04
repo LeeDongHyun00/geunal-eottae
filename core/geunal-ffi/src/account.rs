@@ -1272,20 +1272,23 @@ impl Core {
         if self.recovery_secrets()?.is_none() {
             self.keep_recovery(user_id, &recovery::new_entropy(), &geunal_crypto::random_key(), false, false)?;
         }
+        // Taken here when free, before the sign-in answers, so every later caller waits for this upload; otherwise the
+        // task waits for the upload already running.
+        let held = Arc::clone(&self.recovery_upload).try_lock_owned();
         let this = Arc::clone(self);
-        let running = self.runtime.spawn(async move {
+        self.runtime.spawn(async move {
+            let _uploading = match held {
+                Ok(guard) => guard,
+                Err(_) => Arc::clone(&this.recovery_upload).lock_owned().await,
+            };
             let _ = this.upload_recovery_now().await;
         });
-        *self.recovery_upload.lock().unwrap_or_else(|p| p.into_inner()) = Some(running);
         Ok(())
     }
 
     /// The upload `sync()` retries until it succeeds, after any upload a sign-in left running in the background.
     pub(crate) async fn upload_pending_recovery(&self) -> Result<(), CoreError> {
-        let running = self.recovery_upload.lock().unwrap_or_else(|p| p.into_inner()).take();
-        if let Some(running) = running {
-            let _ = running.await;
-        }
+        let _uploading = self.recovery_upload.lock().await;
         self.upload_recovery_now().await
     }
 

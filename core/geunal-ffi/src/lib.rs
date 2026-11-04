@@ -349,9 +349,30 @@ enum State {
     SignedIn(Box<Engine<Arc<Api>>>),
 }
 
+/// The core's own runtime. A background task can hold the last `Arc<Core>`, so the core may be dropped on one of these
+/// workers, where dropping a runtime the blocking way panics; there it is shut down without waiting instead.
+struct CoreRuntime(Option<tokio::runtime::Runtime>);
+
+impl std::ops::Deref for CoreRuntime {
+    type Target = tokio::runtime::Runtime;
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref().expect("taken only when dropped")
+    }
+}
+
+impl Drop for CoreRuntime {
+    fn drop(&mut self) {
+        if let Some(runtime) = self.0.take()
+            && tokio::runtime::Handle::try_current().is_ok()
+        {
+            runtime.shutdown_background();
+        }
+    }
+}
+
 #[derive(uniffi::Object)]
 pub struct Core {
-    runtime: tokio::runtime::Runtime,
+    runtime: CoreRuntime,
     store_dir: PathBuf,
     /// The one connection to the store. The calendar reads and writes through it directly, signed in or not, so a
     /// month view never waits for a sync holding the engine; the engine keeps a clone of it.
@@ -374,9 +395,9 @@ pub struct Core {
     /// `sync()` asked the server this run whether the account still needs a recovery code: a device without one asks
     /// once, not at every sync.
     recovery_checked: std::sync::atomic::AtomicBool,
-    /// The recovery upload a sign-in left running in the background; whatever needs the material on the server waits
-    /// for it first, so two uploads never race.
-    recovery_upload: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// Held for the length of every recovery upload, the background one a sign-in starts included: whatever needs the
+    /// material on the server waits its turn, so two uploads (and two Argon2id derivations) never run at once.
+    recovery_upload: Arc<tokio::sync::Mutex<()>>,
 }
 
 #[uniffi::export]
@@ -729,7 +750,7 @@ impl Core {
             None => State::SignedOut,
         };
         Ok(Arc::new(Self {
-            runtime,
+            runtime: CoreRuntime(Some(runtime)),
             store_dir,
             store,
             api,
@@ -742,7 +763,7 @@ impl Core {
             ticket: std::sync::Mutex::new(None),
             recovery_keys: std::sync::Mutex::new(None),
             recovery_checked: std::sync::atomic::AtomicBool::new(false),
-            recovery_upload: std::sync::Mutex::new(None),
+            recovery_upload: Arc::new(tokio::sync::Mutex::new(())),
         }))
     }
 
@@ -751,10 +772,7 @@ impl Core {
     #[cfg(feature = "fake-server")]
     #[doc(hidden)]
     pub async fn recovery_upload_settled(&self) {
-        let running = self.recovery_upload.lock().unwrap_or_else(|p| p.into_inner()).take();
-        if let Some(running) = running {
-            let _ = running.await;
-        }
+        drop(self.recovery_upload.lock().await);
     }
 
     /// [`Core::open`] against the in-process fake server, for this crate's tests. Not part of the FFI.
