@@ -11,6 +11,7 @@ import app.geunal.feature.account.providers.ProviderSignInException
 import app.geunal.feature.account.restore.RestoreMode
 import app.geunal.feature.account.support.AccountNotice
 import app.geunal.feature.account.support.OnboardingState
+import app.geunal.feature.account.support.ProviderSignInRecord
 import app.geunal.feature.account.support.StepTiming
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -89,6 +90,7 @@ class SignInModel(
                     }
                 }
             onboarding.pendingGuestAgeConfirmedAt = null
+            onboarding.lastProviderSignIn = ProviderSignInRecord(provider, now())
             return outcome(result)
         } catch (e: ProviderSignInException.Cancelled) {
             return null

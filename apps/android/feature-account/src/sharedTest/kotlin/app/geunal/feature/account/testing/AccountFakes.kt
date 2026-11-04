@@ -1,5 +1,6 @@
 package app.geunal.feature.account.testing
 
+import app.geunal.core.AccountView
 import app.geunal.core.AuthResult
 import app.geunal.core.BackupView
 import app.geunal.core.Core
@@ -108,6 +109,10 @@ open class AccountFakeCore : Core(NoHandle) {
     }
 
     override fun session(): Session? = currentSession
+
+    var accountView: AccountView? = null
+
+    override fun account(): AccountView? = accountView
 
     override fun checkRecoveryWord(text: String): String? = text.trim().takeIf { it in words }
 

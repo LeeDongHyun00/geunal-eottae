@@ -17,6 +17,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import app.geunal.core.LocalData
 import app.geunal.core.LocalDataChoice
+import app.geunal.core.Provider
 import app.geunal.designsystem.GeunalType
 import app.geunal.designsystem.LocalNeutralColors
 import app.geunal.designsystem.Metrics
@@ -124,7 +125,16 @@ private fun ConfirmingWipe(
             stringResource(R.string.wipe_body)
         },
     )
+    val kakao = model.proofProvider == Provider.KAKAO
     NoticeCard(text = stringResource(R.string.wipe_warning), kind = NoticeKind.Problem)
+    if (confirming.otherAccount) {
+        // m1.md screen 21: the linked account, not the one the provider happened to sign in. Nothing was deleted.
+        NoticeCard(
+            text = stringResource(if (kakao) R.string.wipe_other_account_kakao else R.string.wipe_other_account_apple),
+            kind = NoticeKind.Problem,
+            modifier = Modifier.testTag("restore.otherAccount"),
+        )
+    }
     if (confirming.screenLockMissing) {
         Text(
             stringResource(R.string.device_auth_no_lock_wipe),
@@ -138,6 +148,8 @@ private fun ConfirmingWipe(
         text =
             when {
                 isWorking -> stringResource(R.string.busy)
+                confirming.otherAccount -> stringResource(if (kakao) R.string.wipe_again_kakao else R.string.wipe_again_apple)
+                confirming.needsProof -> stringResource(if (kakao) R.string.wipe_confirm_kakao else R.string.wipe_confirm_apple)
                 count != null && count > 0 -> stringResource(R.string.wipe_confirm_counted, count)
                 else -> stringResource(R.string.wipe_confirm)
             },
