@@ -8,7 +8,7 @@ SHELL := /bin/bash
 	lint-gateway test-gateway image-gateway scan-gateway lint-android test-android connected-android release-android up down e2e \
 	audit audit-core audit-apps \
 	lint-ios project-ios app-ios test-ios uitest-ios lock-ios archive-ios release-ios \
-	lint-terraform lock-terraform deploy-alpha
+	lint-terraform lock-terraform deploy-alpha scan-alpha
 
 # Providers download once into .tools (gitignored, cached in CI) instead of once per root.
 export TF_PLUGIN_CACHE_DIR ?= $(CURDIR)/.tools/terraform-plugins
@@ -26,7 +26,7 @@ test: test-core test-api test-gateway test-android ## Run every part's tests
 
 # PR CI runs these gates only for the parts a change touches, so .github/workflows/audit.yml runs them on main weekly:
 # an advisory published against code nobody is editing would otherwise go unnoticed (docs/security/dependencies.md).
-audit: audit-core audit-apps scan-api scan-gateway ## Dependency vulnerability gates of every part, as the weekly audit runs them
+audit: audit-core audit-apps scan-api scan-gateway scan-alpha ## Dependency vulnerability gates of every part, as the weekly audit runs them
 
 audit-core: ## Rust core: cargo-deny advisories, and whether the Android OpenSSL has a newer patch (lint-core runs the whole policy)
 	"$$(scripts/tool.sh cargo-deny)" --manifest-path core/Cargo.toml --locked check advisories
@@ -160,6 +160,22 @@ lock-terraform: ## Terraform: rewrite each root's lock file with checksums for L
 
 deploy-alpha: ## Alpha server: copy infra/alpha, bootstrap it, ship the API image, restart (GEUNAL_ALPHA_SSH=root@<address>)
 	infra/alpha/deploy.sh
+
+# The alpha server runs these images as Docker Hub publishes them; its API image is scan-api's. They are pulled through
+# the daemon so a cloud session uses its mirror, and every image is scanned before the target fails. Vulnerabilities
+# only: a secret scan flags the snakeoil key Debian's ssl-cert package leaves in the PostgreSQL image, which nothing
+# here uses. gosu is left out: the PostgreSQL entrypoint runs it once to drop root, so its Go standard library never
+# handles a request. Accepted findings are in infra/alpha/.trivyignore.
+scan-alpha: ## Alpha server: Trivy on the third-party images of infra/alpha/compose.yml; fails on HIGH or CRITICAL findings that have a fix
+	scripts/ensure-docker.sh
+	trivy="$$(scripts/tool.sh trivy)"; status=0; \
+	for image in $$(awk '$$1 == "image:" && $$2 !~ /^geunal\// { print $$2 }' infra/alpha/compose.yml); do \
+	  echo "==> $$image"; \
+	  docker pull --quiet "$$image" >/dev/null && \
+	    "$$trivy" image --quiet --image-src docker --scanners vuln --skip-files usr/local/bin/gosu \
+	      --ignorefile infra/alpha/.trivyignore --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed "$$image" || status=1; \
+	done; \
+	exit "$$status"
 
 up: image-api image-gateway ## Local stack in Docker: PostgreSQL, Redis, S3, API, gateway (infra/docker-compose.yml)
 	docker compose -f infra/docker-compose.yml up --detach --wait --wait-timeout 180

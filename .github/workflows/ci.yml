@@ -29,6 +29,7 @@ jobs:
       terraform: ${{ steps.parts.outputs.terraform }}
       ios: ${{ steps.parts.outputs.ios }}
       android: ${{ steps.parts.outputs.android }}
+      alpha: ${{ steps.parts.outputs.alpha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,10 +83,15 @@ jobs:
     if: needs.changes.outputs.terraform == 'true'
     uses: ./.github/workflows/terraform.yml
 
+  alpha:
+    needs: changes
+    if: needs.changes.outputs.alpha == 'true'
+    uses: ./.github/workflows/alpha.yml
+
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [changes, lint, core, api, gateway, e2e, android, ios, terraform]
+    needs: [changes, lint, core, api, gateway, e2e, android, ios, terraform, alpha]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
