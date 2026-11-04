@@ -23,6 +23,8 @@ struct Device {
     signature_key: Vec<u8>,
     key_packages: VecDeque<Vec<u8>>,
     platform: String,
+    /// What `PUT /me/push-token` last stored for this device.
+    push_token: Option<String>,
     /// When a Kakao, Apple or stub sign-in registered it: "새로 시작" may replace the recovery material within 30
     /// minutes of that.
     by_provider_at: Option<DateTime<Utc>>,
@@ -249,6 +251,7 @@ impl State {
                 signature_key: key.to_vec(),
                 key_packages: VecDeque::new(),
                 platform: platform.to_owned(),
+                push_token: None,
                 by_provider_at,
             });
         } else if let Some(device) = user.device.as_mut() {
@@ -420,6 +423,12 @@ impl FakeServer {
     }
 
     /// The key packages the account's active device has waiting on the server.
+    /// The push token the account's active device registered, if any.
+    pub fn push_token_of(&self, user_id: &str) -> Option<String> {
+        let state = self.state.lock().expect("fake server");
+        state.users.get(user_id).and_then(|u| u.device.as_ref()).and_then(|d| d.push_token.clone())
+    }
+
     pub fn key_packages_of(&self, user_id: &str) -> usize {
         let state = self.state.lock().expect("fake server");
         state.users.get(user_id).and_then(|u| u.device.as_ref()).map(|d| d.key_packages.len()).unwrap_or(0)
@@ -1367,5 +1376,15 @@ impl Transport for FakeClient {
         let (user, _) = self.who()?;
         let mut state = self.lock();
         Ok(Self::require_active(&mut state, group_id, &user)?.state.values().cloned().collect())
+    }
+
+    async fn set_push_token(&self, token: Option<String>) -> Result<(), ApiError> {
+        self.lock().fault("set_push_token", Fault::Fail)?;
+        let (user, _) = self.who()?;
+        let mut state = self.lock();
+        let device =
+            state.users.get_mut(&user).and_then(|u| u.device.as_mut()).ok_or_else(|| err(403, "device_revoked"))?;
+        device.push_token = token;
+        Ok(())
     }
 }
