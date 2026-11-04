@@ -8,6 +8,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -15,8 +16,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -93,18 +96,6 @@ fun RootScreen(
                 val signingIn by model.signingIn.collectAsStateWithLifecycle()
                 val revocation by model.revocation.collectAsStateWithLifecycle()
                 val signedOut by model.signedOut.collectAsStateWithLifecycle()
-                signingIn?.let { start ->
-                    // Over the tabs, with "닫기": the tabs come back when it closes or the account comes through.
-                    OnboardingFlow(
-                        dependencies = onboardingDependencies(container, core, model),
-                        onFinish = model::signedInAgain,
-                        modifier = modifier,
-                        round = model.signInRound,
-                        start = start,
-                        onClose = model::signInClosed,
-                    )
-                    return
-                }
                 revocation?.let {
                     RevokedSheet(
                         revocation = it,
@@ -131,50 +122,66 @@ fun RootScreen(
                 val covers = coverModel.covers
                 val me = coverModel.me
                 val online by container.connectivity.isOnline.collectAsStateWithLifecycle()
-                CoveredTabs(
-                    covers = covers,
-                    me = me,
-                    toasts = model.toasts,
-                    online = online,
-                    modifier = modifier,
-                ) {
-                    MainScaffold(
-                        nextUp = nextUp,
+                Box(modifier.fillMaxSize()) {
+                    CoveredTabs(
+                        covers = covers,
+                        me = me,
                         toasts = model.toasts,
-                        // An event opens in the editor, a birthday on 사람·생일 with that person (m1.md §2.6).
-                        onOpenItem = { item ->
-                            when (item) {
-                                is UpNext.Event -> covers.edit(EditorTarget.Existing(item.item.eventId, item.item.occurrence))
-                                is UpNext.Birthday -> covers.people(focus = item.item.personId)
+                        online = online,
+                        // Under the sign-in the tabs stay composed, so closing it comes back to the same tab and screen;
+                        // a screen reader meanwhile hears only the sign-in.
+                        modifier = if (signingIn != null) Modifier.clearAndSetSemantics {} else Modifier,
+                    ) {
+                        MainScaffold(
+                            nextUp = nextUp,
+                            toasts = model.toasts,
+                            // An event opens in the editor, a birthday on 사람·생일 with that person (m1.md §2.6).
+                            onOpenItem = { item ->
+                                when (item) {
+                                    is UpNext.Event -> covers.edit(EditorTarget.Existing(item.item.eventId, item.item.occurrence))
+                                    is UpNext.Birthday -> covers.people(focus = item.item.personId)
+                                }
+                            },
+                        ) { tab, padding ->
+                            when (tab) {
+                                MainTab.CALENDAR ->
+                                    CalendarTab(
+                                        core,
+                                        container.changes.changes,
+                                        model.toasts,
+                                        covers,
+                                        Modifier.padding(padding),
+                                    )
+                                MainTab.ME ->
+                                    MeScreen(
+                                        core = core,
+                                        pendingGuest = container.onboarding.pendingGuestAgeConfirmedAt != null,
+                                        signedOut = signedOut,
+                                        onSignIn = model::signInAgain,
+                                        onReturnAsGuest = model::returnAsGuest,
+                                        onShifts = { covers.stamp(KoreanCalendar.month(KoreanCalendar.day(Instant.now()))) },
+                                        onPeople = { covers.people() },
+                                        onCalendars = covers::calendars,
+                                        onAlerts = covers::alerts,
+                                        onRecoveryCode = me::recoveryCode,
+                                        onBackup = me::backup,
+                                        onDeleteAccount = me::deleteAccount,
+                                        modifier = Modifier.padding(padding),
+                                    )
                             }
-                        },
-                    ) { tab, padding ->
-                        when (tab) {
-                            MainTab.CALENDAR ->
-                                CalendarTab(
-                                    core,
-                                    container.changes.changes,
-                                    model.toasts,
-                                    covers,
-                                    Modifier.padding(padding),
-                                )
-                            MainTab.ME ->
-                                MeScreen(
-                                    core = core,
-                                    pendingGuest = container.onboarding.pendingGuestAgeConfirmedAt != null,
-                                    signedOut = signedOut,
-                                    onSignIn = model::signInAgain,
-                                    onReturnAsGuest = model::returnAsGuest,
-                                    onShifts = { covers.stamp(KoreanCalendar.month(KoreanCalendar.day(Instant.now()))) },
-                                    onPeople = { covers.people() },
-                                    onCalendars = covers::calendars,
-                                    onAlerts = covers::alerts,
-                                    onRecoveryCode = me::recoveryCode,
-                                    onBackup = me::backup,
-                                    onDeleteAccount = me::deleteAccount,
-                                    modifier = Modifier.padding(padding),
-                                )
                         }
+                    }
+                    signingIn?.let { start ->
+                        // Over the tabs, with "닫기": the tabs come back when it closes or the account comes through.
+                        OnboardingFlow(
+                            dependencies = onboardingDependencies(container, core, model),
+                            onFinish = model::signedInAgain,
+                            // Takes every touch, so none reaches the tabs drawn under it.
+                            modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures {} },
+                            round = model.signInRound,
+                            start = start,
+                            onClose = model::signInClosed,
+                        )
                     }
                 }
             }

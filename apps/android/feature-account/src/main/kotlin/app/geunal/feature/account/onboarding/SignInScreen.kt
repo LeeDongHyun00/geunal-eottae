@@ -99,6 +99,8 @@ fun SignInScreen(
                 text = stringResource(R.string.sign_in_close),
                 onClick = onBack,
                 kind = ButtonKind.Text,
+                // A sign-in under way cannot be left behind: its answer would land with nothing to show it.
+                enabled = state.busy == null,
                 modifier = Modifier.padding(top = Space.xs).testTag("onboarding.close"),
             )
         } else {

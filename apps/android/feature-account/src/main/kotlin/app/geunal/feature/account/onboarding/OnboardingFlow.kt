@@ -258,8 +258,11 @@ fun OnboardingFlow(
     val model = viewModel(key = "onboarding-$start-$round") { OnboardingViewModel(dependencies, start = start) }
     val finishedOverTabs by model.finished.collectAsStateWithLifecycle()
     LaunchedEffect(finishedOverTabs) { if (finishedOverTabs) onFinish() }
-    // At the bottom of the stack, back closes the flow over the tabs.
-    BackHandler(enabled = onClose != null && model.backStack.size <= 1) { onClose?.invoke() }
+    // At the bottom of the stack, back closes the flow over the tabs, but not while a sign-in is under way: its answer
+    // would land with nothing to show it.
+    val signInState by model.signIn.state.collectAsStateWithLifecycle()
+    val closeable = onClose != null && model.backStack.size <= 1
+    BackHandler(enabled = closeable) { if (signInState.busy == null) onClose?.invoke() }
     val resources = LocalResources.current
     val isOnline by dependencies.isOnline.collectAsStateWithLifecycle()
     LaunchedEffect(model, resources) {
@@ -285,7 +288,12 @@ fun OnboardingFlow(
                                 model = model.signIn,
                                 isOnline = isOnline,
                                 legal = dependencies.legal,
-                                onBack = { if (onClose != null && model.backStack.size <= 1) onClose() else model.back() },
+                                onBack = {
+                                    when {
+                                        !closeable -> model.back()
+                                        signInState.busy == null -> onClose?.invoke()
+                                    }
+                                },
                                 closes = onClose != null && model.backStack.size <= 1,
                                 onSignIn = model::signIn,
                                 onGuest = model::continueAsGuest,
