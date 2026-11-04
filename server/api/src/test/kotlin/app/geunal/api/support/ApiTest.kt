@@ -26,6 +26,8 @@ import java.util.UUID
         "geunal.rate-limits.messages-per-minute=1000000",
         "geunal.rate-limits.commits-per-minute=1000000",
         "geunal.rate-limits.claims-per-minute=1000000",
+        "geunal.rate-limits.states-per-minute=1000000",
+        "geunal.rate-limits.group-meta-per-minute=1000000",
     ],
 )
 abstract class ApiTest {

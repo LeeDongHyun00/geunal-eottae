@@ -145,6 +145,10 @@ class DeliveryService(
     ): Long {
         val group = groups.requireActive(groupId, caller.userId)
         if (kind !in STATE_KINDS) throw ApiException.notFound("state kind $kind")
+        val subject = "${caller.userId}:$groupId"
+        // The narrower limit first, so writes it turns away leave the wider one for the member's own blobs.
+        if (kind == GROUP_META) limits.check("group_meta", subject, rates.groupMetaPerMinute, HourlyLimit.MINUTE)
+        limits.check("state", subject, rates.statesPerMinute, HourlyLimit.MINUTE)
         checkSize(request.ciphertext, "state", MAX_STATE)
         if (request.epoch < 0 ||
             request.epoch > group.epoch
