@@ -177,6 +177,23 @@ class InviteTests : ApiTest() {
     }
 
     @Test
+    fun `a pending account withdraws and gets its place back`() {
+        val owner = signIn()
+        val joiner = signIn()
+        val groupId = groupWith(owner)
+        joiner.post("/invites/${owner.inviteCode(groupId)}/join").expect(200)
+        // Not a member yet: a pending account removes nobody but itself.
+        joiner.delete("/groups/$groupId/members/${owner.userId}").expectError(403, "not_member")
+
+        inbox(owner.deviceId).use { signals ->
+            joiner.delete("/groups/$groupId/members/${joiner.userId}").expect(204)
+            assertThat(signals.drain().map { it.type }).containsExactly("membership")
+        }
+        assertThat(statusOf(owner, groupId, joiner)).isEqualTo("removed")
+        assertThat(joiner.get("/me/groups").expect(200)["groups"].size()).isZero()
+    }
+
+    @Test
     fun `a 1-to-1 takes no codes`() {
         val owner = signIn()
         val groupId = groupWith(owner)

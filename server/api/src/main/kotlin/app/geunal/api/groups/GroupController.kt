@@ -106,8 +106,12 @@ class GroupController(
         @PathVariable id: UUID,
         @PathVariable userId: UUID,
     ) {
-        groups.requireActive(id, caller.userId)
-        if (userId != caller.userId) {
+        if (userId == caller.userId) {
+            // A pending account may withdraw too: otherwise joins no member ever completes would hold its group places.
+            groups.find(id) ?: throw ApiException.notFound("group")
+            if (groups.memberStatus(id, caller.userId) !in setOf("pending", "active")) throw ApiException.notMember()
+        } else {
+            groups.requireActive(id, caller.userId)
             val role = groups.members(id).first { it.userId == caller.userId }.role
             if (role != "owner") throw ApiException(HttpStatus.FORBIDDEN, "not_owner", "only the owner removes other members")
         }

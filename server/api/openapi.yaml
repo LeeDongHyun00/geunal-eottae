@@ -806,7 +806,7 @@ paths:
 
   /groups/{id}/members/{userId}:
     delete:
-      summary: Leave (own user_id) or, as owner, remove a member. Status becomes `removed` and every device involved gets `membership`; a remaining device then uploads the Remove commit. An owner who leaves is succeeded by the longest-standing active member.
+      summary: Leave (own user_id, active or pending) or, as owner, remove a member. Status becomes `removed` and every device involved gets `membership`; a remaining device then uploads the Remove commit. An owner who leaves is succeeded by the longest-standing active member.
       parameters: [{ $ref: "#/components/parameters/Id" }, { name: userId, in: path, required: true, schema: { $ref: "#/components/schemas/Uuid" } }]
       responses:
         "204": { description: removed }
