@@ -128,6 +128,10 @@ impl From<SyncError> for CoreError {
             SyncError::Store(e) => CoreError::Store { reason: e.to_string() },
             SyncError::NotSignedIn => CoreError::NotSignedIn,
             SyncError::Realtime(reason) => CoreError::Realtime { reason },
+            // The answer the server gives the same entry (protocol §11), so the app has one branch: send as media.
+            SyncError::EntryTooLarge(size) => {
+                CoreError::Api { status: 413, code: "too_large".into(), detail: format!("{size} bytes") }
+            }
             other => CoreError::Sync { reason: other.to_string() },
         }
     }
