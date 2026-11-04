@@ -34,7 +34,7 @@ class RevokedSheetTest {
         show(RevokedVia.PROVIDER)
         compose.waitForText("다른 기기에서 로그인했어요")
         compose.waitForText("그 계정의 비밀번호를 바꿔 주세요", substring = true)
-        compose.screenshot("23-revoked-provider", inside = "revoked.sheet")
+        compose.screenshot("23-revoked-provider", sheet = true)
 
         compose.onNodeWithTag("revoked.signIn").performScrollTo().performClick()
 
@@ -46,6 +46,6 @@ class RevokedSheetTest {
         show(RevokedVia.RECOVERY)
 
         compose.waitForText("카카오·Apple 계정을 연결해 두세요", substring = true)
-        compose.screenshot("23-revoked-recovery", inside = "revoked.sheet")
+        compose.screenshot("23-revoked-recovery", sheet = true)
     }
 }
