@@ -37,7 +37,7 @@ dependencies {
     implementation("com.nimbusds:nimbus-jose-jwt:10.10")
     // Nor the AWS SDK; it signs the backup upload and download URLs for any S3-compatible store (protocol §10). The
     // presigner needs no HTTP client, and the API's own HEAD and DELETE calls go through the JDK's URL connection.
-    implementation(platform("software.amazon.awssdk:bom:2.56.0"))
+    implementation(platform("software.amazon.awssdk:bom:2.57.8"))
     implementation("software.amazon.awssdk:s3") {
         exclude(group = "software.amazon.awssdk", module = "netty-nio-client")
         exclude(group = "software.amazon.awssdk", module = "apache-client")
