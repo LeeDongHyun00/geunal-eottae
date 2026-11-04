@@ -7,8 +7,10 @@ use std::sync::{Arc, Mutex};
 use chrono::{TimeZone, Utc};
 use geunal_domain::availability::Availability;
 use geunal_domain::entry::{self, Choice, Entry, MAX_ENTRY_BYTES, Mode, Stage};
+use geunal_mls::state::{seal, state_aad};
 use geunal_mls::{Identity, MlsClient};
 use geunal_store::Store;
+use geunal_sync::api::{PutState, Transport};
 use geunal_sync::fake::{FakeClient, FakeServer};
 use geunal_sync::realtime::Event;
 use geunal_sync::{Alert, Change, Engine, Listener, Session, SyncError, sign_in};
@@ -399,6 +401,116 @@ async fn three_devices_derive_the_same_state_after_a_kick_and_a_rejoin() {
     assert_eq!((appt.start, appt.end), (Some(13 * 60), Some(15 * 60)));
     assert_eq!(texts(&c, &group), vec!["C의 채팅"], "chat from the kicked period is not in the bundle");
     assert_eq!(texts(&a, &group), vec!["C의 채팅", "C 없이 한 말"]);
+}
+
+fn appointment_request(appt: &str) -> Entry {
+    Entry::Request {
+        appt: appt.into(),
+        day: "2026-11-07".into(),
+        mode: Mode::Vote,
+        start: None,
+        end: None,
+        activity: None,
+        note: Some("저녁 어때?".into()),
+        leader_options: false,
+    }
+}
+
+/// Seals a newcomer bundle as `dev` in the group's current epoch, the way a member's device would put one.
+async fn put_bundle(dev: &Device, group: &str, items: &[(Option<i64>, &Entry)]) {
+    use ciborium::Value;
+    let items: Vec<Value> = items
+        .iter()
+        .map(|(seq, e)| {
+            let mut map = vec![
+                (Value::Text("author_id".into()), Value::Text(dev.user().into())),
+                (Value::Text("received_at".into()), Value::Text("2026-11-01T09:00:00.000Z".into())),
+                (Value::Text("entry".into()), Value::Bytes(entry::encode(e))),
+            ];
+            if let Some(seq) = seq {
+                map.push((Value::Text("seq".into()), Value::Integer((*seq).into())));
+            }
+            Value::Map(map)
+        })
+        .collect();
+    let mut plaintext = Vec::new();
+    ciborium::into_writer(&Value::Array(items), &mut plaintext).unwrap();
+    put_raw_bundle(dev, group, &plaintext).await;
+}
+
+async fn put_raw_bundle(dev: &Device, group: &str, plaintext: &[u8]) {
+    let epoch = dev.engine.epoch(group).unwrap().unwrap();
+    let key = dev.engine.store().state_key(group, epoch as i64).unwrap().unwrap();
+    let aad = state_aad(group, epoch, "newcomer_bundle", dev.user());
+    let req = PutState { epoch, ciphertext: seal(&key, &aad, plaintext), base_version: None };
+    dev.engine.api().put_state(group, "newcomer_bundle", req).await.unwrap();
+}
+
+#[tokio::test]
+async fn absorbs_a_newcomer_bundle_only_once_right_after_the_welcome() {
+    let server = server();
+    let mut a = device(&server, "a", 1).await;
+    let mut b = device(&server, "b", 2).await;
+    let group = a.engine.create_group(Some("동네 친구")).await.unwrap();
+    a.engine.send(&group, &appointment_request("appt-1"), Alert::All, Some("plan")).await.unwrap();
+    a.engine.add_members(&group, &[b.user().to_owned()]).await.unwrap();
+    b.engine.sync().await.unwrap();
+    assert!(b.engine.group_state(&group).unwrap().appointments.contains_key("appt-1"));
+
+    // A bundle put after the join is not for this device.
+    put_bundle(&a, &group, &[(None, &text("t-late", "나중에 넣은 말"))]).await;
+    b.engine.sync().await.unwrap();
+    assert!(texts(&b, &group).is_empty());
+}
+
+#[tokio::test]
+async fn ignores_a_newcomer_bundle_sealed_by_a_member_who_did_not_add_this_device() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    let mut c = device(&server, "c", 3).await;
+    a.engine.send(&group, &appointment_request("appt-1"), Alert::All, Some("plan")).await.unwrap();
+    b.engine.sync().await.unwrap();
+    a.engine.add_members(&group, &[c.user().to_owned()]).await.unwrap();
+    b.engine.sync().await.unwrap();
+
+    // B, who did not add C, puts a bundle of its own in the epoch C joins in; A's is left unreadable, so B's is the
+    // only one C could open.
+    put_bundle(&b, &group, &[(None, &text("t-b", "B의 꾸러미"))]).await;
+    server.corrupt_state(&group, "newcomer_bundle", a.user());
+    c.engine.sync().await.unwrap();
+    assert!(c.engine.log(&group).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_bundle_entry_placed_ahead_of_the_cursor_never_shadows_the_real_log_item() {
+    let server = server();
+    let mut a = device(&server, "a", 1).await;
+    let mut b = device(&server, "b", 2).await;
+    let group = a.engine.create_group(Some("동네 친구")).await.unwrap();
+    a.engine.add_members(&group, &[b.user().to_owned()]).await.unwrap();
+    let added_at = a.engine.store().cursor(&group).unwrap();
+
+    // The bundle names the seq right after the Add commit, which the log fills next.
+    put_bundle(&a, &group, &[(Some(added_at + 1), &text("t-bundle", "꾸러미의 말"))]).await;
+    a.engine.send(&group, &text("t-log", "로그의 말"), Alert::All, Some("chat")).await.unwrap();
+    b.engine.sync().await.unwrap();
+    assert_eq!(texts(&b, &group), vec!["로그의 말"]);
+}
+
+#[tokio::test]
+async fn lets_go_of_a_newcomer_bundle_that_does_not_decode_and_syncs_on() {
+    let server = server();
+    let mut a = device(&server, "a", 1).await;
+    let mut b = device(&server, "b", 2).await;
+    let group = a.engine.create_group(Some("동네 친구")).await.unwrap();
+    a.engine.add_members(&group, &[b.user().to_owned()]).await.unwrap();
+    put_raw_bundle(&a, &group, b"not cbor").await;
+    b.engine.sync().await.unwrap();
+    assert!(b.engine.store().expected_bundle(&group).unwrap().is_none());
+
+    a.engine.send(&group, &text("t1", "그 뒤의 말"), Alert::All, Some("chat")).await.unwrap();
+    b.engine.sync().await.unwrap();
+    assert_eq!(texts(&b, &group), vec!["그 뒤의 말"]);
 }
 
 #[tokio::test]
