@@ -68,4 +68,14 @@ class DiagnosticLogTests : ApiTest() {
         assertThat(output.out).containsPattern("GET /users/\\{id}/devices 200 \\d+ms")
         assertThat(output.out).doesNotContain(account.userId.toString())
     }
+
+    @Test
+    fun `a request the security chain turns away is logged with its route`(output: CapturedOutput) {
+        val account = signIn()
+
+        api.send(HttpMethod.GET, "/users/${account.userId}/devices", "not-a-token").expect(401)
+
+        assertThat(output.out).containsPattern("GET /users/\\{id}/devices 401 \\d+ms")
+        assertThat(output.out).doesNotContain(account.userId.toString())
+    }
 }
