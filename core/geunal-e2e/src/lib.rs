@@ -43,6 +43,30 @@ pub fn get(base: &str, path: &str) -> io::Result<Response> {
     Ok(Response { status: status_code(head)?, body: body.to_owned() })
 }
 
+/// `POST` of the JSON `body` on `base` + `path`, over HTTP/1.0 like [`get`].
+pub fn post_json(base: &str, path: &str, body: &serde_json::Value) -> io::Result<Response> {
+    let body = body.to_string();
+    let mut stream = connect(base)?;
+    write!(
+        stream,
+        "POST {path} HTTP/1.0\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        authority(base),
+        body.len()
+    )?;
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw)?;
+    let (head, body) = raw.split_once("\r\n\r\n").unwrap_or((&raw, ""));
+    Ok(Response { status: status_code(head)?, body: body.to_owned() })
+}
+
+/// Makes `user_id` pending in `group_id` through the auth stub, standing in for the invite code a member will send
+/// (protocol §2): only an invited account can be added to a group.
+pub fn invite(group_id: &str, user_id: &str) {
+    let body = serde_json::json!({ "group_id": group_id, "user_id": user_id });
+    let response = post_json(&api_url(), "/auth/stub/invite", &body).expect("the API answers");
+    assert_eq!(response.status, 204, "POST /auth/stub/invite: {}", response.body);
+}
+
 /// Asks to upgrade `base` + `path` to a WebSocket and returns the answer's status, 101 if the server accepts. Only the
 /// status line is read, since an accepted connection stays open.
 pub fn websocket_status(base: &str, path: &str) -> io::Result<u16> {

@@ -136,27 +136,69 @@ class GroupRepository(
             .orElse(null)
 
     /**
-     * Makes the user an active member: a first add, a pending joiner, or someone removed earlier and added again. An
-     * account that is already active (its replacement device being added) keeps its role and join time, so an Add
-     * commit can never cost the group its owner.
+     * Makes an invited (pending) account active, or keeps an active one as it is (its replacement device being added),
+     * so an Add commit can never cost the group its owner. Returns false for an account that is neither: only someone
+     * the group invited becomes a member (protocol §2), whoever sends the commit.
      */
     fun activate(
+        groupId: UUID,
+        userId: UUID,
+    ): Boolean =
+        jdbc
+            .sql(
+                """
+                UPDATE group_members SET
+                  status = 'active',
+                  role = CASE WHEN status = 'active' THEN role ELSE 'member' END,
+                  joined_at = CASE WHEN status = 'active' THEN joined_at ELSE now() END
+                WHERE group_id = :group AND user_id = :user AND status IN ('pending', 'active')
+                """,
+            ).param("group", groupId)
+            .param("user", userId)
+            .update() == 1
+
+    /**
+     * Makes the account pending in the group: what an invite code will do (protocol §2). Someone removed earlier is
+     * invited again; an active member stays as they are.
+     */
+    fun invite(
         groupId: UUID,
         userId: UUID,
     ) {
         jdbc
             .sql(
                 """
-                INSERT INTO group_members (group_id, user_id, status) VALUES (:group, :user, 'active')
-                ON CONFLICT (group_id, user_id) DO UPDATE SET
-                  status = 'active',
-                  role = CASE WHEN group_members.status = 'active' THEN group_members.role ELSE 'member' END,
-                  joined_at = CASE WHEN group_members.status = 'active' THEN group_members.joined_at ELSE now() END
+                INSERT INTO group_members (group_id, user_id, status) VALUES (:group, :user, 'pending')
+                ON CONFLICT (group_id, user_id) DO UPDATE SET status = 'pending', role = 'member'
+                WHERE group_members.status = 'removed'
                 """,
             ).param("group", groupId)
             .param("user", userId)
             .update()
     }
+
+    /**
+     * Whether [callerId] may look up [userId]'s devices and claim their key packages: their own, or an account pending
+     * or active in a group the caller is active in, which is whom an Add commit could name.
+     */
+    fun mayAdd(
+        callerId: UUID,
+        userId: UUID,
+    ): Boolean =
+        callerId == userId ||
+            jdbc
+                .sql(
+                    """
+                    SELECT EXISTS (
+                      SELECT 1 FROM group_members mine JOIN group_members theirs ON theirs.group_id = mine.group_id
+                      WHERE mine.user_id = :caller AND mine.status = 'active'
+                        AND theirs.user_id = :user AND theirs.status IN ('pending', 'active')
+                    )
+                    """,
+                ).param("caller", callerId)
+                .param("user", userId)
+                .query(Boolean::class.java)
+                .single()
 
     /** Marks the member removed; returns false when there was no such active or pending member. */
     fun remove(

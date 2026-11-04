@@ -1,5 +1,7 @@
 package app.geunal.api.auth
 
+import app.geunal.api.common.ApiException
+import app.geunal.api.groups.GroupRepository
 import com.fasterxml.jackson.annotation.JsonPropertyOrder
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.http.HttpStatus
@@ -8,6 +10,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -196,9 +199,29 @@ class AuthController(
 @ConditionalOnProperty("geunal.auth.stub", havingValue = "true")
 class StubAuthController(
     private val auth: AuthService,
+    private val groups: GroupRepository,
 ) {
     @PostMapping("/auth/stub")
     fun stub(
         @RequestBody body: StubLoginRequest,
     ): ResponseEntity<Any> = AuthController.answer(auth.stubLogin(body))
+
+    /**
+     * Stands in for the invite code until it exists: makes [StubInviteRequest.userId] pending in the group, so that a
+     * member can then add them (protocol §2). Like the stub sign-in it asks for no session, since a server with the
+     * stub lets anyone in anyway.
+     */
+    @PostMapping("/auth/stub/invite")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun invite(
+        @RequestBody body: StubInviteRequest,
+    ) {
+        groups.find(body.groupId) ?: throw ApiException.notFound("group")
+        groups.invite(body.groupId, body.userId)
+    }
 }
+
+data class StubInviteRequest(
+    val groupId: UUID,
+    val userId: UUID,
+)
