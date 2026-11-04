@@ -91,7 +91,7 @@ class PeopleScreenTest {
         // Where the lunar day falls this year comes from the core.
         compose.waitFor(hasTestTag("person.lunarNote") and hasText("올해는 11월 11일", substring = true))
         compose.onNodeWithTag("person.birthday").assertTextContains("음력 10월 3일")
-        compose.screenshot("17-person-edit--lunar")
+        compose.screenshot("17-person-edit--lunar", sheet = true)
 
         compose.onNodeWithTag("person.save").performScrollTo().performClick()
         compose.waitForTag("people.person.p1")
@@ -114,7 +114,7 @@ class PeopleScreenTest {
         // Nobody is chosen for the person (docs/security/app-review.md §2 "연락처").
         compose.onNodeWithTag("contacts.import").assertIsNotEnabled()
         compose.onNodeWithTag("contacts.41").performClick()
-        compose.screenshot("11-people--import")
+        compose.screenshot("11-people--import", sheet = true)
         compose.onNodeWithTag("contacts.import").performClick()
 
         compose.waitForText("1명을 가져왔어요")

@@ -56,7 +56,7 @@ class DeleteAccountScreenTest {
         compose.onNodeWithTag("delete.confirm").assertIsNotEnabled()
         compose.onNodeWithTag("delete.word").performTextInput("삭제")
         compose.waitForText("카카오로 확인하고 삭제")
-        compose.screenshot("22-delete-sheet", inside = "delete.confirm")
+        compose.screenshot("22-delete-sheet", sheet = true)
 
         // The Kakao sheet is taller than the guest's, and with the keyboard up its button sits below the visible part.
         compose

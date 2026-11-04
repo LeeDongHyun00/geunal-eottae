@@ -70,7 +70,7 @@ class EditorScreenTest {
         compose.onNodeWithTag("editor.title").performTextReplacement("휴강")
         compose.onNodeWithTag("editor.save").performClick()
         compose.waitForTag("scope.thisOnly")
-        compose.screenshot("09-editor--scope")
+        compose.screenshot("09-editor--scope", sheet = true)
         compose.onNodeWithTag("scope.thisOnly").performClick()
         compose.waitUntil(5_000) { closed }
 

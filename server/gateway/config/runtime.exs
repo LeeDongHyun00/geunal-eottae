@@ -4,7 +4,9 @@ import Config
 if config_env() == :prod do
   config :gateway,
     redis_url: System.fetch_env!("REDIS_URL"),
-    jwks_url: System.fetch_env!("JWKS_URL")
+    jwks_url: System.fetch_env!("JWKS_URL"),
+    # The reverse proxy in front (infra/alpha's Caddy): without it every device shares the proxy's connection limit.
+    trusted_proxies: System.get_env("TRUSTED_PROXIES", "")
 
   # TLS ends at the load balancer (gateway.md §7), so the release serves plain HTTP on every interface.
   config :gateway, GatewayWeb.Endpoint,

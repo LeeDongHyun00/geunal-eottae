@@ -31,12 +31,14 @@ uuid.workspace = true
 # The in-process fake server of geunal-sync with the M1 account rules, for this crate's tests. The apps' libraries are
 # built without it.
 fake-server = []
+# Chat (M3), on hold by the user's decision: the end-to-end tests turn it on, the apps' libraries leave it off.
+chat = []
 
 [dev-dependencies]
 # base64, hex and rusqlite read the store's tables in their raw forms for the secret-placement test.
 base64.workspace = true
 # Turns the fake server on for the tests only.
-geunal-ffi = { workspace = true, features = ["fake-server"] }
+geunal-ffi = { workspace = true, features = ["fake-server", "chat"] }
 geunal-mls.workspace = true
 hex.workspace = true
 pollster.workspace = true

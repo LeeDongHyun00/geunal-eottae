@@ -4,6 +4,11 @@ defmodule Gateway.Application do
 
   @impl true
   def start(_type, _args) do
+    # Parsed here rather than on each connection, so a malformed TRUSTED_PROXIES stops the boot.
+    Gateway.ClientAddress.put_trusted(
+      Gateway.ClientAddress.parse_cidrs!(Application.get_env(:gateway, :trusted_proxies))
+    )
+
     children = [
       {Phoenix.PubSub, name: Gateway.PubSub},
       # Connects in the background and keeps reconnecting, so the gateway starts and reports unhealthy while Redis is
