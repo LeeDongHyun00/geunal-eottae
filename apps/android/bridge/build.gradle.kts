@@ -35,6 +35,7 @@ android {
 dependencies {
     api(project(":core"))
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.installreferrer)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)

@@ -17,6 +17,11 @@ fun setting(
 val kakaoAppKey = setting("geunalKakaoAppKey")
 val appleServiceId = setting("geunalAppleServiceId")
 val appLinkHost = setting("geunalAppLinkHost")
+
+// The invite links' domain (`https://<host>/i/<code>`, docs/parts/android.md §4). Left out of the manifest until that
+// domain serves assetlinks.json: below Android 12 one App Link host that fails verification fails them all, the
+// Apple sign-in callback included.
+val inviteHost = setting("geunalInviteHost")
 val apiBase = setting("geunalApiBase")
 
 // Only alpha builds offer the test statistics (m1.md screen 3); a public build passes -PgeunalChannel=public.
@@ -56,11 +61,13 @@ android {
         buildConfigField("String", "KAKAO_APP_KEY", quoted(kakaoAppKey))
         buildConfigField("String", "APPLE_SERVICE_ID", quoted(appleServiceId))
         buildConfigField("String", "APP_LINK_HOST", quoted(appLinkHost))
+        buildConfigField("String", "INVITE_HOST", quoted(inviteHost))
         buildConfigField("String", "CHANNEL", quoted(channel))
         buildConfigField("String", "TERMS_URL", quoted(setting("geunalTermsUrl")))
         buildConfigField("String", "PRIVACY_URL", quoted(setting("geunalPrivacyUrl")))
         manifestPlaceholders["geunalKakaoAppKey"] = kakaoAppKey
         manifestPlaceholders["geunalAppLinkHost"] = appLinkHost
+        manifestPlaceholders["geunalInviteHost"] = inviteHost
     }
 
     if (uploadKeystore != null) {
@@ -126,6 +133,7 @@ androidComponents {
     onVariants { variant ->
         if (kakaoAppKey.isNotEmpty()) variant.sources.manifests.addStaticManifestFile("manifests/kakao-login.xml")
         if (appLinkHost.isNotEmpty()) variant.sources.manifests.addStaticManifestFile("manifests/apple-sign-in.xml")
+        if (inviteHost.isNotEmpty()) variant.sources.manifests.addStaticManifestFile("manifests/invite-links.xml")
     }
 }
 

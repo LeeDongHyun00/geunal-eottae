@@ -1,6 +1,7 @@
 package app.geunal
 
 import android.app.Application
+import app.geunal.bridge.InstallReferrer
 import app.geunal.feature.account.providers.ForegroundActivity
 import app.geunal.feature.account.providers.KakaoSignIn
 
@@ -14,5 +15,6 @@ class GeunalApplication : Application() {
         ForegroundActivity.install(this)
         KakaoSignIn.configure(this, BuildConfig.KAKAO_APP_KEY)
         container = AppContainer(this)
+        InstallReferrer.readOnce(this, container.invites)
     }
 }
