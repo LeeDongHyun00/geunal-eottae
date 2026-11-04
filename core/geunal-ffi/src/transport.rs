@@ -112,6 +112,15 @@ impl Transport for Api {
     async fn remove_member(&self, group_id: &str, user_id: &str) -> Result<(), ApiError> {
         each!(self, t => t.remove_member(group_id, user_id).await)
     }
+    async fn create_invite(&self, group_id: &str) -> Result<InviteCode, ApiError> {
+        each!(self, t => t.create_invite(group_id).await)
+    }
+    async fn invite_preview(&self, code: &str) -> Result<InvitePreview, ApiError> {
+        each!(self, t => t.invite_preview(code).await)
+    }
+    async fn join_invite(&self, code: &str) -> Result<InviteJoined, ApiError> {
+        each!(self, t => t.join_invite(code).await)
+    }
     async fn post_commit(&self, group_id: &str, req: CommitRequest) -> Result<CommitAccepted, ApiError> {
         each!(self, t => t.post_commit(group_id, req).await)
     }

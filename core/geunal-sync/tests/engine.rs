@@ -80,11 +80,19 @@ fn server() -> FakeServer {
     server
 }
 
-/// A creates the group and adds B by user id; B picks up the Welcome.
+/// `inviter` makes a code and `joiner` asks to join with it, as the apps do (protocol §15): the server makes the
+/// joiner pending, and the joiner's device will take the group's Welcome.
+async fn invite(inviter: &Device, joiner: &mut Device, group: &str) {
+    let code = inviter.engine.create_invite(group).await.unwrap().code;
+    joiner.engine.join_invite(&code).await.unwrap();
+}
+
+/// A creates the group, B joins with A's code, and A adds B; B picks up the Welcome.
 async fn pair(server: &FakeServer) -> (Device, Device, String) {
     let mut a = device(server, "a", 1).await;
     let mut b = device(server, "b", 2).await;
     let group = a.engine.create_group(Some("동네 친구")).await.unwrap();
+    invite(&a, &mut b, &group).await;
     a.engine.add_members(&group, &[b.user().to_owned()]).await.unwrap();
     b.engine.sync().await.unwrap();
     (a, b, group)
@@ -164,6 +172,7 @@ async fn re_seals_own_availability_after_every_epoch_change() {
     let blob = &server.state_blobs(&group)[0];
     assert_eq!((blob.kind.as_str(), blob.epoch), ("availability", 0));
 
+    invite(&a, &mut b, &group).await;
     a.engine.add_members(&group, &[b.user().to_owned()]).await.unwrap();
     let blobs = server.state_blobs(&group);
     let mine = blobs.iter().find(|b| b.kind == "availability").unwrap();
@@ -293,6 +302,8 @@ async fn three_devices_derive_the_same_state_after_a_kick_and_a_rejoin() {
     let mut b = device(&server, "b", 2).await;
     let mut c = device(&server, "c", 3).await;
     let group = a.engine.create_group(Some("셋")).await.unwrap();
+    invite(&a, &mut b, &group).await;
+    invite(&a, &mut c, &group).await;
     a.engine.add_members(&group, &[b.user().to_owned(), c.user().to_owned()]).await.unwrap();
     b.engine.sync().await.unwrap();
     c.engine.sync().await.unwrap();
@@ -369,6 +380,7 @@ async fn three_devices_derive_the_same_state_after_a_kick_and_a_rejoin() {
     assert!(!texts(&c, &group).contains(&"C 없이 한 말".to_owned()));
 
     // A adds C again and files a newcomer bundle with the live appointment's entries.
+    invite(&a, &mut c, &group).await;
     a.engine.add_members(&group, &[c.user().to_owned()]).await.unwrap();
     c.engine.sync().await.unwrap();
     assert!(c.engine.epoch(&group).unwrap().is_some());
@@ -453,6 +465,7 @@ async fn absorbs_a_newcomer_bundle_only_once_right_after_the_welcome() {
     let mut b = device(&server, "b", 2).await;
     let group = a.engine.create_group(Some("동네 친구")).await.unwrap();
     a.engine.send(&group, &appointment_request("appt-1"), Alert::All, Some("plan")).await.unwrap();
+    invite(&a, &mut b, &group).await;
     a.engine.add_members(&group, &[b.user().to_owned()]).await.unwrap();
     b.engine.sync().await.unwrap();
     assert!(b.engine.group_state(&group).unwrap().appointments.contains_key("appt-1"));
@@ -470,6 +483,7 @@ async fn ignores_a_newcomer_bundle_sealed_by_a_member_who_did_not_add_this_devic
     let mut c = device(&server, "c", 3).await;
     a.engine.send(&group, &appointment_request("appt-1"), Alert::All, Some("plan")).await.unwrap();
     b.engine.sync().await.unwrap();
+    invite(&a, &mut c, &group).await;
     a.engine.add_members(&group, &[c.user().to_owned()]).await.unwrap();
     b.engine.sync().await.unwrap();
 
@@ -487,6 +501,7 @@ async fn a_bundle_entry_placed_ahead_of_the_cursor_never_shadows_the_real_log_it
     let mut a = device(&server, "a", 1).await;
     let mut b = device(&server, "b", 2).await;
     let group = a.engine.create_group(Some("동네 친구")).await.unwrap();
+    invite(&a, &mut b, &group).await;
     a.engine.add_members(&group, &[b.user().to_owned()]).await.unwrap();
     let added_at = a.engine.store().cursor(&group).unwrap();
 
@@ -503,6 +518,7 @@ async fn lets_go_of_a_newcomer_bundle_that_does_not_decode_and_syncs_on() {
     let mut a = device(&server, "a", 1).await;
     let mut b = device(&server, "b", 2).await;
     let group = a.engine.create_group(Some("동네 친구")).await.unwrap();
+    invite(&a, &mut b, &group).await;
     a.engine.add_members(&group, &[b.user().to_owned()]).await.unwrap();
     put_raw_bundle(&a, &group, b"not cbor").await;
     b.engine.sync().await.unwrap();
@@ -563,4 +579,96 @@ async fn leaves_out_of_an_add_someone_the_server_will_not_list_and_keeps_sending
     a.engine.send(&group, &text("t1", "그 뒤의 말"), Alert::All, Some("chat")).await.unwrap();
     b.engine.sync().await.unwrap();
     assert_eq!(texts(&b, &group), vec!["그 뒤의 말"]);
+}
+
+#[tokio::test]
+async fn takes_no_welcome_of_a_group_this_person_did_not_ask_to_join() {
+    let server = server();
+    let mut a = device(&server, "a", 1).await;
+    let mut b = device(&server, "b", 2).await;
+    let group = a.engine.create_group(Some("모임")).await.unwrap();
+    // B is made pending without asking, and A's device adds it; the server files a Welcome for B.
+    server.invite(&group, b.user());
+    a.engine.add_members(&group, &[b.user().to_owned()]).await.unwrap();
+
+    b.engine.sync().await.unwrap();
+    assert!(b.engine.store().groups().unwrap().is_empty());
+    assert_eq!(b.engine.epoch(&group).unwrap(), None);
+}
+
+#[tokio::test]
+async fn joins_with_a_code_once_a_member_device_lets_it_in() {
+    let server = server();
+    let mut a = device(&server, "a", 1).await;
+    let mut b = device(&server, "b", 2).await;
+    let group = a.engine.create_group(Some("모임")).await.unwrap();
+    let code = a.engine.create_invite(&group).await.unwrap();
+
+    let preview = b.engine.invite_preview(&code.code.to_lowercase()).await.unwrap();
+    assert_eq!((preview.group_id.as_str(), preview.inviter_name.as_str()), (group.as_str(), "a"));
+    assert_eq!((preview.member_count, preview.full), (1, false));
+
+    let joined = b.engine.join_invite(&code.code).await.unwrap();
+    assert_eq!((joined.group_id.as_str(), joined.status.as_str()), (group.as_str(), "pending"));
+    b.engine.sync().await.unwrap();
+    assert!(b.engine.store().groups().unwrap().is_empty(), "pending until a member's device adds it");
+
+    // A's device hears `membership`, sees B pending and adds it (protocol §2); B takes the Welcome.
+    a.engine.sync().await.unwrap();
+    b.engine.sync().await.unwrap();
+    assert_eq!(b.engine.epoch(&group).unwrap(), a.engine.epoch(&group).unwrap());
+    let mut members = b.engine.roster(&group).unwrap().into_iter().map(|m| m.user_id).collect::<Vec<_>>();
+    members.sort();
+    let mut expected = vec![a.user().to_owned(), b.user().to_owned()];
+    expected.sort();
+    assert_eq!(members, expected);
+
+    // In the group already: the code changes nothing.
+    let again = b.engine.join_invite(&code.code).await.unwrap();
+    assert_eq!(again.status, "active");
+}
+
+#[tokio::test]
+async fn a_request_to_join_lapses_after_thirty_days() {
+    let server = server();
+    let mut a = device(&server, "a", 1).await;
+    let mut b = device(&server, "b", 2).await;
+    let group = a.engine.create_group(Some("모임")).await.unwrap();
+    invite(&a, &mut b, &group).await;
+    // The engines' clock reads 2026-11-01: a request from 31 days before has run out.
+    b.engine.store().accept_invite(&group, "2026-10-01T08:59:59.000Z").unwrap();
+    a.engine.add_members(&group, &[b.user().to_owned()]).await.unwrap();
+
+    b.engine.sync().await.unwrap();
+    assert!(b.engine.store().groups().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn refuses_a_code_that_is_malformed_unknown_or_past_its_days() {
+    let server = server();
+    let mut a = device(&server, "a", 1).await;
+    let mut b = device(&server, "b", 2).await;
+    let group = a.engine.create_group(Some("모임")).await.unwrap();
+    let code = a.engine.create_invite(&group).await.unwrap().code;
+    server.expire_invite(&code);
+
+    for bad in ["주말모임", "ZZZZZ-ZZZZZ", code.as_str()] {
+        match b.engine.join_invite(bad).await {
+            Err(SyncError::Api(e)) => assert!(e.is(404, "invite_invalid"), "{bad}: {e}"),
+            other => panic!("{bad}: {other:?}"),
+        }
+    }
+    assert!(server.state_blobs(&group).is_empty());
+}
+
+#[tokio::test]
+async fn cannot_look_up_the_devices_of_someone_the_group_did_not_invite() {
+    let server = server();
+    let mut a = device(&server, "a", 1).await;
+    let b = device(&server, "b", 2).await;
+    a.engine.create_group(Some("모임")).await.unwrap();
+    match a.engine.api().devices(b.user()).await {
+        Err(e) => assert!(e.is(404, "not_found"), "{e}"),
+        Ok(devices) => panic!("listed {devices:?}"),
+    }
 }

@@ -634,6 +634,7 @@ impl Db<'_> {
             "DELETE FROM outbox;
              DELETE FROM chat_fts;
              DELETE FROM groups;
+             DELETE FROM accepted_invites;
              DELETE FROM calendars WHERE kind = 'group';
              DELETE FROM people WHERE source = 'group';",
         )?;

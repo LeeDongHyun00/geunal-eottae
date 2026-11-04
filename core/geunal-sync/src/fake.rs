@@ -95,6 +95,19 @@ struct Member {
     status: String,
 }
 
+/// A `group_invites` row (protocol §15).
+struct Invite {
+    group_id: String,
+    created_by: String,
+    expires_at: DateTime<Utc>,
+    uses: u32,
+}
+
+/// Members and groups per person, the limits the API checks on joining (design m2 §2.1).
+const MAX_MEMBERS: usize = 20;
+const MAX_GROUPS: usize = 20;
+const INVITE_USES: u32 = 20;
+
 struct Group {
     kind: String,
     epoch: u64,
@@ -126,6 +139,7 @@ struct State {
     tickets: BTreeMap<String, Ticket>,
     nonces: std::collections::BTreeSet<String>,
     groups: BTreeMap<String, Group>,
+    invites: BTreeMap<String, Invite>,
     welcomes: BTreeMap<String, Vec<WelcomeItem>>,
     /// Realtime events the API would publish, per device id, as the gateway forwards them (protocol §7).
     events: BTreeMap<String, Vec<Value>>,
@@ -191,6 +205,25 @@ impl State {
             .iter()
             .find(|(_, u)| u.device.as_ref().is_some_and(|d| d.device_id == device_id))
             .map(|(id, _)| id.clone())
+    }
+
+    /// The invite behind a code while it can still be used; anything else is one 404 (protocol §15).
+    fn live_invite(&mut self, code: &str) -> Result<&mut Invite, ApiError> {
+        let now = self.now();
+        match self.invites.get_mut(code) {
+            Some(invite) if invite.expires_at > now && invite.uses < INVITE_USES => Ok(invite),
+            _ => Err(err(404, "invite_invalid")),
+        }
+    }
+
+    /// Whether `caller` may look up `user`'s devices: their own, or someone pending or active in a group the caller is
+    /// active in, which is whom an Add commit could name (the API's `GroupRepository.mayAdd`).
+    fn may_add(&self, caller: &str, user: &str) -> bool {
+        caller == user
+            || self.groups.values().any(|g| {
+                g.members.get(caller).is_some_and(|m| m.status == "active")
+                    && g.members.get(user).is_some_and(|m| m.status == "pending" || m.status == "active")
+            })
     }
 
     fn publish(&mut self, group_id: &str, except_user: Option<&str>, event: Value) {
@@ -448,6 +481,22 @@ impl FakeServer {
 
     /// The next call of `route` fails with a connection error before the server sees it. Routes: `me`, `replace`,
     /// `put_recovery`, `upload_key_packages`, `delete_account`, `post_alpha_stats`.
+    /// Makes `user_id` pending in the group the way `/auth/stub/invite` does: without that person asking to join.
+    pub fn invite(&self, group_id: &str, user_id: &str) {
+        let mut state = self.state.lock().expect("fake server");
+        let group = state.groups.get_mut(group_id).expect("a group this server made");
+        group.members.insert(user_id.to_owned(), Member { role: "member".into(), status: "pending".into() });
+        state.publish(group_id, None, json!({"t": "membership", "g": group_id}));
+    }
+
+    /// Moves an invite code past its seven days.
+    pub fn expire_invite(&self, code: &str) {
+        let mut state = self.state.lock().expect("fake server");
+        if let Some(invite) = state.invites.get_mut(code) {
+            invite.expires_at = DateTime::<Utc>::MIN_UTC;
+        }
+    }
+
     pub fn fail_next(&self, route: &'static str) {
         self.state.lock().expect("fake server").faults.insert(route, Fault::Fail);
     }
@@ -1085,9 +1134,12 @@ impl Transport for FakeClient {
     }
 
     async fn devices(&self, user_id: &str) -> Result<Vec<DeviceInfo>, ApiError> {
-        self.who()?;
+        let (caller, _) = self.who()?;
         let state = self.lock();
-        // The API answers 404 for an account the caller could not add; this fake only knows whether it exists.
+        // The API answers 404 alike for an unknown account and one the caller could not add.
+        if !state.may_add(&caller, user_id) {
+            return Err(err(404, "not_found"));
+        }
         let account = state.users.get(user_id).ok_or_else(|| err(404, "not_found"))?;
         Ok(Some(account)
             .and_then(|u| u.device.as_ref())
@@ -1101,8 +1153,12 @@ impl Transport for FakeClient {
     }
 
     async fn claim_key_package(&self, device_id: &str) -> Result<Vec<u8>, ApiError> {
-        self.who()?;
+        let (caller, _) = self.who()?;
         let mut state = self.lock();
+        let owner = state.user_of_device(device_id).ok_or_else(|| err(404, "not_found"))?;
+        if !state.may_add(&caller, &owner) {
+            return Err(err(404, "not_found"));
+        }
         let device = state
             .users
             .values_mut()
@@ -1212,6 +1268,76 @@ impl Transport for FakeClient {
         Ok(())
     }
 
+    async fn create_invite(&self, group_id: &str) -> Result<InviteCode, ApiError> {
+        let (user, _) = self.who()?;
+        let mut state = self.lock();
+        let now = state.now();
+        let group = Self::require_active(&mut state, group_id, &user)?;
+        if group.members.values().filter(|m| m.status != "removed").count() >= MAX_MEMBERS {
+            return Err(err(409, "group_full"));
+        }
+        state.counter += 1;
+        // Deterministic, but in the contract's alphabet and length so the core's own rules accept it.
+        let mut n = state.counter;
+        let code: String = (0..geunal_domain::invite::CODE_LEN)
+            .map(|_| {
+                let c = geunal_domain::invite::ALPHABET[(n % 32) as usize] as char;
+                n /= 32;
+                c
+            })
+            .collect();
+        let expires_at = now + Duration::days(7);
+        state
+            .invites
+            .insert(code.clone(), Invite { group_id: group_id.to_owned(), created_by: user, expires_at, uses: 0 });
+        Ok(InviteCode { code, expires_at: expires_at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true) })
+    }
+
+    async fn invite_preview(&self, code: &str) -> Result<InvitePreview, ApiError> {
+        self.who()?;
+        let mut state = self.lock();
+        let invite = state.live_invite(code)?;
+        let (group_id, created_by, expires_at) =
+            (invite.group_id.clone(), invite.created_by.clone(), invite.expires_at);
+        let group = state.groups.get(&group_id).ok_or_else(|| err(404, "invite_invalid"))?;
+        let member_count = group.members.values().filter(|m| m.status == "active").count() as u32;
+        let full = group.members.values().filter(|m| m.status != "removed").count() >= MAX_MEMBERS;
+        Ok(InvitePreview {
+            group_id,
+            inviter_name: state.users.get(&created_by).map(|u| u.display_name.clone()).unwrap_or_default(),
+            member_count,
+            expires_at: expires_at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            full,
+        })
+    }
+
+    async fn join_invite(&self, code: &str) -> Result<InviteJoined, ApiError> {
+        let (user, _) = self.who()?;
+        let mut state = self.lock();
+        let group_id = state.live_invite(code)?.group_id.clone();
+        let group = state.groups.get(&group_id).ok_or_else(|| err(404, "invite_invalid"))?;
+        if group.members.get(&user).is_some_and(|m| m.status == "active") {
+            return Ok(InviteJoined { group_id, status: "active".into() });
+        }
+        let mine = state
+            .groups
+            .iter()
+            .filter(|(id, g)| **id != group_id && g.members.get(&user).is_some_and(|m| m.status != "removed"))
+            .count();
+        if mine >= MAX_GROUPS {
+            return Err(err(409, "group_limit"));
+        }
+        let group = state.groups.get_mut(&group_id).expect("checked");
+        let seated = group.members.iter().filter(|(u, m)| m.status != "removed" && **u != user).count();
+        if seated >= MAX_MEMBERS {
+            return Err(err(409, "group_full"));
+        }
+        group.members.insert(user, Member { role: "member".into(), status: "pending".into() });
+        state.live_invite(code)?.uses += 1;
+        state.publish(&group_id, None, json!({"t": "membership", "g": group_id}));
+        Ok(InviteJoined { group_id, status: "pending".into() })
+    }
+
     async fn post_commit(&self, group_id: &str, req: CommitRequest) -> Result<CommitAccepted, ApiError> {
         let (user, _) = self.who()?;
         let mut state = self.lock();
@@ -1230,6 +1356,14 @@ impl Transport for FakeClient {
             state.epoch_conflicts += 1;
             return Err(err(409, "epoch_conflict"));
         }
+        // Only someone the group invited becomes a member (the API's `GroupRepository.activate`); checked before the
+        // commit is kept, as the API's transaction rolls it back.
+        if added_users
+            .iter()
+            .any(|(u, _)| !group.members.get(u).is_some_and(|m| m.status == "pending" || m.status == "active"))
+        {
+            return Err(err(403, "not_member"));
+        }
         let seq = group.next_seq;
         group.next_seq += 1;
         group.epoch += 1;
@@ -1243,11 +1377,8 @@ impl Transport for FakeClient {
             received_at: received_at.clone(),
         });
         for (added_user, _) in &added_users {
-            match group.members.get_mut(added_user) {
-                Some(m) => m.status = "active".into(),
-                None => {
-                    group.members.insert(added_user.clone(), Member { role: "member".into(), status: "active".into() });
-                }
+            if let Some(m) = group.members.get_mut(added_user) {
+                m.status = "active".into();
             }
         }
         let small = req.commit.len() <= 4096;

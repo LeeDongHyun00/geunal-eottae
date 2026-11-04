@@ -8,6 +8,7 @@
 
 pub mod account;
 pub mod calendar;
+pub mod invite;
 mod local;
 pub mod people;
 mod transport;
@@ -28,7 +29,7 @@ use geunal_store::{DB_FILE, Store};
 use geunal_sync::realtime::{Event, Realtime};
 use geunal_sync::{
     Alert, ApiError, Engine, HttpTransport, Listener, SESSION_EXPIRED, Session as SyncSession, SyncError,
-    Transport as _,
+    Transport as _, WelcomePolicy,
 };
 use rand_core::{OsRng, RngCore};
 use tokio::sync::Mutex;
@@ -499,7 +500,8 @@ impl Core {
         .await
     }
 
-    /// Adds members by user id (M0; invites come at M2). Their devices get a Welcome and join on their next `sync`.
+    /// Adds members by user id. Only someone pending in the group can be added (protocol §15), and their device joins
+    /// on its next `sync` if they asked to; members' devices also add pending people on their own at `sync`.
     pub async fn add_members(self: Arc<Self>, group_id: String, user_ids: Vec<String>) -> Result<(), CoreError> {
         let this = self.clone();
         self.run(async move {
@@ -941,12 +943,11 @@ fn view_of(state: &GroupState) -> GroupStateView {
     GroupStateView { appointments, digest: format!("{state:?}") }
 }
 
-/// Whether the engines fetch Welcomes and join the groups they name. Off in the apps: until members accept invitations
-/// (M2), a Welcome is no one's consent, and the Welcomes stay on the server for then. The end-to-end tests of the
-/// group flow turn it on.
+/// Whether the engines join every Welcome. Off in the apps, which join only the groups the person asked to join with
+/// an invite code (protocol §15). The end-to-end tests that make members pending with the stub invite turn it on.
 static JOIN_WELCOMES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Lets the engines built after this join groups from Welcomes, for the end-to-end tests of the group flow. Rust only:
+/// Lets the engines built after this join every Welcome, for the end-to-end tests that invite with the stub. Rust only:
 /// not part of the FFI.
 #[doc(hidden)]
 pub fn join_welcomes_for_tests() {
@@ -966,8 +967,12 @@ fn build_engine(
     let secret = signing_secret(secrets)?;
     let identity = Identity::new(session.user_id.clone(), session.device_id.clone());
     let mls = MlsClient::open(&db, db_key, identity, &secret)?;
-    let join = JOIN_WELCOMES.load(std::sync::atomic::Ordering::Relaxed);
-    Ok(Engine::new(store.clone(), mls, api, Arc::new(Forward(listener))).with_welcomes(join))
+    let welcomes = if JOIN_WELCOMES.load(std::sync::atomic::Ordering::Relaxed) {
+        WelcomePolicy::Any
+    } else {
+        WelcomePolicy::Accepted
+    };
+    Ok(Engine::new(store.clone(), mls, api, Arc::new(Forward(listener))).with_welcomes(welcomes))
 }
 
 /// The session the secret store keeps. Bytes that do not read as a session count as none, and the next sign-in writes
