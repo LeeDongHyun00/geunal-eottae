@@ -27,6 +27,8 @@ pub struct InviteText {
     pub name: Option<String>,
     /// One of the twelve `color.group.*` names.
     pub color: Option<String>,
+    /// The inviter's name as the link claims it; a signed-in app shows the preview's `inviter_name` instead.
+    pub inviter: Option<String>,
 }
 
 /// The server's preview for a code: never the members' names, as the holder is not a member yet.
@@ -58,15 +60,21 @@ pub struct InviteJoin {
 /// without asking the server.
 #[uniffi::export]
 pub fn parse_invite(text: String) -> Option<InviteText> {
-    let invite::Invite { code, name, color } = invite::parse_invite(&text)?;
-    Some(InviteText { display: invite::display_code(&code), code, name, color })
+    let invite::Invite { code, name, color, inviter } = invite::parse_invite(&text)?;
+    Some(InviteText { display: invite::display_code(&code), code, name, color, inviter })
 }
 
-/// The link to share: `https://{host}/i/{code}` with the group's name and colour in the fragment, which never reaches
-/// the server. `host` is the invite domain the apps' Universal Links and App Links answer.
+/// The link to share: `https://{host}/i/{code}` with the group's name and colour and the inviter's name in the
+/// fragment, which never reaches the server. `host` is the invite domain the apps' Universal Links and App Links answer.
 #[uniffi::export]
-pub fn invite_link(host: String, code: String, name: Option<String>, color: Option<String>) -> String {
-    invite::invite_link(&host, &code, name.as_deref(), color.as_deref())
+pub fn invite_link(
+    host: String,
+    code: String,
+    name: Option<String>,
+    color: Option<String>,
+    inviter: Option<String>,
+) -> String {
+    invite::invite_link(&host, &code, name.as_deref(), color.as_deref(), inviter.as_deref())
 }
 
 #[uniffi::export]

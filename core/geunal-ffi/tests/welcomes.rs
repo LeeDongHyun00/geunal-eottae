@@ -38,9 +38,16 @@ fn joins_a_group_through_a_shared_link() {
 
         // A shares a link; B opens it, sees the preview, and asks to join.
         let code = a.core.clone().create_invite(group.clone()).await.unwrap();
-        let link = invite_link("geunal.app".into(), code.code.clone(), Some("주말모임".into()), Some("mint".into()));
+        let link = invite_link(
+            "geunal.app".into(),
+            code.code.clone(),
+            Some("주말모임".into()),
+            Some("mint".into()),
+            Some("하린".into()),
+        );
         let opened = parse_invite(link).unwrap();
         assert_eq!((opened.display, opened.name.as_deref()), (code.display.clone(), Some("주말모임")));
+        assert_eq!(opened.inviter.as_deref(), Some("하린"));
         let preview = b.core.clone().invite_preview(opened.code.clone()).await.unwrap();
         assert_eq!((preview.inviter_name.as_str(), preview.member_count), ("하린", 1));
         let joined = b.core.clone().join_invite(opened.code).await.unwrap();
