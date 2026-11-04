@@ -1009,6 +1009,11 @@ impl<T: Transport> Engine<T> {
                                 "key package of {user_id} does not match its device"
                             )));
                         }
+                        // Left out like a missing package: one device's bad package must not hold up the others.
+                        if !group.accepts_key_package(&package) {
+                            self.notify(Change::Group { group_id: group_id.to_owned() });
+                            continue;
+                        }
                         packages.push(package);
                         // The server wants device ids here, and it marks their users active (openapi.yaml).
                         added.push(device.id.clone());

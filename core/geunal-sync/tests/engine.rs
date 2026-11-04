@@ -606,3 +606,21 @@ async fn an_add_whose_key_package_cannot_be_claimed_does_not_hold_up_the_group_q
     b.engine.sync().await.unwrap();
     assert!(texts(&b, &group).contains(&"C 없이도 가요".to_owned()));
 }
+
+#[tokio::test]
+async fn an_add_whose_key_package_mls_rejects_does_not_hold_up_the_group_queue() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    let c = device(&server, "c", 3).await;
+    let mut d = device(&server, "d", 4).await;
+    // C's packages no longer verify; D's are fine. Both are in one Add.
+    server.spoil_key_packages(c.user());
+    a.engine.add_members(&group, &[c.user().to_owned(), d.user().to_owned()]).await.unwrap();
+    assert!(a.engine.store().outbox(&group).unwrap().is_empty(), "the add left the queue");
+
+    d.engine.sync().await.unwrap();
+    assert_eq!(d.engine.epoch(&group).unwrap(), a.engine.epoch(&group).unwrap(), "D got in");
+    a.engine.send(&group, &text("t1", "다음 말도 가요"), Alert::All, Some("chat")).await.unwrap();
+    b.engine.sync().await.unwrap();
+    assert!(texts(&b, &group).contains(&"다음 말도 가요".to_owned()));
+}

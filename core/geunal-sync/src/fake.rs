@@ -422,6 +422,18 @@ impl FakeServer {
     }
 
     /// The key packages the account's active device has waiting on the server.
+    /// Flips the last byte of every unclaimed key package of the account's device: the signature no longer checks out.
+    pub fn spoil_key_packages(&self, user_id: &str) {
+        let mut state = self.state.lock().expect("fake server");
+        if let Some(device) = state.users.get_mut(user_id).and_then(|u| u.device.as_mut()) {
+            for package in &mut device.key_packages {
+                if let Some(last) = package.last_mut() {
+                    *last ^= 1;
+                }
+            }
+        }
+    }
+
     /// Leaves the account's device with `left` unclaimed key packages, as claims by other members would.
     pub fn use_key_packages(&self, user_id: &str, left: usize) {
         let mut state = self.state.lock().expect("fake server");
