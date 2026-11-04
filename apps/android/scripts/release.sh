@@ -24,6 +24,10 @@ done
 # Play's limit on versionCode.
 ((GEUNAL_BUILD_NUMBER <= 2100000000)) || fail "GEUNAL_BUILD_NUMBER is above Play's versionCode limit"
 [ -f "$GEUNAL_UPLOAD_KEYSTORE" ] || fail "GEUNAL_UPLOAD_KEYSTORE is not a file"
+# A testers' build talks to the server over TLS only; the core refuses anything else at run time, so a plain address
+# would only make a bundle that cannot sign in.
+[[ "$GEUNAL_API_BASE" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._/-]*)?$ ]] ||
+  fail "GEUNAL_API_BASE must be a plain https:// address"
 
 case "${GEUNAL_PLAY_UPLOAD:-false}" in
   true)
