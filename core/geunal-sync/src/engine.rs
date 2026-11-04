@@ -268,10 +268,12 @@ impl<T: Transport> Engine<T> {
     }
 
     /// Asks to join the group behind the code and remembers that this person did, so that its Welcome is taken when a
-    /// member's device adds this one (protocol §15). Someone already in the group changes nothing.
+    /// member's device adds this one (protocol §15). Someone already in the group on this device changes nothing.
     pub async fn join_invite(&mut self, code: &str) -> Result<InviteJoined, SyncError> {
         let joined = self.api.join_invite(&invite_code(code)?).await?;
-        if joined.status != "active" {
+        // `active` without the group here means a member added this device after an earlier answer was lost: its
+        // Welcome is still waiting and is this person's to take.
+        if joined.status != "active" || self.load_group(&joined.group_id)?.is_none() {
             self.store.accept_invite(&joined.group_id, &self.now_text())?;
         }
         Ok(joined)

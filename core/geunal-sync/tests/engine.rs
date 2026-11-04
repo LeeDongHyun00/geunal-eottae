@@ -699,3 +699,21 @@ async fn asking_again_with_the_same_code_stays_pending_and_a_revoked_code_lets_n
         other => panic!("{other:?}"),
     }
 }
+
+#[tokio::test]
+async fn takes_the_welcome_when_the_answer_to_joining_was_lost_and_a_member_added_this_device_meanwhile() {
+    let server = server();
+    let mut a = device(&server, "a", 1).await;
+    let mut b = device(&server, "b", 2).await;
+    let group = a.engine.create_group(Some("모임")).await.unwrap();
+    let code = a.engine.create_invite(&group).await.unwrap().code;
+    // The server made B pending, but B never heard so; A's device then added B.
+    server.lose_next("join_invite");
+    assert!(b.engine.join_invite(&code).await.is_err());
+    a.engine.sync().await.unwrap();
+
+    // B asks again: the server says active, and B's device takes the Welcome waiting for it.
+    assert_eq!(b.engine.join_invite(&code).await.unwrap().status, "active");
+    b.engine.sync().await.unwrap();
+    assert_eq!(b.engine.epoch(&group).unwrap(), a.engine.epoch(&group).unwrap());
+}

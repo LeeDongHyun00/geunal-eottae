@@ -1336,6 +1336,7 @@ impl Transport for FakeClient {
         group.members.insert(user, Member { role: "member".into(), status: "pending".into() });
         state.live_invite(code)?.uses += 1;
         state.publish(&group_id, None, json!({"t": "membership", "g": group_id}));
+        state.fault("join_invite", Fault::Lose)?;
         Ok(InviteJoined { group_id, status: "pending".into() })
     }
 
