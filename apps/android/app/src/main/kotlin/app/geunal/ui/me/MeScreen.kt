@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -139,6 +140,8 @@ fun MeScreen(
         // Signed out, the code and the backup key are gone or out of reach: the group stays in sight, dimmed and still
         // (m1.md screen 23 "뒤", decision 43).
         val secured = signedOut == null
+        // TalkBack says "사용 중지됨", so the rows that do not react say why they do not.
+        val dimmedSemantics = if (secured) Modifier else Modifier.semantics { disabled() }
         SettingsGroup(
             Modifier
                 .background(neutrals.background, RoundedCornerShape(Radius.card))
@@ -154,7 +157,7 @@ fun MeScreen(
                     },
                 valueColor = if (summary?.recoverySaved == false) neutrals.sunday else neutrals.secondaryText,
                 onClick = onRecoveryCode.takeIf { secured },
-                modifier = Modifier.testTag("me.recovery"),
+                modifier = Modifier.testTag("me.recovery").then(dimmedSemantics),
             )
             SettingsDivider()
             SettingsRow(
@@ -165,7 +168,7 @@ fun MeScreen(
                             ?: stringResource(R.string.me_backup_none)
                     },
                 onClick = onBackup.takeIf { secured },
-                modifier = Modifier.testTag("me.backup"),
+                modifier = Modifier.testTag("me.backup").then(dimmedSemantics),
             )
         }
         Text(
