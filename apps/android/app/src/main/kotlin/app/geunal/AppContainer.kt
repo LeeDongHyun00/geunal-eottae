@@ -1,6 +1,7 @@
 package app.geunal
 
 import android.content.Context
+import android.util.Log
 import android.view.accessibility.AccessibilityManager
 import app.geunal.bridge.AppStorage
 import app.geunal.bridge.ChangeListener
@@ -18,6 +19,7 @@ import app.geunal.feature.account.providers.SystemProviderSignIn
 import app.geunal.feature.account.support.BuildChannel
 import app.geunal.feature.account.support.DeviceAuth
 import app.geunal.feature.account.support.OnboardingState
+import app.geunal.feature.account.support.StepTiming
 import app.geunal.feature.account.support.SystemDeviceAuth
 
 /**
@@ -45,6 +47,12 @@ class AppContainer(
     val onboarding = OnboardingState(storage.onboardingDir)
     val permissions: SystemPermissions = DevicePermissions(context)
     val deviceAuth: DeviceAuth = SystemDeviceAuth(context)
+
+    /**
+     * Debug builds only: how long each sign-in step and the foreground sync take, in logcat under
+     * [StepTiming.LOG_TAG], for finding where a slow sign-in spends its time on a real phone.
+     */
+    val timing: StepTiming = if (BuildConfig.DEBUG) StepTiming(log = { Log.d(StepTiming.LOG_TAG, it) }) else StepTiming.OFF
     val providers: ProviderSignIn =
         SystemProviderSignIn(
             KakaoSignIn(BuildConfig.KAKAO_APP_KEY),

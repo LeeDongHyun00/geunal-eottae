@@ -65,6 +65,7 @@ fun RootScreen(
                 changes = container.changes.changes,
                 isOnline = container.connectivity.isOnline,
                 screenReaderRunning = container.screenReaderRunning,
+                timing = container.timing,
             )
         }
     val phase by model.phase.collectAsStateWithLifecycle()
@@ -202,6 +203,7 @@ private fun onboardingDependencies(
     state = container.onboarding,
     channel = container.channel,
     legal = container.legal,
+    timing = container.timing,
 )
 
 /** The tabs' place in the back stack, under the covers. */

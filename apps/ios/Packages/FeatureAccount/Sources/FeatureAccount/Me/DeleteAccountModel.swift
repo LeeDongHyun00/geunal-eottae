@@ -197,7 +197,7 @@ public final class DeleteAccountModel {
     /// core has finished as after a 204 (core #71).
     private func deleteOnce(_ proof: DeletionProof) async throws {
         do {
-            try await core.deleteAccount(proof: proof)
+            try await AccountTrace.measure("delete account core") { try await core.deleteAccount(proof: proof) }
         } catch let error as CoreError where error.isAccountDeleted {
             return
         } catch CoreError.Network(_) {

@@ -32,6 +32,7 @@ import app.geunal.feature.account.support.AccountNotice
 import app.geunal.feature.account.support.BuildChannel
 import app.geunal.feature.account.support.DeviceAuth
 import app.geunal.feature.account.support.OnboardingState
+import app.geunal.feature.account.support.StepTiming
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +59,8 @@ class OnboardingDependencies(
     val state: OnboardingState,
     val channel: BuildChannel,
     val legal: LegalLinks,
+    /** Debug builds time the sign-in steps into logcat; release builds measure nothing. */
+    val timing: StepTiming = StepTiming.OFF,
 )
 
 /** A screen of the first run (m1.md §2.1). */
@@ -122,7 +125,7 @@ class OnboardingViewModel(
 
     /** Set when an account came through over the tabs and the calendar comes back. */
     val finished: StateFlow<Boolean> = _finished.asStateFlow()
-    val signIn = SignInModel(dependencies.core, dependencies.providers, dependencies.state, notify)
+    val signIn = SignInModel(dependencies.core, dependencies.providers, dependencies.state, notify, timing = dependencies.timing)
     val permissions = PermissionsModel(dependencies.core, dependencies.permissions, dependencies.channel, notify)
 
     init {
@@ -183,6 +186,7 @@ class OnboardingViewModel(
                 notify = notify,
                 deviceAuth = dependencies.deviceAuth,
                 io = io,
+                timing = dependencies.timing,
             )
         val route = OnboardingRoute.Restore(mode, model, scope)
         backStack.add(route)
