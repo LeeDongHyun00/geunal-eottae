@@ -1,5 +1,5 @@
 //! The M1 account flows against the local stack (protocol §10, §13), through the same `Core` the apps call: a guest's
-//! recovery code goes up at sign-in, a backup goes to the object store through a presigned URL, a second phone comes
+//! recovery code is made at sign-in and goes up before the first backup, a backup goes to the object store through a presigned URL, a second phone comes
 //! back with the twelve words alone and signs the first out, and the account is deleted with the guest's own proof.
 //!
 //! A guest needs neither Kakao nor Apple nor the auth stub, so this runs against any M1 API.
@@ -29,14 +29,15 @@ fn a_guest_backs_up_comes_back_on_a_second_phone_with_the_code_and_deletes_the_a
     let (_a_dir, a) = phone();
     let account = NewAccount { display_name: "e2e 게스트".into(), age_confirmed_at: SystemTime::now() };
     let session = block_on(a.clone().sign_in_guest(account)).unwrap();
-    let status = a.recovery_status().unwrap();
-    assert!(status.created && status.uploaded, "the code went up at the sign-in: {status:?}");
+    // The code is there at once; its upload goes on in the background and a backup waits for it.
+    assert!(a.recovery_status().unwrap().created);
 
     let person =
         PersonInput { id: None, name: "엄마".into(), birthday: None, alert: AlertRule::Inherit, suggest: true };
     a.save_person(person).unwrap();
     let backup = block_on(a.clone().backup_now(None)).unwrap();
     assert_eq!(backup.people, Some(1), "{backup:?}");
+    assert!(a.recovery_status().unwrap().uploaded);
     let words = a.recovery_words().unwrap();
 
     // The second phone has nothing but the twelve words.

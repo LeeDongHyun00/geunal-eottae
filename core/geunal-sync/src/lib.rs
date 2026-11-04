@@ -36,4 +36,7 @@ pub enum SyncError {
     Malformed(String),
     #[error("realtime: {0}")]
     Realtime(String),
+    /// The entry encodes to more than `MAX_ENTRY_BYTES` (protocol §4): send it as media.
+    #[error("the entry is {0} bytes, over the entry limit")]
+    EntryTooLarge(usize),
 }

@@ -28,7 +28,7 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 | 로컬 알림 | 예약한 알림의 제목은 OS가 보관합니다. 로그아웃과 계정 삭제 때 예약과 이미 뜬 알림을 지움(iOS `removeAllPendingNotificationRequests`·`removeAllDeliveredNotifications`, 안드로이드 알람 취소와 `NotificationManager.cancelAll`). 잠긴 화면에서는 OS 설정을 따름([위협 모델](threat-model.md) 3.3): 안드로이드 알림은 `VISIBILITY_PRIVATE`와 일반 문구의 공개 버전(`setPublicVersion`)을 가짐 |
 | 앱 전환기 미리보기 | iOS는 앱이 뒤로 갈 때 화면을 저장합니다. 복구 코드 화면과 기기 바꾸기 입력 화면은 `scenePhase`가 `.active`가 아니면 가림 |
 | 연락처 | 이름과 생일만 읽음. iOS는 `CNContactFormatter`의 이름 키, `CNContactBirthdayKey`, `CNContactNonGregorianBirthdayKey`. 안드로이드는 `StructuredName`의 표시 이름과 `Event.TYPE_BIRTHDAY`이고 권한은 `READ_CONTACTS`뿐. 미리 고르지 않고 사람이 고른 연락처만 가져와 코어 저장소와 암호화 백업에만 둠. 앱이 따로 목록을 남기지 않음(설정, 캐시 파일). 권한 문구가 이 사실을 말함 |
-| 클립보드 | 복구 코드 복사는 iOS `UIPasteboard`에 `.localOnly`(다른 Apple 기기로 넘기지 않음)와 `.expirationDate`(60초). 안드로이드는 `ClipDescription.EXTRA_IS_SENSITIVE`(13 이상)를 붙이고, 60초 뒤와 화면을 떠날 때 지움. 지우기(`clearPrimaryClip`)는 앱이 뒤에 있어도 되지만, 클립을 읽는 것은 앞에 있을 때만 됨(안드로이드 10 이상). 그래서 앞에서는 이름표로 우리 클립인지 보고 지우고, 읽을 수 없으면 확인 없이 지움. 복사는 대개 다른 앱에 붙여넣으려는 것이라, 60초가 될 때 앱은 뒤에 있는 경우가 많음 |
+| 클립보드 | 복구 코드 복사는 iOS `UIPasteboard`에 `.localOnly`(다른 Apple 기기로 넘기지 않음)와 `.expirationDate`(60초). 안드로이드는 `ClipDescription.EXTRA_IS_SENSITIVE`(13 이상)를 붙이고, 60초 뒤와 화면을 떠날 때 지움. 지우기(`clearPrimaryClip`)는 앱이 뒤에 있어도 되지만, 클립을 읽는 것은 앞에 있을 때만 됨(안드로이드 10 이상). 그래서 앞에서는 이름표로 우리 클립인지 보고 지우고, 읽을 수 없으면 확인 없이 지움. 복사는 대개 다른 앱에 붙여넣으려는 것이라, 60초가 될 때 앱은 뒤에 있는 경우가 많음. 60초가 되기 전에 프로세스가 끝나면 타이머도 함께 사라짐. 그래서 다음 실행 때 창이 처음 포커스를 받으면(클립을 읽을 수 있는 때) 프로세스마다 한 번, 우리 이름표의 클립만 지움(#156). 읽을 수 없거나 다른 이름표면 둠(그사이 사람이 복사한 것). 이 검사는 그 프로세스의 어떤 복사보다 먼저라 방금 복사한 코드는 지우지 않음. 그래도 다음 실행까지는 남으므로(12 이하는 덮어쓸 때까지, 13 이상은 시스템이 1시간 뒤 지움), 복사할 때 1분 뒤 지우기를 WorkManager로 함께 예약함(안드로이드 6번 PR) |
 
 ## 3. 복구 코드 화면
 

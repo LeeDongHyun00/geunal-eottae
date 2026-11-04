@@ -101,6 +101,8 @@ pub struct Engine<T: Transport> {
     me: Identity,
     listener: Arc<dyn Listener>,
     clock: Box<dyn Fn() -> DateTime<Utc> + Send + Sync>,
+    /// Whether `sync` fetches Welcomes and joins the groups they name. Off, the Welcomes stay on the server untouched.
+    join_welcomes: bool,
 }
 
 /// The proof every sign-in carries: a fresh nonce from the server, signed with this device's key.
@@ -171,7 +173,14 @@ pub async fn sign_in<T: Transport>(
 impl<T: Transport> Engine<T> {
     pub fn new(store: Store, mls: MlsClient, api: T, listener: Arc<dyn Listener>) -> Self {
         let me = mls.identity().clone();
-        Self { store, mls, api, me, listener, clock: Box::new(Utc::now) }
+        Self { store, mls, api, me, listener, clock: Box::new(Utc::now), join_welcomes: true }
+    }
+
+    /// Whether Welcomes are fetched and their groups joined (on by default). The apps turn it off until a member
+    /// accepts an invitation, so that nobody is put into a group they did not agree to join.
+    pub fn with_welcomes(mut self, join: bool) -> Self {
+        self.join_welcomes = join;
+        self
     }
 
     /// Replaces the clock the engine stamps outbox rows and state keys with; tests pin it.
@@ -251,7 +260,12 @@ impl<T: Transport> Engine<T> {
         alert: Alert,
         cat: Option<&str>,
     ) -> Result<i64, SyncError> {
-        let payload = Outgoing::App { entry: entry::encode(entry), alert: alert.into(), cat: cat.map(str::to_owned) };
+        let bytes = entry::encode(entry);
+        // The server refuses a bigger entry for good (protocol §4), so it never enters the queue.
+        if bytes.len() > entry::MAX_ENTRY_BYTES {
+            return Err(SyncError::EntryTooLarge(bytes.len()));
+        }
+        let payload = Outgoing::App { entry: bytes, alert: alert.into(), cat: cat.map(str::to_owned) };
         Ok(self.store.enqueue(group_id, OutboxKind::App, &payload.encode(), &self.now_text())?)
     }
 
@@ -262,8 +276,13 @@ impl<T: Transport> Engine<T> {
         alert: Alert,
         cat: Option<&str>,
     ) -> Result<(), SyncError> {
-        self.enqueue_entry(group_id, entry, alert, cat)?;
-        self.flush_group(group_id).await
+        let id = self.enqueue_entry(group_id, entry, alert, cat)?;
+        let refused = self.flush_rows(group_id).await?;
+        // The caller hears the refusal of what it just sent; the row is already out of the queue.
+        match refused.into_iter().find(|(row, _)| *row == id) {
+            Some((_, e)) => Err(e.into()),
+            None => Ok(()),
+        }
     }
 
     /// Queues this member's availability blob for the group (sealed at send time with the epoch's key).
@@ -418,6 +437,9 @@ impl<T: Transport> Engine<T> {
     }
 
     async fn pull_welcomes(&mut self) -> Result<(), SyncError> {
+        if !self.join_welcomes {
+            return Ok(());
+        }
         for welcome in self.api.welcomes().await? {
             let (mut group, adder) = match self.mls.join_welcome_from(&welcome.data) {
                 Ok(joined) => joined,
@@ -823,16 +845,32 @@ impl<T: Transport> Engine<T> {
 
     // ----- outbox -----
 
+    /// Sends every group's waiting writes. One group's failure does not hold back the others; the first error comes
+    /// back after the rest were tried, unless it is about the whole session, which every group would hit again.
     pub async fn flush_outbox(&mut self) -> Result<(), SyncError> {
+        let mut first = None;
         for group_id in self.store.outbox_groups()? {
-            self.flush_group(&group_id).await?;
+            match self.flush_group(&group_id).await {
+                Ok(()) => {}
+                Err(e) if ends_flush(&e) => return Err(e),
+                Err(e) => {
+                    first.get_or_insert(e);
+                }
+            }
         }
-        Ok(())
+        first.map_or(Ok(()), Err)
     }
 
     /// Sends a group's waiting writes in order. A row that keeps failing stays at the head with its attempt count;
-    /// the caller's backoff decides when to try again.
+    /// the caller's backoff decides when to try again. A row the server refuses for good leaves the queue, so the rows
+    /// behind it still go out, and the app hears about the group.
     pub async fn flush_group(&mut self, group_id: &str) -> Result<(), SyncError> {
+        self.flush_rows(group_id).await.map(drop)
+    }
+
+    /// `flush_group`, answering which rows the server refused for good and why.
+    async fn flush_rows(&mut self, group_id: &str) -> Result<Vec<(i64, ApiError)>, SyncError> {
+        let mut refused = Vec::new();
         while let Some(row) = self.store.outbox_head(group_id)? {
             let mut done = false;
             for _ in 0..FLUSH_RETRIES {
@@ -842,19 +880,26 @@ impl<T: Transport> Engine<T> {
                         done = true;
                         break;
                     }
+                    SendOutcome::Refused(e) => {
+                        self.store.dequeue(row.id)?;
+                        self.notify(Change::Group { group_id: group_id.to_owned() });
+                        refused.push((row.id, e));
+                        done = true;
+                        break;
+                    }
                     SendOutcome::Retry => continue,
                     SendOutcome::Later => {
                         self.store.bump_attempts(row.id)?;
-                        return Ok(());
+                        return Ok(refused);
                     }
                 }
             }
             if !done {
                 self.store.bump_attempts(row.id)?;
-                return Ok(());
+                return Ok(refused);
             }
         }
-        Ok(())
+        Ok(refused)
     }
 
     async fn send_row(&mut self, group_id: &str, payload: &[u8]) -> Result<SendOutcome, SyncError> {
@@ -892,6 +937,7 @@ impl<T: Transport> Engine<T> {
                     }
                     Err(e) if e.is(403, "not_member") => Ok(SendOutcome::Dropped),
                     Err(e) if is_transient(&e) => Ok(SendOutcome::Later),
+                    Err(e) if is_refusal(&e) => Ok(SendOutcome::Refused(e)),
                     Err(e) => Err(e.into()),
                 }
             }
@@ -900,6 +946,7 @@ impl<T: Transport> Engine<T> {
                     Ok(()) => Ok(SendOutcome::Sent),
                     Err(SyncError::Api(e)) if e.is(409, "state_conflict") => Ok(SendOutcome::Retry),
                     Err(SyncError::Api(e)) if is_transient(&e) => Ok(SendOutcome::Later),
+                    Err(SyncError::Api(e)) if is_refusal(&e) => Ok(SendOutcome::Refused(e)),
                     Err(e) => Err(e),
                 }
             }
@@ -922,8 +969,17 @@ impl<T: Transport> Engine<T> {
                     if roster.iter().any(|m| m.identity.user_id == *user_id) {
                         continue;
                     }
-                    // Protocol §2: the key package must belong to a device the server lists for this user.
-                    let devices = self.api.devices(user_id).await?;
+                    // Protocol §2: the key package must belong to a device the server lists for this user. The server
+                    // lists only someone this member may add (invited, or a member's new device); anyone else is
+                    // left out of the intent, which a rebuild would not change.
+                    let devices = match self.api.devices(user_id).await {
+                        Ok(devices) => devices,
+                        Err(e) if e.is(404, "not_found") => {
+                            self.notify(Change::Group { group_id: group_id.to_owned() });
+                            continue;
+                        }
+                        Err(e) => return Err(e.into()),
+                    };
                     for device in devices {
                         let package = self.api.claim_key_package(&device.id).await?;
                         let info = MlsClient::inspect_key_package(&package)?;
@@ -987,6 +1043,9 @@ impl<T: Transport> Engine<T> {
                 group.clear_pending_commit();
                 Ok(SendOutcome::Later)
             }
+            // No refusal is final here: the intent is rebuilt from the roster and the devices listed at the next
+            // try, so an answer about the commit as built (a device replaced since its key package was claimed) is
+            // not one about the intent.
             Err(e) => {
                 group.clear_pending_commit();
                 Err(e.into())
@@ -997,9 +1056,36 @@ impl<T: Transport> Engine<T> {
 
 enum SendOutcome {
     Sent,
+    /// Nothing left to send: this device left the group, or the change is already in it.
     Dropped,
+    /// The server will never take this row (`is_refusal`).
+    Refused(ApiError),
     Retry,
     Later,
+}
+
+/// Answers that sending the same entry or state blob again cannot change (protocol §11): a malformed or oversized
+/// request, a group that is gone, or a member this device may not act on. Commit intents are not judged by it. Session and device answers (401, `device_revoked`,
+/// `replace_required`) and the 409s the engine resolves are not among them: they say nothing about the row.
+fn is_refusal(e: &ApiError) -> bool {
+    match e {
+        ApiError::Api { status: 400 | 404 | 413 | 422, .. } => true,
+        ApiError::Api { status: 403, code, .. } => matches!(code.as_str(), "not_member" | "not_owner" | "blocked"),
+        _ => false,
+    }
+}
+
+/// Errors every group's flush would hit again: no point trying the next group.
+fn ends_flush(e: &SyncError) -> bool {
+    match e {
+        SyncError::Api(e) => {
+            matches!(e, ApiError::Revoked { .. } | ApiError::Api { status: 401, .. })
+                || e.is(403, "device_revoked")
+                || e.is(403, "replace_required")
+        }
+        SyncError::NotSignedIn | SyncError::Store(_) => true,
+        _ => false,
+    }
 }
 
 /// Rate limits and network failures: keep the row and try later with backoff (protocol §11).

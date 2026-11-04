@@ -35,6 +35,7 @@ import app.geunal.designsystem.LocalNeutralColors
 import app.geunal.designsystem.components.ToastCenter
 import app.geunal.feature.account.onboarding.OnboardingDependencies
 import app.geunal.feature.account.onboarding.OnboardingFlow
+import app.geunal.feature.account.restore.KeepLocalSheet
 import app.geunal.feature.account.signedout.RevokedSheet
 import app.geunal.feature.calendar.alerts.DeviceNotificationAccess
 import app.geunal.feature.calendar.editor.EditorTarget
@@ -97,6 +98,11 @@ fun RootScreen(
                 val signingIn by model.signingIn.collectAsStateWithLifecycle()
                 val revocation by model.revocation.collectAsStateWithLifecycle()
                 val signedOut by model.signedOut.collectAsStateWithLifecycle()
+                model.localData?.let { question ->
+                    val asking by question.asking.collectAsStateWithLifecycle()
+                    val answering by question.isWorking.collectAsStateWithLifecycle()
+                    asking?.let { KeepLocalSheet(it, answering, model::answerLocalData) }
+                }
                 revocation?.let {
                     RevokedSheet(
                         revocation = it,

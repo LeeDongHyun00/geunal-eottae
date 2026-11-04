@@ -1,6 +1,8 @@
 package app.geunal.feature.account
 
+import app.geunal.core.Provider
 import app.geunal.feature.account.support.OnboardingState
+import app.geunal.feature.account.support.ProviderSignInRecord
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -33,6 +35,17 @@ class OnboardingStateTest {
         assertEquals(ticked, state.pendingGuestAgeConfirmedAt)
         state.pendingGuestAgeConfirmedAt = null
         assertNull(OnboardingState(dir).pendingGuestAgeConfirmedAt)
+    }
+
+    @Test
+    fun keepsTheLastProviderSignInUntilTheAccountIsForgotten() {
+        val dir = folder.newFolder("onboarding")
+        val signIn = ProviderSignInRecord(Provider.APPLE, Instant.parse("2026-11-04T09:00:00Z"))
+        OnboardingState(dir).lastProviderSignIn = signIn
+
+        assertEquals(signIn, OnboardingState(dir).lastProviderSignIn)
+        OnboardingState(dir).forgetAccount()
+        assertNull(OnboardingState(dir).lastProviderSignIn)
     }
 
     @Test

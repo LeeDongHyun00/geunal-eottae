@@ -6,6 +6,7 @@ import app.geunal.core.Core
 import app.geunal.core.CoreException
 import app.geunal.core.CoreInterface
 import app.geunal.core.InternalException
+import app.geunal.core.LocalData
 import app.geunal.core.NewAccount
 import app.geunal.core.NoHandle
 import app.geunal.core.Provider
@@ -294,6 +295,32 @@ class AppViewModelTest {
         }
 
     @Test
+    fun asksAboutAnotherAccountsEventsOnlyWhileTheSignInIsNotUp() =
+        runTest(dispatcher) {
+            onboarding.isFinished = true
+            val core = FakeCore()
+            core.currentSession = Session("u1", "d1")
+            core.otherAccount = LocalData(3u, 1u)
+            val viewModel = viewModel { core }
+            advanceUntilIdle()
+
+            viewModel.signInAgain()
+            viewModel.appBecameActive()
+            advanceUntilIdle()
+            assertNull("the sign-in over the tabs asks its own", viewModel.localData?.asking?.value)
+
+            viewModel.signInClosed()
+            viewModel.appBecameActive()
+            advanceUntilIdle()
+            assertEquals(LocalData(3u, 1u), viewModel.localData?.asking?.value)
+
+            // The session ends under the sheet: no answer could close it any more.
+            core.currentSession = null
+            viewModel.refreshAccount()
+            assertNull(viewModel.localData?.asking?.value)
+        }
+
+    @Test
     fun aDeviceThatNeverSignedInHasNothingEnded() =
         runTest(dispatcher) {
             onboarding.isFinished = true
@@ -363,6 +390,10 @@ class AppViewModelTest {
         override fun account(): AccountView? = currentAccount
 
         override fun revocation(): Revocation? = revoked
+
+        var otherAccount: LocalData? = null
+
+        override fun localDataOfOtherAccount(): LocalData? = otherAccount
 
         override suspend fun signInGuest(account: NewAccount): Session {
             guests++

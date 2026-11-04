@@ -9,6 +9,7 @@ use std::time::SystemTime;
 use geunal_crypto::recovery::{self, RecoveryKeys};
 use geunal_ffi::{
     AuthResult, Change, Core, CoreError, CoreListener, DeletionProof, NewAccount, SecretStore, SecretStoreError,
+    Session,
 };
 use geunal_sync::fake::FakeServer;
 
@@ -100,7 +101,17 @@ pub fn new_account(name: &str) -> NewAccount {
 pub async fn kakao(core: &Arc<Core>, subject: &str, name: &str) -> Result<AuthResult, CoreError> {
     let nonce = core.clone().sign_in_nonce().await?;
     let id_token = FakeServer::id_token("kakao", subject, &nonce.provider_nonce);
-    core.clone().sign_in_kakao(nonce.nonce, id_token, new_account(name)).await
+    let result = core.clone().sign_in_kakao(nonce.nonce, id_token, new_account(name)).await;
+    // The recovery upload goes on in the background; the tests look at the server after it.
+    core.recovery_upload_settled().await;
+    result
+}
+
+/// A guest sign-in, once its background recovery upload is done.
+pub async fn guest(core: &Arc<Core>, name: &str) -> Session {
+    let session = core.clone().sign_in_guest(new_account(name)).await.unwrap();
+    core.recovery_upload_settled().await;
+    session
 }
 
 /// A fresh Kakao proof for `delete_account`, as the app gets one from the Kakao SDK.

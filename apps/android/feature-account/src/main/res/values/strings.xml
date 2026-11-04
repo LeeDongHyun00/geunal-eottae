@@ -118,6 +118,12 @@
     <string name="wipe_warning">되돌릴 수 없어요. 지운 백업은 복구 코드를 나중에 찾아도 열 수 없어요.</string>
     <string name="wipe_confirm_counted">백업 %1$d개 지우고 새로 시작</string>
     <string name="wipe_confirm">백업 지우고 새로 시작</string>
+    <string name="wipe_confirm_kakao">카카오로 다시 확인하고 새로 시작</string>
+    <string name="wipe_confirm_apple">Apple로 다시 확인하고 새로 시작</string>
+    <string name="wipe_again_kakao">카카오로 다시 확인</string>
+    <string name="wipe_again_apple">Apple로 다시 확인</string>
+    <string name="wipe_other_account_kakao">이 계정에 연결된 카카오 계정으로 다시 확인해 주세요. 다른 계정으로는 새로 시작할 수 없어요.</string>
+    <string name="wipe_other_account_apple">이 계정에 연결된 Apple 계정으로 다시 확인해 주세요. 다른 계정으로는 새로 시작할 수 없어요.</string>
     <string name="wipe_keep">지우지 않을게요</string>
     <string name="wipe_last_at">%1$d월 %2$d일 %3$s</string>
     <string name="wipe_last_at_other_year">%1$d년 %2$d월 %3$d일 %4$s</string>
