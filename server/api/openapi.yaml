@@ -20,6 +20,9 @@
 #   ticket (protocol §13) is the bearer for GET /me/recovery, GET /me/backups and GET /me/backups/latest only.
 # - Sign-in limit: GET /auth/nonce and POST /auth/{kakao,apple,guest,recover,replace,stub} together, 30 an hour per
 #   client address (api-server.md §9); past it 429 rate_limited with Retry-After until the next clock hour.
+# - Per-minute limits (api-server.md §9), 429 rate_limited with Retry-After until the next clock minute: POST
+#   /groups/{id}/messages 60 per user and group, POST /groups/{id}/commits 30 per group, POST
+#   /devices/{id}/key-packages/claim 30 per user.
 openapi: 3.1.0
 info:
   title: geunal-eottae API
