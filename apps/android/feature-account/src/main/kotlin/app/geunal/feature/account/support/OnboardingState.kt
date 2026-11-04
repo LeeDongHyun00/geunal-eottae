@@ -1,5 +1,6 @@
 package app.geunal.feature.account.support
 
+import app.geunal.core.Provider
 import java.io.File
 import java.time.Instant
 import java.time.format.DateTimeParseException
@@ -22,6 +23,7 @@ class OnboardingState(
 ) {
     private val finishedFile get() = File(dir, "finished")
     private val pendingGuestFile get() = File(dir, "pending-guest-age-confirmed-at")
+    private val lastProviderSignInFile get() = File(dir, "last-provider-sign-in")
     private val revocationShownFile get() = File(dir, "revocation-shown-at")
     private val knownAccountFile get() = File(dir, "known-account")
     private val sessionEndedFile get() = File(dir, "session-ended")
@@ -41,6 +43,24 @@ class OnboardingState(
         get() = readInstant(pendingGuestFile)
         set(value) {
             if (value == null) pendingGuestFile.delete() else write(pendingGuestFile, value.toString())
+        }
+
+    /**
+     * This device's last Kakao or Apple sign-in: which provider and when. Starting fresh without the code needs the
+     * provider's proof once 30 minutes have passed (m1.md screen 21). Only the provider and the time are kept.
+     */
+    var lastProviderSignIn: ProviderSignInRecord?
+        get() =
+            lastProviderSignInFile.takeIf { it.exists() }?.readText()?.trim()?.split(' ')?.takeIf { it.size == 2 }?.let { (name, at) ->
+                val provider = Provider.entries.firstOrNull { it.name == name } ?: return@let null
+                try {
+                    ProviderSignInRecord(provider, Instant.parse(at))
+                } catch (e: DateTimeParseException) {
+                    null
+                }
+            }
+        set(value) {
+            if (value == null) lastProviderSignInFile.delete() else write(lastProviderSignInFile, "${value.provider.name} ${value.at}")
         }
 
     /**
@@ -76,6 +96,7 @@ class OnboardingState(
     fun reset() {
         isFinished = false
         pendingGuestAgeConfirmedAt = null
+        lastProviderSignIn = null
     }
 
     /** The account is gone: nothing of it is waited for or announced any more. */
@@ -84,6 +105,8 @@ class OnboardingState(
         knownAccount = null
         sessionEnded = false
         revocationShownAt = null
+        // The ended account's last sign-in decides nothing for the next one.
+        lastProviderSignIn = null
     }
 
     private fun readInstant(file: File): Instant? =
@@ -108,3 +131,9 @@ class OnboardingState(
         }
     }
 }
+
+/** A Kakao or Apple sign-in on this device. */
+data class ProviderSignInRecord(
+    val provider: Provider,
+    val at: Instant,
+)

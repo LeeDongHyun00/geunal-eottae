@@ -187,6 +187,8 @@ class OnboardingViewModel(
                 deviceAuth = dependencies.deviceAuth,
                 io = io,
                 timing = dependencies.timing,
+                providers = dependencies.providers,
+                lastSignIn = dependencies.state.lastProviderSignIn,
             )
         val route = OnboardingRoute.Restore(mode, model, scope)
         backStack.add(route)
