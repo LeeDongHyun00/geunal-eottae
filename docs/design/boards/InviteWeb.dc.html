@@ -70,8 +70,8 @@ class Component extends DCLogic {
     const stripOn = 'linear-gradient(to right, ' + steps.map((ch, i) => 'rgba(255,255,255,' + (0.15 + Number(ch) * 0.17).toFixed(2) + ') ' + ((i * 100) / 24).toFixed(3) + '% ' + (((i + 1) * 100) / 24).toFixed(3) + '%').join(', ') + ')';
     // Android carries the code through Install Referrer; iOS needs the link tapped again or the code pasted.
     return {
-      // The page never calls the server: only the group name and color come from the link fragment.
-      g, stripOn, headBg: g.s5, byLine: '초대받았어요',
+      // The page never calls the server: group name, color and inviter come from the link fragment.
+      g, stripOn, headBg: g.s5, byLine: '하린님이 초대했어요',
       step1: android ? 'Google Play에서 그날어때를 설치해요.' : 'App Store에서 그날어때를 설치해요.',
       step2: android ? '앱을 열면 이 초대가 그대로 이어져요.' : '설치한 뒤 이 링크를 다시 누르거나, 앱 첫 화면의 ‘초대 코드가 있어요’에 아래 코드를 붙여넣어요.',
       storeLabel: android ? 'Google Play에서 받기' : 'App Store에서 받기',
