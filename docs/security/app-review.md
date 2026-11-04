@@ -58,6 +58,7 @@ M1에서 새로 생기는 비밀은 복구 코드의 엔트로피 `E`와 AMK입�
 | --- | --- |
 | 남기지 않는 것 | 일정 제목·메모·시각, 사람 이름·생일, 12단어와 `E`, AMK·키·토큰·nonce·서명, 서버 응답 본문, 기기 캘린더 내용 |
 | 남겨도 되는 것 | 상태 코드(OSStatus, HTTP), 계약의 오류 코드(`error`), 개수, 걸린 시간, 화면 이름 |
+| 단계 측정 | 고정된 단계 이름과 숫자(걸린 시간, CPU, 메모리)만 남김. iOS는 `OSSignposter`에 `StaticString` 이름만 넘기고 메시지 인자를 넣지 않음(출시 빌드에도 남음). 안드로이드는 디버그 빌드에서만 logcat에 남기고, 실패는 예외의 클래스 이름만 남김(메시지에는 서버의 답이 실릴 수 있음) |
 | iOS | `Logger`(OSLog)만 씀. `print`, `NSLog`, `debugPrint`는 쓰지 않음. 문자열 보간에 `privacy: .public`을 붙이지 않음(기본이 비공개) |
 | 안드로이드 | `Log.v`·`Log.d`·`Log.i`는 릴리스에서 R8이 지우게 함(`-assumenosideeffects`). `Log.w`·`Log.e`에는 내용을 넣지 않음. `println`은 쓰지 않음 |
 | 예외 메시지 | 예외와 오류 메시지에 내용을 넣지 않음. 크래시 보고(Xcode Organizer, Play Console)로 Apple·Google 서버에 올라감 |
