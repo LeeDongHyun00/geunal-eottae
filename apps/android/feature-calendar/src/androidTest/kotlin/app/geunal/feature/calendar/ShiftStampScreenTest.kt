@@ -76,7 +76,7 @@ class ShiftStampScreenTest {
         compose.waitForTag("template.name")
         compose.onNodeWithTag("template.name").performTextInput("오픈")
         compose.onNodeWithTag("template.preview").assertTextContains("09:00–18:00 · 9시간", substring = true)
-        compose.screenshot("18-template-edit")
+        compose.screenshot("18-template-edit", sheet = true)
         compose.onNodeWithTag("template.save").performScrollTo().performClick()
 
         compose.waitForTag("shift.template.오픈")

@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 pub mod archive;
+mod chat;
 mod local;
 mod lock;
 mod repo;

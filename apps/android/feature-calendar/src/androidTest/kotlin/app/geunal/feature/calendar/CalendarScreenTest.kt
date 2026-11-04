@@ -152,7 +152,7 @@ class CalendarScreenTest {
 
         compose.onNodeWithTag("month.day.2026-10-30").performClick()
         compose.waitForTag("quickEntry.chip.1")
-        compose.screenshot("05-quick-entry")
+        compose.screenshot("05-quick-entry", sheet = true)
 
         compose.onNodeWithTag("quickEntry.chip.1").performClick()
         compose.waitForTag("proposal.accept")
@@ -216,12 +216,12 @@ class CalendarScreenTest {
         compose.waitForText("이날 일정 4개")
         compose.onNodeWithTag("quickEntry.event.2").assertExists()
         compose.onNodeWithTag("quickEntry.event.3").assertDoesNotExist()
-        compose.screenshot("05-quick-entry--day")
+        compose.screenshot("05-quick-entry--day", sheet = true)
 
         compose.onNodeWithTag("quickEntry.eventsToggle").performClick()
         compose.waitForTag("quickEntry.event.3")
         compose.waitForText("접기")
-        compose.screenshot("05-quick-entry--day-open")
+        compose.screenshot("05-quick-entry--day-open", sheet = true)
 
         // "+N" hid the fourth in the cell; here it is one tap from its editor.
         compose.onNodeWithTag("quickEntry.event.3").performClick()

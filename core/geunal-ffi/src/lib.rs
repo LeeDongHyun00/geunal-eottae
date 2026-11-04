@@ -8,6 +8,8 @@
 
 pub mod account;
 pub mod calendar;
+#[cfg(feature = "chat")]
+pub mod chat;
 mod local;
 pub mod people;
 mod transport;
@@ -321,14 +323,6 @@ pub struct GroupStateView {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct ChatMessage {
-    pub seq: i64,
-    pub author_id: String,
-    pub body: String,
-    pub received_at: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct MemberAvailability {
     pub user_id: String,
     pub window_start: String,
@@ -517,13 +511,6 @@ impl Core {
         .await
     }
 
-    pub async fn send_text(self: Arc<Self>, group_id: String, body: String) -> Result<String, CoreError> {
-        let id = uuid_v7();
-        let entry = Entry::Text { id: id.clone(), body, reply_to: None };
-        self.send(group_id, entry, Alert::All, Some("chat")).await?;
-        Ok(id)
-    }
-
     /// Requests a date (kickoff §5.4); the requester becomes the leader. Returns the appointment id.
     #[allow(clippy::too_many_arguments)]
     pub async fn request_date(
@@ -632,25 +619,6 @@ impl Core {
         let state = self.state.blocking_lock();
         let State::SignedIn(engine) = &*state else { return Err(CoreError::NotSignedIn) };
         Ok(view_of(&engine.group_state(&group_id)?))
-    }
-
-    /// Chat texts in log order.
-    pub fn messages(&self, group_id: String) -> Result<Vec<ChatMessage>, CoreError> {
-        let state = self.state.blocking_lock();
-        let State::SignedIn(engine) = &*state else { return Err(CoreError::NotSignedIn) };
-        Ok(engine
-            .log(&group_id)?
-            .into_iter()
-            .filter_map(|e| match e.entry {
-                Entry::Text { body, .. } => Some(ChatMessage {
-                    seq: e.seq,
-                    author_id: e.author_id,
-                    body,
-                    received_at: e.received_at.to_rfc3339(),
-                }),
-                _ => None,
-            })
-            .collect())
     }
 
     /// Members' availability as the group calendar sees it; a member without a readable blob is absent.

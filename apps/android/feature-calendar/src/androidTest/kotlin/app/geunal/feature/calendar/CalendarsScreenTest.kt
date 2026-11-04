@@ -78,7 +78,7 @@ class CalendarsScreenTest {
         compose.onNodeWithTag("calendarEdit.name").performImeAction()
         compose.onNodeWithTag("calendarEdit.color.grape").performScrollTo().performClick()
         compose.onNodeWithTag("calendarEdit.soft").performScrollTo().performClick()
-        compose.screenshot("16-calendar-edit")
+        compose.screenshot("16-calendar-edit", sheet = true)
         compose.onNodeWithTag("calendarEdit.save").performScrollTo().performClick()
 
         compose.waitForTag("calendars.row.c6")
