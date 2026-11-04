@@ -1,15 +1,19 @@
 package app.geunal.feature.account
 
 import app.geunal.core.CoreException
+import app.geunal.core.DeletionProof
 import app.geunal.core.LocalData
 import app.geunal.core.LocalDataChoice
+import app.geunal.core.Provider
 import app.geunal.feature.account.restore.RestoreMode
 import app.geunal.feature.account.restore.RestoreModel
 import app.geunal.feature.account.support.AccountNotice
 import app.geunal.feature.account.support.DeviceAuthPurpose
+import app.geunal.feature.account.support.ProviderSignInRecord
 import app.geunal.feature.account.testing.AccountFakeCore
 import app.geunal.feature.account.testing.CODE
 import app.geunal.feature.account.testing.FakeDeviceAuth
+import app.geunal.feature.account.testing.FakeProviders
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -34,7 +38,28 @@ class RestoreModelTest {
         mode: RestoreMode = RestoreMode.DEVICE_CHANGE,
         ageConfirmedAt: Instant? = null,
         io: CoroutineDispatcher = dispatcher,
-    ) = RestoreModel(mode, core, this, ageConfirmedAt, notify = { notices += it }, deviceAuth = deviceAuth, io = io)
+        lastSignIn: ProviderSignInRecord? = null,
+    ) = RestoreModel(
+        mode,
+        core,
+        this,
+        ageConfirmedAt,
+        notify = { notices += it },
+        deviceAuth = deviceAuth,
+        io = io,
+        providers = providers,
+        lastSignIn = lastSignIn,
+        now = { NOW },
+    )
+
+    private val providers = FakeProviders()
+
+    private suspend fun TestScope.confirming(model: RestoreModel): RestoreModel.NoCode.ConfirmingWipe {
+        model.openNoCode()
+        model.startOver()
+        advanceUntilIdle()
+        return model.state.value.noCode as RestoreModel.NoCode.ConfirmingWipe
+    }
 
     private fun TestScope.type(
         model: RestoreModel,
@@ -323,7 +348,8 @@ class RestoreModelTest {
     @Test
     fun startsFreshOnceTheOwnerPassesTheOsCheck() =
         runTest(dispatcher) {
-            val model = model(RestoreMode.OFFER)
+            // Within 30 minutes of the sign-in: no provider proof, only the OS check.
+            val model = model(RestoreMode.OFFER, lastSignIn = ProviderSignInRecord(Provider.KAKAO, NOW.minusSeconds(60)))
             model.openNoCode()
             model.startOver()
             advanceUntilIdle()
@@ -435,4 +461,91 @@ class RestoreModelTest {
             assertEquals(RestoreModel.Phase.AgeCheckNeeded, model.state.value.phase)
             assertEquals(listOf(AccountNotice.AGE_CHECK_NEEDED), notices)
         }
+
+    @Test
+    fun theOfferLongAfterTheSignInAsksTheProviderFirst() =
+        runTest(dispatcher) {
+            val model = model(RestoreMode.OFFER, lastSignIn = ProviderSignInRecord(Provider.KAKAO, NOW.minusSeconds(40 * 60)))
+            assertTrue(confirming(model).needsProof)
+
+            model.confirmWipe()
+            advanceUntilIdle()
+
+            assertEquals(listOf("p1"), providers.nonces)
+            assertTrue(core.calls.contains("startFresh ${DeletionProof.Kakao(nonce = "n1", idToken = "token")}"))
+            assertEquals(RestoreModel.Phase.StartedFresh, model.state.value.phase)
+        }
+
+    @Test
+    fun withinTheWindowNoProofAndALateRefusalTurnsTheButton() =
+        runTest(dispatcher) {
+            core.startFreshResult = Result.failure(CoreException.ReauthRequired())
+            val model = model(RestoreMode.OFFER, lastSignIn = ProviderSignInRecord(Provider.APPLE, NOW.minusSeconds(5 * 60)))
+            assertFalse(confirming(model).needsProof)
+
+            model.confirmWipe()
+            advanceUntilIdle()
+
+            val wipe = model.state.value.noCode as RestoreModel.NoCode.ConfirmingWipe
+            assertTrue("the 30 minutes ran out meanwhile", wipe.needsProof)
+            assertFalse("nothing to warn about: no proof was sent", wipe.otherAccount)
+            assertTrue(providers.nonces.isEmpty())
+
+            core.startFreshResult = Result.success(app.geunal.core.Session("u1", "d2"))
+            providers.result =
+                Result.success(
+                    app.geunal.feature.account.providers
+                        .ProviderCredential(idToken = "t", authorizationCode = "code"),
+                )
+            model.confirmWipe()
+            advanceUntilIdle()
+
+            assertEquals("the OS asked once on this confirmation", 1, deviceAuth.asked.size)
+            assertTrue(core.calls.contains("startFresh ${DeletionProof.Apple(authorizationCode = "code")}"))
+        }
+
+    @Test
+    fun anotherProvidersAccountDeletesNothingAndSaysSo() =
+        runTest(dispatcher) {
+            core.startFreshResult = Result.failure(CoreException.ReauthRequired())
+            val model = model(RestoreMode.OFFER)
+            confirming(model)
+
+            model.confirmWipe()
+            advanceUntilIdle()
+
+            assertTrue((model.state.value.noCode as RestoreModel.NoCode.ConfirmingWipe).otherAccount)
+            assertEquals(RestoreModel.Phase.Entering, model.state.value.phase)
+        }
+
+    @Test
+    fun aCancelledProviderSignInKeepsTheConfirmation() =
+        runTest(dispatcher) {
+            providers.result =
+                Result.failure(
+                    app.geunal.feature.account.providers.ProviderSignInException
+                        .Cancelled(),
+                )
+            val model = model(RestoreMode.OFFER)
+            confirming(model)
+
+            model.confirmWipe()
+            advanceUntilIdle()
+
+            assertTrue(model.state.value.noCode is RestoreModel.NoCode.ConfirmingWipe)
+            assertFalse(core.calls.any { it.startsWith("startFresh") })
+            assertTrue(notices.isEmpty())
+        }
+
+    @Test
+    fun theDeviceChangeNeverNeedsTheProof() =
+        runTest(dispatcher) {
+            val model = model(RestoreMode.DEVICE_CHANGE)
+
+            assertFalse(confirming(model).needsProof)
+        }
+
+    private companion object {
+        val NOW: Instant = Instant.parse("2026-11-04T09:00:00Z")
+    }
 }

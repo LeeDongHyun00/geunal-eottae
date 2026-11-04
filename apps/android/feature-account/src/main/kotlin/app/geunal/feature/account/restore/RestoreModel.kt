@@ -7,12 +7,17 @@ import app.geunal.core.InternalException
 import app.geunal.core.LocalData
 import app.geunal.core.LocalDataChoice
 import app.geunal.core.ProgressListener
+import app.geunal.core.Provider
 import app.geunal.core.RecoveryCodeCheck
 import app.geunal.core.RestoreSummary
 import app.geunal.feature.account.onboarding.SignInModel
+import app.geunal.feature.account.providers.ProviderProof
+import app.geunal.feature.account.providers.ProviderSignIn
+import app.geunal.feature.account.providers.ProviderSignInException
 import app.geunal.feature.account.support.AccountNotice
 import app.geunal.feature.account.support.DeviceAuth
 import app.geunal.feature.account.support.DeviceAuthPurpose
+import app.geunal.feature.account.support.ProviderSignInRecord
 import app.geunal.feature.account.support.StepTiming
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +29,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Duration
 import java.time.Instant
 
 /** The three ways a device reaches the recovery code (m1.md screen 21). */
@@ -52,6 +58,11 @@ class RestoreModel(
     private val deviceAuth: DeviceAuth,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val timing: StepTiming = StepTiming.OFF,
+    /** For the provider's proof that starting fresh may need; without it that start fails with nothing deleted. */
+    private val providers: ProviderSignIn? = null,
+    /** This device's last Kakao or Apple sign-in, which decides whether starting fresh on the offer needs a proof. */
+    lastSignIn: ProviderSignInRecord? = null,
+    now: () -> Instant = Instant::now,
 ) {
     sealed interface Problem {
         /** The word in this cell (0-based) is not one of the 2048. Judged on the device. */
@@ -115,6 +126,13 @@ class RestoreModel(
             val backups: Int?,
             val lastAt: Instant?,
             val screenLockMissing: Boolean = false,
+            /**
+             * The red button goes through the provider's sign-in first ("카카오로 다시 확인하고 새로 시작"): the offer more
+             * than 30 minutes after the last Kakao or Apple sign-in, or once the server said so (m1.md screen 21).
+             */
+            val needsProof: Boolean = false,
+            /** 403 `reauth_required` after a proof: another Kakao or Apple account signed in. Nothing was deleted. */
+            val otherAccount: Boolean = false,
         ) : NoCode
     }
 
@@ -252,17 +270,40 @@ class RestoreModel(
         scope.launch { restore(choice) }
     }
 
+    /** The provider of the proof: the one this device last signed in with, else one the account is linked to. */
+    val proofProvider: Provider by lazy {
+        lastSignIn?.provider ?: ProviderProof.providerOf(
+            try {
+                core.account()?.providers.orEmpty()
+            } catch (e: CoreException) {
+                emptyList()
+            },
+        ) ?: Provider.KAKAO
+    }
+
+    /**
+     * A replacement ticket lasts the same 30 minutes, so the device change never needs the proof; the offer needs it
+     * once 30 minutes have passed since the last sign-in, or when this device does not know when that was.
+     */
+    private var needsProof: Boolean =
+        mode == RestoreMode.OFFER && (lastSignIn?.let { Duration.between(it.at, now()) >= PROOF_WINDOW } ?: true)
+
+    /** The confirmation asks the OS once while it is up; "카카오로 다시 확인" does not ask again (decision 26). */
+    private var ownerConfirmed = false
+
     fun openNoCode() {
         _state.update { it.copy(noCode = NoCode.Explaining) }
     }
 
     fun closeNoCode() {
         if (_state.value.isWorking) return
+        ownerConfirmed = false
         _state.update { it.copy(noCode = null) }
     }
 
     /** "지우지 않을게요": back from the confirmation to the explanation. */
     fun keepBackups() {
+        ownerConfirmed = false
         _state.update { it.copy(noCode = NoCode.Explaining) }
     }
 
@@ -290,6 +331,7 @@ class RestoreModel(
                                     backups = backups?.size,
                                     lastAt = backups?.maxOfOrNull { backup -> backup.createdAt },
                                     screenLockMissing = !deviceAuth.isDeviceSecure(),
+                                    needsProof = needsProof,
                                 ),
                             isWorking = false,
                         )
@@ -309,12 +351,37 @@ class RestoreModel(
         if (current.noCode !is NoCode.ConfirmingWipe || current.isWorking) return
         _state.update { it.copy(isWorking = true) }
         scope.launch {
+            var sentProof = false
             try {
-                if (!deviceAuth.confirm(DeviceAuthPurpose.WIPE_BACKUPS)) return@launch
-                // Without a proof: within 30 minutes of the provider sign-in the server needs none. A later start of the
-                // offer gets `ReauthRequired`, and the provider check it asks for comes with account deletion's.
-                timing.measure("restore", "startFresh") { core.startFresh(null) }
+                if (!ownerConfirmed) {
+                    if (!deviceAuth.confirm(DeviceAuthPurpose.WIPE_BACKUPS)) return@launch
+                    ownerConfirmed = true
+                }
+                updateWipe { it.copy(otherAccount = false) }
+                // Within 30 minutes of the provider sign-in the server needs no proof; later it is a fresh sign-in with
+                // the account's provider, as for deleting the account. Signing in this way changes nothing on the device.
+                val proof =
+                    if (needsProof) {
+                        val providers = providers ?: throw ProviderSignInException.Unavailable("providers")
+                        ProviderProof.make(proofProvider, core, providers).also { sentProof = true }
+                    } else {
+                        null
+                    }
+                timing.measure("restore", "startFresh") { core.startFresh(proof) }
                 _state.update { it.copy(phase = Phase.StartedFresh, noCode = null) }
+            } catch (e: ProviderSignInException.Cancelled) {
+                // The provider's screen closed: nothing was deleted, and the confirmation stays as it was.
+            } catch (e: CoreException.ReauthRequired) {
+                // With a proof: another Kakao or Apple account's. Without one: the 30 minutes ran out meanwhile, so the
+                // button only turns into the provider check (m1.md screen 21). Nothing was deleted either way.
+                if (sentProof) {
+                    updateWipe { it.copy(otherAccount = true) }
+                } else {
+                    needsProof = true
+                    updateWipe { it.copy(needsProof = true) }
+                }
+            } catch (e: ProviderSignInException) {
+                notify(AccountNotice.SOMETHING_FAILED)
             } catch (e: CoreException.Network) {
                 _state.update { it.copy(problem = Problem.Offline, noCode = null) }
             } catch (e: CoreException.SignInAgain) {
@@ -327,6 +394,10 @@ class RestoreModel(
                 _state.update { it.copy(isWorking = false) }
             }
         }
+    }
+
+    private fun updateWipe(change: (NoCode.ConfirmingWipe) -> NoCode.ConfirmingWipe) {
+        _state.update { state -> (state.noCode as? NoCode.ConfirmingWipe)?.let { state.copy(noCode = change(it)) } ?: state }
     }
 
     private fun newGuest() {
@@ -477,6 +548,9 @@ class RestoreModel(
 
     companion object {
         const val WORD_COUNT = 12
+
+        /** How long after a Kakao or Apple sign-in starting fresh goes without the provider's proof (protocol §10). */
+        val PROOF_WINDOW: Duration = Duration.ofMinutes(30)
     }
 }
 

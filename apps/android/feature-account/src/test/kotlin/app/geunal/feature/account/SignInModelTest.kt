@@ -11,6 +11,7 @@ import app.geunal.feature.account.providers.ProviderSignInException
 import app.geunal.feature.account.restore.RestoreMode
 import app.geunal.feature.account.support.AccountNotice
 import app.geunal.feature.account.support.OnboardingState
+import app.geunal.feature.account.support.ProviderSignInRecord
 import app.geunal.feature.account.testing.AccountFakeCore
 import app.geunal.feature.account.testing.FakeProviders
 import kotlinx.coroutines.test.runTest
@@ -66,6 +67,8 @@ class SignInModelTest {
             assertEquals("하린", core.lastAccount?.displayName)
             assertEquals(ticked, core.lastAccount?.ageConfirmedAt)
             assertNull(model.state.value.busy)
+            // Starting fresh without the code later needs a proof once 30 minutes have passed since this.
+            assertEquals(ProviderSignInRecord(Provider.KAKAO, ticked), onboarding.lastProviderSignIn)
         }
 
     @Test
