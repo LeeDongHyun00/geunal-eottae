@@ -202,12 +202,14 @@ const CODES: &[&str] = &[
     "",
 ];
 
-const LINKS: &[(&str, Option<&str>, Option<&str>)] = &[
-    ("GN7KQ4XZM2", None, None),
-    ("GN7KQ4XZM2", Some("주말모임"), Some("mint")),
-    ("GN7KQ4XZM2", Some("A&B=C #1"), None),
-    ("GN7KQ4XZM2", None, Some("neon")),
-    ("GN7KQ4XZM2", Some("가나다라마바사아자차카타파하가나다라마바사"), Some("cocoa")),
+type Link = (&'static str, Option<&'static str>, Option<&'static str>, Option<&'static str>);
+
+const LINKS: &[Link] = &[
+    ("GN7KQ4XZM2", None, None, None),
+    ("GN7KQ4XZM2", Some("주말모임"), Some("mint"), Some("하린")),
+    ("GN7KQ4XZM2", Some("A&B=C #1"), None, None),
+    ("GN7KQ4XZM2", None, Some("neon"), Some("<b>하린</b>")),
+    ("GN7KQ4XZM2", Some("가나다라마바사아자차카타파하가나다라마바사"), Some("cocoa"), None),
 ];
 
 const PASTES: &[&str] = &[
@@ -216,12 +218,13 @@ const PASTES: &[&str] = &[
     "https://geunal.app/i/gn7kq4xzm2?utm=kakao#n=%EC%A3%BC%EB%A7%90&c=sky",
     "하린님이 초대했어요\nhttps://geunal.app/i/GN7KQ4XZM2#n=%EC%A3%BC%EB%A7%90 참여하기",
     "https://geunal.app/i/GN7KQ4XZM2#n=%FF%&c=neon",
+    "https://geunal.app/i/GN7KQ4XZM2#n=%EC%A3%BC%EB%A7%90&c=mint&i=%ED%95%98%EB%A6%B0",
     "https://geunal.app/i/GN7KQ4XZM",
     "주말모임 들어와",
 ];
 
 fn invite_json(invite: Option<Invite>) -> Value {
-    invite.map_or(Value::Null, |i| json!({ "code": i.code, "name": i.name, "color": i.color }))
+    invite.map_or(Value::Null, |i| json!({ "code": i.code, "name": i.name, "color": i.color, "inviter": i.inviter }))
 }
 
 fn invites_document() -> Value {
@@ -229,9 +232,9 @@ fn invites_document() -> Value {
         CODES.iter().map(|input| json!({ "input": input, "code": normalize_code(input) })).collect();
     let links: Vec<Value> = LINKS
         .iter()
-        .map(|(code, name, color)| {
-            json!({ "host": "geunal.app", "code": code, "name": name, "color": color,
-                    "link": invite_link("geunal.app", code, *name, *color) })
+        .map(|(code, name, color, inviter)| {
+            json!({ "host": "geunal.app", "code": code, "name": name, "color": color, "inviter": inviter,
+                    "link": invite_link("geunal.app", code, *name, *color, *inviter) })
         })
         .collect();
     let pastes: Vec<Value> =
