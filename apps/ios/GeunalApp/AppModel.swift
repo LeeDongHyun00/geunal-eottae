@@ -251,7 +251,9 @@ final class AppModel {
             // not when the app is next opened.
             await refreshAccount(inBackground: true)
         }
-        if !Task.isCancelled {
+        // A revocation whose sheet nobody has seen keeps them gone: the calendar stays and the phase is still the tabs,
+        // so refilling here would bring the titles straight back. Once the app is opened, it refills as before.
+        if !Task.isCancelled, revocation == nil {
             await alerts?.refresh()
             writeWidgetSnapshot()
             await widgetWrite?.value
