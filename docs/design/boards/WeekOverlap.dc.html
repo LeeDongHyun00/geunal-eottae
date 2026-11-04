@@ -67,9 +67,9 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 </sc-for>
 <sc-for list="{{cards}}" as="e" hint-placeholder-count="10">
 <div style="position: absolute; left: {{e.x}}px; top: {{e.y}}px; width: {{e.w}}px; height: {{e.h}}px">
-<a href="Editor.dc.html" aria-label="{{e.label}}" style="position: absolute; inset: 0; box-sizing: border-box; padding: {{e.pad}}; border-radius: 6px; background: {{e.bg}}; box-shadow: {{e.edge}}; color: {{e.fg}}; overflow: hidden; display: flex; flex-direction: {{e.dir}}; gap: 1px; writing-mode: {{e.wm}}">
+<a href="Editor.dc.html" aria-label="{{e.label}}" style="position: absolute; inset: 0; box-sizing: border-box; padding: {{e.pad}}; border-radius: 6px; background: {{e.bg}}; box-shadow: {{e.edge}}; color: {{e.fg}}; overflow: hidden; display: flex; flex-direction: {{e.dir}}; gap: {{e.gap}}px; writing-mode: {{e.wm}}">
 <span style="font-size: {{e.tf}}px; font-weight: 600; line-height: {{e.lh}}px; letter-spacing: -0.03em; overflow-wrap: normal">{{e.t}}</span>
-<span style="font-size: 11px; line-height: 13px; font-variant-numeric: tabular-nums; opacity: 0.85">{{e.time}}</span>
+<span style="font-size: {{e.mf}}px; line-height: {{e.mlh}}px; font-variant-numeric: tabular-nums; opacity: 0.85">{{e.time}}</span>
 </a>
 <sc-for list="{{e.ribbons}}" as="r" hint-placeholder-count="0">
 <button type="button" onClick="{{e.open}}" tabindex="-1" aria-hidden="true" style="position: absolute; right: {{r.right}}px; top: {{r.top}}px; width: 4px; height: {{r.h}}px; padding: 0; border: none; border-radius: 2px; background: {{r.c}}; cursor: pointer"></button>
@@ -214,9 +214,11 @@ class Component extends DCLogic {
               y: (e.s - H0) * PX + 1, h: (e.e - e.s) * PX - 2,
               bg: e.bg, fg: e.fg, t: showText ? e.t : '',
               time: wide ? hm(e.s) + '–' + hm(e.e) : (!narrow && e.e - e.s >= 2 ? hm(e.s) : ''),
-              tf: wide ? 13 : narrow ? 10 : 11, lh: wide ? 16 : narrow ? 11 : 13,
+              // A one-hour card in the focused day is 32 high: 3 + 14 + 12 + 3 keeps both lines in it.
+              tf: wide ? 12 : narrow ? 10 : 11, lh: wide ? 14 : narrow ? 11 : 13,
+              mf: wide && e.e - e.s <= 1 ? 10 : 11, mlh: wide && e.e - e.s <= 1 ? 12 : 13, gap: wide ? 0 : 1,
               wm: narrow ? 'vertical-rl' : 'horizontal-tb', dir: 'column',
-              pad: narrow ? '4px 2px' : wide ? '5px 7px' : '3px 4px',
+              pad: narrow ? '4px 2px' : wide ? '3px 7px' : '3px 4px',
               edge: wide ? 'inset 3px 0 0 ' + e.c : 'none',
               label: dayName(d) + ' ' + spoken(e),
               ribbons: [], hasMore: false,
@@ -235,7 +237,7 @@ class Component extends DCLogic {
           x: (x0 + 1.5).toFixed(1), w: (w - 3).toFixed(1), y, h,
           // The time shows only when the card is tall enough to keep it clear of "+n"; the focus shows it in full.
           bg: rep.bg, fg: rep.fg, t: rep.t, time: span >= 3 ? hm(rep.s) : '',
-          tf: 11, lh: 13, wm: 'horizontal-tb', dir: 'column',
+          tf: 11, lh: 13, mf: 11, mlh: 13, gap: 1, wm: 'horizontal-tb', dir: 'column',
           pad: '3px ' + (3 + n * 6) + 'px 3px 4px', edge: 'none',
           label: dayName(d) + ' ' + spoken(rep) + ', 겹치는 일정 ' + others.length + '개 더',
           ribbons: others.map((e, i) => ({
