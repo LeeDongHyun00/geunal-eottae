@@ -25,7 +25,7 @@ Supabase 같은 BaaS는 쓰지 않고, 클라우드의 기본 구성 요소(네�
 | 컨테이너 실행 | API 2대 이상, 게이트웨이 2대 이상(운영 3대), 롤링 배포 | VM에서 Docker. NCP에는 관리형 컨테이너 실행 서비스가 없고, 쿠버네티스(NKS)는 서버 종류가 늘 때 검토 |
 | 로드 밸런서 | HTTPS, WebSocket, 유휴 제한 120초 이상. 도메인 `api.`, `rt.`, 초대 링크 | API는 Application LB, 게이트웨이는 Network Proxy LB(유휴 시간 1~3600초) |
 | 비밀값 | 관리형 비밀 저장소(10장) | Secret Manager |
-| 초대 링크 도메인 | `/.well-known/apple-app-site-association`과 `/.well-known/assetlinks.json`을 API가 제공. `assetlinks.json`은 M1부터 필요함(안드로이드 Apple 웹 로그인이 App Link `/auth/apple`로 돌아옴). `/i/<code>`는 앱이 없으면 스토어로 보냄 | Global DNS, Certificate Manager(무료 인증서) |
+| 초대 링크 도메인 | `geunaleottae.com`의 정적 사이트: `/.well-known/apple-app-site-association`, `/.well-known/assetlinks.json`, 앱이 없을 때 보이는 `/i/<code>` 초대 웹 페이지([디자인 M2](../design/m2.md) 21번), 공개 사이트(처리방침, 약관, 삭제 안내). API 호스트의 `assetlinks.json`(M1부터, 안드로이드 Apple 웹 로그인이 App Link `/auth/apple`로 돌아옴)은 API가 계속 제공 | Cloudflare Pages(무료). DNS는 Cloudflare |
 | 구성 코드 | Terraform. 콘솔에서 손으로 만들지 않음. PR에서 `terraform plan` 결과를 검토하고 머지한 뒤 적용. 상태 파일은 잠금이 되는 원격 저장소에 | 공식 제공자 `NaverCloudPlatform/ncloud`. 상태는 Object Storage 버킷 `geunal-tfstate`에 `s3` 백엔드와 잠금 파일로 둠. 이 버킷만 첫 적용 전에 손으로 만듦([infra/terraform](../../infra/terraform/README.md)) |
 | 계정과 권한 | 스테이징과 운영을 나눔. 사람은 MFA로 들어오고, 운영 쓰기 권한은 최소 인원만. CI는 배포 전용 키(5장) | VPC로 나눔(리전당 3개 무료), Sub Account로 권한 분리. 운영을 별도 계정으로 옮길지는 공개 베타 전에 정함 |
 | 네트워크 | 데이터베이스·Redis·컨테이너는 사설 서브넷. 인터넷에 열린 것은 로드 밸런서뿐. 서버 접속은 기록이 남는 방식으로 | 사설 서브넷 + NAT Gateway, ACG. 서버 접속은 배스천 한 대를 거치고, ACG로 관리자 IP만 SSH 허용. SSL VPN(VPC)은 월 12만 원부터라 ISMS 대상이 될 때 검토 |
@@ -53,8 +53,9 @@ CDN은 두지 않습니다. 미디어는 암호문이고, 서명된 URL로 스�
 | --- | --- | --- |
 | M0 | 로컬 compose만 | 0원 |
 | M1 | 무료 Micro 서버(1 vCPU·1GB) 한 대에 API·PostgreSQL·Valkey를 Compose로. 게이트웨이는 아직 띄우지 않음 | 약 4천~1만 원(공인 IP, 디스크가 따로 과금되면 50GB에 5,760원) |
-| M2·M3 | High CPU 2 vCPU·4GB 한 대에 API·게이트웨이·PostgreSQL·Valkey와 Caddy(TLS). Micro는 스테이징 | 약 8.8만 원 |
-| M4 출시 이후 | M2·M3 구성 그대로에 WAL 시점 복구를 더함. 사용자 1천 명까지 충분 | 약 9만 원 |
+| M2 | M1의 Micro 그대로에 게이트웨이(메모리 상한 160MB)를 더함. 서버를 키우지 않음(사용자 결정, 2026-11-04) | 약 4천~1만 원 |
+| M3 | 채팅을 시작할 때 High CPU 2 vCPU·4GB 한 대에 API·게이트웨이·PostgreSQL·Valkey와 Caddy(TLS). Micro는 스테이징 | 약 8.8만 원 |
+| M4 출시 이후 | M3 구성 그대로에 WAL 시점 복구를 더함. 사용자 1천 명까지 충분 | 약 9만 원 |
 | 관리형 최소 | 관리형 PostgreSQL 단일(2 vCPU·4GB), 관리형 캐시 1.5GB, API·게이트웨이 VM 각 1대, 로드 밸런서 2개, NAT | 약 41만 원 |
 | 관리형 표준 | 위 표 그대로: PostgreSQL 고가용성(2대), API·게이트웨이 각 2대, 스테이징 유지 | 약 75만 원 |
 
@@ -62,7 +63,7 @@ CDN은 두지 않습니다. 미디어는 암호문이고, 서명된 URL로 스�
 
 **크레딧으로 버티는 기간:**
 - 받을 수 있는 것: 그린루키 20만 원(제휴 학교 재학생, 신청일부터 1년), 신규 가입 10만 원(발급일부터 3개월, 그린루키와 중복 가능), Micro 서버 한 대 1년 무료(결제 수단을 등록한 때부터). 크레딧은 무료 상품에는 쓰이지 않습니다.
-- M1 한 달과 M2·M3 약 3개월을 크레딧 30만 원 안에서 돌릴 수 있습니다(1만 + 8.8만 × 3 ≈ 27.4만 원).
+- M1·M2는 Micro로 돌리므로, 크레딧 30만 원은 M3부터 약 3개월분입니다(8.8만 × 3 ≈ 26.4만 원).
 - 크레딧이 끝나면 월 약 9만 원을 직접 냅니다. Micro 무료 1년이 끝나면 스테이징을 반납하거나 월 약 1.7만 원(서버 10,850원 + 디스크)을 더 냅니다.
 - 관리형 구성(월 41만~75만 원)은 크레딧으로 한 달도 버티지 못하므로, 매출이 이를 넘을 때 옮깁니다(6장).
 - 무료 기간과 크레딧 기한은 신청한 때부터 흐릅니다. 결제 수단 등록과 그린루키 신청은 M1 배포 직전에, 신규 가입 크레딧은 유료 서버를 띄우는 M2 시작 때 신청합니다(신청 기한이 따로 있는지는 확인 필요).
@@ -71,7 +72,7 @@ CDN은 두지 않습니다. 미디어는 암호문이고, 서명된 URL로 스�
 - PostgreSQL·Valkey를 같은 VM의 컨테이너로 돌립니다. 장애 조치가 없어서 VM이 멈추면 서비스도 멈춥니다.
 - 백업: M1은 매일 `pg_dump`를 `backups`에 올리고 7일 남깁니다(최대 하루치 손실, 테스터에게 알림). M2부터는 WAL-G로 WAL을 `backups`에 계속 올리고 매일 기본 백업을 떠서 7일 안의 시점으로 복구합니다.
 - 로드 밸런서와 NAT 없이, VM의 공인 IP에서 Caddy가 TLS(Let's Encrypt)를 끝내고 `api.`와 `rt.`로 나눕니다. ACG는 443·80과 관리자 IP의 SSH만 엽니다.
-- Micro(1GB)에서는 JVM 힙 256MB, PostgreSQL `shared_buffers` 128MB, 스왑 2GB로 맞춥니다. 메모리가 모자라면 M2 구성을 앞당깁니다.
+- Micro(1GB)에서는 JVM 힙 256MB, PostgreSQL `shared_buffers` 128MB, 스왑 2GB, 게이트웨이 메모리 상한 160MB(스왑 없음)로 맞춥니다. 메모리가 모자라면 M3 구성(2 vCPU·4GB)을 앞당깁니다.
 
 ## 3. 컨테이너 이미지
 
