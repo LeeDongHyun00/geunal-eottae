@@ -635,6 +635,7 @@ impl Db<'_> {
              DELETE FROM chat_fts;
              DELETE FROM groups;
              DELETE FROM accepted_invites;
+             DELETE FROM group_meta;
              DELETE FROM calendars WHERE kind = 'group';
              DELETE FROM people WHERE source = 'group';",
         )?;

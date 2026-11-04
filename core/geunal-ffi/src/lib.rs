@@ -8,6 +8,7 @@
 
 pub mod account;
 pub mod calendar;
+pub mod group_settings;
 pub mod invite;
 mod local;
 pub mod people;

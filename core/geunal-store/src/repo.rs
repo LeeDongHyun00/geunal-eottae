@@ -39,6 +39,15 @@ pub struct GroupRow {
     pub cursor: i64,
 }
 
+/// The newest `group_meta` blob of a group as this device holds it, opened.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupMetaRow {
+    pub version: i64,
+    pub epoch: i64,
+    pub owner_id: String,
+    pub plaintext: Vec<u8>,
+}
+
 /// The newcomer bundle a Welcome promised this device (protocol §5), until it is taken.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedBundle {
@@ -146,6 +155,7 @@ impl Store {
     pub fn remove_group(&self, id: &str) -> Result<()> {
         self.conn().execute("DELETE FROM outbox WHERE group_id = ?1", [id])?;
         self.conn().execute("DELETE FROM chat_fts WHERE group_id = ?1", [id])?;
+        self.conn().execute("DELETE FROM group_meta WHERE group_id = ?1", [id])?;
         self.conn().execute("DELETE FROM groups WHERE id = ?1", [id])?;
         Ok(())
     }
@@ -191,6 +201,38 @@ impl Store {
             [group_id],
         )?;
         Ok(())
+    }
+
+    // ----- group meta -----
+
+    /// Keeps the group's newest blob; an older version than the one held is ignored.
+    pub fn put_group_meta(&self, group_id: &str, row: &GroupMetaRow) -> Result<()> {
+        self.conn().execute(
+            "INSERT INTO group_meta (group_id, version, epoch, owner_id, plaintext) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT (group_id) DO UPDATE SET version = excluded.version, epoch = excluded.epoch,
+               owner_id = excluded.owner_id, plaintext = excluded.plaintext
+             WHERE excluded.version >= group_meta.version",
+            params![group_id, row.version, row.epoch, row.owner_id, row.plaintext],
+        )?;
+        Ok(())
+    }
+
+    pub fn group_meta(&self, group_id: &str) -> Result<Option<GroupMetaRow>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT version, epoch, owner_id, plaintext FROM group_meta WHERE group_id = ?1",
+                [group_id],
+                |row| {
+                    Ok(GroupMetaRow {
+                        version: row.get(0)?,
+                        epoch: row.get(1)?,
+                        owner_id: row.get(2)?,
+                        plaintext: row.get(3)?,
+                    })
+                },
+            )
+            .optional()?)
     }
 
     // ----- accepted invites -----

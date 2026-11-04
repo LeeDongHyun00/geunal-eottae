@@ -717,3 +717,71 @@ async fn takes_the_welcome_when_the_answer_to_joining_was_lost_and_a_member_adde
     b.engine.sync().await.unwrap();
     assert_eq!(b.engine.epoch(&group).unwrap(), a.engine.epoch(&group).unwrap());
 }
+
+fn rename(name: &str) -> geunal_domain::group_meta::MetaChange {
+    geunal_domain::group_meta::MetaChange { name: Some(name.into()), ..Default::default() }
+}
+
+fn recolor(color: &str) -> geunal_domain::group_meta::MetaChange {
+    geunal_domain::group_meta::MetaChange { color: Some(color.into()), ..Default::default() }
+}
+
+#[tokio::test]
+async fn re_applies_only_my_changed_fields_after_a_state_conflict_on_group_meta() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    a.engine.change_group_meta(&group, &rename("동네 친구")).unwrap();
+    a.engine.flush_group(&group).await.unwrap();
+    b.engine.sync().await.unwrap();
+
+    // B renames and gets there first; A changed the colour from the blob it had read.
+    a.engine.change_group_meta(&group, &recolor("sky")).unwrap();
+    b.engine.change_group_meta(&group, &rename("주말모임")).unwrap();
+    b.engine.flush_group(&group).await.unwrap();
+    a.engine.flush_group(&group).await.unwrap();
+    assert!(a.engine.store().outbox(&group).unwrap().is_empty());
+
+    b.engine.sync().await.unwrap();
+    for device in [&a, &b] {
+        let meta = device.engine.group_meta(&group).unwrap().unwrap();
+        assert_eq!((meta.name.as_str(), meta.color.as_str(), meta.changed_by.as_str()), ("주말모임", "sky", a.user()));
+    }
+    assert_eq!(a.engine.store().group(&group).unwrap().unwrap().name.as_deref(), Some("주말모임"));
+}
+
+#[tokio::test]
+async fn the_later_of_two_writes_to_the_same_field_wins_on_every_device() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    a.engine.change_group_meta(&group, &recolor("mint")).unwrap();
+    b.engine.change_group_meta(&group, &recolor("plum")).unwrap();
+    a.engine.flush_group(&group).await.unwrap();
+    b.engine.flush_group(&group).await.unwrap();
+    a.engine.sync().await.unwrap();
+    for device in [&a, &b] {
+        let meta = device.engine.group_meta(&group).unwrap().unwrap();
+        assert_eq!((meta.color.as_str(), meta.changed_by.as_str()), ("plum", b.user()));
+    }
+}
+
+#[tokio::test]
+async fn keeps_changed_by_when_re_sealing_group_meta_after_an_epoch_change() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    b.engine.change_group_meta(&group, &rename("주말모임")).unwrap();
+    b.engine.flush_group(&group).await.unwrap();
+    a.engine.sync().await.unwrap();
+    let before = server.state_blobs(&group).into_iter().find(|s| s.kind == "group_meta").unwrap();
+
+    // A's commit adds C: A re-seals the blob for the new epoch without becoming its "last changed by".
+    let mut c = device(&server, "c", 3).await;
+    invite(&a, &mut c, &group).await;
+    a.engine.add_members(&group, &[c.user().to_owned()]).await.unwrap();
+    let after = server.state_blobs(&group).into_iter().find(|s| s.kind == "group_meta").unwrap();
+    assert!(after.epoch > before.epoch, "sealed for the new epoch");
+    assert_eq!(after.owner_id, a.user());
+
+    c.engine.sync().await.unwrap();
+    let meta = c.engine.group_meta(&group).unwrap().expect("the newcomer reads it");
+    assert_eq!((meta.name.as_str(), meta.changed_by.as_str()), ("주말모임", b.user()));
+}

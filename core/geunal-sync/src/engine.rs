@@ -9,9 +9,10 @@ use chrono::{DateTime, Duration, Utc};
 use geunal_domain::appointments::{GroupState, LogEntry};
 use geunal_domain::availability::Availability;
 use geunal_domain::entry::{self, Entry};
+use geunal_domain::group_meta::{GroupMeta, MetaChange};
 use geunal_mls::state::{open as open_blob, seal as seal_blob, state_aad};
 use geunal_mls::{Identity, MlsClient, MlsGroup, Received};
-use geunal_store::{AvailabilityRow, EntryRow, GroupKind, OutboxKind, Store};
+use geunal_store::{AvailabilityRow, EntryRow, GroupKind, GroupMetaRow, OutboxKind, Store};
 use serde::{Deserialize, Serialize};
 
 use crate::SyncError;
@@ -70,9 +71,22 @@ pub enum CommitIntent {
 /// An outbox payload. Application entries stay plaintext here so a `stale_epoch` refusal can re-encrypt them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum Outgoing {
-    App { entry: Vec<u8>, alert: AlertTarget, cat: Option<String> },
+    App {
+        entry: Vec<u8>,
+        alert: AlertTarget,
+        cat: Option<String>,
+    },
     Commit(CommitIntent),
-    State { kind: String, plaintext: Vec<u8> },
+    State {
+        kind: String,
+        plaintext: Vec<u8>,
+    },
+    /// A member's change to the shared `group_meta`, kept as the change itself so that a lost race re-applies only
+    /// these fields over the newer blob (protocol §5). `at` is when the member made it.
+    Meta {
+        change: Vec<u8>,
+        at: String,
+    },
 }
 
 impl Outgoing {
@@ -244,6 +258,10 @@ impl<T: Transport> Engine<T> {
         self.store.upsert_group(&group_id, GroupKind::Circle, name)?;
         self.remember_state_key(&group_id, &group)?;
         group.save()?;
+        // The first group_meta, so members who join read the name; it goes out with the group's next flush.
+        if let Some(name) = name {
+            self.change_group_meta(&group_id, &MetaChange { name: Some(name.to_owned()), ..Default::default() })?;
+        }
         self.notify(Change::Group { group_id: group_id.clone() });
         Ok(group_id)
     }
@@ -329,6 +347,20 @@ impl<T: Transport> Engine<T> {
         let payload = Outgoing::State { kind: "availability".into(), plaintext: availability.encode() };
         self.store.enqueue(group_id, OutboxKind::State, &payload.encode(), &self.now_text())?;
         Ok(())
+    }
+
+    /// Queues this member's change to the group's shared settings (name, colour, cover, date-setting defaults). Sent
+    /// in order with the group's other writes; a write that lost a race to another member is laid over theirs.
+    pub fn change_group_meta(&self, group_id: &str, change: &MetaChange) -> Result<(), SyncError> {
+        let payload = Outgoing::Meta { change: change.encode(), at: self.now_text() };
+        self.store.enqueue(group_id, OutboxKind::State, &payload.encode(), &self.now_text())?;
+        Ok(())
+    }
+
+    /// The group's shared settings as this device last read or wrote them; `None` before anyone set them, or when
+    /// the blob cannot be read.
+    pub fn group_meta(&self, group_id: &str) -> Result<Option<GroupMeta>, SyncError> {
+        Ok(self.store.group_meta(group_id)?.and_then(|row| GroupMeta::decode(&row.plaintext)))
     }
 
     /// The group's decoded log in order. Entries this build cannot decode are left out here and shown by kind.
@@ -568,7 +600,7 @@ impl<T: Transport> Engine<T> {
                 }
                 Ok(Received::Commit { .. }) => {
                     self.store.set_cursor(group_id, item.seq)?;
-                    self.after_epoch_change(group_id, &mut group).await?;
+                    self.after_epoch_change(group_id, &mut group, false).await?;
                 }
                 Ok(_) | Err(_) => {
                     self.store.set_cursor(group_id, item.seq)?;
@@ -643,18 +675,66 @@ impl<T: Transport> Engine<T> {
     }
 
     /// After a new epoch (rust-core §5): keep its state key, re-seal what this member owns, drop old keys.
-    async fn after_epoch_change(&mut self, group_id: &str, group: &mut MlsGroup) -> Result<(), SyncError> {
+    /// `committed`: this device made the commit, so it also re-seals the shared `group_meta` for the new epoch,
+    /// leaving its content (and `changed_by`) as it is (rust-core §5).
+    async fn after_epoch_change(
+        &mut self,
+        group_id: &str,
+        group: &mut MlsGroup,
+        committed: bool,
+    ) -> Result<(), SyncError> {
         self.remember_state_key(group_id, group)?;
         let mine = self.store.availability(group_id)?.into_iter().find(|a| a.user_id == self.me.user_id);
         if let Some(row) = mine {
             let availability = Availability { window_start: row.window_start, days: row.days as u16, bits: row.bits };
             self.put_state_now(group_id, group, "availability", &availability.encode()).await?;
         }
+        if committed && let Some(row) = self.store.group_meta(group_id)? {
+            match self.put_group_meta(group_id, group, &row.plaintext, row.version).await {
+                // Someone wrote the blob meanwhile: theirs is sealed for this epoch or will be re-sealed by its writer.
+                Err(SyncError::Api(e)) if e.is(409, "state_conflict") || is_transient(&e) => {}
+                other => other?,
+            }
+        }
         self.notify(Change::Group { group_id: group_id.to_owned() });
         Ok(())
     }
 
     /// Seals and uploads one state blob in the group's current epoch.
+    /// Writes the shared `group_meta` blob over version `base` and keeps what was written as the group's newest.
+    async fn put_group_meta(
+        &self,
+        group_id: &str,
+        group: &MlsGroup,
+        plaintext: &[u8],
+        base: i64,
+    ) -> Result<(), SyncError> {
+        let key = group.state_key()?;
+        let aad = state_aad(group_id, group.epoch(), "group_meta", &self.me.user_id);
+        let ciphertext = seal_blob(&key, &aad, plaintext);
+        let req = PutState { epoch: group.epoch(), ciphertext, base_version: Some(base) };
+        let version = self.api.put_state(group_id, "group_meta", req).await?;
+        let owner = self.me.user_id.clone();
+        self.keep_group_meta(group_id, version, group.epoch(), &owner, plaintext.to_vec())
+    }
+
+    /// Keeps the newest `group_meta` and the group name it carries for the group list.
+    fn keep_group_meta(
+        &self,
+        group_id: &str,
+        version: i64,
+        epoch: u64,
+        owner: &str,
+        plaintext: Vec<u8>,
+    ) -> Result<(), SyncError> {
+        if let Some(meta) = GroupMeta::decode(&plaintext) {
+            let kind = self.store.group(group_id)?.map_or(GroupKind::Circle, |g| g.kind);
+            self.store.upsert_group(group_id, kind, Some(&meta.name))?;
+        }
+        let row = GroupMetaRow { version, epoch: epoch as i64, owner_id: owner.to_owned(), plaintext };
+        Ok(self.store.put_group_meta(group_id, &row)?)
+    }
+
     async fn put_state_now(
         &self,
         group_id: &str,
@@ -710,6 +790,9 @@ impl<T: Transport> Engine<T> {
                     }
                 }
                 ("availability", None) => self.store.remove_availability(group_id, &blob.owner_id)?,
+                ("group_meta", Some(plain)) => {
+                    self.keep_group_meta(group_id, blob.version, blob.epoch, &blob.owner_id, plain)?
+                }
                 // Only the bundle the Welcome promised: sealed by the member who added this device, in the epoch it
                 // joined in or later.
                 ("newcomer_bundle", Some(plain))
@@ -877,7 +960,7 @@ impl<T: Transport> Engine<T> {
                     group.save()?;
                     self.store.upsert_group(group_id, GroupKind::Circle, None)?;
                     self.store.set_cursor(group_id, accepted.seq)?;
-                    self.after_epoch_change(group_id, &mut group).await?;
+                    self.after_epoch_change(group_id, &mut group, true).await?;
                     return Ok(());
                 }
                 Err(e) if e.is(409, "epoch_conflict") => continue,
@@ -995,6 +1078,31 @@ impl<T: Transport> Engine<T> {
                 }
             }
             Outgoing::Commit(intent) => self.send_commit(group_id, &mut group, intent).await,
+            Outgoing::Meta { change, at } => {
+                let Some(change) = MetaChange::decode(&change) else { return Ok(SendOutcome::Dropped) };
+                let base = self.store.group_meta(group_id)?;
+                let meta = change.apply(
+                    base.as_ref().and_then(|row| GroupMeta::decode(&row.plaintext)).as_ref(),
+                    &self.me.user_id,
+                    &at,
+                );
+                let version = base.map_or(0, |row| row.version);
+                match self.put_group_meta(group_id, &group, &meta.encode(), version).await {
+                    Ok(()) => {
+                        self.notify(Change::Group { group_id: group_id.to_owned() });
+                        Ok(SendOutcome::Sent)
+                    }
+                    // Another member wrote first: read theirs and lay this change over it on the next round. The
+                    // flush's retry count bounds a long race; the row then waits for the next flush.
+                    Err(SyncError::Api(e)) if e.is(409, "state_conflict") => {
+                        self.pull_state(group_id).await?;
+                        Ok(SendOutcome::Retry)
+                    }
+                    Err(SyncError::Api(e)) if is_transient(&e) => Ok(SendOutcome::Later),
+                    Err(SyncError::Api(e)) if is_refusal(&e) => Ok(SendOutcome::Refused(e)),
+                    Err(e) => Err(e),
+                }
+            }
         }
     }
 
@@ -1067,7 +1175,7 @@ impl<T: Transport> Engine<T> {
                 if self.store.cursor(group_id)? + 1 == accepted.seq {
                     self.store.set_cursor(group_id, accepted.seq)?;
                 }
-                self.after_epoch_change(group_id, group).await?;
+                self.after_epoch_change(group_id, group, true).await?;
                 if !added.is_empty() {
                     self.publish_newcomer_bundle(group_id, group).await?;
                 }

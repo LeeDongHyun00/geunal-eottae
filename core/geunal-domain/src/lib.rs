@@ -7,6 +7,7 @@ pub mod appointments;
 pub mod availability;
 pub mod calendar;
 pub mod entry;
+pub mod group_meta;
 pub mod holidays;
 pub mod ics;
 pub mod invite;

@@ -44,10 +44,11 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (3, include_str!("../migrations/0003_alpha_sessions.sql")),
     (4, include_str!("../migrations/0004_newcomer_bundle.sql")),
     (5, include_str!("../migrations/0005_accepted_invites.sql")),
+    (6, include_str!("../migrations/0006_group_meta.sql")),
 ];
 
 /// The schema version this build writes.
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 6;
 
 /// The database file inside the store directory.
 pub const DB_FILE: &str = "geunal.db";

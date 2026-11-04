@@ -1483,6 +1483,29 @@ impl Transport for FakeClient {
         if req.epoch > group.epoch {
             return Err(err(400, "invalid_request"));
         }
+        // group_meta is one shared slot any member overwrites, guarded by the version the writer read (api-server.md
+        // §5 put_group_meta).
+        if kind == "group_meta" {
+            let base = req.base_version.ok_or_else(|| err(400, "invalid_request"))?;
+            let slot = (kind.to_owned(), String::new());
+            let current = group.state.get(&slot);
+            let version = current.map_or(0, |b| b.version);
+            if version != base || current.is_some_and(|b| b.epoch > req.epoch) {
+                return Err(err(409, "state_conflict"));
+            }
+            let blob = StateBlob {
+                kind: kind.to_owned(),
+                owner_id: user.clone(),
+                epoch: req.epoch,
+                version: version + 1,
+                ciphertext: req.ciphertext,
+                updated_at,
+            };
+            group.state.insert(slot, blob);
+            let event = json!({"t": "state", "g": group_id, "kind": kind, "owner": user, "epoch": req.epoch});
+            state.publish(group_id, Some(&user), event);
+            return Ok(version + 1);
+        }
         let slot = (kind.to_owned(), user.clone());
         let version = match group.state.get_mut(&slot) {
             Some(existing) if existing.epoch > req.epoch => return Err(err(409, "stale_epoch")),
