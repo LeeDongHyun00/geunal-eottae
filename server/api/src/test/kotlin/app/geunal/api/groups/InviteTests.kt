@@ -4,11 +4,15 @@ import app.geunal.api.support.ApiTest
 import app.geunal.api.support.Client
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
 class InviteTests : ApiTest() {
+    @Autowired
+    lateinit var expiry: PendingExpiry
+
     private fun Client.inviteCode(groupId: UUID): String = post("/groups/$groupId/invites").expect(201).string("code")
 
     private fun statusOf(
@@ -191,6 +195,54 @@ class InviteTests : ApiTest() {
         }
         assertThat(statusOf(owner, groupId, joiner)).isEqualTo("removed")
         assertThat(joiner.get("/me/groups").expect(200)["groups"].size()).isZero()
+    }
+
+    @Test
+    fun `the maker or the owner withdraws a code`() {
+        val owner = signIn()
+        val maker = signIn()
+        val other = signIn()
+        val groupId = groupWith(owner, maker, other)
+        val first = maker.inviteCode(groupId)
+        val second = maker.inviteCode(groupId)
+
+        other.delete("/groups/$groupId/invites/$first").expectError(403, "not_owner")
+        signIn().delete("/groups/$groupId/invites/$first").expectError(403, "not_member")
+        owner.delete("/groups/${groupWith(owner)}/invites/$first").expectError(404, "invite_invalid")
+
+        maker.delete("/groups/$groupId/invites/$first").expect(204)
+        owner.delete("/groups/$groupId/invites/$second").expect(204)
+        signIn().post("/invites/$first/join").expectError(404, "invite_invalid")
+        signIn().get("/invites/$second").expectError(404, "invite_invalid")
+        maker.delete("/groups/$groupId/invites/$first").expectError(404, "invite_invalid")
+    }
+
+    @Test
+    fun `an invitation nobody completes lapses after seven days`() {
+        val owner = signIn()
+        val stale = signIn()
+        val fresh = signIn()
+        val groupId = groupWith(owner)
+        val code = owner.inviteCode(groupId)
+        stale.post("/invites/$code/join").expect(200)
+        fresh.post("/invites/$code/join").expect(200)
+        jdbc
+            .sql("UPDATE group_members SET joined_at = now() - interval '7 days 1 minute' WHERE user_id = :u")
+            .param("u", stale.userId)
+            .update()
+
+        inbox(owner.deviceId, stale.deviceId, fresh.deviceId).use { signals ->
+            expiry.run()
+            assertThat(signals.drain().map { it.channel }).containsExactlyInAnyOrder("d:${owner.deviceId}", "d:${stale.deviceId}")
+        }
+        assertThat(statusOf(owner, groupId, stale)).isEqualTo("removed")
+        assertThat(statusOf(owner, groupId, fresh)).isEqualTo("pending")
+        owner.addUninvited(groupId, 0, stale).expectError(403, "not_member")
+
+        // Joining again starts a new seven days.
+        stale.post("/invites/$code/join").expect(200)
+        expiry.run()
+        assertThat(statusOf(owner, groupId, stale)).isEqualTo("pending")
     }
 
     @Test

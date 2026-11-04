@@ -158,8 +158,8 @@ class GroupRepository(
             .update() == 1
 
     /**
-     * Makes the account pending in the group: what an invite code will do (protocol §2). Someone removed earlier is
-     * invited again; an active member stays as they are.
+     * Makes the account pending in the group, as an invite code does (protocol §15). Someone removed earlier is invited
+     * again, and their seven pending days start over; an active member stays as they are.
      */
     fun invite(
         groupId: UUID,
@@ -169,7 +169,7 @@ class GroupRepository(
             .sql(
                 """
                 INSERT INTO group_members (group_id, user_id, status) VALUES (:group, :user, 'pending')
-                ON CONFLICT (group_id, user_id) DO UPDATE SET status = 'pending', role = 'member'
+                ON CONFLICT (group_id, user_id) DO UPDATE SET status = 'pending', role = 'member', joined_at = now()
                 WHERE group_members.status = 'removed'
                 """,
             ).param("group", groupId)
@@ -251,6 +251,22 @@ class GroupRepository(
             .param("group", groupId)
             .query(Int::class.java)
             .single()
+
+    /**
+     * Turns pending members invited more than [after] ago back to removed (protocol §15): a pending account holds a seat,
+     * and one no member added within that time is not going to be. Returns the groups and accounts it removed.
+     */
+    fun expirePending(after: java.time.Duration): List<Pair<UUID, UUID>> =
+        jdbc
+            .sql(
+                """
+                UPDATE group_members SET status = 'removed'
+                WHERE status = 'pending' AND joined_at < now() - make_interval(secs => :seconds)
+                RETURNING group_id, user_id
+                """,
+            ).param("seconds", after.seconds)
+            .query { rs, _ -> rs.getObject("group_id", UUID::class.java) to rs.getObject("user_id", UUID::class.java) }
+            .list()
 
     /** When no active owner is left, the longest-standing active member takes over (api-server.md §8). */
     fun succeedOwner(groupId: UUID) {

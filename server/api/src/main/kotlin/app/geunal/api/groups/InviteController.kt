@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -65,6 +66,23 @@ class InviteController(
         if (groups.seatCount(id) >= GroupLimits.MEMBERS_PER_GROUP) throw GroupLimits.full()
         val invite = invites.create(id, caller.userId)
         return InviteResponse(invite.code, invite.expiresAt)
+    }
+
+    /** Withdraws a code (protocol §15): its maker or the group's owner. Afterwards it answers like any unknown code. */
+    @DeleteMapping("/groups/{id}/invites/{code}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Transactional
+    fun revoke(
+        @AuthenticationPrincipal caller: Caller,
+        @PathVariable id: UUID,
+        @PathVariable code: String,
+    ) {
+        groups.requireActive(id, caller.userId)
+        val invite = InviteCodes.canonical(code)?.let(invites::find)?.takeIf { it.groupId == id } ?: throw invalid()
+        if (invite.createdBy != caller.userId && groups.members(id).none { it.userId == caller.userId && it.role == "owner" }) {
+            throw ApiException(HttpStatus.FORBIDDEN, "not_owner", "only the code's maker or the owner withdraws it")
+        }
+        invites.delete(invite.code)
     }
 
     /** What the join screen shows before joining: no member names, since the holder is not a member yet (m2.md §5). */

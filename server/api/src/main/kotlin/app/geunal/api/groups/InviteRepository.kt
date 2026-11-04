@@ -70,6 +70,10 @@ class InviteRepository(
                 .orElse(null)
         }
 
+    fun delete(code: String) {
+        jdbc.sql("DELETE FROM group_invites WHERE code = :code").param("code", code).update()
+    }
+
     fun spend(code: String) {
         jdbc.sql("UPDATE group_invites SET uses = uses + 1 WHERE code = :code").param("code", code).update()
     }

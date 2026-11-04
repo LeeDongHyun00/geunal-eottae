@@ -735,6 +735,15 @@ paths:
         "409": { description: group_full (20 members with pending ones) }
         "429": { description: rate_limited }
 
+  /groups/{id}/invites/{code}:
+    delete:
+      summary: Withdraw a code (its maker or the group's owner). Afterwards it answers 404 `invite_invalid` like any unknown code.
+      parameters: [{ $ref: "#/components/parameters/Id" }, { $ref: "#/components/parameters/InviteCode" }]
+      responses:
+        "204": { description: withdrawn }
+        "403": { description: "not_member, not_owner (neither the maker nor the owner)" }
+        "404": { description: "not_found (no such group), invite_invalid (no such code in this group)" }
+
   /invites/{code}:
     get:
       summary: What a code leads to, before joining. Member names are not shown until the caller joins.
@@ -763,6 +772,7 @@ paths:
       summary: Become pending in the code's group; the group's active devices hear `membership` and one adds the caller
       description: >
         Someone already pending or active gets their status back, and no use is spent, so a lost answer may be retried.
+        A pending account nobody adds within seven days is removed again, and its group hears `membership`.
       parameters: [{ $ref: "#/components/parameters/InviteCode" }]
       responses:
         "200":

@@ -415,6 +415,7 @@ CREATE TABLE holidays (
 | POST | `/groups/{id}/invites` | 초대 코드 발급 |
 | GET | `/invites/{code}` | 초대 미리보기(그룹 ID, 초대한 사람 이름, 활성 멤버 수, 끝나는 시각, 다 찼는지). 모양은 [공통 계약](protocol.md) 15장 |
 | POST | `/invites/{code}/join` | 초대 코드로 참여 요청(`pending`) |
+| DELETE | `/groups/{id}/invites/{code}` | 초대 거두기(만든 사람이나 방장) |
 | GET | `/groups/{id}/members` | 멤버, 역할, 상태 |
 | DELETE | `/groups/{id}/members/{userId}` | 탈퇴·강퇴 |
 | PATCH | `/groups/{id}/members/me` | 알림 설정(`muted_until`, `notify_chat`, `notify_plan`) |
@@ -454,6 +455,7 @@ CREATE TABLE holidays (
 | Welcome 정리 | 매일 | 30일 지난 Welcome 삭제 |
 | 초대 코드 정리 | 매일 | 끝난 초대 코드 삭제. 끝난 코드는 없는 코드와 같이 404 `invite_invalid`라 남길 이유가 없음 |
 | 공휴일 동기화 | 매일 | 특일 정보 API로 `holidays` 갱신(같은 날 공휴일 둘 허용) |
+| 초대 만료 | 1시간 | 7일 동안 추가되지 않은 `pending`을 `removed`로 돌리고 그 그룹과 그 사람에게 `membership` |
 | 방장 승계 | 탈퇴·삭제 때 | 가장 오래된 활성 멤버를 방장으로 |
 
 ## 9. 레이트 리밋
