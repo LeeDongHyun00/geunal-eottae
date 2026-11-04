@@ -71,6 +71,11 @@ fun RootScreen(
         }
     val phase by model.phase.collectAsStateWithLifecycle()
     val resources = LocalResources.current
+    LaunchedEffect(model) {
+        // An invite kept for this account must not greet the next one on this phone. A session that only ended keeps
+        // it: the same person signs in again and still means to join.
+        model.accountEnded.collect { container.invites.clear() }
+    }
     LaunchedEffect(model, resources) {
         model.notices.collect { model.toasts.show(resources.getString(it.text)) }
     }
