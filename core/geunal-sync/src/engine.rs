@@ -101,6 +101,8 @@ pub struct Engine<T: Transport> {
     me: Identity,
     listener: Arc<dyn Listener>,
     clock: Box<dyn Fn() -> DateTime<Utc> + Send + Sync>,
+    /// Whether `sync` fetches Welcomes and joins the groups they name. Off, the Welcomes stay on the server untouched.
+    join_welcomes: bool,
 }
 
 /// The proof every sign-in carries: a fresh nonce from the server, signed with this device's key.
@@ -171,7 +173,14 @@ pub async fn sign_in<T: Transport>(
 impl<T: Transport> Engine<T> {
     pub fn new(store: Store, mls: MlsClient, api: T, listener: Arc<dyn Listener>) -> Self {
         let me = mls.identity().clone();
-        Self { store, mls, api, me, listener, clock: Box::new(Utc::now) }
+        Self { store, mls, api, me, listener, clock: Box::new(Utc::now), join_welcomes: true }
+    }
+
+    /// Whether Welcomes are fetched and their groups joined (on by default). The apps turn it off until a member
+    /// accepts an invitation, so that nobody is put into a group they did not agree to join.
+    pub fn with_welcomes(mut self, join: bool) -> Self {
+        self.join_welcomes = join;
+        self
     }
 
     /// Replaces the clock the engine stamps outbox rows and state keys with; tests pin it.
@@ -418,6 +427,9 @@ impl<T: Transport> Engine<T> {
     }
 
     async fn pull_welcomes(&mut self) -> Result<(), SyncError> {
+        if !self.join_welcomes {
+            return Ok(());
+        }
         for welcome in self.api.welcomes().await? {
             let mut group = match self.mls.join_welcome(&welcome.data) {
                 Ok(group) => group,
