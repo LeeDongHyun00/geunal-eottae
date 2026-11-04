@@ -9,6 +9,7 @@ pub mod calendar;
 pub mod entry;
 pub mod holidays;
 pub mod ics;
+pub mod invite;
 pub mod layout;
 pub mod lunar;
 pub mod recurrence;
