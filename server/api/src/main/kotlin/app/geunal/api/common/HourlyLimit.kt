@@ -8,36 +8,39 @@ import java.time.Clock
 import java.time.Duration
 
 /**
- * The per-address limits of api-server.md §9, counted in Redis per clock hour so every API instance shares them. Past
- * the limit a request gets 429 `rate_limited` with `Retry-After` up to the next hour.
+ * The limits of api-server.md §9, counted in Redis per clock window (an hour unless a check names another) so every API
+ * instance shares them. Past the limit a request gets 429 `rate_limited` with `Retry-After` up to the next window.
  */
 @Component
 class HourlyLimit(
     private val redis: StringRedisTemplate,
     private val clock: Clock,
 ) {
+    /** Counts one request of [name] for [subject] (an address, a user, a group) against [limit] per [window]. */
     fun check(
         name: String,
-        address: String,
-        perHour: Int,
+        subject: String,
+        limit: Int,
+        window: Duration = HOUR,
     ) {
         val now = clock.instant().epochSecond
-        val hour = now / HOUR.seconds
-        val key = "$name:$address:$hour"
+        val slot = now / window.seconds
+        val key = "$name:$subject:${window.seconds}:$slot"
         val count = redis.opsForValue().increment(key) ?: 0
-        if (count == 1L) redis.expire(key, HOUR.multipliedBy(2))
-        if (count > perHour) {
-            val retryAfter = (hour + 1) * HOUR.seconds - now
+        if (count == 1L) redis.expire(key, window.multipliedBy(2))
+        if (count > limit) {
+            val retryAfter = (slot + 1) * window.seconds - now
             throw ApiException(
                 HttpStatus.TOO_MANY_REQUESTS,
                 "rate_limited",
-                "at most $perHour $name requests an hour",
+                "at most $limit $name requests in ${window.seconds} seconds",
                 headers = mapOf(HttpHeaders.RETRY_AFTER to retryAfter.coerceAtLeast(1).toString()),
             )
         }
     }
 
-    private companion object {
+    companion object {
         val HOUR: Duration = Duration.ofHours(1)
+        val MINUTE: Duration = Duration.ofMinutes(1)
     }
 }

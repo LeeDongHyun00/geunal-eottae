@@ -79,6 +79,8 @@ fun SignInScreen(
     onGuest: () -> Unit,
     onGuestReturn: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Over the tabs (signing in again): "닫기" in place of the back arrow. */
+    closes: Boolean = false,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val neutrals = LocalNeutralColors.current
@@ -92,12 +94,23 @@ fun SignInScreen(
                 .navigationBarsPadding()
                 .padding(horizontal = Metrics.Button.sideInset),
     ) {
-        IconButton(onClick = onBack, modifier = Modifier.padding(top = Space.xs).size(Metrics.minHitTarget)) {
-            Icon(
-                painterResource(DesignR.drawable.ds_ic_chevron_left),
-                contentDescription = stringResource(R.string.sign_in_back),
-                tint = neutrals.ink,
+        if (closes) {
+            GeunalButton(
+                text = stringResource(R.string.sign_in_close),
+                onClick = onBack,
+                kind = ButtonKind.Text,
+                // A sign-in under way cannot be left behind: its answer would land with nothing to show it.
+                enabled = state.busy == null,
+                modifier = Modifier.padding(top = Space.xs).testTag("onboarding.close"),
             )
+        } else {
+            IconButton(onClick = onBack, modifier = Modifier.padding(top = Space.xs).size(Metrics.minHitTarget)) {
+                Icon(
+                    painterResource(DesignR.drawable.ds_ic_chevron_left),
+                    contentDescription = stringResource(R.string.sign_in_back),
+                    tint = neutrals.ink,
+                )
+            }
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             Spacer(Modifier.height(Space.xl))

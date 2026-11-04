@@ -25,6 +25,7 @@
 
     <!-- 2. 로그인 -->
     <string name="sign_in_back">뒤로</string>
+    <string name="sign_in_close">닫기</string>
     <string name="sign_in_title">그날어때 시작하기</string>
     <string name="sign_in_description">계정은 로그인과 멤버 목록에만 써요. 일정과 대화 내용은 운영자도 볼 수 없어요.</string>
     <string name="sign_in_age_title">만 14세 이상이에요</string>
@@ -235,4 +236,26 @@
     <string name="delete_problem_recovery_missing">지울 준비가 아직 끝나지 않았어요. 잠시 뒤에 다시 시도해 주세요.</string>
     <string name="delete_problem_answer_lost">연결이 끊겨 삭제를 마쳤는지 확인하지 못했어요.</string>
     <string name="delete_problem_not_deleted">연결이 끊겨 삭제하지 못했어요. 다시 눌러 주세요.</string>
+    <string name="revoked_title">다른 기기에서 로그인했어요</string>
+    <string name="revoked_body_provider">%1$s에 %2$s에서 카카오·Apple 계정으로 로그인해서 이 기기는 로그아웃됐어요. 계정은 한 기기에서만 쓸 수 있어요.</string>
+    <string name="revoked_body_recovery">%1$s에 %2$s에서 복구 코드로 이 계정에 들어와서 이 기기는 로그아웃됐어요. 계정은 한 기기에서만 쓸 수 있어요.</string>
+    <string name="revoked_platform_android">안드로이드 기기</string>
+    <string name="revoked_platform_ios">iPhone</string>
+    <string name="revoked_kept">이 기기에 남는 것</string>
+    <string name="revoked_wiped">이 기기에서 지워지는 것</string>
+    <string-array name="revoked_kept_items">
+        <item>내 일정과 캘린더</item>
+        <item>사람·생일</item>
+        <item>교대 템플릿</item>
+        <item>일정 알림</item>
+    </string-array>
+    <string-array name="revoked_wiped_items">
+        <item>그룹과 채팅</item>
+        <item>백업 열쇠와 복구 코드</item>
+        <item>날짜 잡기 알림</item>
+    </string-array>
+    <string name="revoked_note_provider">캘린더는 그대로 쓸 수 있어요. 내가 한 로그인이 아니라면 카카오·Apple 계정이 다른 사람에게 알려졌을 수 있어요. 그 계정의 비밀번호를 바꿔 주세요.</string>
+    <string name="revoked_note_recovery">캘린더는 그대로 쓸 수 있어요. 내가 한 게 아니라면 복구 코드를 적은 종이를 누가 봤을 수 있어요. 코드를 아는 사람은 누구나 이 계정으로 들어올 수 있으니, 다시 로그인한 뒤 카카오·Apple 계정을 연결해 두세요.</string>
+    <string name="revoked_sign_in">이 기기에서 다시 로그인</string>
+    <string name="revoked_calendar_only">캘린더만 쓸게요</string>
 </resources>

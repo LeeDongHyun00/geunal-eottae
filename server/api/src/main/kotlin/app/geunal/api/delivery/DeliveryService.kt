@@ -2,6 +2,8 @@ package app.geunal.api.delivery
 
 import app.geunal.api.auth.Caller
 import app.geunal.api.common.ApiException
+import app.geunal.api.common.HourlyLimit
+import app.geunal.api.common.RateLimitProperties
 import app.geunal.api.devices.DeviceRepository
 import app.geunal.api.groups.GroupRepository
 import app.geunal.api.mls.MlsHeader
@@ -21,6 +23,8 @@ class DeliveryService(
     private val devices: DeviceRepository,
     private val repository: DeliveryRepository,
     private val signals: Signals,
+    private val limits: HourlyLimit,
+    private val rates: RateLimitProperties,
 ) {
     @Transactional
     fun commit(
@@ -29,6 +33,7 @@ class DeliveryService(
         request: CommitRequest,
     ): Accepted {
         groups.requireActive(groupId, caller.userId)
+        limits.check("commit", groupId.toString(), rates.commitsPerMinute, HourlyLimit.MINUTE)
         checkSize(request.commit, "commit", MAX_ENTRY)
         checkSize(request.groupInfo, "group_info", MAX_ENTRY)
         val header = MlsHeader.parse(request.commit).expectWireFormat(MlsHeader.PUBLIC_MESSAGE).expectGroup(groupId, request.epoch)
@@ -37,6 +42,7 @@ class DeliveryService(
         // construction their current one, so a stale device cannot rejoin a group it was replaced out of.
         MlsHeader.parse(request.groupInfo).expectWireFormat(MlsHeader.GROUP_INFO).expectGroup(groupId, request.epoch + 1)
         val added = request.added.distinct()
+        if (added.size > MAX_ADDED) throw ApiException.invalid("at most $MAX_ADDED devices are added at once")
         if (added.isNotEmpty() && request.welcome == null) throw ApiException.invalid("added devices need a welcome")
         if (added.isEmpty() && request.welcome != null) throw ApiException.invalid("a welcome needs added devices")
         request.welcome?.let {
@@ -54,7 +60,14 @@ class DeliveryService(
                 )
 
         for (device in addedDevices) {
-            groups.activate(groupId, device.userId)
+            // Checked here, under the commit's transaction, so a removal racing the commit rolls it back as well.
+            if (!groups.activate(groupId, device.userId)) {
+                throw ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "not_member",
+                    "the account of added device ${device.id} is not invited to this group",
+                )
+            }
             repository.addWelcome(device.id, groupId, accepted.seq, request.welcome!!)
         }
         val addedIds = addedDevices.map { it.id }.toSet()
@@ -71,6 +84,7 @@ class DeliveryService(
         request: MessageRequest,
     ): Appended {
         groups.requireActive(groupId, caller.userId)
+        limits.check("message", "${caller.userId}:$groupId", rates.messagesPerMinute, HourlyLimit.MINUTE)
         checkSize(request.message, "message", MAX_ENTRY)
         MlsHeader.parse(request.message).expectWireFormat(MlsHeader.PRIVATE_MESSAGE).expectGroup(groupId, request.epoch)
         request.validateAlert()
@@ -190,6 +204,9 @@ class DeliveryService(
         const val MAX_ENTRY = 65536
         const val MAX_STATE = 16384
         const val MAX_LOG_PAGE = 500
+
+        /** A group holds 20 people (kickoff §5), so one commit adds at most everyone else. */
+        const val MAX_ADDED = 19
         const val GROUP_META = "group_meta"
         val STATE_KINDS = setOf("availability", GROUP_META, "member_profile", "newcomer_bundle")
     }

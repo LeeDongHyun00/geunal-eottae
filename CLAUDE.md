@@ -68,6 +68,7 @@
 | `make lint-terraform` | Terraform: `fmt` 검사와 `infra/terraform/envs/*` 루트의 `init`(백엔드 없이)·`validate` |
 | `make lock-terraform` | Terraform: 제공자 버전을 올린 뒤 루트의 잠금 파일에 Linux·macOS 체크섬을 다시 기록 |
 | `make deploy-alpha` | 알파 서버: `infra/alpha`를 서버에 복사해 준비하고, API 이미지를 보내 스택을 다시 띄움. 운영자 PC에서 `GEUNAL_ALPHA_SSH=root@<주소>`와 함께([infra/alpha](infra/alpha/README.md)) |
+| `make scan-alpha` | 알파 서버: `infra/alpha/compose.yml`의 PostgreSQL·Valkey·Caddy 이미지 Trivy 검사. 고칠 수 있는 높음·심각 항목이 있으면 실패 |
 | `make up` | 로컬 스택(`infra/docker-compose.yml`): 이미지를 빌드하고 PostgreSQL·Redis·S3·API·게이트웨이를 띄움 |
 | `make down` | 로컬 스택을 멈추고 데이터를 지움 |
 | `make e2e` | 로컬 스택을 띄우고 `core/geunal-e2e`의 헤드리스 종단 시험을 돌림. 스택은 그대로 둠 |
@@ -116,5 +117,5 @@
 1. `.github/workflows/<part>.yml`을 `on: workflow_call`로 만들고, 단계에서는 `make` 대상을 부릅니다.
 2. `ci.yml`에 작업을 더합니다: `needs: changes`, `if: needs.changes.outputs.<part> == 'true'`, `uses: ./.github/workflows/<part>.yml`.
 3. 그 작업을 `ci-ok`의 `needs`에 넣습니다. 빠뜨리면 그 파트가 실패해도 머지가 막히지 않습니다.
-4. 경로 규칙은 `scripts/ci/changed-parts.sh`에 있습니다. core, api, gateway, e2e, terraform, ios, android 규칙이 이미 있습니다.
+4. 경로 규칙은 `scripts/ci/changed-parts.sh`에 있습니다. core, api, gateway, e2e, terraform, ios, android, alpha 규칙이 이미 있습니다.
 5. `.github/dependabot.yml`에 그 파트의 생태계(cargo, gradle, mix, docker)를 더합니다.

@@ -1,0 +1,14 @@
+package app.geunal.api.common
+
+import org.springframework.boot.context.properties.ConfigurationProperties
+
+/** `geunal.rate-limits.*`: the per-minute limits of api-server.md §9 on what a signed-in device writes or takes. */
+@ConfigurationProperties("geunal.rate-limits")
+data class RateLimitProperties(
+    /** Messages one user sends to one group. */
+    val messagesPerMinute: Int = 60,
+    /** Commits one group takes, from all its members together. */
+    val commitsPerMinute: Int = 30,
+    /** Key packages one user takes from others' devices. */
+    val claimsPerMinute: Int = 30,
+)

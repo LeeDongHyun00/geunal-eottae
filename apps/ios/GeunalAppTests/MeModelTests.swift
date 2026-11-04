@@ -78,6 +78,23 @@ final class MeModelTests: XCTestCase {
         XCTAssertFalse(state.sessionEnded)
     }
 
+    func testADeletedAccountLeavesNothingOfItsSignInsBehind() {
+        let state = OnboardingState(defaults: scratchDefaults())
+        state.isFinished = true
+        state.knownAccount = .provider
+        state.sessionEnded = true
+        state.lastProviderSignIn = (.apple, Date(timeIntervalSince1970: 1_793_000_000))
+        state.revocationShownAt = Date(timeIntervalSince1970: 1_793_000_100)
+
+        state.forgetAccount()
+
+        XCTAssertFalse(state.isFinished)
+        XCTAssertNil(state.knownAccount)
+        XCTAssertFalse(state.sessionEnded)
+        XCTAssertNil(state.lastProviderSignIn)
+        XCTAssertNil(state.revocationShownAt)
+    }
+
     func testAnotherDevicesSignInWinsOverAnEndedSession() async {
         let core = AccountFakeCore()
         core.summary.account = nil

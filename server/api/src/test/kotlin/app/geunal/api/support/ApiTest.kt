@@ -22,6 +22,10 @@ import java.util.UUID
         "geunal.alpha-stats.enabled=true",
         "geunal.access-log.ship-every=PT24H",
         "geunal.auth.sign-ins-per-hour=1000000",
+        // ConcurrencyTests pushes thousands of entries a second through one group; RateLimitTests sets the real limits.
+        "geunal.rate-limits.messages-per-minute=1000000",
+        "geunal.rate-limits.commits-per-minute=1000000",
+        "geunal.rate-limits.claims-per-minute=1000000",
     ],
 )
 abstract class ApiTest {

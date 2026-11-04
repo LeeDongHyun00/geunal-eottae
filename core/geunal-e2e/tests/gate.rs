@@ -8,7 +8,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use geunal_e2e::{MemorySecrets, Quiet, api_url, gateway_url};
+use geunal_e2e::{MemorySecrets, Quiet, api_url, gateway_url, invite};
 use geunal_ffi::{AuthResult, Core, CoreError, Mode, RealtimeEvent, Session, Stage};
 use pollster::block_on;
 
@@ -95,8 +95,10 @@ fn three_clients_make_a_group_trade_entries_survive_a_kick_and_a_rejoin_and_agre
     let b = client("b").expect("the API signed one guest in, so it signs the others in too");
     let c = client("c").expect("the API signed one guest in, so it signs the others in too");
 
-    // Group: A creates and adds B and C by user id; B and C pick up their Welcomes.
+    // Group: A creates and invites B and C, then adds them by user id; B and C pick up their Welcomes.
     let group = block_on(a.core.clone().create_group(Some("셋".into()))).unwrap();
+    invite(&group, b.user());
+    invite(&group, c.user());
     block_on(a.core.clone().add_members(group.clone(), vec![b.user().to_owned(), c.user().to_owned()])).unwrap();
     b.sync();
     c.sync();
@@ -155,7 +157,8 @@ fn three_clients_make_a_group_trade_entries_survive_a_kick_and_a_rejoin_and_agre
     c.sync();
     assert!(!c.texts(&group).iter().any(|t| t == "C 없이 한 말"));
 
-    // Rejoin: A adds C again and files the newcomer bundle; C derives the live appointment from it.
+    // Rejoin: A invites and adds C again and files the newcomer bundle; C derives the live appointment from it.
+    invite(&group, c.user());
     block_on(a.core.clone().add_members(group.clone(), vec![c.user().to_owned()])).unwrap();
     c.sync();
     assert!(c.core.groups().unwrap().into_iter().find(|g| g.group_id == group).unwrap().epoch.is_some());

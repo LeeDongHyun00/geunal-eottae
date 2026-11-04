@@ -53,6 +53,9 @@ class MainScaffoldTest {
                             MeScreen(
                                 core = core,
                                 pendingGuest = false,
+                                signedOut = null,
+                                onSignIn = {},
+                                onReturnAsGuest = {},
                                 onShifts = {},
                                 onPeople = { openedPeople = true },
                                 onCalendars = {},

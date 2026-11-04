@@ -19,7 +19,10 @@ fun ComposeTestRule.waitForTag(tag: String) = waitFor(hasTestTag(tag))
 
 fun ComposeTestRule.waitUntilEnabled(tag: String) = waitFor(hasTestTag(tag) and isEnabled())
 
-fun ComposeTestRule.waitForText(text: String) = waitFor(hasText(text))
+fun ComposeTestRule.waitForText(
+    text: String,
+    substring: Boolean = false,
+) = waitFor(hasText(text, substring = substring))
 
 /** The system back key, delivered to the focused window as a person's press is: an open sheet's window gets it first. */
 fun ComposeTestRule.pressBack() {

@@ -1,5 +1,6 @@
 package app.geunal.feature.account.onboarding
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -39,7 +40,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -81,14 +84,28 @@ sealed interface OnboardingRoute {
     }
 }
 
+/** Where the flow opens. Past the first run it opens over the tabs, can be closed, and skips the permissions. */
+enum class OnboardingStart {
+    /** The first run, or after the account was deleted. */
+    WELCOME,
+
+    /** "이 기기에서 다시 로그인" (m1.md screen 23), or 나's "로그인" after a revocation or an ended session (decision 43). */
+    SIGN_IN_AGAIN,
+
+    /** 나's "다시 들어가기" after a guest's session ended: the guest's code on screen 21 (decision 43). */
+    GUEST_RETURN,
+}
+
 /**
  * The first run's state, kept across configuration changes: where the person is and the screens' models. The back stack
  * is a plain list that is never saved, because a restore entry's model holds the recovery words, which stay in memory
  * only; after the process dies onboarding starts again from the welcome screen.
  */
+
 class OnboardingViewModel(
     private val dependencies: OnboardingDependencies,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    val start: OnboardingStart = OnboardingStart.WELCOME,
 ) : ViewModel() {
     private val notices = Channel<AccountNotice>(Channel.BUFFERED)
 
@@ -96,9 +113,24 @@ class OnboardingViewModel(
     val noticeFlow: Flow<AccountNotice> = notices.receiveAsFlow()
     private val notify: (AccountNotice) -> Unit = { notices.trySend(it) }
 
-    val backStack = mutableStateListOf<OnboardingRoute>(OnboardingRoute.Welcome)
+    val backStack =
+        mutableStateListOf<OnboardingRoute>(
+            if (start == OnboardingStart.WELCOME) OnboardingRoute.Welcome else OnboardingRoute.SignIn,
+        )
+
+    /** Signing in again over the tabs: the device answered the permissions on its first run. */
+    val signsInAgain: Boolean get() = start != OnboardingStart.WELCOME
+
+    private val _finished = MutableStateFlow(false)
+
+    /** Set when an account came through over the tabs and the calendar comes back. */
+    val finished: StateFlow<Boolean> = _finished.asStateFlow()
     val signIn = SignInModel(dependencies.core, dependencies.providers, dependencies.state, notify, timing = dependencies.timing)
     val permissions = PermissionsModel(dependencies.core, dependencies.permissions, dependencies.channel, notify)
+
+    init {
+        if (start == OnboardingStart.GUEST_RETURN) openRestore(RestoreMode.GUEST_RETURN)
+    }
 
     /** The model of the restore entry on the stack, if there is one. */
     val restore: RestoreModel?
@@ -186,6 +218,13 @@ class OnboardingViewModel(
      * which would put a second account on this device over the one just made or restored.
      */
     private fun settle(next: OnboardingRoute) {
+        if (next == OnboardingRoute.Permissions && signsInAgain) {
+            // Back over the tabs: the permissions were answered on this device's first run.
+            popRestore()
+            finish()
+            _finished.value = true
+            return
+        }
         if (next !in backStack) backStack.add(next)
         val left = backStack.filter { it != next }
         backStack.removeAll(left)
@@ -207,6 +246,9 @@ class OnboardingViewModel(
  * The first run (m1.md §2.1): welcome → sign-in → permissions, or → the recovery code when the account lives on another
  * device, its backup waits on the server, or a guest comes back. [onFinish] opens the calendar. A new [round] (after
  * the account was deleted) starts over from the welcome screen instead of where the last run ended.
+ *
+ * With [onClose] the flow opens at [start] over the tabs and can be closed: signing in again after another device's
+ * sign-in (m1.md screen 23) or after the session ended (decision 43).
  */
 @Composable
 fun OnboardingFlow(
@@ -214,8 +256,17 @@ fun OnboardingFlow(
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
     round: Int = 0,
+    start: OnboardingStart = OnboardingStart.WELCOME,
+    onClose: (() -> Unit)? = null,
 ) {
-    val model = viewModel(key = "onboarding-$round") { OnboardingViewModel(dependencies) }
+    val model = viewModel(key = "onboarding-$start-$round") { OnboardingViewModel(dependencies, start = start) }
+    val finishedOverTabs by model.finished.collectAsStateWithLifecycle()
+    LaunchedEffect(finishedOverTabs) { if (finishedOverTabs) onFinish() }
+    // At the bottom of the stack, back closes the flow over the tabs, but not while a sign-in is under way: its answer
+    // would land with nothing to show it.
+    val signInState by model.signIn.state.collectAsStateWithLifecycle()
+    val closeable = onClose != null && model.backStack.size <= 1
+    BackHandler(enabled = closeable) { if (signInState.busy == null) onClose?.invoke() }
     val resources = LocalResources.current
     val isOnline by dependencies.isOnline.collectAsStateWithLifecycle()
     LaunchedEffect(model, resources) {
@@ -241,7 +292,13 @@ fun OnboardingFlow(
                                 model = model.signIn,
                                 isOnline = isOnline,
                                 legal = dependencies.legal,
-                                onBack = model::back,
+                                onBack = {
+                                    when {
+                                        !closeable -> model.back()
+                                        signInState.busy == null -> onClose?.invoke()
+                                    }
+                                },
+                                closes = onClose != null && model.backStack.size <= 1,
                                 onSignIn = model::signIn,
                                 onGuest = model::continueAsGuest,
                                 onGuestReturn = model::returnAsGuest,
