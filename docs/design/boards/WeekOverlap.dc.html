@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>주 보기 · 겹치는 일정</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/6c25f752af04cd1acf08b3de90d860de) format("woff2");font-weight:45 920;font-style:normal;font-display:swap}
+body{margin:0}
+a{color:#1b1b1f;text-decoration:none}a:hover{color:#1b1b1f}
+button{font:inherit;letter-spacing:inherit;color:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #ffffff; color: #1b1b1f; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; letter-spacing: -0.01em; word-break: keep-all; overflow-wrap: break-word">
+
+<header style="position: absolute; top: 54px; left: 0; width: 390px; height: 64px; box-sizing: border-box; padding: 0 8px 0 20px; display: flex; align-items: center; justify-content: space-between">
+<div style="display: flex; flex-direction: column">
+<span style="font-size: 13px; font-weight: 600; color: #5c5c66">2026년 10월</span>
+<h1 style="margin: 0; font-size: 32px; font-weight: 600; line-height: 1.1; letter-spacing: -0.025em">25–31일</h1>
+</div>
+<div style="display: flex; align-items: center; gap: 4px">
+<div role="group" aria-label="보기 바꾸기" style="display: flex; padding: 2px; border-radius: 999px; background: #ebebef">
+<a href="Month.dc.html" style="height: 40px; padding: 0 14px; border-radius: 999px; display: flex; align-items: center; font-size: 14px; font-weight: 600; color: #5c5c66">월</a>
+<a href="Week.dc.html" aria-current="page" style="height: 40px; padding: 0 14px; border-radius: 999px; background: #ffffff; display: flex; align-items: center; font-size: 14px; font-weight: 600; color: #1b1b1f">주</a>
+<a href="List.dc.html" style="height: 40px; padding: 0 14px; border-radius: 999px; display: flex; align-items: center; font-size: 14px; font-weight: 600; color: #5c5c66">목록</a>
+</div>
+<a href="Editor.dc.html" aria-label="일정 추가" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M12 5v14M5 12h14"></path></svg></a>
+</div>
+</header>
+
+<sc-if value="{{focused}}" hint-placeholder-val="{{false}}">
+<div aria-hidden="true" style="position: absolute; top: 120px; left: {{fp.x}}px; width: {{fp.w}}px; height: 574px; border-radius: 14px; background: #f4f4f6"></div>
+</sc-if>
+
+<sc-for list="{{heads}}" as="d" hint-placeholder-count="7">
+<sc-if value="{{d.plain}}" hint-placeholder-val="{{true}}">
+<div aria-hidden="true" style="position: absolute; top: 124px; left: {{d.x}}px; width: {{d.w}}px; height: 52px; display: flex; flex-direction: column; align-items: center; gap: 4px">
+<span style="font-size: {{d.wf}}px; font-weight: 600; color: {{d.fg}}">{{d.w0}}</span>
+<span style="width: {{d.c}}px; height: {{d.c}}px; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-size: {{d.nf}}px; font-weight: 600; font-variant-numeric: tabular-nums; color: {{d.numFg}}; background: {{d.numBg}}">{{d.n}}</span>
+</div>
+</sc-if>
+<sc-if value="{{d.focus}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; top: 128px; left: {{d.x}}px; width: {{d.w}}px; height: 44px; box-sizing: border-box; padding: 0 0 0 10px; display: flex; align-items: center; gap: 6px">
+<h2 style="margin: 0; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em">{{d.n}}</h2>
+<span style="font-size: 13px; font-weight: 600; color: #5c5c66">{{d.dow}}</span>
+<span style="height: 20px; padding: 0 7px; border-radius: 10px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; font-size: 11px; font-weight: 700">{{d.badge}}</span>
+<button type="button" onClick="{{unfocus}}" aria-label="넓힌 열 닫기" style="margin-left: auto; width: 44px; height: 44px; border: none; background: none; display: flex; align-items: center; justify-content: center; color: #1b1b1f; cursor: pointer"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg></button>
+</div>
+</sc-if>
+</sc-for>
+
+<div style="position: absolute; top: 180px; left: 0; width: 390px; height: 26px; border-top: 1px solid #e1e1e6; border-bottom: 1px solid #e1e1e6">
+<span style="position: absolute; left: 8px; top: 6px; font-size: 11px; color: #696973">종일</span>
+<span style="position: absolute; left: {{bd.x}}px; top: 4px; width: {{bd.w}}px; height: 18px; box-sizing: border-box; padding: 0 3px; display: flex; align-items: center; justify-content: center; gap: 2px; font-size: 11px; font-weight: 600; letter-spacing: -0.03em; white-space: nowrap; overflow: hidden"><svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" style="flex: none; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M3.5 7.5h17v2.5h-17zM12 7.5V20"></path></svg>{{bd.t}}</span>
+</div>
+
+<div style="position: absolute; top: 214px; left: 0; width: 390px; height: 480px">
+<sc-for list="{{hours}}" as="h" hint-placeholder-count="15">
+<div aria-hidden="true" style="position: absolute; left: 0; top: {{h.y}}px; width: 390px; height: 0">
+<span style="position: absolute; left: 8px; top: -7px; font-size: 11px; color: #696973; font-variant-numeric: tabular-nums">{{h.t}}</span>
+<span style="position: absolute; left: 40px; right: 8px; top: 0; height: 1px; background: #ebebef"></span>
+</div>
+</sc-for>
+<sc-for list="{{cards}}" as="e" hint-placeholder-count="10">
+<div style="position: absolute; left: {{e.x}}px; top: {{e.y}}px; width: {{e.w}}px; height: {{e.h}}px">
+<a href="Editor.dc.html" aria-label="{{e.label}}" style="position: absolute; inset: 0; box-sizing: border-box; padding: {{e.pad}}; border-radius: 6px; background: {{e.bg}}; box-shadow: {{e.edge}}; color: {{e.fg}}; overflow: hidden; display: flex; flex-direction: {{e.dir}}; gap: {{e.gap}}px; writing-mode: {{e.wm}}">
+<span style="font-size: {{e.tf}}px; font-weight: 600; line-height: {{e.lh}}px; letter-spacing: -0.03em; overflow-wrap: normal">{{e.t}}</span>
+<span style="font-size: {{e.mf}}px; line-height: {{e.mlh}}px; font-variant-numeric: tabular-nums; opacity: 0.85">{{e.time}}</span>
+</a>
+<sc-for list="{{e.ribbons}}" as="r" hint-placeholder-count="0">
+<button type="button" onClick="{{e.open}}" tabindex="-1" aria-hidden="true" style="position: absolute; right: {{r.right}}px; top: {{r.top}}px; width: 4px; height: {{r.h}}px; padding: 0; border: none; border-radius: 2px; background: {{r.c}}; cursor: pointer"></button>
+</sc-for>
+<sc-if value="{{e.hasMore}}" hint-placeholder-val="{{false}}">
+<button type="button" onClick="{{e.open}}" aria-label="{{e.moreLabel}}" style="position: absolute; left: -2px; bottom: -2px; width: 44px; height: 32px; padding: 0 0 6px 6px; border: none; background: none; display: flex; align-items: flex-end; cursor: pointer">
+<span style="height: 18px; padding: 0 6px; border-radius: 9px; background: #1b1b1f; color: #ffffff; display: flex; align-items: center; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums">{{e.more}}</span>
+</button>
+</sc-if>
+</div>
+</sc-for>
+</div>
+
+
+<section aria-label="다음 할 일" style="position: absolute; left: 16px; top: 696px; width: 358px; height: 56px; box-sizing: border-box; padding: 0 4px; border-radius: 28px; background: rgba(255,255,255,0.66); backdrop-filter: blur(16px) saturate(180%); box-shadow: 0 12px 32px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.05), inset 0 0 0 1px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.9); display: flex; align-items: center; gap: 2px">
+<button type="button" aria-label="이전 할 일" onClick="{{prevNext}}" disabled="{{atStart}}" style="flex: none; width: 44px; height: 44px; border: none; border-radius: 22px; background: transparent; display: flex; align-items: center; justify-content: center; opacity: {{prevOp}}; cursor: pointer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M14.5 6l-6 6 6 6"></path></svg></button>
+<a href="{{nx.href}}" style="flex: 1 1 0; min-width: 0; height: 48px; display: flex; align-items: center; gap: 10px">
+<span style="flex: none; width: 40px; height: 40px; border-radius: 10px; background: {{nx.bg}}; color: {{nx.fg}}; box-shadow: {{nx.ring}}; display: flex; align-items: center; justify-content: center">
+<sc-if value="{{nx.isGroup}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="9" cy="8" r="3.6" style="fill: currentColor"></circle><path d="M2.5 19.2c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6c0 .7-.5 1.3-1.2 1.3H3.7c-.7 0-1.2-.6-1.2-1.3z" style="fill: currentColor"></path><circle cx="16.8" cy="8.8" r="2.9" style="fill: currentColor"></circle><path d="M16.4 13.3c3 0 5.1 2 5.1 5.1 0 .6-.4 1-1 1h-3.6c.1-.3.1-.6.1-.9 0-2-.8-3.8-2.2-5 .5-.1 1-.2 1.6-.2z" style="fill: currentColor"></path></svg></sc-if>
+<sc-if value="{{nx.isEvent}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"></rect><path d="M3.5 9.5h17M8 3v4M16 3v4"></path></svg></sc-if>
+<sc-if value="{{nx.isBday}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M3.5 7.5h17v2.5h-17zM12 7.5V20"></path><path d="M12 7.5c-1.2-3-5-3.4-5-1.4 0 1.4 2.6 1.4 5 1.4zM12 7.5c1.2-3 5-3.4 5-1.4 0 1.4-2.6 1.4-5 1.4z"></path></svg></sc-if>
+</span>
+<span aria-live="polite" style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{nx.t}}</span>
+<span style="font-size: 13px; color: #5c5c66; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{nx.s}}</span>
+</span>
+</a>
+<button type="button" aria-label="다음 할 일" onClick="{{nextNext}}" disabled="{{atEnd}}" style="flex: none; width: 44px; height: 44px; border: none; border-radius: 22px; background: transparent; display: flex; align-items: center; justify-content: center; opacity: {{nextOp}}; cursor: pointer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg></button>
+</section>
+
+<nav aria-label="탭 막대" style="position: absolute; left: 16px; top: 760px; width: 358px; height: 64px; box-sizing: border-box; padding: 4px; border-radius: 32px; background: rgba(255,255,255,0.66); backdrop-filter: blur(16px) saturate(180%); box-shadow: 0 12px 32px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.05), inset 0 0 0 1px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.9); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr))">
+<a href="Month.dc.html" aria-current="page" style="border-radius: 28px; background: rgba(0,0,0,0.07); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #7152c4; font-size: 11px; font-weight: 600">
+<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="3.5" style="fill: currentColor"></rect><rect x="6" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="10.5" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="15" y="11.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="6" y="15.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><rect x="10.5" y="15.5" width="3" height="2.5" rx="0.8" style="fill: #ffffff"></rect><path d="M8 2.75v3.5M16 2.75v3.5" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round"></path></svg>
+<span>캘린더</span>
+</a>
+<a href="Groups.dc.html" aria-label="그룹, 응답할 일 1개" style="position: relative; border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #696973; font-size: 11px; font-weight: 600">
+<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="9" cy="8" r="3.6" style="fill: currentColor"></circle><path d="M2.5 19.2c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6c0 .7-.5 1.3-1.2 1.3H3.7c-.7 0-1.2-.6-1.2-1.3z" style="fill: currentColor"></path><circle cx="16.8" cy="8.8" r="2.9" style="fill: currentColor"></circle><path d="M16.4 13.3c3 0 5.1 2 5.1 5.1 0 .6-.4 1-1 1h-3.6c.1-.3.1-.6.1-.9 0-2-.8-3.8-2.2-5 .5-.1 1-.2 1.6-.2z" style="fill: currentColor"></path></svg>
+<span>그룹</span>
+<span aria-hidden="true" style="position: absolute; top: 4px; left: 50%; margin-left: 6px; min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; border: 2px solid #ffffff; background: #1b1b1f; color: #ffffff; font-size: 10px; font-weight: 600; line-height: 14px; text-align: center">1</span>
+</a>
+<a href="ChatList.dc.html" aria-label="채팅, 읽지 않은 메시지 3개" style="position: relative; border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #696973; font-size: 11px; font-weight: 600">
+<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 3.5c5 0 9 3.3 9 7.6s-4 7.6-9 7.6c-.9 0-1.8-.1-2.6-.3L5 20.5c-.5.2-1-.2-.9-.7l.7-3.2C3.7 15.2 3 13.3 3 11.1 3 6.8 7 3.5 12 3.5z" style="fill: currentColor"></path></svg>
+<span>채팅</span>
+<span aria-hidden="true" style="position: absolute; top: 4px; left: 50%; margin-left: 6px; min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; border: 2px solid #ffffff; background: #1b1b1f; color: #ffffff; font-size: 10px; font-weight: 600; line-height: 14px; text-align: center">3</span>
+</a>
+<a href="Me.dc.html" style="border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #696973; font-size: 11px; font-weight: 600">
+<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="12" cy="8" r="4.2" style="fill: currentColor"></circle><path d="M4 20c0-4.2 3.6-7 8-7s8 2.8 8 7c0 .6-.4 1-1 1H5c-.6 0-1-.4-1-1z" style="fill: currentColor"></path></svg>
+<span>나</span>
+</a>
+</nav>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { ni: 1, focus: -1 };
+  }
+  renderVals() {
+    const W = ['일', '월', '화', '수', '목', '금', '토'];
+    const H0 = 8;
+    const PX = 34;
+    const GX = 40;
+    const GW = 342;
+    const focus = this.state.focus;
+    // Column focus (m1.md decision 45): the tapped day widens in place and the other six keep a narrow strip each,
+    // so the week stays on screen while that day's overlapping events get room for their titles.
+    const FW = 196;
+    const widths = W.map((_, i) => (focus < 0 ? GW / 7 : i === focus ? FW : (GW - FW) / 6));
+    const xs = [];
+    widths.reduce((x, w, i) => { xs[i] = x; return x + w; }, GX);
+
+    const hours = [];
+    for (let h = H0; h <= 22; h++) hours.push({ t: String(h), y: (h - H0) * PX });
+    const pad2 = (n) => (n < 10 ? '0' : '') + n;
+    const hm = (h) => pad2(Math.floor(h)) + ':' + (h % 1 ? '30' : '00');
+
+    const soft = 'repeating-linear-gradient(135deg, #d3dfbb 0 4px, #e4ecd5 4px 8px)';
+    // Tint for the card, strong color for ribbons and edges.
+    const K = {
+      school: ['#a0c0fa', '#1b1b1f', '#4172d1'],
+      personal: ['#efb08a', '#1b1b1f', '#ba5a00'],
+      device: ['#d5b9aa', '#1b1b1f', '#966b54'],
+      cafe: ['#77d1c2', '#1b1b1f', '#008476'],
+      family: ['#c04c7b', '#ffffff', '#c04c7b'],
+      soft: [soft, '#1b1b1f', '#667e00'],
+    };
+    const E = [
+      [0, 10, 11, '헬스', 'soft'], [0, 18, 20, '가족 · 저녁', 'family'],
+      [1, 10, 14, '전공 수업', 'school'], [1, 10, 11, '교수 면담', 'personal'], [1, 19, 20, '헬스', 'soft'],
+      [2, 13, 15, '교양 수업', 'school'],
+      [3, 10, 12, '전공 수업', 'school'], [3, 19, 20, '헬스', 'soft'],
+      [4, 13, 15, '교양 수업', 'school'], [4, 16, 18, '동아리 회의', 'personal'], [4, 16, 17, '팀플 회의', 'device'], [4, 17, 18, '과제', 'school'],
+      [5, 17, 22, '카페 마감', 'cafe'],
+      [6, 8, 13, '카페 오픈', 'cafe'],
+    ].map(([d, s, e, t, k]) => ({ d, s, e, t, bg: K[k][0], fg: K[k][1], c: K[k][2] }));
+
+    // Clusters: events of one day that overlap one another, transitively; touching ends do not overlap.
+    // Order is the core's: by start, then the longer first.
+    const days = W.map((_, d) => E.filter((e) => e.d === d).sort((a, b) => a.s - b.s || (b.e - b.s) - (a.e - a.s)));
+    const clustersOf = (list) => {
+      const out = [];
+      list.forEach((e) => {
+        const last = out[out.length - 1];
+        if (last && e.s < last.end) { last.ev.push(e); last.end = Math.max(last.end, e.e); } else out.push({ ev: [e], start: e.s, end: e.e });
+      });
+      return out;
+    };
+    // Greedy lanes: an event goes to the first lane whose last event has ended.
+    const lanesOf = (ev) => {
+      const ends = [];
+      return ev.map((e) => {
+        let l = ends.findIndex((end) => end <= e.s);
+        if (l < 0) { l = ends.length; ends.push(e.e); } else ends[l] = e.e;
+        return l;
+      });
+    };
+    const dayName = (d) => '10월 ' + (25 + d) + '일 ' + W[d] + '요일';
+    const spoken = (e) => e.t + ', ' + hm(e.s) + '부터 ' + hm(e.e) + '까지';
+
+    const cards = [];
+    let focusCount = 0;
+    days.forEach((list, d) => {
+      const x0 = xs[d];
+      const w = widths[d];
+      const wide = focus === d;
+      const narrow = focus >= 0 && !wide;
+      clustersOf(list).forEach((cl) => {
+        const y = (cl.start - H0) * PX + 1;
+        const h = (cl.end - cl.start) * PX - 2;
+        if (cl.ev.length === 1 || wide || narrow) {
+          // One event, or a cluster laid out in lanes (the focused day, and bars in the narrow days).
+          const lanes = lanesOf(cl.ev);
+          const n = Math.max(...lanes) + 1;
+          if (wide && cl.ev.length > 1) focusCount += cl.ev.length;
+          cl.ev.forEach((e, i) => {
+            const lw = (w - 3 - (n - 1) * 3) / n;
+            const showText = !(narrow && cl.ev.length > 1);
+            cards.push({
+              x: (x0 + 1.5 + lanes[i] * (lw + 3)).toFixed(1), w: lw.toFixed(1),
+              y: (e.s - H0) * PX + 1, h: (e.e - e.s) * PX - 2,
+              bg: e.bg, fg: e.fg, t: showText ? e.t : '',
+              time: wide ? hm(e.s) + '–' + hm(e.e) : (!narrow && e.e - e.s >= 2 ? hm(e.s) : ''),
+              // A one-hour card in the focused day is 32 high: 3 + 14 + 12 + 3 keeps both lines in it.
+              tf: wide ? 12 : narrow ? 10 : 11, lh: wide ? 14 : narrow ? 11 : 13,
+              mf: wide && e.e - e.s <= 1 ? 10 : 11, mlh: wide && e.e - e.s <= 1 ? 12 : 13, gap: wide ? 0 : 1,
+              wm: narrow ? 'vertical-rl' : 'horizontal-tb', dir: 'column',
+              pad: narrow ? '4px 2px' : wide ? '3px 7px' : '3px 4px',
+              edge: 'none',
+              label: dayName(d) + ' ' + spoken(e),
+              ribbons: [], hasMore: false,
+            });
+          });
+          return;
+        }
+        // Week at rest: the longest event stays a card over the cluster's time, the rest become ribbons on its
+        // right edge at their own times, and "+n" opens the column focus.
+        const rep = cl.ev.reduce((a, b) => ((b.e - b.s) > (a.e - a.s) ? b : a));
+        const others = cl.ev.filter((e) => e !== rep);
+        const lanes = lanesOf(others);
+        const n = Math.max(...lanes) + 1;
+        const span = cl.end - cl.start;
+        cards.push({
+          x: (x0 + 1.5).toFixed(1), w: (w - 3).toFixed(1), y, h,
+          // The time shows only when the card is tall enough to keep it clear of "+n"; the focus shows it in full.
+          bg: rep.bg, fg: rep.fg, t: rep.t, time: span >= 3 ? hm(rep.s) : '',
+          tf: 11, lh: 13, mf: 11, mlh: 13, gap: 1, wm: 'horizontal-tb', dir: 'column',
+          pad: '3px ' + (3 + n * 6) + 'px 3px 4px', edge: 'none',
+          label: dayName(d) + ' ' + spoken(rep) + ', 겹치는 일정 ' + others.length + '개 더',
+          ribbons: others.map((e, i) => ({
+            c: e.c, right: 2 + lanes[i] * 6,
+            top: (3 + (e.s - cl.start) / span * (h - 6)).toFixed(1),
+            h: ((e.e - e.s) / span * (h - 6)).toFixed(1),
+          })),
+          hasMore: true, more: '+' + others.length,
+          moreLabel: dayName(d) + ' ' + hm(cl.start) + '부터 ' + hm(cl.end) + '까지 겹치는 일정 ' + cl.ev.length + '개 펼치기',
+          open: () => this.setState({ focus: d }),
+        });
+      });
+    });
+
+    const heads = W.map((w0, i) => {
+      const today = i === 0;
+      const narrow = focus >= 0 && focus !== i;
+      return {
+        plain: focus !== i, focus: focus === i,
+        x: xs[i].toFixed(1), w: widths[i].toFixed(1), w0, n: String(25 + i),
+        dow: w0 + '요일', badge: '겹침 ' + focusCount,
+        wf: narrow ? 11 : 12, nf: narrow ? 13 : 14, c: narrow ? 22 : 26,
+        fg: i === 0 ? '#c92f26' : i === 6 ? '#2958c8' : '#5c5c66',
+        numFg: today ? '#ffffff' : (i === 0 ? '#c92f26' : i === 6 ? '#2958c8' : '#1b1b1f'),
+        numBg: today ? '#1b1b1f' : 'transparent',
+      };
+    });
+    const bd = { x: (xs[5] + 1).toFixed(1), w: (widths[5] - 2).toFixed(1), t: widths[5] > 40 ? '민수' : '' };
+
+    const NEXT = [
+      { t: '헬스', s: '오늘 10:00–11:00 · 끝남', kind: 'event', bg: soft, fg: '#1b1b1f', href: 'Editor.dc.html' },
+      { t: '가족 · 저녁', s: '오늘 18:00–20:00 · 3시간 40분 뒤', kind: 'group', bg: '#c04c7b', fg: '#ffffff', href: 'Editor.dc.html' },
+      { t: '전공 수업', s: '내일(월) 10:00–14:00', kind: 'event', bg: '#a0c0fa', fg: '#1b1b1f', href: 'Editor.dc.html' },
+    ];
+    const ni = Math.max(0, Math.min(NEXT.length - 1, this.state.ni));
+    const cur = NEXT[ni];
+    const nx = Object.assign({}, cur, {
+      isGroup: cur.kind === 'group', isEvent: cur.kind === 'event', isBday: cur.kind === 'bday',
+      ring: 'none',
+    });
+    return {
+      heads, hours, cards, nx, bd,
+      focused: focus >= 0,
+      fp: { x: focus >= 0 ? xs[focus].toFixed(1) : 0, w: FW },
+      unfocus: () => this.setState({ focus: -1 }),
+      atStart: ni === 0, atEnd: ni === NEXT.length - 1,
+      prevOp: ni === 0 ? 0.3 : 1, nextOp: ni === NEXT.length - 1 ? 0.3 : 1,
+      prevNext: () => this.setState({ ni: Math.max(0, ni - 1) }),
+      nextNext: () => this.setState({ ni: Math.min(NEXT.length - 1, ni + 1) }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@ import app.geunal.api.auth.Caller
 import app.geunal.api.common.ApiException
 import app.geunal.api.common.HourlyLimit
 import app.geunal.api.common.RateLimitProperties
+import app.geunal.api.groups.GroupRepository
 import app.geunal.api.mls.MlsHeader
 import org.springframework.http.HttpStatus
 import org.springframework.jdbc.core.simple.JdbcClient
@@ -70,6 +71,7 @@ class DeviceController(
     private val jdbc: JdbcClient,
     private val limits: HourlyLimit,
     private val rates: RateLimitProperties,
+    private val groups: GroupRepository,
 ) {
     @GetMapping("/me")
     fun me(
@@ -125,8 +127,10 @@ class DeviceController(
 
     @GetMapping("/users/{id}/devices")
     fun userDevices(
+        @AuthenticationPrincipal caller: Caller,
         @PathVariable id: UUID,
     ): UserDevicesResponse {
+        if (!groups.mayAdd(caller.userId, id)) throw ApiException.notFound("user")
         val active = devices.activeOf(id)
         return UserDevicesResponse(listOfNotNull(active).map { UserDevice(it.id, it.platform, it.signatureKey) })
     }
@@ -138,7 +142,9 @@ class DeviceController(
         @PathVariable id: UUID,
     ): ClaimResponse {
         limits.check("key package claim", caller.userId.toString(), rates.claimsPerMinute, HourlyLimit.MINUTE)
-        devices.current(id) ?: throw ApiException.notFound("device")
+        val device = devices.current(id) ?: throw ApiException.notFound("device")
+        // Only a device someone could add takes its key packages away; anyone else's stay for those who can.
+        if (device.userId == caller.userId || !groups.mayAdd(caller.userId, device.userId)) throw ApiException.notFound("device")
         val data = devices.claimKeyPackage(id) ?: throw ApiException.notFound("an unused key package of this device")
         return ClaimResponse(data)
     }

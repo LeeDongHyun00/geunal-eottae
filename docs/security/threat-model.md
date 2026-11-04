@@ -45,7 +45,7 @@ flowchart LR
 
 - **경계 1: 기기 ↔ 서버.** 서버로 나가는 것은 암호문과 [개요](../kickoff.md) 6장 표의 메타데이터뿐입니다. 서버에서 들어오는 것은 모두 검증 대상입니다(MLS 서명, AEAD 태그, SHA-256, 순번).
 - **경계 2: 기기 ↔ 다른 멤버.** 같은 그룹의 멤버는 그룹 안의 모든 내용을 봅니다. 이것은 설계입니다. 멤버가 할 수 없어야 하는 것은 **남을 사칭하는 것**과 **주도자·업로더 전용 규칙을 깨는 것**입니다.
-- **경계 3: 기기 안.** 앱, 알림 확장(iOS), 위젯이 같은 저장소와 키체인을 씁니다. 기기가 공격자 손에 있으면 이 경계는 OS가 지킵니다.
+- **경계 3: 기기 안.** 앱과 알림 확장(iOS)이 같은 저장소와 키체인을 씁니다. iOS 위젯 확장은 저장소와 키체인에 닿지 않고(엔타이틀먼트는 App Group뿐), 앱이 App Group에 써 둔 오늘·내일 스냅샷만 읽습니다. 기기가 공격자 손에 있으면 이 경계는 OS가 지킵니다.
 - **경계 4: 개발·배포 경로.** 저장소, CI, 의존성, 컨테이너 이미지. 여기가 뚫리면 위 셋이 모두 무의미하므로 [의존성 취약점 검사](dependencies.md)와 CI 규칙([QA](../qa.md) 5장)으로 다룹니다.
 - **경계 5: 이름과 인증서.** 앱이 서버를 찾는 DNS 이름과, 그 이름의 인증서를 내주는 쪽입니다. 이름이 가리키는 곳을 바꿀 수 있는 사람은 서버 자리에 설 수 있으므로 경계 1의 "믿지 않는 곳"에 함께 듭니다. API 도메인은 3.7에서 다룹니다.
 
@@ -97,7 +97,7 @@ API·게이트웨이 호스트의 원격 코드 실행, DB 덤프 유출, 오브
 | --- | --- | --- | --- |
 | 공격자가 얻는 것 | 디스크의 SQLCipher 파일(암호문). 키는 첫 잠금 해제 뒤 접근 가능 등급(`AfterFirstUnlockThisDeviceOnly`)이라 **재부팅 전까지는 OS 안에서 읽을 수 있음** | 앱이 보여 주는 모든 평문, 알림, 새 메시지 수신(강퇴·해제 전까지) | (나) + 백업 복원으로 다른 기기에서도 기록 |
 | 막는 것 | SQLCipher 키·서명 키·AMK는 키체인·키스토어에만([Rust 코어](../parts/rust-core.md) 4장). 안드로이드는 키스토어 AES 키로 감싸고 `allowBackup` 제외([안드로이드](../parts/android.md) 2장). iOS는 `ThisDeviceOnly`로 iCloud 제외 | **사용자가 다른 기기에서 로그인해 기기 교체를 마치면**([공통 계약](../parts/protocol.md) 13장) 서버가 이전 기기를 해제하고 `revoke`를 보냄. 서버는 그 기기에 더 전달하지 않고 403 `device_revoked`. 멤버십 변경을 본 다른 멤버 기기가 Remove 커밋을 올려 epoch가 바뀜 → 이후 메시지는 못 풂. 7일 자기 갱신(PCS) | 없음. 기기와 복구 코드를 함께 잃는 것은 "기록 유실"로 받아들임([개요](../kickoff.md) 6장) |
-| 남는 것 | OS 취약점으로 잠긴 기기에서 키체인을 읽으면 전부 열림. 재부팅된 기기는 첫 잠금 해제까지 안전. **이 등급은 알림 확장이 잠긴 상태에서 복호화하기 위한 선택**이고, 더 높은 등급은 알림 문구를 포기해야 함. 잠긴 화면의 알림 미리보기는 OS 설정("미리보기 보기")을 따르므로, 로컬 알림의 일정 제목과 "OO 생일"이 잠긴 화면에 보일 수 있음 | 해제 전까지 공격자가 보는 새 메시지. **이미 받은 평문은 모두 로컬에 있으므로 과거 기록은 회수 불가.** 공격자가 다른 멤버를 강퇴하거나 그룹 메타를 바꿀 수 있음(멤버 권한). 알림 센터에 복호화된 문구가 남음. **"나 › 복구 코드"에서 12단어를 읽을 수 있음.** 게스트라면 계정을 가져감(3.6). 해제를 받으면 `E`는 지워지지만, 공격자가 기기를 오프라인으로 두면 해제를 받지 못함 | 기록 전부 |
+| 남는 것 | OS 취약점으로 잠긴 기기에서 키체인을 읽으면 전부 열림. 재부팅된 기기는 첫 잠금 해제까지 안전. **이 등급은 알림 확장이 잠긴 상태에서 복호화하기 위한 선택**이고, 더 높은 등급은 알림 문구를 포기해야 함. 잠긴 화면의 알림 미리보기는 OS 설정("미리보기 보기")을 따르므로, 로컬 알림의 일정 제목과 "OO 생일"이 잠긴 화면에 보일 수 있음. iOS StandBy는 잠긴 iPhone에 작은 위젯을 띄우고, 그 일정 제목도 OS 설정에 따라 보일 수 있음 | 해제 전까지 공격자가 보는 새 메시지. **이미 받은 평문은 모두 로컬에 있으므로 과거 기록은 회수 불가.** 공격자가 다른 멤버를 강퇴하거나 그룹 메타를 바꿀 수 있음(멤버 권한). 알림 센터에 복호화된 문구가 남음. **"나 › 복구 코드"에서 12단어를 읽을 수 있음.** 게스트라면 계정을 가져감(3.6). 해제를 받으면 `E`는 지워지지만, 공격자가 기기를 오프라인으로 두면 해제를 받지 못함 | 기록 전부 |
 | 사용자가 할 일 | 새 기기에서 로그인(= 이전 기기 해제). 앱의 "기기 해제" 메뉴를 따로 둘지 검토할 결정 | 같음, 빨리 | 없음 |
 
 확인:
@@ -106,7 +106,8 @@ API·게이트웨이 호스트의 원격 코드 실행, DB 덤프 유출, 오브
 - 코어 ＋`a revoked device stops syncing and asks the app to log out`. `re-seals own availability after every epoch change`(해제된 기기가 옛 상태 키로 새 블롭을 못 읽는지의 반대 방향).
 - 코어 ＋`a revoked device forgets its session, signing key, E and the AMK and keeps its events`.
 - 기기 교체: 코어의 가짜 서버로 M1부터, 종단은 백엔드가 생긴 뒤([M1 시험](../qa/m1.md) A1, E2). M4 게이트의 기기 변경 시나리오([QA](../qa.md) 3.2).
-- 실기기(사용자): 잠긴 화면의 알림이 OS 설정을 따르는지, 해제 뒤 일정은 남고 로그인 전 상태인지([M1 시험](../qa/m1.md) 3.6).
+- API `a replaced device that was offline learns it was replaced when it refreshes`, `a replaced device kept off past its refresh token's life still learns it was replaced`: 교체 때 꺼져 있던 기기가 언제 돌아와도 갱신에서 403 `device_revoked`를 받음(#139).
+- 실기기(사용자): 잠긴 화면의 알림과 StandBy의 위젯이 OS 설정을 따르는지, 해제 뒤 일정은 남고 로그인 전 상태인지([M1 시험](../qa/m1.md) 3.6).
 
 **M1에서 정한 것:**
 - 해제를 받은 기기는 일정·사람과 그것을 여는 DB 키만 남기고, 세션, 기기 서명 키, `E`, AMK, 그룹 상태를 지웁니다. 계정 삭제 때와 같은 목록입니다([공통 계약](../parts/protocol.md) 13장).
@@ -115,6 +116,7 @@ API·게이트웨이 호스트의 원격 코드 실행, DB 덤프 유출, 오브
 - 잠긴 화면의 알림 제목은 OS 설정을 따르고, 앱이 일반 문구로 늘 가리지는 않습니다(2026-11-03 사용자 결정). 가리면 알림을 열어 봐야 무엇인지 알 수 있기 때문입니다.
   - iOS는 기본값(미리보기는 잠금 해제 시에만)에서 잠긴 화면에 제목이 보이지 않으므로 바꿀 것이 없습니다.
   - 안드로이드는 알림을 `VISIBILITY_PRIVATE`로 두고 일반 문구의 공개 버전(`setPublicVersion`)을 붙입니다. 사용자가 "민감한 내용 숨기기"를 켜면 잠긴 화면에 그 문구만 보입니다.
+- 위젯의 일정 제목도 같은 원칙을 따릅니다(2026-11-03 사용자 결정). iOS는 제목에 `.privacySensitive()`를 붙여, 잠긴 화면과 StandBy에서 보일지를 OS 설정이 정하게 합니다. 안드로이드 위젯(6번 PR)도 같은 원칙입니다.
 
 ### 3.4 악의적 멤버
 
@@ -161,7 +163,7 @@ M1부터 계정을 다른 기기로 옮기는 길이 둘입니다([공통 계약
 | --- | --- | --- | --- | --- |
 | 게스트의 12단어를 봄(종이, 사진, 화면) | 계정(자기 기기 등록, 원래 기기 해제). 백업 전부(캘린더, 사람·생일, M3부터 채팅 기록). M2부터 그룹의 새 대화 | 없음. 코드가 곧 자격 증명입니다. 원래 기기는 `replaced_via`가 `recovery`인 것을 보고 내 복구 코드가 쓰였음을 바로 앎([공통 계약](../parts/protocol.md) 13장) | **받아들입니다.** 시작 화면과 "나"에서 게스트에게 알리고 카카오·Apple 연결을 권합니다. 공격자도 지금 코드를 알기 때문에 복구 자료를 자기 것으로 바꿀 수 있고, 그러면 원래 사용자는 돌아올 수 없습니다 | 코어 ＋`a guest comes back on a new device with the twelve words and the previous device is signed out` |
 | 잠금이 풀린 기기 | "나 › 복구 코드"의 12단어(위 줄). 새 제공자 증명으로 계정 삭제와 "백업 없이 새로 시작"(백업 모두 삭제). 카카오톡 로그인은 확인 한 번으로 새 증명을 줄 수 있음 | 기기 인증(2026-10-26 사용자 결정). 12단어를 보여 주기 전, 새로 시작이 백업을 지우기 직전, 계정 삭제의 마지막 단계에서 기기 주인을 확인함([앱 PR 보안 점검표](app-review.md) 3장) | 화면 잠금이 없는 기기는 묻지 않고 진행합니다. 확인할 것이 없고, 계정 삭제는 스토어 규정상 늘 할 수 있어야 하기 때문입니다. 대신 화면 잠금을 권합니다. 카카오 재인증 프롬프트와 서버의 `auth_time` 확인은 하지 않습니다. `auth_time`은 백엔드를 만들 때 카카오 토큰에 실제로 들어오는지 확인한 뒤 다시 봅니다 | 앱 ＋`asks for the device owner before showing the recovery code`, ＋`asks for the device owner before starting fresh`, ＋`asks for the device owner before deleting the account` |
-| 도난 기기에 남은 `E` | 게스트면 그 `E`로 다시 복귀해 계정을 다시 가져감 | 해제(403 `device_revoked`, `revoke` 이벤트)를 받은 기기는 세션, 기기 서명 키, `E`, AMK, 그룹 상태를 지움(13장) | 공격자가 기기를 오프라인으로 두면 해제를 받지 못해 `E`가 남습니다. 그때는 복구 코드 화면의 기기 인증이 마지막 방어입니다 | 코어 ＋`a revoked device forgets its session, signing key, E and the AMK and keeps its events` |
+| 도난 기기에 남은 `E` | 게스트면 그 `E`로 다시 복귀해 계정을 다시 가져감 | 해제(403 `device_revoked`, `revoke` 이벤트)를 받은 기기는 세션, 기기 서명 키, `E`, AMK, 그룹 상태를 지움(13장) | 공격자가 기기를 오프라인으로 두는 동안에는 해제를 받지 못해 `E`가 남습니다. 그때는 복구 코드 화면의 기기 인증이 마지막 방어입니다. 다시 연결하면 얼마나 지났든, 계정이 있는 동안에는 해제를 받습니다(서버가 해제된 기기의 마지막 리프레시 토큰 둘을 알아봄, 계약 13장). 계정이 지워지고 그 토큰들의 만료(30일)도 지나면 해제 대신 세션 끝남이 되어 `E`가 남지만, 서버에 계정과 복구 자료가 없어 쓸 곳이 없습니다 | 코어 ＋`a revoked device forgets its session, signing key, E and the AMK and keeps its events`, API `a replaced device kept off past its refresh token's life still learns it was replaced` |
 | 12단어 일부와 DB 덤프(또는 운영자) | 남은 단어를 찾아 `E`. 그러면 백업과 계정 | 서버에 가는 값(래핑된 AMK, 복구 ID, 복구 공개키)이 모두 64MiB Argon2id를 한 번 거친 `K`에서 나와, 후보마다 Argon2id가 듦(10장) | 드러난 단어가 많으면 여전히 풀립니다. 어림으로 GPU 한 대로, 남은 단어가 4개면 십수 년 이상, 3개면 며칠에서 몇 주, 2개면 몇십 분입니다 | 벡터 `recovery.json` |
 | 세션(리프레시 토큰) 탈취 | 세션으로 할 수 있는 것 | 복구 자료를 올릴 때마다(첫 업로드 포함) 이 기기의 등록된 키가 올리는 자료까지 서명해야 함(10장, 2026-11-03). 덮어쓰기에는 지금 코드의 서명도 필요. 계정 삭제에는 다시 증명(게스트는 복구 서명, 카카오는 새 ID 토큰, Apple은 새 인가 코드)과 기기 키의 서명이 필요(13장). 기기 키는 기기를 떠나지 않아서, 세션에 제공자 증명까지 모은 사람도 복구 자료를 바꾸거나 계정·백업을 지우지 못함. 이미 교체된 리프레시 토큰이 다시 오면 그 기기의 세션을 모두 끊음(재사용 감지, [API](../parts/api-server.md) 4장) | 재사용 감지가 끊기 전까지 세션으로 할 수 있는 나머지(그룹 나가기, 방장이면 강퇴)는 남습니다. 되돌릴 수 없는 것은 막았습니다. 게스트의 첫 업로드 창은 2026-11-03에 닫았습니다(아래 "정한 것") | API `refuses recovery material without the device key's signature over it`, `refuses to delete an account or start over without the device key's signature`, `overwriting needs the current code's signature over a fresh nonce`, `without the right proof nothing is deleted and the session stays`, `a refresh token presented twice ends every session of its device`, `builds and checks the device-key signatures as the core makes them`, 코어 `a_stolen_session_cannot_put_recovery_material_before_the_device`, `recovery_material_swapped_under_the_devices_signature_is_refused`, `a_stolen_session_with_a_fresh_provider_proof_neither_deletes_nor_starts_over_without_the_device_key`, 벡터 `device_signatures.json` |
 | 카카오·Apple 계정 탈취 | 교체 티켓으로 백업 암호문과 래핑된 AMK(풀지 못함). `POST /auth/replace`로 계정. M2부터 그룹의 새 대화. 제공자 로그인 30분 안이나 새 제공자 증명으로 "백업 없이 새로 시작"을 고르면 서버의 백업을 모두 지움(10장 "새 키로 시작") | 백업은 12단어 없이는 못 풂. 원래 기기는 `replaced_via`가 `provider`인 것을 보고 알아챔 | 계정과 그룹 접근은 넘어갑니다. 그룹 멤버에게 "새 기기에서 들어왔어요"를 보일지는 3.1의 검토할 결정입니다. 지운 백업은 되돌릴 수 없지만, 원래 기기의 일정과 사람은 해제 뒤에도 남습니다. 원래 사용자가 다시 로그인해 새로 시작하면 그 기기에서 다시 백업합니다 | 코어 ＋`a second device restores with a replacement ticket and only then becomes the active device`, API ＋`allows a new recovery key only within 30 minutes of a provider sign-in or with a fresh provider proof` |

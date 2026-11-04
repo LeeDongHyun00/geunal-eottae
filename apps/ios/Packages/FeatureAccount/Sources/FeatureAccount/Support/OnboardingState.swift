@@ -35,6 +35,12 @@ public struct OnboardingState: Sendable {
     public func reset() {
         isFinished = false
         pendingGuestAgeConfirmedAt = nil
+        forgetAccount()
+    }
+
+    /// The account was deleted: what this device remembered about it goes, and onboarding comes back for the next one.
+    public func forgetAccount() {
+        isFinished = false
         revocationShownAt = nil
         lastProviderSignIn = nil
         knownAccount = nil

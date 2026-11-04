@@ -69,6 +69,26 @@ paths:
         "200": { content: { application/json: { schema: { $ref: "#/components/schemas/ReplaceRequired" } } } }
         "400": { description: "invalid_request (bad signature, unknown or reused nonce, bad field)" }
 
+  /auth/stub/invite:
+    post:
+      summary: Make an account pending in a group (only with GEUNAL_AUTH_STUB; otherwise 404)
+      description: |
+        Stands in for the invite code (protocol §2) until it exists, so that a member can then add the account. Someone
+        removed earlier is invited again; an active member stays as they are.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [group_id, user_id]
+              properties:
+                group_id: { $ref: "#/components/schemas/Uuid" }
+                user_id: { $ref: "#/components/schemas/Uuid" }
+      responses:
+        "204": { description: invited }
+        "404": { description: not_found (group) }
+
   /auth/kakao:
     post:
       summary: "Sign in with Kakao and register this device (protocol §13)"
@@ -598,8 +618,12 @@ paths:
   /users/{id}/devices:
     get:
       summary: The user's active devices with their Ed25519 signature keys (to check a KeyPackage before an Add)
+      description: |
+        For the caller's own account, or an account pending or active in a group the caller is active in; any other
+        user is 404.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
+        "404": { description: not_found }
         "200":
           content:
             application/json:
@@ -609,7 +633,7 @@ paths:
                 properties:
                   devices:
                     type: array
-                    description: empty for an unknown user or one without an active device
+                    description: empty for a user without an active device
                     items:
                       type: object
                       required: [id, platform, signature_key]
@@ -621,10 +645,11 @@ paths:
   /devices/{id}/key-packages/claim:
     post:
       summary: Take one unused KeyPackage of that device (oldest first); each is handed out once
+      description: Only of another account's device that the caller may add, as for GET /users/{id}/devices.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200": { content: { application/json: { schema: { type: object, required: [key_package], properties: { key_package: { $ref: "#/components/schemas/Bytes" } } } } } }
-        "404": { description: "not_found (no such active device, or none left)" }
+        "404": { description: "not_found (no such active device the caller may add, or none left)" }
 
   /me/welcomes:
     get:
@@ -731,7 +756,9 @@ paths:
         commit. An external commit (sender type new_member_commit) is accepted from an active member's current device.
         `group_info` is the MLSMessage GroupInfo of epoch + 1. An Add commit lists the devices it adds in `added` and
         carries their `welcome` (one MLS Welcome, stored once per device); those users become `active`, their devices
-        get a `welcome` event, and every other active device gets an `entry` event.
+        get a `welcome` event, and every other active device gets an `entry` event. Each added device's account must be
+        pending in the group (invited) or already active (a new device of a member), or the commit is 403 `not_member`
+        and nothing is stored. `added` holds at most 19 devices.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         content:
@@ -756,8 +783,8 @@ paths:
                   seq: { type: integer, format: int64, description: the commit's place in the log }
                   epoch: { type: integer, format: int64, description: the epoch the commit was made in (same as the request) }
                   received_at: { type: string, format: date-time, description: the server time stored with the entry (protocol §4) }
-        "400": { description: "invalid_request (header mismatch, not a commit, welcome without added or the reverse)" }
-        "403": { description: not_member }
+        "400": { description: "invalid_request (header mismatch, not a commit, welcome without added or the reverse, too many added)" }
+        "403": { description: "not_member (the caller, or the account of a device in `added`)" }
         "404": { description: "not_found (group, or a device in `added`)" }
         "409": { description: epoch_conflict }
         "413": { description: too_large }

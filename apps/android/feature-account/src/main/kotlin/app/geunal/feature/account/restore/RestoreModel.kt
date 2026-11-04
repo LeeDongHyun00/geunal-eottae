@@ -13,6 +13,7 @@ import app.geunal.feature.account.onboarding.SignInModel
 import app.geunal.feature.account.support.AccountNotice
 import app.geunal.feature.account.support.DeviceAuth
 import app.geunal.feature.account.support.DeviceAuthPurpose
+import app.geunal.feature.account.support.StepTiming
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +51,7 @@ class RestoreModel(
     private val notify: (AccountNotice) -> Unit,
     private val deviceAuth: DeviceAuth,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val timing: StepTiming = StepTiming.OFF,
 ) {
     sealed interface Problem {
         /** The word in this cell (0-based) is not one of the 2048. Judged on the device. */
@@ -311,7 +313,7 @@ class RestoreModel(
                 if (!deviceAuth.confirm(DeviceAuthPurpose.WIPE_BACKUPS)) return@launch
                 // Without a proof: within 30 minutes of the provider sign-in the server needs none. A later start of the
                 // offer gets `ReauthRequired`, and the provider check it asks for comes with account deletion's.
-                core.startFresh(null)
+                timing.measure("restore", "startFresh") { core.startFresh(null) }
                 _state.update { it.copy(phase = Phase.StartedFresh, noCode = null) }
             } catch (e: CoreException.Network) {
                 _state.update { it.copy(problem = Problem.Offline, noCode = null) }
@@ -337,7 +339,7 @@ class RestoreModel(
         _state.update { it.copy(isWorking = true) }
         scope.launch {
             try {
-                core.signInGuest(SignInModel.account(null, ageConfirmedAt))
+                timing.measure("restore", "newGuest") { core.signInGuest(SignInModel.account(null, ageConfirmedAt)) }
                 _state.update { it.copy(phase = Phase.StartedFresh, noCode = null) }
             } catch (e: CoreException.Network) {
                 _state.update { it.copy(problem = Problem.Offline, noCode = null) }
@@ -370,7 +372,7 @@ class RestoreModel(
                 }
             }
         try {
-            val summary = core.restoreFromCode(words, choice, relay)
+            val summary = timing.measure("restore", mode.name.lowercase()) { core.restoreFromCode(words, choice, relay) }
             _state.update { it.copy(phase = Phase.Finished(summary)) }
         } catch (e: CoreException.WrongRecoveryCode) {
             _state.update { it.copy(problem = Problem.WrongCode, phase = Phase.Entering) }

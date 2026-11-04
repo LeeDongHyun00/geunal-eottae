@@ -54,21 +54,29 @@ public final class SignInModel {
         busy = provider == .kakao ? .kakao : .apple
         defer { busy = nil }
         do {
-            let nonce = try await core.signInNonce()
+            let nonce = try await AccountTrace.measure("sign-in nonce") { try await core.signInNonce() }
             let result: AuthResult
             switch provider {
             case .kakao:
-                let credential = try await providers.kakao(providerNonce: nonce.providerNonce)
+                let credential = try await AccountTrace.measure("sign-in Kakao sheet") {
+                    try await providers.kakao(providerNonce: nonce.providerNonce)
+                }
                 let account = NewAccount(
                     displayName: Self.displayName(credential.displayName, provider: provider),
                     ageConfirmedAt: ageConfirmedAt)
-                result = try await core.signInKakao(nonce: nonce.nonce, idToken: credential.idToken, account: account)
+                result = try await AccountTrace.measure("sign-in core") {
+                    try await core.signInKakao(nonce: nonce.nonce, idToken: credential.idToken, account: account)
+                }
             case .apple:
-                let credential = try await providers.apple(providerNonce: nonce.providerNonce)
+                let credential = try await AccountTrace.measure("sign-in Apple sheet") {
+                    try await providers.apple(providerNonce: nonce.providerNonce)
+                }
                 let account = NewAccount(
                     displayName: Self.displayName(credential.displayName, provider: provider),
                     ageConfirmedAt: ageConfirmedAt)
-                result = try await core.signInApple(nonce: nonce.nonce, idToken: credential.idToken, account: account)
+                result = try await AccountTrace.measure("sign-in core") {
+                    try await core.signInApple(nonce: nonce.nonce, idToken: credential.idToken, account: account)
+                }
             }
             state.pendingGuestAgeConfirmedAt = nil
             state.lastProviderSignIn = (provider, now())
@@ -96,8 +104,10 @@ public final class SignInModel {
         busy = .guest
         defer { busy = nil }
         do {
-            _ = try await core.signInGuest(
-                account: NewAccount(displayName: Self.guestName, ageConfirmedAt: ageConfirmedAt))
+            _ = try await AccountTrace.measure("sign-in core") {
+                try await core.signInGuest(
+                    account: NewAccount(displayName: Self.guestName, ageConfirmedAt: ageConfirmedAt))
+            }
             state.pendingGuestAgeConfirmedAt = nil
             return .permissions
         } catch CoreError.Network(_), CoreError.NotImplemented(_) {

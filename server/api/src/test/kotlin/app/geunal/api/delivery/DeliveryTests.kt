@@ -186,6 +186,53 @@ class DeliveryTests : ApiTest() {
     }
 
     @Test
+    fun `refuses an Add commit for a device whose account is not pending in the group`() {
+        val owner = signIn()
+        val member = signIn()
+        val outsider = signIn()
+        val groupId = groupWith(owner, member)
+
+        member.addUninvited(groupId, 1, outsider).expectError(403, "not_member")
+        owner.addUninvited(groupId, 1, outsider).expectError(403, "not_member")
+
+        // Nothing of the refused commit stays: no entry, no Welcome, no membership.
+        assertThat(owner.get("/groups/$groupId/log?after=1").expect(200).long("last_seq")).isEqualTo(1)
+        assertThat(outsider.get("/me/welcomes").expect(200)["welcomes"].size()).isZero()
+        outsider.get("/groups/$groupId/log").expectError(403, "not_member")
+    }
+
+    @Test
+    fun `a member kicked by the owner is not added back by a non-owner`() {
+        val owner = signIn()
+        val member = signIn()
+        val kicked = signIn()
+        val groupId = groupWith(owner, member, kicked)
+        owner.delete("/groups/$groupId/members/${kicked.userId}").expect(204)
+
+        member.addUninvited(groupId, 2, kicked).expectError(403, "not_member")
+
+        kicked.message(groupId, 2).expectError(403, "not_member")
+    }
+
+    @Test
+    fun `refuses more added devices than a group holds`() {
+        val owner = signIn()
+        val groupId = groupWith(owner)
+
+        owner
+            .post(
+                "/groups/$groupId/commits",
+                mapOf(
+                    "epoch" to 0,
+                    "commit" to Mls.commit(groupId, 0),
+                    "group_info" to Mls.groupInfo(groupId, 1),
+                    "welcome" to Mls.welcome(),
+                    "added" to List(20) { UUID.randomUUID() },
+                ),
+            ).expectError(400, "invalid_request")
+    }
+
+    @Test
     fun `an external commit resyncs an active member and nobody else`() {
         val owner = signIn()
         val member = signIn()
@@ -207,7 +254,7 @@ class DeliveryTests : ApiTest() {
     }
 
     @Test
-    fun `a removed member can be added again by a commit`() {
+    fun `a removed member invited again can be added again by a commit`() {
         val owner = signIn()
         val member = signIn()
         val groupId = groupWith(owner, member)

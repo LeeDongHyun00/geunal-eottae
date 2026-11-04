@@ -9,13 +9,17 @@ enum ProviderProof {
     static func make(
         with provider: Provider, core: any CoreProtocol, providers: any ProviderSignIn
     ) async throws -> DeletionProof {
-        let nonce = try await core.signInNonce()
+        let nonce = try await AccountTrace.measure("proof nonce") { try await core.signInNonce() }
         switch provider {
         case .kakao:
-            let credential = try await providers.kakao(providerNonce: nonce.providerNonce)
+            let credential = try await AccountTrace.measure("proof Kakao sheet") {
+                try await providers.kakao(providerNonce: nonce.providerNonce)
+            }
             return .kakao(nonce: nonce.nonce, idToken: credential.idToken)
         case .apple:
-            let credential = try await providers.apple(providerNonce: nonce.providerNonce)
+            let credential = try await AccountTrace.measure("proof Apple sheet") {
+                try await providers.apple(providerNonce: nonce.providerNonce)
+            }
             guard let code = credential.authorizationCode else { throw ProviderSignInError.unavailable }
             return .apple(authorizationCode: code)
         }

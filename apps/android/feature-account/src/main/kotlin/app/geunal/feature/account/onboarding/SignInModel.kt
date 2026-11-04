@@ -11,6 +11,7 @@ import app.geunal.feature.account.providers.ProviderSignInException
 import app.geunal.feature.account.restore.RestoreMode
 import app.geunal.feature.account.support.AccountNotice
 import app.geunal.feature.account.support.OnboardingState
+import app.geunal.feature.account.support.StepTiming
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +28,7 @@ class SignInModel(
     private val onboarding: OnboardingState,
     private val notify: (AccountNotice) -> Unit,
     private val now: () -> Instant = Instant::now,
+    private val timing: StepTiming = StepTiming.OFF,
 ) {
     enum class Busy { KAKAO, APPLE, GUEST }
 
@@ -64,18 +66,26 @@ class SignInModel(
             return null
         }
         _state.update { it.copy(busy = if (provider == Provider.KAKAO) Busy.KAKAO else Busy.APPLE) }
+        val flow = if (provider == Provider.KAKAO) "signIn.kakao" else "signIn.apple"
         try {
-            val nonce = core.signInNonce()
             val result =
-                when (provider) {
-                    Provider.KAKAO -> {
-                        val credential = providers.kakao(nonce.providerNonce)
-                        core.signInKakao(nonce.nonce, credential.idToken, account(credential.displayName, ageConfirmedAt))
-                    }
-                    Provider.APPLE -> {
-                        // The code that comes with Apple's answer is for account deletion only (protocol §13).
-                        val credential = providers.apple(nonce.providerNonce)
-                        core.signInApple(nonce.nonce, credential.idToken, account(credential.displayName, ageConfirmedAt))
+                timing.measure(flow, "total") {
+                    val nonce = timing.measure(flow, "nonce") { core.signInNonce() }
+                    // The provider's screen: mostly the person's own time, kept apart so the rest reads clean.
+                    val credential =
+                        timing.measure(flow, "provider") {
+                            when (provider) {
+                                Provider.KAKAO -> providers.kakao(nonce.providerNonce)
+                                // The code that comes with Apple's answer is for account deletion only (protocol §13).
+                                Provider.APPLE -> providers.apple(nonce.providerNonce)
+                            }
+                        }
+                    val account = account(credential.displayName, ageConfirmedAt)
+                    timing.measure(flow, "core") {
+                        when (provider) {
+                            Provider.KAKAO -> core.signInKakao(nonce.nonce, credential.idToken, account)
+                            Provider.APPLE -> core.signInApple(nonce.nonce, credential.idToken, account)
+                        }
                     }
                 }
             onboarding.pendingGuestAgeConfirmedAt = null
@@ -113,7 +123,7 @@ class SignInModel(
         }
         _state.update { it.copy(busy = Busy.GUEST) }
         try {
-            core.signInGuest(account(null, ageConfirmedAt))
+            timing.measure("signIn.guest", "core") { core.signInGuest(account(null, ageConfirmedAt)) }
             onboarding.pendingGuestAgeConfirmedAt = null
             return Outcome.Permissions
         } catch (e: CoreException) {

@@ -31,6 +31,7 @@ import app.geunal.feature.account.support.AccountNotice
 import app.geunal.feature.account.support.BuildChannel
 import app.geunal.feature.account.support.DeviceAuth
 import app.geunal.feature.account.support.OnboardingState
+import app.geunal.feature.account.support.StepTiming
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +56,8 @@ class OnboardingDependencies(
     val state: OnboardingState,
     val channel: BuildChannel,
     val legal: LegalLinks,
+    /** Debug builds time the sign-in steps into logcat; release builds measure nothing. */
+    val timing: StepTiming = StepTiming.OFF,
 )
 
 /** A screen of the first run (m1.md §2.1). */
@@ -94,7 +97,7 @@ class OnboardingViewModel(
     private val notify: (AccountNotice) -> Unit = { notices.trySend(it) }
 
     val backStack = mutableStateListOf<OnboardingRoute>(OnboardingRoute.Welcome)
-    val signIn = SignInModel(dependencies.core, dependencies.providers, dependencies.state, notify)
+    val signIn = SignInModel(dependencies.core, dependencies.providers, dependencies.state, notify, timing = dependencies.timing)
     val permissions = PermissionsModel(dependencies.core, dependencies.permissions, dependencies.channel, notify)
 
     /** The model of the restore entry on the stack, if there is one. */
@@ -151,6 +154,7 @@ class OnboardingViewModel(
                 notify = notify,
                 deviceAuth = dependencies.deviceAuth,
                 io = io,
+                timing = dependencies.timing,
             )
         val route = OnboardingRoute.Restore(mode, model, scope)
         backStack.add(route)

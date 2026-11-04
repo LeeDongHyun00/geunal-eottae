@@ -48,6 +48,7 @@ class RateLimitTests : ApiTest() {
     fun `answers 429 past 30 key package claims a minute`() {
         val adder = signIn()
         val holder = signIn()
+        adder.invite(adder.post("/groups").expect(201).uuid("id"), holder)
         holder.post("/me/key-packages", mapOf("key_packages" to List(100) { Mls.keyPackage() })).expect(200)
 
         val statuses = (1..61).map { adder.post("/devices/${holder.deviceId}/key-packages/claim").status }
