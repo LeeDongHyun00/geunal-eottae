@@ -8,6 +8,11 @@ spring:
   threads:
     virtual:
       enabled: true
+  mvc:
+    formcontent:
+      filter:
+        # It reads a form PUT, PATCH or DELETE whole before BodyLimit could cap it, and no endpoint takes one.
+        enabled: false
   jackson:
     # Every JSON field the protocol names is snake_case (user_id, group_id, base_version).
     property-naming-strategy: SNAKE_CASE

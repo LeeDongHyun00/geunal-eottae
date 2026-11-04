@@ -7,9 +7,9 @@ import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletRequestWrapper
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.boot.jackson.autoconfigure.JsonFactoryBuilderCustomizer
-import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -28,10 +28,13 @@ import java.io.InputStreamReader
  * little above the largest valid body of each route (base64 makes bytes a third larger).
  *
  * Form posts (Apple's web sign-in callback) are left to Tomcat, which parses them from its own stream and caps them
- * with `server.tomcat.max-http-form-post-size`; the declared length is still checked here.
+ * with `server.tomcat.max-http-form-post-size`; the declared length is still checked here. Spring's form-content
+ * filter, which would read a form PUT, PATCH or DELETE whole, is off (`spring.mvc.formcontent.filter.enabled`).
+ *
+ * It runs first of all filters, before anything else could read the body; only [RequestLog] wraps it, to log the 413.
  */
 @Component
-@Order(SecurityFilterProperties.DEFAULT_FILTER_ORDER - 1)
+@Order(BodyLimit.ORDER)
 class BodyLimit(
     private val mapper: JsonMapper,
 ) : OncePerRequestFilter() {
@@ -96,6 +99,8 @@ class BodyLimit(
     }
 
     companion object {
+        const val ORDER = Ordered.HIGHEST_PRECEDENCE + 1
+
         const val KIB = 1024
 
         /** Most bodies are a few fields and at most a 16 KiB state blob. */

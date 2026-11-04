@@ -6,7 +6,7 @@ import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties
+import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
@@ -19,11 +19,11 @@ import org.springframework.web.util.ServletRequestPathUtils
  * not the path, so no ID, nonce or token in a path or query reaches the log; no address, header or body either.
  * Health checks are left out, as they come every few seconds.
  *
- * It runs ahead of Spring Security so that a request the security chain turns away (an expired session, a revoked
- * device, a replacement ticket) is logged too, and so that the time includes authentication.
+ * It runs ahead of every other filter so that a request turned away early (a body over its cap, an expired session, a
+ * revoked device, a replacement ticket) is logged too, and so that the time includes authentication.
  */
 @Component
-@Order(SecurityFilterProperties.DEFAULT_FILTER_ORDER - 2)
+@Order(Ordered.HIGHEST_PRECEDENCE)
 class RequestLog(
     @param:Qualifier("requestMappingHandlerMapping") private val mappings: ObjectProvider<RequestMappingHandlerMapping>,
 ) : OncePerRequestFilter() {

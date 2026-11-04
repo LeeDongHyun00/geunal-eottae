@@ -69,6 +69,20 @@ class BodyLimitTests : ApiTest() {
     }
 
     @Test
+    fun `rejects a form body over the limit before anything reads it`() {
+        for (method in listOf("POST", "PUT", "PATCH", "DELETE")) {
+            val (status, body) =
+                raw(
+                    "$method /me/push-token HTTP/1.1\r\nHost: localhost\r\n" +
+                        "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: 50000000\r\nConnection: close\r\n\r\n",
+                )
+
+            assertThat(status).describedAs(method).contains(" 413 ")
+            assertThat(body).contains("\"error\":\"too_large\"")
+        }
+    }
+
+    @Test
     fun `rejects a chunked body once it passes the limit`() {
         val chunk = ByteArray(16 * 1024) { 'a'.code.toByte() }
         val chunks =
