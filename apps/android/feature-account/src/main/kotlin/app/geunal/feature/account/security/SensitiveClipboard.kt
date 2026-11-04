@@ -39,6 +39,22 @@ class SensitiveClipboard(
         }
     }
 
+    /**
+     * A code copied before the app's process ended stays on the clipboard: the minute's clearing died with it. On the
+     * next start, once the app is in front and may read the clipboard, our own clip goes. Only when it can be read:
+     * unlike [clear], a clipboard that cannot be read is left alone, since whatever it holds was not copied just now.
+     */
+    fun clearLeftover() {
+        val manager = manager ?: return
+        val description = manager.primaryClipDescription ?: return
+        if (!isLeftover(description.label)) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            manager.clearPrimaryClip()
+        } else {
+            manager.setPrimaryClip(ClipData.newPlainText("", ""))
+        }
+    }
+
     companion object {
         /** A label that says nothing of what the clip is, since some keyboards show it. */
         private const val LABEL = "geunal"
@@ -55,5 +71,8 @@ class SensitiveClipboard(
             readable: Boolean,
             label: CharSequence?,
         ): Boolean = !readable || label == LABEL
+
+        /** Only the code under our own label is a leftover; anything else on the clipboard is the person's. */
+        internal fun isLeftover(label: CharSequence?): Boolean = label == LABEL
     }
 }

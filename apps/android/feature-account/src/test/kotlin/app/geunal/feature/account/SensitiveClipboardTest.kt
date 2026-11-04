@@ -18,4 +18,11 @@ class SensitiveClipboardTest {
         assertFalse(SensitiveClipboard.mayClear(readable = true, label = "메모"))
         assertFalse(SensitiveClipboard.mayClear(readable = true, label = null))
     }
+
+    @Test
+    fun aLeftoverIsOnlyOurOwnClip() {
+        assertTrue(SensitiveClipboard.isLeftover("geunal"))
+        assertFalse("what the person copied stays", SensitiveClipboard.isLeftover("메모"))
+        assertFalse(SensitiveClipboard.isLeftover(null))
+    }
 }
