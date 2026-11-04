@@ -5,6 +5,7 @@
 | 파일 | 하는 일 | 실행 |
 | --- | --- | --- |
 | `gen_m1_boards.py` | M1 시안 보드(`.dc.html`)를 만듦. 마지막으로 더한 것은 `StoreReset`(25번) | `python3 gen_m1_boards.py <출력 디렉터리>` |
+| `gen_m2_sheets.py` | M2 시트 보드 13(`CreateGroup`)·15(`LeadSet`)·19(`GroupProfile`)와 21번 초대 웹 페이지(`InviteWeb`)를 만듦 | `python3 gen_m2_sheets.py <출력 디렉터리>` |
 | `export_screens.js` | 보드를 Playwright로 열어 PNG로 내보냄. 작업의 `clicks`로 상태를 바꾼 뒤 찍음 | `node export_screens.js http://127.0.0.1:8765 jobs/<작업>.json <출력 루트>` |
 | `overflow.js` | 390pt 틀 밖으로 나간 요소와 페이지 오류를 찾음 | `node overflow.js http://127.0.0.1:8765 <보드>...` |
 | `measure.js` | 보드 내용이 어디까지 내려가는지 재서 아트보드 높이를 정함 | `node measure.js http://127.0.0.1:8765 <보드:폭:높이>...` |
