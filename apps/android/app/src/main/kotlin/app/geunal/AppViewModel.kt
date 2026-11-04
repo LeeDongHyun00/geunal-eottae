@@ -255,6 +255,8 @@ class AppViewModel(
                 // A store that cannot answer reads as nothing to show; the next change or foreground asks again.
                 Triple(orNull { core.revocation() }, core.session(), orNull { core.account() })
             }
+        // Without a session the core takes no answer about another account's events; the next sign-in asks again.
+        if (session == null) localData?.drop()
         when {
             session != null -> {
                 if (account != null) onboarding.knownAccount = if (account.providers.isEmpty()) AccountKind.GUEST else AccountKind.PROVIDER
@@ -324,7 +326,8 @@ class AppViewModel(
                 }
             }
             // The core backs nothing up while another account's events wait for an answer.
-            if (_phase.value == AppPhase.Main) localData?.ask {}
+            // Not while the sign-in over the tabs is up: that flow asks its own, and two sheets would answer twice.
+            if (_phase.value == AppPhase.Main && _signingIn.value == null) localData?.ask {}
             nextUp?.refresh()
             refreshAccount()
         }

@@ -80,4 +80,19 @@ class LocalDataQuestionTest {
             assertFalse(wentOn)
             assertEquals(listOf(AccountNotice.SOMETHING_FAILED), notices)
         }
+
+    @Test
+    fun aSessionThatEndedUnderTheSheetTakesItAway() =
+        runTest(dispatcher) {
+            core.currentSession = Session("u2", "d1")
+            core.otherAccountData = LocalData(1u, 0u)
+            question.ask { wentOn = true }
+            core.settleError = CoreException.NotSignedIn()
+
+            question.answer(LocalDataChoice.KEEP)
+
+            assertNull("no sheet left that no answer can close", question.asking.value)
+            assertFalse(wentOn)
+            assertTrue(notices.isEmpty())
+        }
 }

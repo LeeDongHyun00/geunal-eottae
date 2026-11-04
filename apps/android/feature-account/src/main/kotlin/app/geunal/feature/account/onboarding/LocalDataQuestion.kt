@@ -62,12 +62,23 @@ class LocalDataQuestion(
         _asking.value = local
     }
 
+    /** The account's session ended: there is no one to answer for until the next sign-in, which asks again. */
+    fun drop() {
+        _asking.value = null
+        next = null
+    }
+
     /** The person's answer. A failure keeps the sheet, since the core still waits for an answer. */
     suspend fun answer(choice: LocalDataChoice) {
         if (_asking.value == null || _isWorking.value) return
         _isWorking.value = true
         try {
             withContext(io) { core.settleLocalData(choice) }
+        } catch (e: CoreException.NotSignedIn) {
+            // The session ended while the sheet was up (a revocation, a refused refresh): the core takes no answer now
+            // and asks again after the next sign-in, so the sheet goes instead of holding the screen.
+            drop()
+            return
         } catch (e: CoreException) {
             notify(AccountNotice.SOMETHING_FAILED)
             return
