@@ -1,10 +1,13 @@
-//! core/vectors/entries.json pins the CBOR of every entry kind (protocol §12), so a later build decodes what this one
-//! wrote. `GEUNAL_WRITE_VECTORS=1 cargo test -p geunal-domain --locked --test vectors` regenerates the file; the plain
-//! test run only checks it.
+//! core/vectors/entries.json pins the CBOR of every entry kind (protocol §4) so a later build decodes what this one
+//! wrote, and invites.json pins how invite codes and links read (protocol §15). `GEUNAL_WRITE_VECTORS=1 cargo test -p
+//! geunal-domain --locked --test vectors` regenerates both files; the plain test run only checks them.
 
 use std::path::PathBuf;
 
 use geunal_domain::entry::{Choice, Entry, Mode, Stage, decode, encode};
+use geunal_domain::invite::{
+    ALPHABET, CODE_LEN, GROUP_COLORS, Invite, display_code, invite_link, normalize_code, parse_invite,
+};
 use serde_json::{Value, json};
 
 fn path() -> PathBuf {
@@ -178,4 +181,82 @@ fn entries_json_matches_this_build() {
         let from_json: Entry = serde_json::from_value(case["entry"].clone()).unwrap();
         assert_eq!(from_json, entry, "{name}: the JSON form in the file is the same entry");
     }
+}
+
+// ----- core/vectors/invites.json: invite codes and links (protocol §15) -----
+
+fn invites_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../vectors/invites.json")
+}
+
+const CODES: &[&str] = &[
+    "GN7KQ4XZM2",
+    "gn7kq-4xzm2",
+    " GN7KQ 4XZM2\n",
+    "GN7KQ-4XZMO",
+    "IL000-00000",
+    "GN7KQ-4XZM",
+    "GN7KQ-4XZM22",
+    "GN7KQ-4XZMU",
+    "GN7KQ_4XZM2",
+    "",
+];
+
+const LINKS: &[(&str, Option<&str>, Option<&str>)] = &[
+    ("GN7KQ4XZM2", None, None),
+    ("GN7KQ4XZM2", Some("주말모임"), Some("mint")),
+    ("GN7KQ4XZM2", Some("A&B=C #1"), None),
+    ("GN7KQ4XZM2", None, Some("neon")),
+    ("GN7KQ4XZM2", Some("가나다라마바사아자차카타파하가나다라마바사"), Some("cocoa")),
+];
+
+const PASTES: &[&str] = &[
+    "GN7KQ-4XZM2",
+    "https://geunal.app/i/GN7KQ4XZM2",
+    "https://geunal.app/i/gn7kq4xzm2?utm=kakao#n=%EC%A3%BC%EB%A7%90&c=sky",
+    "하린님이 초대했어요\nhttps://geunal.app/i/GN7KQ4XZM2#n=%EC%A3%BC%EB%A7%90 참여하기",
+    "https://geunal.app/i/GN7KQ4XZM2#n=%FF%&c=neon",
+    "https://geunal.app/i/GN7KQ4XZM",
+    "주말모임 들어와",
+];
+
+fn invite_json(invite: Option<Invite>) -> Value {
+    invite.map_or(Value::Null, |i| json!({ "code": i.code, "name": i.name, "color": i.color }))
+}
+
+fn invites_document() -> Value {
+    let codes: Vec<Value> =
+        CODES.iter().map(|input| json!({ "input": input, "code": normalize_code(input) })).collect();
+    let links: Vec<Value> = LINKS
+        .iter()
+        .map(|(code, name, color)| {
+            json!({ "host": "geunal.app", "code": code, "name": name, "color": color,
+                    "link": invite_link("geunal.app", code, *name, *color) })
+        })
+        .collect();
+    let pastes: Vec<Value> =
+        PASTES.iter().map(|text| json!({ "text": text, "invite": invite_json(parse_invite(text)) })).collect();
+    json!({
+        "version": 1,
+        "generated_by": "cd core && GEUNAL_WRITE_VECTORS=1 cargo test -p geunal-domain --locked --test vectors",
+        "alphabet": std::str::from_utf8(ALPHABET).unwrap(),
+        "code_length": CODE_LEN,
+        "display": display_code("GN7KQ4XZM2"),
+        "group_colors": GROUP_COLORS,
+        "codes": codes,
+        "links": links,
+        "pastes": pastes,
+    })
+}
+
+#[test]
+fn invites_json_matches_this_build() {
+    if std::env::var_os("GEUNAL_WRITE_VECTORS").is_some() {
+        let text = serde_json::to_string_pretty(&invites_document()).unwrap() + "\n";
+        std::fs::write(invites_path(), text).unwrap();
+    }
+    let text = std::fs::read_to_string(invites_path())
+        .expect("core/vectors/invites.json exists; regenerate with GEUNAL_WRITE_VECTORS=1");
+    let file: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(file, invites_document(), "this build reads and writes invites as the committed file says");
 }

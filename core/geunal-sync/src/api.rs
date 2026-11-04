@@ -364,6 +364,35 @@ pub struct GroupSummary {
     pub status: String,
 }
 
+/// `POST /groups/{id}/invites` (protocol §15).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InviteCode {
+    pub code: String,
+    /// RFC 3339.
+    pub expires_at: String,
+}
+
+/// `GET /invites/{code}`: what someone holding the code may see before joining. No member names: the holder is not a
+/// member yet (protocol §15).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InvitePreview {
+    pub group_id: String,
+    pub inviter_name: String,
+    pub member_count: u32,
+    /// RFC 3339.
+    pub expires_at: String,
+    /// Twenty active and pending members already.
+    pub full: bool,
+}
+
+/// `POST /invites/{code}/join`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InviteJoined {
+    pub group_id: String,
+    /// `pending`, or `active` for someone already in the group.
+    pub status: String,
+}
+
 /// One row of `GET /groups/{id}/members`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MemberInfo {
@@ -585,6 +614,10 @@ pub trait Transport: Send + Sync {
     fn put_group_info(&self, group_id: &str, info: GroupInfo) -> impl Future<Output = Result<(), ApiError>> + Send;
     fn members(&self, group_id: &str) -> impl Future<Output = Result<Vec<MemberInfo>, ApiError>> + Send;
     fn remove_member(&self, group_id: &str, user_id: &str) -> impl Future<Output = Result<(), ApiError>> + Send;
+    fn create_invite(&self, group_id: &str) -> impl Future<Output = Result<InviteCode, ApiError>> + Send;
+    /// `code` is already normalised (protocol §15), so it is safe in a path.
+    fn invite_preview(&self, code: &str) -> impl Future<Output = Result<InvitePreview, ApiError>> + Send;
+    fn join_invite(&self, code: &str) -> impl Future<Output = Result<InviteJoined, ApiError>> + Send;
     fn post_commit(
         &self,
         group_id: &str,
@@ -698,6 +731,15 @@ impl<T: Transport> Transport for std::sync::Arc<T> {
     }
     async fn remove_member(&self, group_id: &str, user_id: &str) -> Result<(), ApiError> {
         (**self).remove_member(group_id, user_id).await
+    }
+    async fn create_invite(&self, group_id: &str) -> Result<InviteCode, ApiError> {
+        (**self).create_invite(group_id).await
+    }
+    async fn invite_preview(&self, code: &str) -> Result<InvitePreview, ApiError> {
+        (**self).invite_preview(code).await
+    }
+    async fn join_invite(&self, code: &str) -> Result<InviteJoined, ApiError> {
+        (**self).join_invite(code).await
     }
     async fn post_commit(&self, group_id: &str, req: CommitRequest) -> Result<CommitAccepted, ApiError> {
         (**self).post_commit(group_id, req).await

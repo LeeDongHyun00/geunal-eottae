@@ -14,7 +14,8 @@ pub mod tls;
 
 pub use api::{ApiError, SESSION_EXPIRED, Transport, session_expired};
 pub use engine::{
-    Alert, Change, CommitIntent, Engine, Listener, Session, device_proof, session_of, sign_in, sign_in_stub,
+    Alert, Change, CommitIntent, Engine, Listener, Session, WelcomePolicy, device_proof, session_of, sign_in,
+    sign_in_stub,
 };
 pub use http::HttpTransport;
 

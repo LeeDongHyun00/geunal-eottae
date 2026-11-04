@@ -193,6 +193,42 @@ impl Store {
         Ok(())
     }
 
+    // ----- accepted invites -----
+
+    /// Remembers that this person asked to join the group with an invite code, so its Welcome may be taken.
+    pub fn accept_invite(&self, group_id: &str, at: &str) -> Result<()> {
+        self.conn().execute(
+            "INSERT INTO accepted_invites (group_id, accepted_at) VALUES (?1, ?2)
+             ON CONFLICT (group_id) DO UPDATE SET accepted_at = excluded.accepted_at",
+            params![group_id, at],
+        )?;
+        Ok(())
+    }
+
+    /// Whether this person asked to join the group at or after `since` (RFC 3339 UTC, compared as text).
+    pub fn invite_accepted(&self, group_id: &str, since: &str) -> Result<bool> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT 1 FROM accepted_invites WHERE group_id = ?1 AND accepted_at >= ?2",
+                params![group_id, since],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some())
+    }
+
+    pub fn forget_invite(&self, group_id: &str) -> Result<()> {
+        self.conn().execute("DELETE FROM accepted_invites WHERE group_id = ?1", [group_id])?;
+        Ok(())
+    }
+
+    /// Drops the requests made before `before`: a group that never let this person in within 30 days needs a new code.
+    pub fn forget_invites_before(&self, before: &str) -> Result<()> {
+        self.conn().execute("DELETE FROM accepted_invites WHERE accepted_at < ?1", [before])?;
+        Ok(())
+    }
+
     // ----- entries -----
 
     /// Stores a decrypted entry. The same (group, seq) twice is ignored: MLS cannot decrypt a message twice, so the

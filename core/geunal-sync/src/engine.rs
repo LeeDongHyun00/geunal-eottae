@@ -101,9 +101,21 @@ pub struct Engine<T: Transport> {
     me: Identity,
     listener: Arc<dyn Listener>,
     clock: Box<dyn Fn() -> DateTime<Utc> + Send + Sync>,
-    /// Whether `sync` fetches Welcomes and joins the groups they name. Off, the Welcomes stay on the server untouched.
-    join_welcomes: bool,
+    welcomes: WelcomePolicy,
 }
+
+/// Which Welcomes `sync` joins (protocol §15).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WelcomePolicy {
+    /// Only those of groups this person asked to join with an invite code in the last 30 days; the rest are dropped,
+    /// so nobody is put into a group they did not agree to join.
+    Accepted,
+    /// Every Welcome: the tests that make members pending with the stub invite instead of a code.
+    Any,
+}
+
+/// How long a request to join waits for the group to let this person in (protocol §15).
+const INVITE_WAIT_DAYS: i64 = 30;
 
 /// The proof every sign-in carries: a fresh nonce from the server, signed with this device's key.
 pub async fn device_proof<T: Transport>(
@@ -173,13 +185,12 @@ pub async fn sign_in<T: Transport>(
 impl<T: Transport> Engine<T> {
     pub fn new(store: Store, mls: MlsClient, api: T, listener: Arc<dyn Listener>) -> Self {
         let me = mls.identity().clone();
-        Self { store, mls, api, me, listener, clock: Box::new(Utc::now), join_welcomes: true }
+        Self { store, mls, api, me, listener, clock: Box::new(Utc::now), welcomes: WelcomePolicy::Accepted }
     }
 
-    /// Whether Welcomes are fetched and their groups joined (on by default). The apps turn it off until a member
-    /// accepts an invitation, so that nobody is put into a group they did not agree to join.
-    pub fn with_welcomes(mut self, join: bool) -> Self {
-        self.join_welcomes = join;
+    /// Which Welcomes are joined: by default only those of groups joined through [`Engine::join_invite`].
+    pub fn with_welcomes(mut self, policy: WelcomePolicy) -> Self {
+        self.welcomes = policy;
         self
     }
 
@@ -243,6 +254,27 @@ impl<T: Transport> Engine<T> {
         let intent = CommitIntent::Add { user_ids: user_ids.to_vec() };
         self.store.enqueue(group_id, OutboxKind::Commit, &Outgoing::Commit(intent).encode(), &self.now_text())?;
         self.flush_group(group_id).await
+    }
+
+    /// A new invite code for the group (protocol §15). Active members only.
+    pub async fn create_invite(&self, group_id: &str) -> Result<InviteCode, SyncError> {
+        Ok(self.api.create_invite(group_id).await?)
+    }
+
+    /// What the holder of a code may see before joining. A string that is no code at all gets the server's answer for
+    /// a bad one, 404 `invite_invalid`, without a request.
+    pub async fn invite_preview(&self, code: &str) -> Result<InvitePreview, SyncError> {
+        Ok(self.api.invite_preview(&invite_code(code)?).await?)
+    }
+
+    /// Asks to join the group behind the code and remembers that this person did, so that its Welcome is taken when a
+    /// member's device adds this one (protocol §15). Someone already in the group changes nothing.
+    pub async fn join_invite(&mut self, code: &str) -> Result<InviteJoined, SyncError> {
+        let joined = self.api.join_invite(&invite_code(code)?).await?;
+        if joined.status != "active" {
+            self.store.accept_invite(&joined.group_id, &self.now_text())?;
+        }
+        Ok(joined)
     }
 
     /// Removes a member (leave or kick) and, as the device that saw the change first, queues the Remove commit.
@@ -437,10 +469,14 @@ impl<T: Transport> Engine<T> {
     }
 
     async fn pull_welcomes(&mut self) -> Result<(), SyncError> {
-        if !self.join_welcomes {
-            return Ok(());
-        }
+        let since =
+            (self.now() - Duration::days(INVITE_WAIT_DAYS)).to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        self.store.forget_invites_before(&since)?;
         for welcome in self.api.welcomes().await? {
+            // A Welcome for a group this person did not ask to join is dropped unread; the server already deleted it.
+            if self.welcomes == WelcomePolicy::Accepted && !self.store.invite_accepted(&welcome.group_id, &since)? {
+                continue;
+            }
             let (mut group, adder) = match self.mls.join_welcome_from(&welcome.data) {
                 Ok(joined) => joined,
                 // A Welcome for a suite or group we cannot use is dropped; the server deletes it once fetched.
@@ -454,6 +490,7 @@ impl<T: Transport> Engine<T> {
             // by design. A server that names no seq restarts the read at 0, and those items are skipped by epoch
             // without decryption: a read of the mailbox, not of keys.
             self.store.upsert_group(&welcome.group_id, GroupKind::Circle, None)?;
+            self.store.forget_invite(&welcome.group_id)?;
             let through = welcome.seq.unwrap_or(0);
             self.store.set_cursor(&welcome.group_id, through)?;
             // The member whose commit added this device owes it one bundle of what came before (protocol §5).
@@ -1124,6 +1161,17 @@ fn appointment_of(entry: &Entry) -> Option<&str> {
 }
 
 /// The MLS group id is the group UUID's 16 bytes (protocol §1).
+/// The canonical form of a typed or pasted code; anything that is not one is the server's 404 for a bad code.
+fn invite_code(code: &str) -> Result<String, SyncError> {
+    geunal_domain::invite::normalize_code(code).ok_or_else(|| {
+        SyncError::Api(ApiError::Api {
+            status: 404,
+            code: "invite_invalid".into(),
+            message: "not an invite code".into(),
+        })
+    })
+}
+
 pub fn mls_group_id(group_id: &str) -> Result<[u8; 16], SyncError> {
     uuid::Uuid::parse_str(group_id)
         .map(|u| *u.as_bytes())

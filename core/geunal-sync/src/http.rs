@@ -401,6 +401,21 @@ impl Transport for HttpTransport {
         self.send_empty(|t| t.request(Method::DELETE, &path)).await
     }
 
+    async fn create_invite(&self, group_id: &str) -> Result<InviteCode, ApiError> {
+        let path = format!("/groups/{group_id}/invites");
+        self.send(|t| t.request(Method::POST, &path)).await
+    }
+
+    async fn invite_preview(&self, code: &str) -> Result<InvitePreview, ApiError> {
+        let path = format!("/invites/{code}");
+        self.send(|t| t.request(Method::GET, &path)).await
+    }
+
+    async fn join_invite(&self, code: &str) -> Result<InviteJoined, ApiError> {
+        let path = format!("/invites/{code}/join");
+        self.send(|t| t.request(Method::POST, &path)).await
+    }
+
     async fn post_commit(&self, group_id: &str, req: CommitRequest) -> Result<CommitAccepted, ApiError> {
         let path = format!("/groups/{group_id}/commits");
         self.send(|t| t.request(Method::POST, &path).json(&req)).await
