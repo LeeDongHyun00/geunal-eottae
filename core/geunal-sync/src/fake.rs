@@ -1087,9 +1087,9 @@ impl Transport for FakeClient {
     async fn devices(&self, user_id: &str) -> Result<Vec<DeviceInfo>, ApiError> {
         self.who()?;
         let state = self.lock();
-        Ok(state
-            .users
-            .get(user_id)
+        // The API answers 404 for an account the caller could not add; this fake only knows whether it exists.
+        let account = state.users.get(user_id).ok_or_else(|| err(404, "not_found"))?;
+        Ok(Some(account)
             .and_then(|u| u.device.as_ref())
             .map(|d| DeviceInfo {
                 id: d.device_id.clone(),
