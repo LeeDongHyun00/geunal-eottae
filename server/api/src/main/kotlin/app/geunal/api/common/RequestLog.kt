@@ -23,7 +23,7 @@ import org.springframework.web.util.ServletRequestPathUtils
  * device, a replacement ticket) is logged too, and so that the time includes authentication.
  */
 @Component
-@Order(SecurityFilterProperties.DEFAULT_FILTER_ORDER - 1)
+@Order(SecurityFilterProperties.DEFAULT_FILTER_ORDER - 2)
 class RequestLog(
     @param:Qualifier("requestMappingHandlerMapping") private val mappings: ObjectProvider<RequestMappingHandlerMapping>,
 ) : OncePerRequestFilter() {

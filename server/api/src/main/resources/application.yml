@@ -16,6 +16,9 @@ spring:
 # a private-network peer only, so the access log records the device and not the proxy (api-server.md §10).
 server:
   forward-headers-strategy: native
+  tomcat:
+    # Form posts are only Apple's web sign-in callback (an ID token and a code); BodyLimit caps every other body.
+    max-http-form-post-size: 32KB
 
 # JSON lines only. Request and response bodies, ciphertext and tokens never reach a log (api-server.md §10).
 logging:
