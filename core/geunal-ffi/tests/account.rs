@@ -936,6 +936,16 @@ fn keeps_e_and_the_amk_in_the_secret_store_and_never_in_the_database() {
         let amk = a.secrets.get("account_master_key".into()).unwrap().unwrap();
         assert_eq!((entropy.len(), amk.len()), (16, 32));
         let words = a.core.recovery_words().unwrap().join(" ");
+        // What the code derives must stay off the database too: K (Argon2id), and from it the wrap key and the recovery
+        // signing seed. Any of them opens the backups or speaks for the account.
+        let root = geunal_crypto::kdf::recovery_root(&entropy).unwrap();
+        let derived = RecoveryKeys::from_root(&root);
+        let seed: [u8; 32] = geunal_crypto::kdf::expand(&root, b"geunal recovery sign v1");
+        // The seed is the one the code really signs with: a signature it makes checks against the code's public key.
+        let pair = [seed.as_slice(), derived.public_key().as_slice()].concat();
+        let signed = MlsClient::sign_with(&pair, b"probe").unwrap();
+        assert!(MlsClient::verify(&derived.public_key(), b"probe", &signed).unwrap());
+        let (root, wrap_key) = (root.to_vec(), derived.wrap_key().to_vec());
 
         // Every value of every table, read through the database key, in each form a secret could be written in.
         let key: [u8; 32] = a.secrets.get("db_key".into()).unwrap().unwrap().try_into().unwrap();
@@ -962,7 +972,7 @@ fn keeps_e_and_the_amk_in_the_secret_store_and_never_in_the_database() {
                     };
                     values += 1;
                     let text = String::from_utf8_lossy(&bytes).to_lowercase();
-                    for secret in [&entropy, &amk] {
+                    for secret in [&entropy, &amk, &root, &wrap_key, &seed.to_vec()] {
                         assert!(!bytes.windows(secret.len()).any(|w| w == secret.as_slice()), "{table}: raw bytes");
                         assert!(!text.contains(&hex::encode(secret)), "{table}: hex");
                         for b64 in [
