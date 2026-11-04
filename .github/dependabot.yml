@@ -128,16 +128,20 @@ updates:
       prefix: build
       include: scope
 
-  # PostgreSQL and Redis majors are decisions about the servers too, so they move by hand. The api and gateway images
-  # are built locally (make up).
+  # The local stack and the alpha server. PostgreSQL, Redis, Valkey and Caddy majors are decisions about the servers
+  # too, so they move by hand. The api and gateway images are built locally (make up) or shipped by deploy.sh.
   - package-ecosystem: docker-compose
-    directory: /infra
+    directories: ["/infra", "/infra/alpha"]
     schedule:
       interval: weekly
     ignore:
       - dependency-name: postgres
         update-types: ["version-update:semver-major"]
       - dependency-name: redis
+        update-types: ["version-update:semver-major"]
+      - dependency-name: valkey/valkey
+        update-types: ["version-update:semver-major"]
+      - dependency-name: caddy
         update-types: ["version-update:semver-major"]
       - dependency-name: "geunal/*"
     commit-message:
