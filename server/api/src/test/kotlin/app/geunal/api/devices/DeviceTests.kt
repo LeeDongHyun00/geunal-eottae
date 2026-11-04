@@ -15,13 +15,28 @@ class DeviceTests : ApiTest() {
         assertThat(devices.size()).isEqualTo(1)
         assertThat(devices[0].path("id").stringValue()).isEqualTo(client.deviceId.toString())
         assertThat(devices[0].path("signature_key").binaryValue()).isEqualTo(client.signatureKey)
-        assertThat(client.get("/users/${UUID.randomUUID()}/devices").expect(200)["devices"].size()).isZero()
+        client.get("/users/${UUID.randomUUID()}/devices").expectError(404, "not_found")
+    }
+
+    @Test
+    fun `lists another account's devices only to someone who could add them`() {
+        val adder = signIn()
+        val invitee = signIn()
+        val stranger = signIn()
+        val groupId = adder.post("/groups").expect(201).uuid("id")
+
+        adder.get("/users/${invitee.userId}/devices").expectError(404, "not_found")
+        adder.invite(groupId, invitee)
+
+        assertThat(adder.get("/users/${invitee.userId}/devices").expect(200)["devices"].size()).isEqualTo(1)
+        stranger.get("/users/${invitee.userId}/devices").expectError(404, "not_found")
     }
 
     @Test
     fun `stores key packages and hands them out one at a time`() {
         val owner = signIn()
         val adder = signIn()
+        adder.invite(adder.post("/groups").expect(201).uuid("id"), owner)
         val packages = (1..3).map { Mls.keyPackage(100 + it) }
 
         assertThat(owner.post("/me/key-packages", mapOf("key_packages" to packages)).expect(200).int("count")).isEqualTo(3)
@@ -34,6 +49,18 @@ class DeviceTests : ApiTest() {
         adder.post("/devices/${owner.deviceId}/key-packages/claim").expect(200)
         adder.post("/devices/${owner.deviceId}/key-packages/claim").expectError(404, "not_found")
         adder.post("/devices/${UUID.randomUUID()}/key-packages/claim").expectError(404, "not_found")
+    }
+
+    @Test
+    fun `claims a key package only of a device the caller may add`() {
+        val holder = signIn()
+        val stranger = signIn()
+        holder.post("/me/key-packages", mapOf("key_packages" to listOf(Mls.keyPackage(), Mls.keyPackage()))).expect(200)
+
+        stranger.post("/devices/${holder.deviceId}/key-packages/claim").expectError(404, "not_found")
+        holder.post("/devices/${holder.deviceId}/key-packages/claim").expectError(404, "not_found")
+
+        assertThat(holder.get("/me").expect(200).int("key_packages")).isEqualTo(2)
     }
 
     @Test
