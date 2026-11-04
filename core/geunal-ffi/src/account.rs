@@ -56,6 +56,13 @@ const BACKED_UP_CHANGES: &str = "backed_up_changes";
 const KEY_PACKAGES_DUE: &str = "key_packages_due";
 /// The account as stored is the sign-in's guess, as `GET /me` did not answer then; `sync()` asks again.
 const ACCOUNT_STALE: &str = "account_stale";
+/// When `sync()` last asked the server how many key packages this device has left (`top_up_key_packages`).
+const KEY_PACKAGES_CHECKED_AT: &str = "key_packages_checked_at";
+/// Below this many unclaimed key packages, `sync()` puts up more. Every Add of this device, and every rebuilt one,
+/// claims one, so a device in several groups runs out unless it refills.
+const KEY_PACKAGES_LOW: i64 = 5;
+/// How often `sync()` asks.
+const KEY_PACKAGES_CHECK_MINUTES: i64 = 60;
 /// The Korean day the tester agreed to send the alpha counts; days before it never go. Absent while they are off.
 const ALPHA_SINCE: &str = "alpha_stats_since";
 /// The Korean day the counts last went to the server, which takes them once a day.
@@ -1530,6 +1537,34 @@ impl Core {
             Err(CoreError::Network { .. }) => Ok(()),
             Err(e) => Err(e),
         }
+    }
+
+    /// Keeps enough key packages on the server for members to add this device: at most once an hour, asks how many
+    /// are left (`GET /me`) and puts up enough to make [`KEY_PACKAGES`] again when fewer than [`KEY_PACKAGES_LOW`]
+    /// remain. A network error waits for a later `sync()`.
+    pub(crate) async fn top_up_key_packages(&self) -> Result<(), CoreError> {
+        let now = self.now();
+        let checked = self.store.read(|db| db.setting(KEY_PACKAGES_CHECKED_AT))?;
+        if let Some(at) = checked.as_deref().and_then(|t| DateTime::parse_from_rfc3339(t).ok())
+            && now.signed_duration_since(at) < chrono::Duration::minutes(KEY_PACKAGES_CHECK_MINUTES)
+        {
+            return Ok(());
+        }
+        let left = match self.checked(self.api.me().await).await {
+            Ok(me) => me.key_packages,
+            Err(CoreError::Network { .. }) => return Ok(()),
+            Err(e) => return Err(e),
+        };
+        if left < KEY_PACKAGES_LOW {
+            let count = usize::try_from(KEY_PACKAGES as i64 - left.max(0)).unwrap_or(KEY_PACKAGES);
+            match self.engine(Box::new(move |e| Box::pin(async move { e.publish_key_packages(count).await }))).await {
+                Ok(()) => {}
+                Err(CoreError::Network { .. }) => return Ok(()),
+                Err(e) => return Err(e),
+            }
+        }
+        let at = now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        self.store.write(|db| Ok::<_, CoreError>(db.set_setting(KEY_PACKAGES_CHECKED_AT, &at)?))
     }
 
     /// Once a day while the tester agrees: the days since they agreed whose counts changed since they last went, of

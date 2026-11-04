@@ -332,6 +332,20 @@ impl MlsGroup {
         Self::bundle(builder.build()?)
     }
 
+    /// Whether MLS would add the member this key package names: its signature, lifetime and leaf all check out. The
+    /// trial commit is thrown away. A package from someone else's device is only as good as that device made it, and
+    /// one that fails here must not stop the others in the same Add.
+    pub fn accepts_key_package(&mut self, bytes: &[u8]) -> bool {
+        let mut trial = || -> Result<(), Error> {
+            MlsClient::inspect_key_package(bytes)?;
+            self.inner.commit_builder().add_member(MlsMessage::from_bytes(bytes)?)?.build()?;
+            Ok(())
+        };
+        let accepted = trial().is_ok();
+        self.inner.clear_pending_commit();
+        accepted
+    }
+
     pub fn remove_members(&mut self, indexes: &[u32]) -> Result<CommitBundle, Error> {
         let mut builder = self.inner.commit_builder();
         for index in indexes {

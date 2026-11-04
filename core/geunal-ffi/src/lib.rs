@@ -480,6 +480,7 @@ impl Core {
             // After the groups, so what the server keeps refusing does not hold up the calendar.
             this.refresh_account().await?;
             this.publish_due_key_packages().await?;
+            this.top_up_key_packages().await?;
             this.upload_pending_recovery().await
         })
         .await
