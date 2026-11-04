@@ -34,6 +34,7 @@
     <string name="account_deleted">계정을 삭제했어요</string>
     <string name="session_ended">로그인이 끝났어요. 다시 로그인해 주세요</string>
     <string name="signed_in_again">다시 로그인했어요</string>
+    <string name="something_failed">지금은 할 수 없어요. 잠시 뒤에 다시 시도해 주세요</string>
     <string name="me_signed_out">로그아웃됨</string>
     <string name="me_signed_out_detail">캘린더만 쓸 수 있어요</string>
     <string name="me_session_ended">로그인이 끝났어요</string>

@@ -172,7 +172,7 @@ private fun ConfirmingWipe(
  * closes only with an answer.
  */
 @Composable
-internal fun KeepLocalSheet(
+fun KeepLocalSheet(
     local: LocalData,
     isWorking: Boolean,
     onChoose: (LocalDataChoice) -> Unit,
