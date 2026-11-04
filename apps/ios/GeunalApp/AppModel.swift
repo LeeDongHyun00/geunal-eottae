@@ -218,8 +218,9 @@ final class AppModel {
                     } catch {}
                 }
             }
-            // The core backs nothing up while another account's events wait for an answer.
-            if case .main = phase {
+            // The core backs nothing up while another account's events wait for an answer. The sign-in over the tabs
+            // asks its own question; asking here too would show a second sheet whose answer the core no longer takes.
+            if case .main = phase, !signingIn {
                 await localData?.ask {}
             }
             await nextUp?.refresh()
@@ -377,6 +378,10 @@ final class AppModel {
         }.value
         if !inBackground {
             noteSession(account: read.3 ?? nil, revoked: read.0 != nil)
+        }
+        if read.2 == nil {
+            // Without a session the core takes no answer to screen 24; the next sign-in asks again.
+            localData?.withdraw()
         }
         if let revoked = read.0, revoked.at != onboardingState.revocationShownAt {
             if revocation == nil {

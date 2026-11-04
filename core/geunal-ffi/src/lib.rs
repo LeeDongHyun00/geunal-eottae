@@ -128,6 +128,10 @@ impl From<SyncError> for CoreError {
             SyncError::Store(e) => CoreError::Store { reason: e.to_string() },
             SyncError::NotSignedIn => CoreError::NotSignedIn,
             SyncError::Realtime(reason) => CoreError::Realtime { reason },
+            // The answer the server gives the same entry (protocol §11), so the app has one branch: send as media.
+            SyncError::EntryTooLarge(size) => {
+                CoreError::Api { status: 413, code: "too_large".into(), detail: format!("{size} bytes") }
+            }
             other => CoreError::Sync { reason: other.to_string() },
         }
     }
@@ -349,9 +353,30 @@ enum State {
     SignedIn(Box<Engine<Arc<Api>>>),
 }
 
+/// The core's own runtime. A background task can hold the last `Arc<Core>`, so the core may be dropped on one of these
+/// workers, where dropping a runtime the blocking way panics; there it is shut down without waiting instead.
+struct CoreRuntime(Option<tokio::runtime::Runtime>);
+
+impl std::ops::Deref for CoreRuntime {
+    type Target = tokio::runtime::Runtime;
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref().expect("taken only when dropped")
+    }
+}
+
+impl Drop for CoreRuntime {
+    fn drop(&mut self) {
+        if let Some(runtime) = self.0.take()
+            && tokio::runtime::Handle::try_current().is_ok()
+        {
+            runtime.shutdown_background();
+        }
+    }
+}
+
 #[derive(uniffi::Object)]
 pub struct Core {
-    runtime: tokio::runtime::Runtime,
+    runtime: CoreRuntime,
     store_dir: PathBuf,
     /// The one connection to the store. The calendar reads and writes through it directly, signed in or not, so a
     /// month view never waits for a sync holding the engine; the engine keeps a clone of it.
@@ -374,6 +399,9 @@ pub struct Core {
     /// `sync()` asked the server this run whether the account still needs a recovery code: a device without one asks
     /// once, not at every sync.
     recovery_checked: std::sync::atomic::AtomicBool,
+    /// Held for the length of every recovery upload, the background one a sign-in starts included: whatever needs the
+    /// material on the server waits its turn, so two uploads (and two Argon2id derivations) never run at once.
+    recovery_upload: Arc<tokio::sync::Mutex<()>>,
 }
 
 #[uniffi::export]
@@ -726,7 +754,7 @@ impl Core {
             None => State::SignedOut,
         };
         Ok(Arc::new(Self {
-            runtime,
+            runtime: CoreRuntime(Some(runtime)),
             store_dir,
             store,
             api,
@@ -739,7 +767,16 @@ impl Core {
             ticket: std::sync::Mutex::new(None),
             recovery_keys: std::sync::Mutex::new(None),
             recovery_checked: std::sync::atomic::AtomicBool::new(false),
+            recovery_upload: Arc::new(tokio::sync::Mutex::new(())),
         }))
+    }
+
+    /// Waits for the recovery upload a sign-in left running in the background, so a test can look at the server after
+    /// it. Not part of the FFI.
+    #[cfg(feature = "fake-server")]
+    #[doc(hidden)]
+    pub async fn recovery_upload_settled(&self) {
+        drop(self.recovery_upload.lock().await);
     }
 
     /// [`Core::open`] against the in-process fake server, for this crate's tests. Not part of the FFI.
@@ -904,6 +941,18 @@ fn view_of(state: &GroupState) -> GroupStateView {
     GroupStateView { appointments, digest: format!("{state:?}") }
 }
 
+/// Whether the engines fetch Welcomes and join the groups they name. Off in the apps: until members accept invitations
+/// (M2), a Welcome is no one's consent, and the Welcomes stay on the server for then. The end-to-end tests of the
+/// group flow turn it on.
+static JOIN_WELCOMES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Lets the engines built after this join groups from Welcomes, for the end-to-end tests of the group flow. Rust only:
+/// not part of the FFI.
+#[doc(hidden)]
+pub fn join_welcomes_for_tests() {
+    JOIN_WELCOMES.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn build_engine(
     store_dir: &Path,
     store: &Store,
@@ -917,7 +966,8 @@ fn build_engine(
     let secret = signing_secret(secrets)?;
     let identity = Identity::new(session.user_id.clone(), session.device_id.clone());
     let mls = MlsClient::open(&db, db_key, identity, &secret)?;
-    Ok(Engine::new(store.clone(), mls, api, Arc::new(Forward(listener))))
+    let join = JOIN_WELCOMES.load(std::sync::atomic::Ordering::Relaxed);
+    Ok(Engine::new(store.clone(), mls, api, Arc::new(Forward(listener))).with_welcomes(join))
 }
 
 /// The session the secret store keeps. Bytes that do not read as a session count as none, and the next sign-in writes

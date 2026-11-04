@@ -15,7 +15,7 @@ use geunal_mls::MlsClient;
 use geunal_sync::api::{DeleteAccount, RecoveryUpload};
 use geunal_sync::fake::{FakeClient, FakeServer};
 use geunal_sync::{ApiError, Session, Transport};
-use phones::{Fault, MemorySecrets, Phone, Quiet, kakao, kakao_deletion, keys_of, new_account, phone, user_id};
+use phones::{Fault, MemorySecrets, Phone, Quiet, guest, kakao, kakao_deletion, keys_of, new_account, phone, user_id};
 
 #[test]
 fn a_kakao_sign_in_makes_the_account_and_uploads_the_code_it_shows() {
@@ -114,7 +114,7 @@ fn a_guest_gets_a_code_at_once_and_links_kakao_later() {
         let server = FakeServer::new();
         let a = phone(&server);
 
-        let session = a.core.clone().sign_in_guest(new_account("  게스트  ")).await.unwrap();
+        let session = guest(&a.core, "  게스트  ").await;
         assert!(a.core.recovery_status().unwrap().uploaded);
         assert_eq!(server.recovery_of(&session.user_id).unwrap().1, keys_of(&a.core).id());
         let account = a.core.account().unwrap().unwrap();
@@ -280,7 +280,7 @@ fn a_stolen_session_cannot_put_recovery_material_before_the_device() {
         let a = phone(&server);
         // The upload right after the sign-in fails, so the server holds no material: the window this closes.
         server.fail_next("put_recovery");
-        let user = a.core.clone().sign_in_guest(new_account("게스트")).await.unwrap().user_id;
+        let user = guest(&a.core, "게스트").await.user_id;
         assert!(server.recovery_of(&user).is_none());
 
         // The thief's own code, put up with the session alone or with a signature of its own making.
@@ -378,13 +378,30 @@ fn recovery_material_swapped_under_the_devices_signature_is_refused() {
 }
 
 #[test]
+fn shows_the_code_at_once_and_uploads_it_in_the_background_before_any_backup() {
+    pollster::block_on(async {
+        let server = FakeServer::new();
+        let a = phone(&server);
+        // The sign-in answers once the device is registered; the code is already there to show.
+        let session = a.core.clone().sign_in_guest(new_account("게스트")).await.unwrap();
+        assert_eq!(a.core.recovery_words().unwrap().len(), recovery::WORD_COUNT);
+        assert!(a.core.recovery_status().unwrap().created);
+        // A backup waits for the upload going on in the background, then goes up after it.
+        a.core.clone().backup_now(None).await.unwrap();
+        assert_eq!(server.recovery_of(&session.user_id).unwrap().1, keys_of(&a.core).id());
+        assert_eq!(server.backups_of(&session.user_id).len(), 1);
+        assert!(a.core.recovery_status().unwrap().uploaded);
+    });
+}
+
+#[test]
 fn a_guest_deletes_with_its_code_once_the_material_the_server_lacked_goes_up() {
     pollster::block_on(async {
         let server = FakeServer::new();
         let a = phone(&server);
         // The code's upload drops at the sign-in, so the server has nothing to check a guest's proof against.
         server.fail_next("put_recovery");
-        let session = a.core.clone().sign_in_guest(new_account("게스트")).await.unwrap();
+        let session = guest(&a.core, "게스트").await;
         assert!(server.recovery_of(&session.user_id).is_none());
 
         a.core.clone().delete_account(DeletionProof::Guest).await.unwrap();
@@ -548,7 +565,7 @@ fn a_code_the_store_cannot_read_is_never_replaced_by_a_new_one() {
         let a = phone(&server);
         // The upload drops, so the code lives on this phone alone: the one the person may already have written down.
         server.fail_next("put_recovery");
-        let session = a.core.clone().sign_in_guest(new_account("게스트")).await.unwrap();
+        let session = guest(&a.core, "게스트").await;
         let words = a.core.recovery_words().unwrap();
 
         // The server still lacks material, which is when a device without a code makes one (protocol §10 "올리는 때").
@@ -611,7 +628,7 @@ fn a_new_account_without_a_name_takes_the_default_and_a_long_one_is_cut() {
     pollster::block_on(async {
         let server = FakeServer::new();
         let a = phone(&server);
-        a.core.clone().sign_in_guest(new_account("   ")).await.unwrap();
+        guest(&a.core, "   ").await;
         assert_eq!(a.core.account().unwrap().unwrap().display_name, "게스트");
         let b = phone(&server);
         kakao(&b.core, "gina", "").await.unwrap();
@@ -771,7 +788,7 @@ fn key_packages_that_did_not_go_up_at_the_sign_in_go_up_with_the_next_sync() {
         let a = phone(&server);
 
         server.fail_next("upload_key_packages");
-        let session = a.core.clone().sign_in_guest(new_account("게스트")).await.unwrap();
+        let session = guest(&a.core, "게스트").await;
         // The sign-in stands, and the code went up all the same.
         assert!(a.core.recovery_status().unwrap().uploaded);
         assert_eq!(server.key_packages_of(&session.user_id), 0);
@@ -794,7 +811,7 @@ fn a_device_left_without_a_code_makes_it_on_the_next_run() {
         };
         let core = open().unwrap();
         server.fail_next("put_recovery");
-        let session = core.clone().sign_in_guest(new_account("게스트")).await.unwrap();
+        let session = guest(&core, "게스트").await;
         // As if the app had been closed before it made the code: the session is kept, and nothing else.
         for secret in ["recovery_entropy", "account_master_key"] {
             secrets.delete(secret.to_owned()).unwrap();
@@ -877,7 +894,7 @@ fn an_expired_access_token_is_refreshed_and_the_new_pair_survives_a_restart() {
             Core::open_fake(dir.path().to_str().unwrap().to_owned(), server.client(), Arc::new(Quiet), secrets.clone())
         };
         let core = open().unwrap();
-        core.clone().sign_in_guest(new_account("게스트")).await.unwrap();
+        guest(&core, "게스트").await;
         let before = secrets.value("session").unwrap();
 
         server.expire_access_tokens();
@@ -999,7 +1016,7 @@ fn an_account_linked_to_kakao_or_apple_cannot_come_back_with_the_twelve_words_al
         let a = phone(&server);
         let kakao_user = user_id(&kakao(&a.core, "sam", "샘").await.unwrap());
         let g = phone(&server);
-        let guest_user = g.core.clone().sign_in_guest(new_account("게스트")).await.unwrap().user_id;
+        let guest_user = guest(&g.core, "게스트").await.user_id;
         let nonce = g.core.clone().sign_in_nonce().await.unwrap();
         let id_token = FakeServer::id_token("apple", "sam-apple", &nonce.provider_nonce);
         assert_eq!(g.core.clone().link_apple(nonce.nonce, id_token).await.unwrap(), vec![Provider::Apple]);

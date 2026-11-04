@@ -52,6 +52,8 @@ impl Client {
 
 /// Signs a fresh device in through the auth stub. `None` when the API runs without the stub.
 fn client(name: &str) -> Option<Client> {
+    // The apps join no group from a Welcome until invitations come (M2); this gate exercises the group flow itself.
+    geunal_ffi::join_welcomes_for_tests();
     let dir = tempfile::tempdir().unwrap();
     let core = Core::open(
         dir.path().to_str().unwrap().to_owned(),

@@ -6,12 +6,12 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{TimeZone, Utc};
 use geunal_domain::availability::Availability;
-use geunal_domain::entry::{Choice, Entry, Mode, Stage};
+use geunal_domain::entry::{self, Choice, Entry, MAX_ENTRY_BYTES, Mode, Stage};
 use geunal_mls::{Identity, MlsClient};
 use geunal_store::Store;
 use geunal_sync::fake::{FakeClient, FakeServer};
 use geunal_sync::realtime::Event;
-use geunal_sync::{Alert, Change, Engine, Listener, Session, sign_in};
+use geunal_sync::{Alert, Change, Engine, Listener, Session, SyncError, sign_in};
 
 #[derive(Default)]
 struct Changes(Mutex<Vec<Change>>);
@@ -399,4 +399,56 @@ async fn three_devices_derive_the_same_state_after_a_kick_and_a_rejoin() {
     assert_eq!((appt.start, appt.end), (Some(13 * 60), Some(15 * 60)));
     assert_eq!(texts(&c, &group), vec!["C의 채팅"], "chat from the kicked period is not in the bundle");
     assert_eq!(texts(&a, &group), vec!["C의 채팅", "C 없이 한 말"]);
+}
+
+#[tokio::test]
+async fn refuses_an_entry_over_64kb_before_queueing_it() {
+    let server = server();
+    let (a, _b, group) = pair(&server).await;
+    let big = text("t-big", &"가".repeat(MAX_ENTRY_BYTES / 3 + 1));
+    let refused = a.engine.enqueue_entry(&group, &big, Alert::All, Some("chat"));
+    assert!(matches!(refused, Err(SyncError::EntryTooLarge(size)) if size > MAX_ENTRY_BYTES), "{refused:?}");
+    assert!(a.engine.store().outbox(&group).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn drops_an_outbox_row_the_server_refuses_for_good_and_keeps_sending_the_rest() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    // Within the entry limit, but its ciphertext is over what the server takes.
+    let big = text("t-big", &"a".repeat(MAX_ENTRY_BYTES - 64));
+    assert!(entry::encode(&big).len() <= MAX_ENTRY_BYTES);
+    a.changes();
+
+    // Queued while offline, then flushed: the refused row leaves the queue and the one behind it goes out.
+    a.engine.enqueue_entry(&group, &big, Alert::All, Some("chat")).unwrap();
+    a.engine.enqueue_entry(&group, &text("t1", "뒤에 쓴 말"), Alert::All, Some("chat")).unwrap();
+    a.engine.flush_outbox().await.unwrap();
+    assert!(a.engine.store().outbox(&group).unwrap().is_empty());
+    assert!(a.changes().contains(&Change::Group { group_id: group.clone() }));
+
+    // Sent directly: the caller hears the refusal, and the next send is not held back.
+    let sent = a.engine.send(&group, &big, Alert::All, Some("chat")).await;
+    assert!(matches!(&sent, Err(SyncError::Api(e)) if e.is(413, "too_large")), "{sent:?}");
+    a.engine.send(&group, &text("t2", "다음 말"), Alert::All, Some("chat")).await.unwrap();
+    assert!(a.engine.store().outbox(&group).unwrap().is_empty());
+
+    b.engine.sync().await.unwrap();
+    assert_eq!(texts(&b, &group), vec!["뒤에 쓴 말", "다음 말"]);
+}
+
+#[tokio::test]
+async fn leaves_out_of_an_add_someone_the_server_will_not_list_and_keeps_sending() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    a.changes();
+    // Nobody the server would list for this member: the intent ends without a commit instead of holding the queue.
+    a.engine.add_members(&group, &["no-such-user".to_owned()]).await.unwrap();
+    assert!(a.engine.store().outbox(&group).unwrap().is_empty());
+    assert!(a.changes().contains(&Change::Group { group_id: group.clone() }));
+    assert_eq!(a.engine.epoch(&group).unwrap(), Some(1));
+
+    a.engine.send(&group, &text("t1", "그 뒤의 말"), Alert::All, Some("chat")).await.unwrap();
+    b.engine.sync().await.unwrap();
+    assert_eq!(texts(&b, &group), vec!["그 뒤의 말"]);
 }

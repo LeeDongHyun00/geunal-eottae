@@ -7,9 +7,11 @@ import app.geunal.core.Change
 import app.geunal.core.CoreException
 import app.geunal.core.CoreInterface
 import app.geunal.core.InternalException
+import app.geunal.core.LocalDataChoice
 import app.geunal.core.Revocation
 import app.geunal.designsystem.components.ToastCenter
 import app.geunal.feature.account.delete.isAccountDeleted
+import app.geunal.feature.account.onboarding.LocalDataQuestion
 import app.geunal.feature.account.onboarding.OnboardingStart
 import app.geunal.feature.account.onboarding.PendingGuest
 import app.geunal.feature.account.support.AccountKind
@@ -53,6 +55,7 @@ enum class AppNotice(
     ACCOUNT_DELETED(R.string.account_deleted),
     SESSION_ENDED(R.string.session_ended),
     SIGNED_IN_AGAIN(R.string.signed_in_again),
+    SOMETHING_FAILED(R.string.something_failed),
 }
 
 /** Why the account is no longer signed in on this device, while the calendar goes on (m1.md screens 12, 23). */
@@ -124,6 +127,13 @@ class AppViewModel(
         private set
     var nextUp: NextUpModel? = null
         private set
+
+    /**
+     * Another account's events, asked about over the tabs when a guest who started offline gets the account later
+     * (m1.md screen 24). Onboarding asks its own.
+     */
+    var localData: LocalDataQuestion? = null
+        private set
     private var foregroundWaiting = false
 
     /** Between [start] and the core's answer: a second tap of "다시 시도" must not open the store twice at once. */
@@ -157,6 +167,7 @@ class AppViewModel(
             val upNext = NextUpModel(opened, io = io)
             core = opened
             nextUp = upNext
+            localData = LocalDataQuestion(opened, notify = { noticeChannel.trySend(AppNotice.SOMETHING_FAILED) }, io = io)
             launch {
                 changes.collect {
                     when (it) {
@@ -244,6 +255,8 @@ class AppViewModel(
                 // A store that cannot answer reads as nothing to show; the next change or foreground asks again.
                 Triple(orNull { core.revocation() }, core.session(), orNull { core.account() })
             }
+        // Without a session the core takes no answer about another account's events; the next sign-in asks again.
+        if (session == null) localData?.drop()
         when {
             session != null -> {
                 if (account != null) onboarding.knownAccount = if (account.providers.isEmpty()) AccountKind.GUEST else AccountKind.PROVIDER
@@ -312,9 +325,16 @@ class AppViewModel(
                     // As above; a panic in the core must not take the app down.
                 }
             }
+            // The core backs nothing up while another account's events wait for an answer.
+            // Not while the sign-in over the tabs is up: that flow asks its own, and two sheets would answer twice.
+            if (_phase.value == AppPhase.Main && _signingIn.value == null) localData?.ask {}
             nextUp?.refresh()
             refreshAccount()
         }
+    }
+
+    fun answerLocalData(choice: LocalDataChoice) {
+        viewModelScope.launch { localData?.answer(choice) }
     }
 
     private fun <T> orNull(read: () -> T?): T? =

@@ -127,6 +127,15 @@ open class AccountFakeCore : Core(NoHandle) {
 
     override fun localDataOfOtherAccount(): LocalData? = otherAccountData
 
+    val settled: MutableList<LocalDataChoice> = Collections.synchronizedList(mutableListOf())
+    var settleError: CoreException? = null
+
+    override fun settleLocalData(choice: LocalDataChoice) {
+        settleError?.let { throw it }
+        settled += choice
+        otherAccountData = null
+    }
+
     override suspend fun restoreFromCode(
         words: List<String>,
         localData: LocalDataChoice,

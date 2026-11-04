@@ -286,4 +286,26 @@ class OnboardingViewModelTest {
             assertEquals(OnboardingRoute.SignIn, model.backStack.first())
             assertEquals(RestoreMode.GUEST_RETURN, (model.backStack.last() as OnboardingRoute.Restore).mode)
         }
+
+    @Test
+    fun anotherAccountsEventsAreSettledBeforeThePermissions() =
+        runTest(dispatcher) {
+            core.currentSession = Session("u1", "d1")
+            core.otherAccountData = app.geunal.core.LocalData(86u, 5u)
+            val model = viewModel()
+            model.openSignIn()
+            model.signIn.setAgeConfirmed(true)
+
+            model.signIn(Provider.KAKAO)
+            advanceUntilIdle()
+
+            assertEquals(app.geunal.core.LocalData(86u, 5u), model.localData.asking.value)
+            assertTrue(model.backStack.none { it == OnboardingRoute.Permissions })
+
+            model.answerLocalData(app.geunal.core.LocalDataChoice.KEEP)
+            advanceUntilIdle()
+
+            assertEquals(OnboardingRoute.Permissions, model.backStack.last())
+            assertNull(model.localData.asking.value)
+        }
 }
