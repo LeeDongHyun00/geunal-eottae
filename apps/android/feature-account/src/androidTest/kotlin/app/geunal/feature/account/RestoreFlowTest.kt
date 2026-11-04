@@ -67,7 +67,7 @@ class RestoreFlowTest {
         compose.screenshot("21-restore--guest")
         compose.onNodeWithTag("restore.noCode").performClick()
         compose.waitForTag("restore.startOver")
-        compose.screenshot("21-restore--guest-no-code")
+        compose.screenshot("21-restore--guest-no-code", inside = "restore.startOver")
 
         // Without the age tick a new guest account waits for it on the sign-in screen.
         compose.onNodeWithTag("restore.startOver").performClick()
@@ -110,7 +110,7 @@ class RestoreFlowTest {
 
         compose.onNodeWithTag("restore.start").performClick()
         compose.waitForTag("keepLocal.keep")
-        compose.screenshot("24-keep-local")
+        compose.screenshot("24-keep-local", inside = "keepLocal.keep")
         // Sheet 24 has to be answered: back neither closes it nor leaves the screen.
         compose.pressBack()
         compose.onNodeWithTag("keepLocal.keep").assertExists()
@@ -171,7 +171,7 @@ class RestoreFlowTest {
         compose.onNodeWithTag("restore.startOver").performClick()
         compose.waitForTag("restore.confirmWipe")
         compose.onNodeWithTag("restore.confirmWipe").assertTextEquals("백업 2개 지우고 새로 시작")
-        compose.screenshot("21-restore--wipe-confirm")
+        compose.screenshot("21-restore--wipe-confirm", inside = "restore.confirmWipe")
 
         // A cancelled check deletes nothing and leaves the confirmation as it was.
         host.deviceAuth.passes = false
