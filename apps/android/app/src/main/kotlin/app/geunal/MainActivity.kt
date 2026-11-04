@@ -39,11 +39,11 @@ class MainActivity : FragmentActivity() {
         takeInvite(intent)
     }
 
-    /** Keeps the invite an App Link brought in; the group screens take it once the account is ready. */
+    /** Keeps the invite link an App Link brought in; the group screens take it once the account is ready. */
     private fun takeInvite(intent: Intent?) {
         if (intent?.action != Intent.ACTION_VIEW) return
-        val code = InviteLink.fromLink(intent.dataString ?: return, BuildConfig.INVITE_HOST) ?: return
-        (application as GeunalApplication).container.invites.offer(code)
+        val link = InviteLink.fromLink(intent.dataString ?: return, BuildConfig.INVITE_HOST) ?: return
+        (application as GeunalApplication).container.invites.offer(link)
     }
 
     private companion object {

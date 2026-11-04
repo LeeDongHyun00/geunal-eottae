@@ -4,30 +4,36 @@ import java.net.URI
 import java.net.URLDecoder
 
 /**
- * Reads the invite code out of what brought someone in: the App Link `https://<invite host>/i/<code>` (an installed app)
- * or the Play Install Referrer `invite=<code>` (the store page the link sent them to before install, docs/parts/android.md
- * §4). Anything else is not an invite, and the code is checked here so that a malformed one never reaches the server.
+ * Picks out what brought someone in with an invite: the App Link `https://<invite host>/i/<code>#n=…&c=…&i=…` (an
+ * installed app) or the Play Install Referrer `invite=<code>` (the store page the link sent them to before install,
+ * docs/parts/android.md §4).
+ *
+ * This is only a gate on what the app keeps. The core reads the code, the group's name and color and who invited
+ * (`parse_invite`, protocol §15), so the link is kept whole, fragment included, and the shape checked here stays loose:
+ * the code's characters and a bounded length, so that a hostile link cannot park an arbitrary blob in the app's files.
  */
 object InviteLink {
     /** The referrer key the invite page puts the code under when it sends someone to the store. */
     const val REFERRER_KEY = "invite"
 
-    // The server's codes are base32 of at least 50 bits (docs/parts/api-server.md group_invites); the upper bound only
-    // keeps a hostile link from carrying an arbitrary blob into the app's files.
-    private val code = Regex("[A-Za-z0-9]{10,64}")
+    // Ten base32 characters, shown with a hyphen (core/vectors/invites.json); the core folds case and look-alikes.
+    private val code = Regex("[A-Za-z0-9-]{10,16}")
 
-    /** The code in [link] when it is an invite on [host], else null. The fragment (group name and color) is not read. */
+    // The fragment carries a group name and a person's name; a few hundred characters is plenty for both.
+    private const val MAX_LINK = 1024
+
+    /** [link] itself when it is an invite on [host], else null. */
     fun fromLink(
         link: String,
         host: String,
     ): String? {
-        if (host.isEmpty()) return null
+        if (host.isEmpty() || link.length > MAX_LINK) return null
         val uri = runCatching { URI(link) }.getOrNull() ?: return null
         if (uri.scheme != "https" || !uri.host.equals(host, ignoreCase = true)) return null
         if (uri.port != -1 && uri.port != 443) return null
         val path = uri.path ?: return null
-        val candidate = path.removePrefix("/i/").removeSuffix("/")
-        return candidate.takeIf { path.startsWith("/i/") && code.matches(it) }
+        if (!path.startsWith("/i/") || !code.matches(path.removePrefix("/i/").removeSuffix("/"))) return null
+        return link
     }
 
     /** The code in a Play Install Referrer string (`invite=<code>` among `&`-separated pairs), else null. */

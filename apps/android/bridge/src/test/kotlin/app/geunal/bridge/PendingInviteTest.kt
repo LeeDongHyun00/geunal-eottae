@@ -15,13 +15,13 @@ class PendingInviteTest {
     @Test
     fun theCodeOutlivesTheProcessUntilCleared() {
         val dir = folder.newFolder("invite")
-        PendingInvite(dir).offer("ABCDEFGH23")
+        PendingInvite(dir).offer("GN7KQ4XZM2")
         val reopened = PendingInvite(dir)
-        assertEquals("ABCDEFGH23", reopened.code.value)
-        reopened.offer("ZYXWVUTS76")
-        assertEquals("ZYXWVUTS76", reopened.code.value)
+        assertEquals("GN7KQ4XZM2", reopened.invite.value)
+        reopened.offer("GN7KQ4XZM3")
+        assertEquals("GN7KQ4XZM3", reopened.invite.value)
         reopened.clear()
-        assertNull(PendingInvite(dir).code.value)
+        assertNull(PendingInvite(dir).invite.value)
     }
 
     @Test

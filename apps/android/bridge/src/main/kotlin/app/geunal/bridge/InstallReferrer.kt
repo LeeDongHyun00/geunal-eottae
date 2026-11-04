@@ -26,7 +26,7 @@ object InstallReferrer {
                             val referrer = runCatching { client.installReferrer.installReferrer }.getOrNull()
                             if (referrer != null) {
                                 // An invite tapped after install already sits there and is newer than the store's.
-                                InviteLink.fromReferrer(referrer)?.let { if (pending.code.value == null) pending.offer(it) }
+                                InviteLink.fromReferrer(referrer)?.let { if (pending.invite.value == null) pending.offer(it) }
                                 pending.markReferrerRead()
                             }
                         }

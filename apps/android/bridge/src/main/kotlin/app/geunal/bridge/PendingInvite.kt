@@ -14,28 +14,31 @@ import java.io.File
 class PendingInvite(
     private val dir: File,
 ) {
-    private val codeFile = File(dir, "code")
+    private val inviteFile = File(dir, "invite")
     private val referrerFile = File(dir, "referrer-read")
     private val state = MutableStateFlow(read())
 
-    /** The code waiting to be used, or null. */
-    val code: StateFlow<String?> = state.asStateFlow()
+    /**
+     * The invite waiting to be used, or null: the whole link an App Link brought, or the bare code from the referrer.
+     * Either goes to the core's `parse_invite` as it is.
+     */
+    val invite: StateFlow<String?> = state.asStateFlow()
 
     /** Whether the Install Referrer was already read; it describes the install, so it is read once. */
     val referrerRead: Boolean get() = referrerFile.exists()
 
-    /** Keeps [code]; a newer invite replaces an older one, since the newest link is the one the person just tapped. */
+    /** Keeps [invite]; a newer one replaces an older one, since the newest link is the one the person just tapped. */
     @Synchronized
-    fun offer(code: String) {
+    fun offer(invite: String) {
         dir.mkdirs()
-        codeFile.writeText(code)
-        state.value = code
+        inviteFile.writeText(invite)
+        state.value = invite
     }
 
-    /** Forgets the code once it was used or declined, or when the account ends. */
+    /** Forgets the invite once it was used or declined, or when the account ends. */
     @Synchronized
     fun clear() {
-        codeFile.delete()
+        inviteFile.delete()
         state.value = null
     }
 
@@ -44,5 +47,5 @@ class PendingInvite(
         referrerFile.createNewFile()
     }
 
-    private fun read(): String? = codeFile.takeIf { it.exists() }?.readText()?.takeIf { it.isNotEmpty() }
+    private fun read(): String? = inviteFile.takeIf { it.exists() }?.readText()?.takeIf { it.isNotEmpty() }
 }

@@ -147,6 +147,7 @@ androidx.window:window-core:1.5.0=debugAndroidTestLintChecksClasspath,debugAndro
 androidx.window:window:1.5.0=debugAndroidTestLintChecksClasspath,debugAndroidTestRuntimeClasspath,debugLintChecksClasspath,debugRuntimeClasspath,debugUnitTestLintChecksClasspath,debugUnitTestRuntimeClasspath,releaseLintChecksClasspath,releaseRuntimeClasspath
 ch.qos.logback:logback-classic:1.3.14=ktlint
 ch.qos.logback:logback-core:1.3.14=ktlint
+com.android.installreferrer:installreferrer:2.2=debugAndroidTestLintChecksClasspath,debugLintChecksClasspath,debugRuntimeClasspath,debugUnitTestLintChecksClasspath,debugUnitTestRuntimeClasspath,releaseLintChecksClasspath,releaseRuntimeClasspath
 com.android.tools.analytics-library:protos:32.3.3=androidLintTool,unified-test-platform-android-test-plugin-result-listener-gradle
 com.android.tools.analytics-library:shared:32.3.3=androidLintTool,unified-test-platform-android-test-plugin-result-listener-gradle
 com.android.tools.analytics-library:tracker:32.3.3=androidLintTool
