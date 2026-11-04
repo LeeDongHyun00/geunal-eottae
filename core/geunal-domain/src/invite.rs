@@ -7,20 +7,24 @@ pub const ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 /// Ten symbols of five bits: 50 bits, the floor the server's `group_invites.code` check enforces.
 pub const CODE_LEN: usize = 10;
 
-/// The longest group name a link carries, in characters; the same cap as the group name field (design m2 §13).
+/// The longest group or inviter name a link carries, in characters; the same cap as the group name field (design m2
+/// §13).
 pub const MAX_LINK_NAME_CHARS: usize = 20;
 
 /// The twelve group colours (`color.group.*` in docs/design/tokens.json), as `group_meta.color` stores them.
 pub const GROUP_COLORS: [&str; 12] =
     ["tomato", "tangerine", "mustard", "olive", "forest", "mint", "sky", "sea", "grape", "plum", "blossom", "cocoa"];
 
-/// What a pasted code or opened link says. `name` and `color` come from the link's fragment, which the inviting
-/// device wrote and the server never saw: they are shown before joining only, and `group_meta` replaces them after.
+/// What a pasted code or opened link says. `name`, `color` and `inviter` come from the link's fragment, which the
+/// inviting device wrote and the server never saw: they are shown before joining only, and after joining `group_meta`
+/// and the server's preview replace them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Invite {
     pub code: String,
     pub name: Option<String>,
     pub color: Option<String>,
+    /// The inviting member's display name, for the web page and the card an app-less phone sees.
+    pub inviter: Option<String>,
 }
 
 /// The canonical code for what a person typed: case, hyphens and spaces are ignored, and the look-alikes Crockford
@@ -55,10 +59,10 @@ pub fn display_code(code: &str) -> String {
     }
 }
 
-/// The link the inviting device shares: `https://{host}/i/{code}`, with the group name and colour in the fragment so
-/// that they never reach the server. A colour outside [`GROUP_COLORS`] is left out, and the name is cut to
-/// [`MAX_LINK_NAME_CHARS`].
-pub fn invite_link(host: &str, code: &str, name: Option<&str>, color: Option<&str>) -> String {
+/// The link the inviting device shares: `https://{host}/i/{code}`, with the group name, colour and inviter's name in
+/// the fragment so that they never reach the server. A colour outside [`GROUP_COLORS`] is left out, and the names are
+/// cut to [`MAX_LINK_NAME_CHARS`].
+pub fn invite_link(host: &str, code: &str, name: Option<&str>, color: Option<&str>, inviter: Option<&str>) -> String {
     let mut link = format!("https://{host}/i/{code}");
     let mut fields = Vec::new();
     if let Some(name) = name.map(clean_name).filter(|n| !n.is_empty()) {
@@ -66,6 +70,9 @@ pub fn invite_link(host: &str, code: &str, name: Option<&str>, color: Option<&st
     }
     if let Some(color) = color.filter(|c| GROUP_COLORS.contains(c)) {
         fields.push(format!("c={color}"));
+    }
+    if let Some(inviter) = inviter.map(clean_name).filter(|n| !n.is_empty()) {
+        fields.push(format!("i={}", percent_encode(&inviter)));
     }
     if !fields.is_empty() {
         link.push('#');
@@ -79,7 +86,7 @@ pub fn invite_link(host: &str, code: &str, name: Option<&str>, color: Option<&st
 pub fn parse_invite(text: &str) -> Option<Invite> {
     let text = text.trim();
     let Some(at) = text.rfind("/i/") else {
-        return normalize_code(text).map(|code| Invite { code, name: None, color: None });
+        return normalize_code(text).map(|code| Invite { code, name: None, color: None, inviter: None });
     };
     let rest = &text[at + 3..];
     let rest = rest.split(char::is_whitespace).next().unwrap_or_default();
@@ -88,13 +95,16 @@ pub fn parse_invite(text: &str) -> Option<Invite> {
         None => (rest, None),
     };
     let code = normalize_code(path.split(['?', '/']).next().unwrap_or_default())?;
-    let mut invite = Invite { code, name: None, color: None };
+    let mut invite = Invite { code, name: None, color: None, inviter: None };
     for field in fragment.unwrap_or_default().split('&') {
         match field.split_once('=') {
             Some(("n", value)) => {
                 invite.name = percent_decode(value).map(|n| clean_name(&n)).filter(|n| !n.is_empty());
             }
             Some(("c", value)) if GROUP_COLORS.contains(&value) => invite.color = Some(value.to_owned()),
+            Some(("i", value)) => {
+                invite.inviter = percent_decode(value).map(|n| clean_name(&n)).filter(|n| !n.is_empty());
+            }
             _ => {}
         }
     }
@@ -165,11 +175,12 @@ mod tests {
 
     #[test]
     fn a_link_round_trips_its_name_and_colour() {
-        let link = invite_link("geunal.app", "GN7KQ4XZM2", Some("주말 모임 & 보드게임"), Some("mint"));
+        let link = invite_link("geunal.app", "GN7KQ4XZM2", Some("주말 모임 & 보드게임"), Some("mint"), Some("하린"));
         let invite = parse_invite(&link).unwrap();
         assert_eq!(invite.code, "GN7KQ4XZM2");
         assert_eq!(invite.name.as_deref(), Some("주말 모임 & 보드게임"));
         assert_eq!(invite.color.as_deref(), Some("mint"));
+        assert_eq!(invite.inviter.as_deref(), Some("하린"));
     }
 
     #[test]
@@ -183,7 +194,7 @@ mod tests {
     #[test]
     fn a_broken_fragment_still_gives_the_code() {
         let invite = parse_invite("https://geunal.app/i/GN7KQ4XZM2#n=%FF%&c=neon").unwrap();
-        assert_eq!(invite, Invite { code: "GN7KQ4XZM2".into(), name: None, color: None });
+        assert_eq!(invite, Invite { code: "GN7KQ4XZM2".into(), name: None, color: None, inviter: None });
     }
 
     #[test]
@@ -192,6 +203,7 @@ mod tests {
             "geunal.app",
             "GN7KQ4XZM2",
             Some("가\u{202e}나다라마바사아자차카타파하가나다라마바사아자"),
+            None,
             None,
         );
         let name = parse_invite(&link).unwrap().name.unwrap();
