@@ -23,15 +23,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import app.geunal.R
+import app.geunal.SignedOut
 import app.geunal.core.AccountView
 import app.geunal.core.CoreInterface
 import app.geunal.core.MeSummary
@@ -42,10 +45,13 @@ import app.geunal.designsystem.LocalDarkTheme
 import app.geunal.designsystem.LocalNeutralColors
 import app.geunal.designsystem.Radius
 import app.geunal.designsystem.Space
+import app.geunal.designsystem.components.ButtonKind
+import app.geunal.designsystem.components.GeunalButton
 import app.geunal.designsystem.components.SettingsDivider
 import app.geunal.designsystem.components.SettingsGroup
 import app.geunal.designsystem.components.SettingsRow
 import app.geunal.feature.account.backup.BackupText
+import app.geunal.feature.account.support.AccountKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -59,6 +65,9 @@ import java.time.Instant
 fun MeScreen(
     core: CoreInterface,
     pendingGuest: Boolean,
+    signedOut: SignedOut?,
+    onSignIn: () -> Unit,
+    onReturnAsGuest: () -> Unit,
     onShifts: () -> Unit,
     onPeople: () -> Unit,
     onCalendars: () -> Unit,
@@ -73,7 +82,7 @@ fun MeScreen(
     var summary by remember { mutableStateOf<MeSummary?>(null) }
     var loaded by remember { mutableStateOf(false) }
     // Read again each time the tab comes back, so the counts follow what the covers over it changed.
-    LaunchedEffect(core) {
+    LaunchedEffect(core, signedOut) {
         summary = withContext(Dispatchers.IO) { runCatching { core.meSummary() }.getOrNull() }
         loaded = true
     }
@@ -93,7 +102,7 @@ fun MeScreen(
             color = neutrals.ink,
             modifier = Modifier.padding(top = Space.xl).semantics { heading() },
         )
-        if (loaded) Profile(summary?.account, pendingGuest)
+        if (loaded) Profile(summary?.account, pendingGuest, signedOut, onSignIn, onReturnAsGuest)
         Text(
             stringResource(R.string.me_section_calendar),
             style = GeunalType.caption.copy(fontWeight = FontWeight.SemiBold),
@@ -128,7 +137,17 @@ fun MeScreen(
             color = neutrals.secondaryText,
             modifier = Modifier.padding(start = Space.m).semantics { heading() },
         )
-        SettingsGroup(Modifier.background(neutrals.background, RoundedCornerShape(Radius.card))) {
+        // Signed out, the code and the backup key are gone or out of reach: the group stays in sight, dimmed and still
+        // (m1.md screen 23 "뒤", decision 43).
+        val secured = signedOut == null
+        // TalkBack says "사용 중지됨", so the rows that do not react say why they do not.
+        val dimmedSemantics = if (secured) Modifier else Modifier.semantics { disabled() }
+        SettingsGroup(
+            Modifier
+                .background(neutrals.background, RoundedCornerShape(Radius.card))
+                .alpha(if (secured) 1f else DIMMED)
+                .testTag("me.security"),
+        ) {
             // A code never written down reads red (m1.md screen 12).
             SettingsRow(
                 title = stringResource(R.string.me_recovery),
@@ -137,8 +156,8 @@ fun MeScreen(
                         stringResource(if (it.recoverySaved) R.string.me_recovery_saved else R.string.me_recovery_not_saved)
                     },
                 valueColor = if (summary?.recoverySaved == false) neutrals.sunday else neutrals.secondaryText,
-                onClick = onRecoveryCode,
-                modifier = Modifier.testTag("me.recovery"),
+                onClick = onRecoveryCode.takeIf { secured },
+                modifier = Modifier.testTag("me.recovery").then(dimmedSemantics),
             )
             SettingsDivider()
             SettingsRow(
@@ -148,8 +167,8 @@ fun MeScreen(
                         me.lastBackupAt?.let { BackupText.time(it, Instant.now(), resources) }
                             ?: stringResource(R.string.me_backup_none)
                     },
-                onClick = onBackup,
-                modifier = Modifier.testTag("me.backup"),
+                onClick = onBackup.takeIf { secured },
+                modifier = Modifier.testTag("me.backup").then(dimmedSemantics),
             )
         }
         Text(
@@ -165,7 +184,7 @@ fun MeScreen(
                 modifier = Modifier.testTag("me.alerts"),
             )
             // Only an account can be deleted; the calendar without one has nothing on the server.
-            summary?.account?.let { account ->
+            summary?.account?.takeIf { signedOut == null }?.let { account ->
                 SettingsDivider()
                 SettingsRow(
                     title = stringResource(R.string.me_delete_account),
@@ -178,16 +197,27 @@ fun MeScreen(
     }
 }
 
+/** How the security and backup group looks while it cannot be used (m1.md "흐림 0.4"). */
+private const val DIMMED = 0.4f
+
 @Composable
 private fun Profile(
     account: AccountView?,
     pendingGuest: Boolean,
+    signedOut: SignedOut?,
+    onSignIn: () -> Unit,
+    onReturnAsGuest: () -> Unit,
 ) {
     val neutrals = LocalNeutralColors.current
     val dark = LocalDarkTheme.current
     val grape = GroupColors.first { it.name == "grape" }
     val (name, kind) =
         when {
+            signedOut == SignedOut.Revoked ->
+                stringResource(R.string.me_signed_out) to stringResource(R.string.me_signed_out_detail)
+            // No reason is given: "too long offline" would be wrong after reuse detection (decision 43).
+            signedOut is SignedOut.SessionEnded ->
+                stringResource(R.string.me_session_ended) to stringResource(R.string.me_session_ended_detail)
             account != null ->
                 account.displayName to
                     stringResource(
@@ -202,30 +232,58 @@ private fun Profile(
             else -> stringResource(R.string.me_no_account) to stringResource(R.string.me_no_account_detail)
         }
     val card = stringResource(R.string.me_profile_description, name, kind)
+    // Signed out, the avatar has no name to take a letter from.
+    val initial = if (signedOut == null) name.take(1) else ""
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Space.m),
+        horizontalArrangement = Arrangement.spacedBy(Space.s),
         modifier =
             Modifier
                 .fillMaxWidth()
                 .background(neutrals.background, RoundedCornerShape(Radius.card))
-                .padding(Space.m)
-                // Ahead of clearAndSetSemantics, which drops whatever comes after it in the chain, a tag included.
-                .testTag("me.profile")
-                .clearAndSetSemantics { contentDescription = card },
+                .padding(Space.m),
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.m),
             modifier =
                 Modifier
-                    .size(Space.xxxl)
-                    .background(if (dark) grape.dark[1] else grape.light[1], CircleShape),
+                    .weight(1f)
+                    // Ahead of clearAndSetSemantics, which drops whatever comes after it in the chain, a tag included.
+                    .testTag("me.profile")
+                    .clearAndSetSemantics { contentDescription = card },
         ) {
-            Text(name.take(1), style = GeunalType.title2, color = neutrals.ink)
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier =
+                    Modifier
+                        .size(Space.xxxl)
+                        .background(if (dark) grape.dark[1] else grape.light[1], CircleShape),
+            ) {
+                Text(initial, style = GeunalType.title2, color = neutrals.ink)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(name, style = GeunalType.bodyStrong, color = neutrals.ink)
+                Text(kind, style = GeunalType.caption, color = neutrals.secondaryText)
+            }
         }
-        Column(Modifier.weight(1f)) {
-            Text(name, style = GeunalType.bodyStrong, color = neutrals.ink)
-            Text(kind, style = GeunalType.caption, color = neutrals.secondaryText)
+        when {
+            signedOut == SignedOut.Revoked || signedOut == SignedOut.SessionEnded(AccountKind.PROVIDER) ->
+                GeunalButton(
+                    text = stringResource(R.string.me_sign_in),
+                    onClick = onSignIn,
+                    kind = ButtonKind.SmallPill,
+                    modifier = Modifier.testTag("me.signIn"),
+                )
+            // The device still holds the guest's code, but coming back with it alone waits on the security review: the
+            // code is entered on screen 21 (decision 43).
+            signedOut == SignedOut.SessionEnded(AccountKind.GUEST) ->
+                GeunalButton(
+                    text = stringResource(R.string.me_return_as_guest),
+                    onClick = onReturnAsGuest,
+                    kind = ButtonKind.SmallPill,
+                    modifier = Modifier.testTag("me.returnAsGuest"),
+                )
         }
     }
 }

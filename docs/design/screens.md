@@ -33,7 +33,7 @@
 | 주 보기 | 목록 보기 | 일정 편집 |
 | --- | --- | --- |
 | <img src="screens/m1/07-week@2x.png" width="240" alt="주 보기"> | <img src="screens/m1/08-list@2x.png" width="240" alt="목록 보기"> | <img src="screens/m1/09-editor@2x.png" width="240" alt="일정 편집"> |
-| 시간 축 위의 일정 블록. 겹치는 일정은 묶음 하나로 그리고, 누르면 겹친 일정을 시간 띠와 함께 보여 줍니다([묶음](screens/m1/07-week--overlap@2x.png), [시트](screens/m1/07-week--overlap-list@2x.png), [긴 일정과 짧은 일정](screens/m1/07-week--overlap-long@2x.png)). | 다가오는 일정을 날짜별로. | 캘린더, 종일, 시간, 반복, 알림, 사진·파일 첨부. 그룹에 어떻게 보이는지 한 줄로 알립니다. |
+| 시간 축 위의 일정 블록. 겹치는 일정은 가장 긴 일정을 카드로 두고 나머지를 리본과 "+n"으로 보이며, 누르면 그 날 열이 넓어집니다([리본](screens/m1/07-week--overlap@2x.png), [열 포커스](screens/m1/07-week--overlap-focus@2x.png)). | 다가오는 일정을 날짜별로. | 캘린더, 종일, 시간, 반복, 알림, 사진·파일 첨부. 그룹에 어떻게 보이는지 한 줄로 알립니다. |
 
 ### 교대 템플릿 · 사람·생일 · 나 · 위젯
 

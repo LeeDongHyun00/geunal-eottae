@@ -247,6 +247,13 @@ final class AppModel {
             } catch {}
         }
         if !Task.isCancelled {
+            // A sign-out from another device that this sync learned of takes the alerts and the widget's titles now,
+            // not when the app is next opened.
+            await refreshAccount(inBackground: true)
+        }
+        // A revocation whose sheet nobody has seen keeps them gone: the calendar stays and the phase is still the tabs,
+        // so refilling here would bring the titles straight back. Once the app is opened, it refills as before.
+        if !Task.isCancelled, revocation == nil {
             await alerts?.refresh()
             writeWidgetSnapshot()
             await widgetWrite?.value
@@ -349,9 +356,7 @@ final class AppModel {
     func accountDeleted(announce: Bool = true) {
         alerts?.removeAll()
         removeWidgetSnapshot()
-        onboardingState.isFinished = false
-        onboardingState.knownAccount = nil
-        onboardingState.sessionEnded = false
+        onboardingState.forgetAccount()
         sessionEnded = nil
         onboardingResumes = false
         accountChanges += 1
@@ -363,13 +368,16 @@ final class AppModel {
         }
     }
 
-    /// A revocation the sheet has not shown, and whether the recovery code still waits for the paper.
-    func refreshAccount() async {
+    /// A revocation the sheet has not shown, and whether the recovery code still waits for the paper. In the background
+    /// the ended-session toast waits for the app to open, so nobody misses it.
+    func refreshAccount(inBackground: Bool = false) async {
         guard let core else { return }
         let read = await Task.detached {
             (try? core.revocation(), try? core.recoveryStatus(), core.session(), try? core.account())
         }.value
-        noteSession(account: read.3 ?? nil, revoked: read.0 != nil)
+        if !inBackground {
+            noteSession(account: read.3 ?? nil, revoked: read.0 != nil)
+        }
         if let revoked = read.0, revoked.at != onboardingState.revocationShownAt {
             if revocation == nil {
                 // Signed out from another device: the alerts and the widget snapshot go with their titles, as on a

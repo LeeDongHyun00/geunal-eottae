@@ -126,8 +126,26 @@ class Client(
         return put("/me/recovery", body + mapOf("nonce" to nonce, "device_signature" to sign(signed)))
     }
 
-    /** An Add commit for [epoch] that brings [member]'s device in, with the Welcome addressed to it. */
+    /** Makes [member] pending in the group, as an invite code will (protocol §2). */
+    fun invite(
+        groupId: UUID,
+        member: Client,
+    ) {
+        api.send(HttpMethod.POST, "/auth/stub/invite", body = mapOf("group_id" to groupId, "user_id" to member.userId)).expect(204)
+    }
+
+    /** An Add commit for [epoch] that brings [member]'s device in, invited first, with the Welcome addressed to it. */
     fun addMember(
+        groupId: UUID,
+        epoch: Long,
+        member: Client,
+    ): Reply {
+        invite(groupId, member)
+        return addUninvited(groupId, epoch, member).expect(201)
+    }
+
+    /** The same Add commit without the invite. */
+    fun addUninvited(
         groupId: UUID,
         epoch: Long,
         member: Client,
@@ -141,7 +159,7 @@ class Client(
                 "welcome" to Mls.welcome(),
                 "added" to listOf(member.deviceId),
             ),
-        ).expect(201)
+        )
 
     /** A plain (self-update) commit for [epoch]. */
     fun commit(

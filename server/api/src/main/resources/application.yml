@@ -8,6 +8,11 @@ spring:
   threads:
     virtual:
       enabled: true
+  mvc:
+    formcontent:
+      filter:
+        # It reads a form PUT, PATCH or DELETE whole before BodyLimit could cap it, and no endpoint takes one.
+        enabled: false
   jackson:
     # Every JSON field the protocol names is snake_case (user_id, group_id, base_version).
     property-naming-strategy: SNAKE_CASE
@@ -16,12 +21,30 @@ spring:
 # a private-network peer only, so the access log records the device and not the proxy (api-server.md §10).
 server:
   forward-headers-strategy: native
+  tomcat:
+    # Form posts are only Apple's web sign-in callback (an ID token and a code); BodyLimit caps every other body.
+    max-http-form-post-size: 32KB
 
 # JSON lines only. Request and response bodies, ciphertext and tokens never reach a log (api-server.md §10).
 logging:
   structured:
     format:
       console: ecs
+  # Below INFO these libraries write raw requests, bodies, handler arguments, SQL parameters or Redis payloads, which
+  # hold tokens and ciphertext. Their levels are pinned so that turning the root level down to debug a problem never
+  # does; LogHygieneTests runs the API at TRACE to keep it so.
+  level:
+    org.apache.coyote: info
+    org.apache.tomcat: info
+    org.springframework.web: info
+    org.springframework.http: info
+    org.springframework.jdbc: info
+    org.springframework.data.redis: info
+    org.springframework.security: info
+    org.postgresql: info
+    io.lettuce: info
+    io.netty: info
+    software.amazon.awssdk: info
 
 management:
   endpoints:
