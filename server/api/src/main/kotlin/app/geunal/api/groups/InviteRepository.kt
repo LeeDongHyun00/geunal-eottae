@@ -94,16 +94,14 @@ class InviteRepository(
 }
 
 /**
- * Codes are 10 characters of Crockford's base32, shown in two groups of five (`ABCDE-FGHJK`). People type them, so
- * reading one forgives case, spaces, dashes and the letters Crockford reads as digits.
+ * Codes are 10 characters of Crockford's base32 (protocol §15). People type them, so reading one forgives case, spaces,
+ * dashes and the letters Crockford reads as digits; the core reads them by the same rule and the same vectors.
  */
 object InviteCodes {
     private const val ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
     private const val LENGTH = 10
 
     fun random(random: SecureRandom): String = String(CharArray(LENGTH) { ALPHABET[random.nextInt(ALPHABET.length)] })
-
-    fun display(code: String): String = code.substring(0, 5) + "-" + code.substring(5)
 
     /** The stored form of what someone typed, or null when it cannot be a code. */
     fun canonical(typed: String): String? {

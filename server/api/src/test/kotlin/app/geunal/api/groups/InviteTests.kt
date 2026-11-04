@@ -31,8 +31,8 @@ class InviteTests : ApiTest() {
 
         val invite = member.post("/groups/$groupId/invites").expect(201)
 
-        assertThat(invite.string("code")).matches("[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}")
-        assertThat(invite.int("max_uses")).isEqualTo(20)
+        assertThat(invite.json!!.propertyNames()).containsExactlyInAnyOrder("code", "expires_at")
+        assertThat(invite.string("code")).matches("[0-9A-HJKMNP-TV-Z]{10}")
         val expires = Instant.parse(invite.string("expires_at"))
         assertThat(Duration.between(Instant.now(), expires)).isBetween(Duration.ofDays(7).minusMinutes(5), Duration.ofDays(7))
     }
@@ -56,7 +56,10 @@ class InviteTests : ApiTest() {
 
         val preview = signIn().get("/invites/$code").expect(200)
 
-        assertThat(preview.json!!.propertyNames()).containsExactlyInAnyOrder("inviter_name", "member_count", "expires_at", "full")
+        assertThat(
+            preview.json!!.propertyNames(),
+        ).containsExactlyInAnyOrder("group_id", "inviter_name", "member_count", "expires_at", "full")
+        assertThat(preview.uuid("group_id")).isEqualTo(groupId)
         assertThat(preview.string("inviter_name")).isEqualTo(owner.subject.take(40))
         assertThat(preview.int("member_count")).isEqualTo(2)
         assertThat(preview["full"].booleanValue()).isFalse()
@@ -107,8 +110,8 @@ class InviteTests : ApiTest() {
 
         signIn().get("/invites/$typed").expect(200)
         signIn().post("/invites/${code.replace("-", "")}/join").expect(200)
-        signIn().get("/invites/not-a-code").expectError(404, "not_found")
-        signIn().post("/invites/ZZZZZ-ZZZZZ/join").expectError(404, "not_found")
+        signIn().get("/invites/not-a-code").expectError(404, "invite_invalid")
+        signIn().post("/invites/ZZZZZ-ZZZZZ/join").expectError(404, "invite_invalid")
     }
 
     @Test
@@ -127,7 +130,7 @@ class InviteTests : ApiTest() {
     }
 
     @Test
-    fun `an expired or used up code answers 410`() {
+    fun `an expired or used up code answers like an unknown one`() {
         val owner = signIn()
         val groupId = groupWith(owner)
         val expired = owner.inviteCode(groupId)
@@ -135,9 +138,10 @@ class InviteTests : ApiTest() {
         jdbc.sql("UPDATE group_invites SET expires_at = now() - interval '1 minute' WHERE code = :c").param("c", raw(expired)).update()
         jdbc.sql("UPDATE group_invites SET uses = max_uses WHERE code = :c").param("c", raw(usedUp)).update()
 
-        signIn().post("/invites/$expired/join").expectError(410, "invite_expired")
-        signIn().post("/invites/$usedUp/join").expectError(410, "invite_expired")
-        assertThat(signIn().get("/invites/$usedUp").expect(200)["full"].booleanValue()).isTrue()
+        signIn().post("/invites/$expired/join").expectError(404, "invite_invalid")
+        signIn().post("/invites/$usedUp/join").expectError(404, "invite_invalid")
+        signIn().get("/invites/$expired").expectError(404, "invite_invalid")
+        signIn().get("/invites/$usedUp").expectError(404, "invite_invalid")
     }
 
     @Test
@@ -147,8 +151,9 @@ class InviteTests : ApiTest() {
         val code = owner.inviteCode(groupId)
         repeat(19) { signIn().post("/invites/$code/join").expect(200) }
 
-        signIn().post("/invites/${owner.inviteCode(groupId)}/join").expectError(409, "group_full")
+        signIn().post("/invites/$code/join").expectError(409, "group_full")
         assertThat(signIn().get("/invites/$code").expect(200)["full"].booleanValue()).isTrue()
+        owner.post("/groups/$groupId/invites").expectError(409, "group_full")
     }
 
     @Test

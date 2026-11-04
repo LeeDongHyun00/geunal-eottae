@@ -22,10 +22,10 @@ import java.util.UUID
 data class InviteResponse(
     val code: String,
     val expiresAt: Instant,
-    val maxUses: Int,
 )
 
 data class InvitePreview(
+    val groupId: UUID,
     val inviterName: String?,
     val memberCount: Int,
     val expiresAt: Instant,
@@ -41,6 +41,7 @@ data class JoinResponse(
  * Invite codes (protocol §2): any active member makes one, and whoever holds it becomes pending in the group, which an
  * online member's device then adds. Holding a code is the inviting member's approval (kickoff decisions), so the code
  * is all the join asks for; the per-address limit keeps codes from being guessed.
+ * Shapes and errors follow protocol §15.
  */
 @RestController
 class InviteController(
@@ -61,8 +62,9 @@ class InviteController(
         val group = groups.requireActive(id, caller.userId)
         if (group.kind != "circle") throw ApiException.invalid("a 1:1 takes no invitations")
         limits.check("invite", caller.userId.toString(), rates.invitesPerHour)
+        if (groups.seatCount(id) >= GroupLimits.MEMBERS_PER_GROUP) throw GroupLimits.full()
         val invite = invites.create(id, caller.userId)
-        return InviteResponse(InviteCodes.display(invite.code), invite.expiresAt, invite.maxUses)
+        return InviteResponse(invite.code, invite.expiresAt)
     }
 
     /** What the join screen shows before joining: no member names, since the holder is not a member yet (m2.md §5). */
@@ -73,13 +75,13 @@ class InviteController(
         request: HttpServletRequest,
     ): InvitePreview {
         limits.check("invite lookup", request.remoteAddr, rates.inviteUsesPerHour)
-        val invite = InviteCodes.canonical(code)?.let(invites::find) ?: throw ApiException.notFound("invite")
-        val seats = groups.seatCount(invite.groupId)
+        val invite = InviteCodes.canonical(code)?.let(invites::find)?.takeIf(::usable) ?: throw invalid()
         return InvitePreview(
+            groupId = invite.groupId,
             inviterName = invites.inviterName(invite),
             memberCount = groups.members(invite.groupId).count { it.status == "active" },
             expiresAt = invite.expiresAt,
-            full = invite.uses >= invite.maxUses || seats >= GroupLimits.MEMBERS_PER_GROUP,
+            full = groups.seatCount(invite.groupId) >= GroupLimits.MEMBERS_PER_GROUP,
         )
     }
 
@@ -95,17 +97,14 @@ class InviteController(
         request: HttpServletRequest,
     ): JoinResponse {
         limits.check("invite join", request.remoteAddr, rates.inviteUsesPerHour)
-        val canonical = InviteCodes.canonical(code) ?: throw ApiException.notFound("invite")
+        val canonical = InviteCodes.canonical(code) ?: throw invalid()
         groups.lockAccount(caller.userId)
-        val found = invites.find(canonical) ?: throw ApiException.notFound("invite")
+        val found = invites.find(canonical) ?: throw invalid()
         groups.lockGroup(found.groupId)
         // Read again under the group's lock: a join that waited on it sees the uses the one before it spent.
-        val invite = invites.find(canonical) ?: throw ApiException.notFound("invite")
+        val invite = invites.find(canonical)?.takeIf(::usable) ?: throw invalid()
         when (val status = groups.memberStatus(invite.groupId, caller.userId)) {
             "pending", "active" -> return JoinResponse(invite.groupId, status)
-        }
-        if (invite.expiresAt <= clock.instant() || invite.uses >= invite.maxUses) {
-            throw ApiException(HttpStatus.GONE, "invite_expired", "the invite code has expired or been used up")
         }
         if (groups.seatCount(invite.groupId) >= GroupLimits.MEMBERS_PER_GROUP) throw GroupLimits.full()
         if (groups.circleCount(caller.userId) >= GroupLimits.GROUPS_PER_ACCOUNT) throw GroupLimits.tooManyGroups()
@@ -114,4 +113,9 @@ class InviteController(
         signals.send(groups.activeDeviceIds(invite.groupId), MembershipEvent(invite.groupId))
         return JoinResponse(invite.groupId, "pending")
     }
+
+    private fun usable(invite: InviteRow): Boolean = invite.expiresAt > clock.instant() && invite.uses < invite.maxUses
+
+    /** Unknown, ended and used-up codes answer alike (protocol §15), so guessing learns nothing from the difference. */
+    private fun invalid() = ApiException(HttpStatus.NOT_FOUND, "invite_invalid", "no usable invite code")
 }

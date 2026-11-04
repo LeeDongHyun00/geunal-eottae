@@ -717,7 +717,7 @@ paths:
 
   /groups/{id}/invites:
     post:
-      summary: Make an invite code for a group (any active member; not for a 1:1). No body.
+      summary: Make an invite code for a group (any active member; not for a 1:1). No body. Protocol §15.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "201":
@@ -725,22 +725,22 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [code, expires_at, max_uses]
+                required: [code, expires_at]
                 properties:
-                  code: { type: string, pattern: "^[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}$", description: "Crockford base32, shown as two groups of five" }
-                  expires_at: { type: string, format: date-time, description: seven days from now }
-                  max_uses: { type: integer, const: 20 }
+                  code: { type: string, pattern: "^[0-9A-HJKMNP-TV-Z]{10}$", description: "Crockford base32 without the dash; apps show it in two groups of five" }
+                  expires_at: { type: string, format: date-time, description: "seven days from now; the code takes 20 joins" }
         "400": { description: invalid_request (a 1:1) }
         "403": { description: not_member }
         "404": { description: not_found (no such group) }
+        "409": { description: group_full (20 members with pending ones) }
         "429": { description: rate_limited }
 
   /invites/{code}:
     get:
       summary: What a code leads to, before joining. Member names are not shown until the caller joins.
       description: >
-        `code` is read regardless of case, spaces and dashes, with O read as 0 and I or L as 1. An ended code still
-        answers here (`full` or a past `expires_at`) until it is cleared 30 days after it ended.
+        `code` is read regardless of case, spaces and dashes, with O read as 0 and I or L as 1. Unknown, expired and
+        used-up codes all answer 404 `invite_invalid`.
       parameters: [{ $ref: "#/components/parameters/InviteCode" }]
       responses:
         "200":
@@ -748,13 +748,14 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [inviter_name, member_count, expires_at, full]
+                required: [group_id, inviter_name, member_count, expires_at, full]
                 properties:
+                  group_id: { $ref: "#/components/schemas/Uuid" }
                   inviter_name: { type: [string, "null"], description: null once the inviter deleted their account }
                   member_count: { type: integer, description: active members }
                   expires_at: { type: string, format: date-time }
-                  full: { type: boolean, description: the code is used up or the group has 20 members with pending ones }
-        "404": { description: not_found }
+                  full: { type: boolean, description: the group has 20 members with pending ones }
+        "404": { description: invite_invalid }
         "429": { description: rate_limited }
 
   /invites/{code}/join:
@@ -773,9 +774,8 @@ paths:
                 properties:
                   group_id: { $ref: "#/components/schemas/Uuid" }
                   status: { type: string, enum: [pending, active] }
-        "404": { description: not_found }
+        "404": { description: invite_invalid (unknown, past seven days or used 20 times) }
         "409": { description: "group_full (20 members with pending ones), group_limit (the caller is in 20 groups)" }
-        "410": { description: invite_expired (past seven days or used 20 times) }
         "429": { description: rate_limited }
 
   /groups/{id}/members:
