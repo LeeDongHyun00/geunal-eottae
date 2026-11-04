@@ -10,7 +10,7 @@ use geunal_ffi::{
     ProgressListener, RevokedVia, SecretStore, ShiftTemplateInput,
 };
 use geunal_sync::fake::FakeServer;
-use phones::{Phone, kakao, new_account, phone, user_id};
+use phones::{Phone, guest, kakao, phone, user_id};
 
 fn person(name: &str) -> PersonInput {
     PersonInput { id: None, name: name.into(), birthday: None, alert: AlertRule::Inherit, suggest: true }
@@ -89,7 +89,7 @@ fn a_guest_comes_back_on_a_new_phone_with_the_code_alone() {
     pollster::block_on(async {
         let server = FakeServer::new();
         let a = phone(&server);
-        let guest = a.core.clone().sign_in_guest(new_account("게스트")).await.unwrap();
+        let guest = guest(&a.core, "게스트").await;
         a.core.save_person(person("동생")).unwrap();
         a.core.clone().backup_now(None).await.unwrap();
         let words = a.core.recovery_words().unwrap();

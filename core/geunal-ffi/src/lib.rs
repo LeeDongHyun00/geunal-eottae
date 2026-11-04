@@ -374,6 +374,9 @@ pub struct Core {
     /// `sync()` asked the server this run whether the account still needs a recovery code: a device without one asks
     /// once, not at every sync.
     recovery_checked: std::sync::atomic::AtomicBool,
+    /// The recovery upload a sign-in left running in the background; whatever needs the material on the server waits
+    /// for it first, so two uploads never race.
+    recovery_upload: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 #[uniffi::export]
@@ -739,7 +742,19 @@ impl Core {
             ticket: std::sync::Mutex::new(None),
             recovery_keys: std::sync::Mutex::new(None),
             recovery_checked: std::sync::atomic::AtomicBool::new(false),
+            recovery_upload: std::sync::Mutex::new(None),
         }))
+    }
+
+    /// Waits for the recovery upload a sign-in left running in the background, so a test can look at the server after
+    /// it. Not part of the FFI.
+    #[cfg(feature = "fake-server")]
+    #[doc(hidden)]
+    pub async fn recovery_upload_settled(&self) {
+        let running = self.recovery_upload.lock().unwrap_or_else(|p| p.into_inner()).take();
+        if let Some(running) = running {
+            let _ = running.await;
+        }
     }
 
     /// [`Core::open`] against the in-process fake server, for this crate's tests. Not part of the FFI.

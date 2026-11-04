@@ -927,7 +927,7 @@ impl Core {
     /// After any sign-in. A registered device gets its session, its engine and key packages, and recovery material when
     /// the server holds none (protocol §10 "올리는 때"); a device that has to replace another keeps the ticket.
     pub(crate) async fn finish_sign_in(
-        &self,
+        self: &Arc<Self>,
         outcome: AuthOutcome,
         display_name: Option<String>,
     ) -> Result<AuthResult, CoreError> {
@@ -935,7 +935,7 @@ impl Core {
             AuthOutcome::Registered { tokens, new_account, recovery } => {
                 let session = self.register_session(&tokens, display_name).await?;
                 if !recovery {
-                    self.make_recovery(&session.user_id, false, None).await?;
+                    self.start_recovery(&session.user_id)?;
                 }
                 Ok(AuthResult::Registered { session, new_account, recovery })
             }
@@ -1264,6 +1264,31 @@ impl Core {
         }
     }
 
+    /// After a sign-in that finds no recovery material on the server. The code is made here, so its words show at
+    /// once; the upload, with its Argon2id derivation (half a second or more on a phone) and two round trips, goes on
+    /// in the background so the sign-in answers without waiting for it. What fails there waits for `sync()`, which
+    /// uploads again and reports what keeps failing; no backup goes before the upload (protocol §10 "올리는 때").
+    fn start_recovery(self: &Arc<Self>, user_id: &str) -> Result<(), CoreError> {
+        if self.recovery_secrets()?.is_none() {
+            self.keep_recovery(user_id, &recovery::new_entropy(), &geunal_crypto::random_key(), false, false)?;
+        }
+        let this = Arc::clone(self);
+        let running = self.runtime.spawn(async move {
+            let _ = this.upload_recovery_now().await;
+        });
+        *self.recovery_upload.lock().unwrap_or_else(|p| p.into_inner()) = Some(running);
+        Ok(())
+    }
+
+    /// The upload `sync()` retries until it succeeds, after any upload a sign-in left running in the background.
+    pub(crate) async fn upload_pending_recovery(&self) -> Result<(), CoreError> {
+        let running = self.recovery_upload.lock().unwrap_or_else(|p| p.into_inner()).take();
+        if let Some(running) = running {
+            let _ = running.await;
+        }
+        self.upload_recovery_now().await
+    }
+
     /// The upload `sync()` retries until it succeeds (protocol §10 "올리는 때"). A network error waits for the next
     /// `sync()`, and so does a 404: an M0 server has no `/me/recovery` yet, and the M1 one never answers it with 404.
     /// A new code the server no longer takes without a provider proof is dropped quietly: `recovery_status()` shows
@@ -1271,7 +1296,7 @@ impl Core {
     ///
     /// A device without a code asks `GET /me` once a run whether the account has recovery material, and makes the
     /// code when it has none: a sign-in that stopped before making it, as when the app was closed, ends here.
-    pub(crate) async fn upload_pending_recovery(&self) -> Result<(), CoreError> {
+    async fn upload_recovery_now(&self) -> Result<(), CoreError> {
         let Some(session) = self.current_session()? else { return Ok(()) };
         if self.recovery_secrets()?.is_none() {
             if self.recovery_checked.load(Ordering::Relaxed) {
