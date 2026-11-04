@@ -419,8 +419,6 @@ fn appointment_request(appt: &str) -> Entry {
 /// Seals a newcomer bundle as `dev` in the group's current epoch, the way a member's device would put one.
 async fn put_bundle(dev: &Device, group: &str, items: &[(Option<i64>, &Entry)]) {
     use ciborium::Value;
-    let epoch = dev.engine.epoch(group).unwrap().unwrap();
-    let key = dev.engine.store().state_key(group, epoch as i64).unwrap().unwrap();
     let items: Vec<Value> = items
         .iter()
         .map(|(seq, e)| {
@@ -437,8 +435,14 @@ async fn put_bundle(dev: &Device, group: &str, items: &[(Option<i64>, &Entry)]) 
         .collect();
     let mut plaintext = Vec::new();
     ciborium::into_writer(&Value::Array(items), &mut plaintext).unwrap();
+    put_raw_bundle(dev, group, &plaintext).await;
+}
+
+async fn put_raw_bundle(dev: &Device, group: &str, plaintext: &[u8]) {
+    let epoch = dev.engine.epoch(group).unwrap().unwrap();
+    let key = dev.engine.store().state_key(group, epoch as i64).unwrap().unwrap();
     let aad = state_aad(group, epoch, "newcomer_bundle", dev.user());
-    let req = PutState { epoch, ciphertext: seal(&key, &aad, &plaintext), base_version: None };
+    let req = PutState { epoch, ciphertext: seal(&key, &aad, plaintext), base_version: None };
     dev.engine.api().put_state(group, "newcomer_bundle", req).await.unwrap();
 }
 
@@ -491,4 +495,20 @@ async fn a_bundle_entry_placed_ahead_of_the_cursor_never_shadows_the_real_log_it
     a.engine.send(&group, &text("t-log", "로그의 말"), Alert::All, Some("chat")).await.unwrap();
     b.engine.sync().await.unwrap();
     assert_eq!(texts(&b, &group), vec!["로그의 말"]);
+}
+
+#[tokio::test]
+async fn lets_go_of_a_newcomer_bundle_that_does_not_decode_and_syncs_on() {
+    let server = server();
+    let mut a = device(&server, "a", 1).await;
+    let mut b = device(&server, "b", 2).await;
+    let group = a.engine.create_group(Some("동네 친구")).await.unwrap();
+    a.engine.add_members(&group, &[b.user().to_owned()]).await.unwrap();
+    put_raw_bundle(&a, &group, b"not cbor").await;
+    b.engine.sync().await.unwrap();
+    assert!(b.engine.store().expected_bundle(&group).unwrap().is_none());
+
+    a.engine.send(&group, &text("t1", "그 뒤의 말"), Alert::All, Some("chat")).await.unwrap();
+    b.engine.sync().await.unwrap();
+    assert_eq!(texts(&b, &group), vec!["그 뒤의 말"]);
 }

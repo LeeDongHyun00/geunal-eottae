@@ -435,7 +435,7 @@ impl<T: Transport> Engine<T> {
             let through = welcome.seq.unwrap_or(0);
             self.store.set_cursor(&welcome.group_id, through)?;
             // The member whose commit added this device owes it one bundle of what came before (protocol §5).
-            self.store.expect_bundle(&welcome.group_id, &adder.user_id, group.epoch() as i64, through)?;
+            self.store.expect_bundle(&welcome.group_id, &adder.user_id, group.epoch() as i64, welcome.seq)?;
             self.remember_state_key(&welcome.group_id, &group)?;
             group.save()?;
             self.pull_state(&welcome.group_id).await?;
@@ -662,9 +662,13 @@ impl<T: Transport> Engine<T> {
             }
         }
         if let (Some(bundle), Some(expected)) = (bundle, expected) {
-            // Taken once: a later bundle in the group is for a later newcomer.
-            self.store.clear_expected_bundle(group_id)?;
-            self.absorb_bundle(group_id, &bundle, expected.through)?;
+            // Taken once: a later bundle in the group is for a later newcomer. The promise is kept until the entries
+            // are in, so a failed write is tried again by the next sync (taking an entry twice is a no-op); a bundle
+            // that does not decode never will, and is let go.
+            match self.absorb_bundle(group_id, &bundle, expected.through) {
+                Ok(()) | Err(SyncError::Malformed(_)) => self.store.clear_expected_bundle(group_id)?,
+                Err(e) => return Err(e),
+            }
         }
         self.notify(Change::Group { group_id: group_id.to_owned() });
         Ok(())
@@ -673,9 +677,9 @@ impl<T: Transport> Engine<T> {
     /// Entries of live appointments from before this device joined, taken on trust from the member who added it
     /// (protocol §5). An item that names its seq lands at that seq, so it sorts exactly as the server ordered it and a
     /// copy this device already has is a no-op; it must come before the Add commit at `through`, since every later
-    /// seq is the log's to fill. One without a seq (an older bundle) takes a negative seq in bundle order, ahead of the
-    /// log, unless a matching entry exists.
-    fn absorb_bundle(&self, group_id: &str, bundle: &[u8], through: i64) -> Result<(), SyncError> {
+    /// seq is the log's to fill. One without a seq (an older bundle), or any item when the Welcome named no seq, takes
+    /// a negative seq in bundle order, ahead of the log, unless a matching entry exists.
+    fn absorb_bundle(&self, group_id: &str, bundle: &[u8], through: Option<i64>) -> Result<(), SyncError> {
         let items: Vec<BundleItem> =
             ciborium::from_reader(bundle).map_err(|e| SyncError::Malformed(format!("newcomer bundle: {e}")))?;
         let existing = self.store.entries(group_id)?;
@@ -686,9 +690,10 @@ impl<T: Transport> Engine<T> {
                     (Ok(x), Ok(y)) if x == y
                 )
         };
-        let (placed, unplaced): (Vec<&BundleItem>, Vec<&BundleItem>) = items.iter().partition(|i| i.seq.is_some());
+        let (placed, unplaced): (Vec<&BundleItem>, Vec<&BundleItem>) =
+            items.iter().partition(|i| i.seq.is_some() && through.is_some());
         for item in placed {
-            let seq = item.seq.expect("partitioned");
+            let (seq, through) = (item.seq.expect("partitioned"), through.expect("partitioned"));
             if seq <= 0 || seq > through {
                 continue;
             }

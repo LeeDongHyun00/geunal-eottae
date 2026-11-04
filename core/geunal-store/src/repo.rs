@@ -46,8 +46,9 @@ pub struct ExpectedBundle {
     pub from_user: String,
     /// The epoch the device joined in, which the bundle is sealed in.
     pub epoch: i64,
-    /// The seq of the Add commit: bundle items name seqs up to it, never after.
-    pub through: i64,
+    /// The seq of the Add commit: bundle items name seqs up to it, never after. `None` when the server's Welcome named
+    /// no seq, and then no bundle item is placed by its seq.
+    pub through: Option<i64>,
 }
 
 /// A decrypted log entry as received; `body` is the CBOR envelope so unknown kinds survive an upgrade (protocol §4).
@@ -163,7 +164,7 @@ impl Store {
     }
 
     /// Records the newcomer bundle a Welcome promises: from `from_user`, sealed in `epoch`, items up to `through`.
-    pub fn expect_bundle(&self, group_id: &str, from_user: &str, epoch: i64, through: i64) -> Result<()> {
+    pub fn expect_bundle(&self, group_id: &str, from_user: &str, epoch: i64, through: Option<i64>) -> Result<()> {
         self.conn().execute(
             "UPDATE groups SET bundle_from = ?2, bundle_epoch = ?3, bundle_through = ?4 WHERE id = ?1",
             params![group_id, from_user, epoch, through],
@@ -177,7 +178,7 @@ impl Store {
             .conn()
             .query_row(
                 "SELECT bundle_from, bundle_epoch, bundle_through FROM groups
-                 WHERE id = ?1 AND bundle_from IS NOT NULL AND bundle_epoch IS NOT NULL AND bundle_through IS NOT NULL",
+                 WHERE id = ?1 AND bundle_from IS NOT NULL AND bundle_epoch IS NOT NULL",
                 [group_id],
                 |row| Ok(ExpectedBundle { from_user: row.get(0)?, epoch: row.get(1)?, through: row.get(2)? }),
             )
