@@ -13,8 +13,9 @@ CVE-2026-78669 exp:2026-12-04
 CVE-2026-78667 exp:2026-12-04
 # ECH outer extensions in a ClientHello. Go reads them only when ECH keys are configured, and the Caddyfile sets none.
 CVE-2026-97031 exp:2026-12-04
-# Certificate chains Caddy verifies as a TLS client. It is a client only of Let's Encrypt for ACME; the API behind it
-# is plain HTTP on the compose network.
+# Certificate chains Caddy verifies as a TLS client. Its one such connection is ACME renewal with Let's Encrypt across
+# the internet, so someone on that path could at worst make a renewal fail or forge an ACME answer; the API behind
+# Caddy is plain HTTP on the compose network. This premise is the weakest of the seven: bump Caddy before the expiry.
 CVE-2026-111943 exp:2026-12-04
 # go-jose's JWK parsing. In Caddy it backs the ACME client, which signs with its own key; nothing a visitor sends
 # reaches it.
