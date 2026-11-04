@@ -26,11 +26,13 @@ import androidx.navigation3.ui.NavDisplay
 import app.geunal.AppContainer
 import app.geunal.AppPhase
 import app.geunal.AppViewModel
+import app.geunal.core.CoreInterface
 import app.geunal.core.UpNext
 import app.geunal.designsystem.LocalNeutralColors
 import app.geunal.designsystem.components.ToastCenter
 import app.geunal.feature.account.onboarding.OnboardingDependencies
 import app.geunal.feature.account.onboarding.OnboardingFlow
+import app.geunal.feature.account.signedout.RevokedSheet
 import app.geunal.feature.calendar.alerts.DeviceNotificationAccess
 import app.geunal.feature.calendar.editor.EditorTarget
 import app.geunal.feature.calendar.people.DeviceContactsReader
@@ -80,18 +82,7 @@ fun RootScreen(
         AppPhase.Onboarding ->
             if (core != null) {
                 OnboardingFlow(
-                    dependencies =
-                        OnboardingDependencies(
-                            core = core,
-                            providers = container.providers,
-                            permissions = container.permissions,
-                            deviceAuth = container.deviceAuth,
-                            isOnline = container.connectivity.isOnline,
-                            toasts = model.toasts,
-                            state = container.onboarding,
-                            channel = container.channel,
-                            legal = container.legal,
-                        ),
+                    dependencies = onboardingDependencies(container, core, model),
                     onFinish = model::finishOnboarding,
                     modifier = modifier,
                     round = model.onboardingRound,
@@ -99,6 +90,31 @@ fun RootScreen(
             }
         AppPhase.Main ->
             if (core != null && nextUp != null) {
+                val signingIn by model.signingIn.collectAsStateWithLifecycle()
+                val revocation by model.revocation.collectAsStateWithLifecycle()
+                val signedOut by model.signedOut.collectAsStateWithLifecycle()
+                signingIn?.let { start ->
+                    // Over the tabs, with "닫기": the tabs come back when it closes or the account comes through.
+                    OnboardingFlow(
+                        dependencies = onboardingDependencies(container, core, model),
+                        onFinish = model::signedInAgain,
+                        modifier = modifier,
+                        round = model.signInRound,
+                        start = start,
+                        onClose = model::signInClosed,
+                    )
+                    return
+                }
+                revocation?.let {
+                    RevokedSheet(
+                        revocation = it,
+                        onSignIn = {
+                            model.revocationShown()
+                            model.signInAgain()
+                        },
+                        onCalendarOnly = model::revocationShown,
+                    )
+                }
                 val context = LocalContext.current.applicationContext
                 val coverModel =
                     viewModel {
@@ -146,6 +162,9 @@ fun RootScreen(
                                 MeScreen(
                                     core = core,
                                     pendingGuest = container.onboarding.pendingGuestAgeConfirmedAt != null,
+                                    signedOut = signedOut,
+                                    onSignIn = model::signInAgain,
+                                    onReturnAsGuest = model::returnAsGuest,
                                     onShifts = { covers.stamp(KoreanCalendar.month(KoreanCalendar.day(Instant.now()))) },
                                     onPeople = { covers.people() },
                                     onCalendars = covers::calendars,
@@ -161,6 +180,22 @@ fun RootScreen(
             }
     }
 }
+
+private fun onboardingDependencies(
+    container: AppContainer,
+    core: CoreInterface,
+    model: AppViewModel,
+) = OnboardingDependencies(
+    core = core,
+    providers = container.providers,
+    permissions = container.permissions,
+    deviceAuth = container.deviceAuth,
+    isOnline = container.connectivity.isOnline,
+    toasts = model.toasts,
+    state = container.onboarding,
+    channel = container.channel,
+    legal = container.legal,
+)
 
 /** The tabs' place in the back stack, under the covers. */
 private data object TabsRoute

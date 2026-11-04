@@ -7,9 +7,12 @@ import app.geunal.core.Change
 import app.geunal.core.CoreException
 import app.geunal.core.CoreInterface
 import app.geunal.core.InternalException
+import app.geunal.core.Revocation
 import app.geunal.designsystem.components.ToastCenter
 import app.geunal.feature.account.delete.isAccountDeleted
+import app.geunal.feature.account.onboarding.OnboardingStart
 import app.geunal.feature.account.onboarding.PendingGuest
+import app.geunal.feature.account.support.AccountKind
 import app.geunal.feature.account.support.OnboardingState
 import app.geunal.feature.calendar.nextup.NextUpModel
 import kotlinx.coroutines.CoroutineDispatcher
@@ -47,6 +50,19 @@ enum class AppNotice(
     @param:StringRes val text: Int,
 ) {
     ACCOUNT_DELETED(R.string.account_deleted),
+    SESSION_ENDED(R.string.session_ended),
+    SIGNED_IN_AGAIN(R.string.signed_in_again),
+}
+
+/** Why the account is no longer signed in on this device, while the calendar goes on (m1.md screens 12, 23). */
+sealed interface SignedOut {
+    /** Another device signed in to the account (screen 23). */
+    data object Revoked : SignedOut
+
+    /** The core ended the session: a refused refresh token (decision 43). The way back depends on the account's kind. */
+    data class SessionEnded(
+        val kind: AccountKind,
+    ) : SignedOut
 }
 
 /** Why the core did not open, by kind only: its messages are never shown (docs/security/app-review.md §5 "코어 오류"). */
@@ -79,6 +95,23 @@ class AppViewModel(
 
     /** Goes up each time onboarding has to start over from the welcome screen. */
     var onboardingRound = 0
+        private set
+
+    private val _revocation = MutableStateFlow<Revocation?>(null)
+
+    /** Another device's sign-in signed this one out, and the sheet has not shown it yet (m1.md screen 23). */
+    val revocation: StateFlow<Revocation?> = _revocation.asStateFlow()
+
+    private val _signedOut = MutableStateFlow<SignedOut?>(null)
+    val signedOut: StateFlow<SignedOut?> = _signedOut.asStateFlow()
+
+    private val _signingIn = MutableStateFlow<OnboardingStart?>(null)
+
+    /** The sign-in over the tabs, and where it opens; `null` while the tabs show. */
+    val signingIn: StateFlow<OnboardingStart?> = _signingIn.asStateFlow()
+
+    /** Goes up each time the sign-in over the tabs opens, so it starts afresh every time. */
+    var signInRound = 0
         private set
 
     private val _phase = MutableStateFlow<AppPhase>(AppPhase.Starting)
@@ -123,9 +156,16 @@ class AppViewModel(
             core = opened
             nextUp = upNext
             launch {
-                changes.collect { if (it == Change.Calendar) upNext.refresh() }
+                changes.collect {
+                    when (it) {
+                        Change.Calendar -> upNext.refresh()
+                        Change.Account -> refreshAccount()
+                        else -> Unit
+                    }
+                }
             }
             _phase.value = if (onboarding.isFinished) AppPhase.Main else AppPhase.Onboarding
+            refreshAccount()
             if (foregroundWaiting) appBecameActive()
         }
     }
@@ -141,7 +181,10 @@ class AppViewModel(
      * welcome screen and says so (m1.md screen 22).
      */
     fun accountDeleted() {
-        onboarding.isFinished = false
+        onboarding.forgetAccount()
+        _revocation.value = null
+        _signedOut.value = null
+        _signingIn.value = null
         onboardingRound++
         _phase.value = AppPhase.Onboarding
         _accountEnded.tryEmit(Unit)
@@ -150,7 +193,86 @@ class AppViewModel(
 
     fun finishOnboarding() {
         _phase.value = AppPhase.Main
-        viewModelScope.launch { nextUp?.refresh() }
+        viewModelScope.launch {
+            refreshAccount()
+            nextUp?.refresh()
+        }
+    }
+
+    /** The sheet's two answers both close it for this revocation; the core keeps it until the next sign-in. */
+    fun revocationShown() {
+        _revocation.value?.let { onboarding.revocationShownAt = it.at }
+        _revocation.value = null
+    }
+
+    /** "이 기기에서 다시 로그인" or 나's "로그인": the sign-in screen over the tabs. */
+    fun signInAgain() {
+        signInRound++
+        _signingIn.value = OnboardingStart.SIGN_IN_AGAIN
+    }
+
+    /** 나's "다시 들어가기" after a guest's session ended: the guest's code (decision 43). */
+    fun returnAsGuest() {
+        signInRound++
+        _signingIn.value = OnboardingStart.GUEST_RETURN
+    }
+
+    fun signInClosed() {
+        _signingIn.value = null
+    }
+
+    /** The sign-in over the tabs came through. */
+    fun signedInAgain() {
+        _signingIn.value = null
+        viewModelScope.launch {
+            refreshAccount()
+            nextUp?.refresh()
+        }
+    }
+
+    /**
+     * Reads where the account stands: a revocation the sheet has not shown, and a session the core ended (m1.md §4
+     * "로그인이 끝났을 때", decision 43). It keeps the kind of account a session was for, so the way back is known
+     * after the session is gone. The toasts come once each; signing in again says so.
+     */
+    suspend fun refreshAccount() {
+        val core = core ?: return
+        val (revoked, session, account) =
+            withContext(io) {
+                // A store that cannot answer reads as nothing to show; the next change or foreground asks again.
+                Triple(orNull { core.revocation() }, core.session(), orNull { core.account() })
+            }
+        when {
+            session != null -> {
+                if (account != null) onboarding.knownAccount = if (account.providers.isEmpty()) AccountKind.GUEST else AccountKind.PROVIDER
+                if (onboarding.sessionEnded) {
+                    onboarding.sessionEnded = false
+                    noticeChannel.trySend(AppNotice.SIGNED_IN_AGAIN)
+                }
+                _signedOut.value = null
+            }
+            revoked != null -> {
+                _signedOut.value = SignedOut.Revoked
+                if (revoked.at != onboarding.revocationShownAt && _revocation.value == null) {
+                    _revocation.value = revoked
+                    // The recovery code and the backup key are gone: no screen of them may stay open over the tabs.
+                    _accountEnded.tryEmit(Unit)
+                }
+            }
+            else -> {
+                val known = onboarding.knownAccount
+                if (known == null || _phase.value != AppPhase.Main) {
+                    // Never signed in, or a guest whose account waits for a connection: nothing ended.
+                    _signedOut.value = null
+                    return
+                }
+                if (!onboarding.sessionEnded) {
+                    onboarding.sessionEnded = true
+                    noticeChannel.trySend(AppNotice.SESSION_ENDED)
+                }
+                _signedOut.value = SignedOut.SessionEnded(known)
+            }
+        }
     }
 
     /**
@@ -189,8 +311,16 @@ class AppViewModel(
                 }
             }
             nextUp?.refresh()
+            refreshAccount()
         }
     }
+
+    private fun <T> orNull(read: () -> T?): T? =
+        try {
+            read()
+        } catch (e: CoreException) {
+            null
+        }
 
     override fun onCleared() {
         // The generated Core frees its Rust object on close; a fake in tests has nothing to free.

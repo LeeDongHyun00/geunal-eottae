@@ -8,6 +8,7 @@ import app.geunal.designsystem.components.ToastCenter
 import app.geunal.feature.account.onboarding.LegalLinks
 import app.geunal.feature.account.onboarding.OnboardingDependencies
 import app.geunal.feature.account.onboarding.OnboardingRoute
+import app.geunal.feature.account.onboarding.OnboardingStart
 import app.geunal.feature.account.onboarding.OnboardingViewModel
 import app.geunal.feature.account.providers.ProviderCredential
 import app.geunal.feature.account.providers.ProviderSignIn
@@ -61,21 +62,24 @@ class OnboardingViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun TestScope.viewModel(providers: ProviderSignIn = FakeProviders()) =
-        OnboardingViewModel(
-            OnboardingDependencies(
-                core = core,
-                providers = providers,
-                permissions = FakePermissions(),
-                deviceAuth = FakeDeviceAuth(),
-                isOnline = MutableStateFlow(true),
-                toasts = ToastCenter(backgroundScope),
-                state = onboarding,
-                channel = BuildChannel.ALPHA,
-                legal = LegalLinks(),
-            ),
-            io = dispatcher,
-        )
+    private fun TestScope.viewModel(
+        providers: ProviderSignIn = FakeProviders(),
+        start: OnboardingStart = OnboardingStart.WELCOME,
+    ) = OnboardingViewModel(
+        OnboardingDependencies(
+            core = core,
+            providers = providers,
+            permissions = FakePermissions(),
+            deviceAuth = FakeDeviceAuth(),
+            isOnline = MutableStateFlow(true),
+            toasts = ToastCenter(backgroundScope),
+            state = onboarding,
+            channel = BuildChannel.ALPHA,
+            legal = LegalLinks(),
+        ),
+        io = dispatcher,
+        start = start,
+    )
 
     private fun TestScope.signedIn(
         provider: Provider = Provider.KAKAO,
@@ -257,5 +261,29 @@ class OnboardingViewModelTest {
             model.finish()
 
             assertTrue(onboarding.isFinished)
+        }
+
+    @Test
+    fun signingInAgainOverTheTabsSkipsThePermissions() =
+        runTest(dispatcher) {
+            val model = viewModel(start = OnboardingStart.SIGN_IN_AGAIN)
+            assertEquals(listOf<OnboardingRoute>(OnboardingRoute.SignIn), model.backStack.toList())
+            model.signIn.setAgeConfirmed(true)
+
+            model.signIn(Provider.KAKAO)
+            advanceUntilIdle()
+
+            assertTrue(model.finished.value)
+            assertTrue(onboarding.isFinished)
+            assertTrue(model.backStack.none { it == OnboardingRoute.Permissions })
+        }
+
+    @Test
+    fun aGuestComingBackOpensTheCodeOverTheSignIn() =
+        runTest(dispatcher) {
+            val model = viewModel(start = OnboardingStart.GUEST_RETURN)
+
+            assertEquals(OnboardingRoute.SignIn, model.backStack.first())
+            assertEquals(RestoreMode.GUEST_RETURN, (model.backStack.last() as OnboardingRoute.Restore).mode)
         }
 }
