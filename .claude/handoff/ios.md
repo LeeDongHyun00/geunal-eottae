@@ -1,70 +1,52 @@
 # iOS 인수인계
 
-갱신: 2026-11-03, 이전 세션 https://claude.ai/code/session_01RfjiuYQGAn1o6QhASZ2Rry
+갱신: 2026-11-04, 이전 세션 https://claude.ai/code/session_0132zdS4Pe4XmKMtDFPdWSST
 
 ## 지금 상태
 
-- 마지막으로 머지된 iOS PR은 #66(사람·생일)입니다. main에는 온보딩·로그인·복원(#36), 월·주·목록·빠른 입력(#46), 편집·교대·템플릿(#60), 사람·생일(#66)이 있습니다.
-- #75(나 탭)는 221087d에서 PR CI(`ios / app`, `ci-ok`)가 녹색이었습니다. 그 뒤 main에 들어온 코어 #63(`KeychainSecretStore`가 `SecretStoreError`를 던짐)과 새 `gate`는 아직 거치지 않았습니다.
-- 5b·6·7번은 브랜치로만 있고 #75 위에 차례로 쌓여 있습니다. 셋 다 지금 main과 글자 충돌은 없습니다.
-
-M1 완료 조건(`docs/parts/ios.md` 10장) 대조:
-
-| 항목 | 상태 | 근거 |
-| --- | --- | --- |
-| 화면 1–3, 21(복원), 24 | main | #36, `OnboardingUITests`, `RestoreUITests` |
-| 화면 4–8 | main | #46, `CalendarUITests` |
-| 화면 9·10·18 | main | #60, `EditorUITests` |
-| 화면 11·17 | main | #66, `PeopleUITests` |
-| 화면 12·13·15·16·19·20·22·23 | 열린 PR | #75, `MeUITests`, `SettingsUITests` |
-| 계정 흐름(결정 24·25·30·36), 24번 시트 | 브랜치 | `claude/ios-wip-5b-account`, `AccountFlowUITests`, `MeModelTests` |
-| 기기 캘린더 미러 | 브랜치 | `claude/ios-wip-6-os`, `DeviceCalendarUITests`, `DeviceCalendarMirrorTests` |
-| 로컬 알림 64개 순환 | 브랜치 | `claude/ios-wip-6-os`, `AlertSchedulerTests`, `AlertContentTests` |
-| 시작 오류 화면(결정 37) | 브랜치 | `claude/ios-wip-6-os`, `StartFailureUITests` |
-| 위젯(14), App Group 저장소 | 브랜치 | `claude/ios-wip-7-widgets`, `WidgetUITests`, `StoreDirectoryTests` |
-| 복구 코드로 새 기기 복원 | main | #36, 5b에서 체크섬 확인과 "나중에 넣을게요" 보완 |
-| 25번 "열 수 없던 캘린더"(#67) | 안 함 | m1.md 2.1과 25번, 코어 `store_reset()` |
-| 결정 38–40(#74) | 안 함 | m1.md 5장 |
-| TestFlight 배포 | 사용자 몫 | Apple 팀·서명·App Group 등록, API https 주소(#61) |
+- M1 화면과 흐름이 main에 있습니다: 온보딩·복원(#36), 월·주·목록·빠른 입력(#46, #132), 편집·교대(#60), 사람(#66), 나 탭(#75), 계정 흐름(#107), 알림·백그라운드·기기 캘린더(#120), 위젯·App Group(#129, #142), 로그인 끝남(#136).
+- 그 밖에 main: TestFlight 업로드(#109, `make release-ios`), iPhone 전용(#122), 로그인 signpost(#146), 키체인 그룹 명시(#152), 24번 질문 정리(#173).
+- 마지막으로 머지된 iOS PR은 #173입니다.
 
 ## 열린 PR과 브랜치
 
 | PR·브랜치 | 상태 | 남은 일 |
 | --- | --- | --- |
-| #75 `claude/epic-hawking-e6vi9t` | Codex P2 3건, QA 요청 D7·D11 | main 합치기, 고치기, QA 리뷰 요청, 자동 머지 |
-| `claude/ios-wip-5b-account` | 푸시만 함 | #75 뒤 main에 다시 쌓아 PR |
-| `claude/ios-wip-6-os` | 5b 위 | 5b 뒤 PR |
-| `claude/ios-wip-7-widgets` | 6 위 | 6 뒤 PR. #61과 `Info.plist` 한 곳 충돌 |
-| `claude/ios-wip-notes` | 머지하지 않음 | PR 설명·커밋 초안, #75 할 일, 리눅스 하네스 |
-| #61 `claude/ios-api-base` | 사용자 맥 세션이 올림, Codex 지적 없음, CI는 옛 main 기준 | 이어받아 main 합치기, QA 리뷰, 자동 머지 |
+| #159 `claude/ios-week-overlap` | 초안, CI 녹색 | 결정 44로 만든 것. 결정 45(#161)에 맞게 다시 고침. 코어의 `calendar_week` 변경(그날 블록 전부 + 묶음 번호) 뒤에 시작 |
+| `claude/ios-wip-notes` | 머지하지 않음 | 리눅스 하네스 안내(`notes/ios/README.md`), 대역 파일(`shims/`) |
+
+## 릴리스
+
+- release-ios run 3이 사용자 승인을 기다립니다. 위젯이 들어간 첫 빌드입니다. 위젯 App ID와 App Group의 포털 등록은 사용자가 마쳤습니다.
+- 서명이 막히면 조정 세션이 로그를 줍니다. `apps/ios/scripts/release.sh`, `infra/release/README.md`를 봅니다.
+
+## TestFlight에서 볼 것
+
+- 위젯: 오늘 일정이 보이는지, 잠금 화면·StandBy에서 제목이 가려지는지, VoiceOver가 가려진 제목을 읽지 않는지(QA #144 시나리오 3.6 9번)
+- 업데이트 뒤 로그인 유지(키체인 그룹 명시 #152 뒤 기존 키를 그대로 읽는지)
+- 로그인 시간: Instruments에서 `app.geunal.ios`·`account` signpost로 단계별 확인(#146). 코어 #165로 복구 업로드가 백그라운드로 옮겨짐
 
 ## 다음 할 일
 
-1. #75: main을 합쳐 #63 뒤의 컴파일을 확인하고, Codex 3건과 QA D11·D7을 고칩니다. 근거: notes 브랜치 `notes/ios/pr5-review-todo.md`, #75의 QA 리뷰. 설명에 D11과 기존 시험(`testStartsFreshWithoutTheCodeOnceTheOwnerPasses`, `testCancellingTheOwnerPromptKeepsEverything`)의 대응을 적습니다.
-2. #61: main을 합쳐 CI·`gate`를 다시 돌리고 QA 리뷰를 받아 자동 머지합니다. #75·5b·6과는 겹치지 않습니다.
-3. 5b → 6 → 7을 차례로 새 main에 다시 쌓아 PR로 올립니다. 설명 초안은 `notes/ios/drafts/`에 있고, 시험 수와 CI 줄은 다시 셉니다.
-   - 5b의 결정 36은 #72(5b00ae8)·#71을 머지 전에 보고 만들었습니다. 머지된 글과 다시 대조합니다.
-   - 7번은 #61과 합칠 때 `Info.plist`의 `GeunalAPIBase`와 `GeunalAppGroup`을 둘 다 남깁니다.
-4. 결정 38–40(#74): 삭제 실패 문구(편집·템플릿·사람 시트), 교대 실패 카드(`ShiftStampModel.failed`는 이미 있음), 빠른 입력 아래 줄의 `ViewThatFits`.
-5. 25번 "열 수 없던 캘린더"(#67): 코어 `store_reset()`이 있으면 온보딩보다 먼저 띄웁니다.
-6. TestFlight는 사용자·조정 세션과 정합니다.
+1. M2 iOS 화면([plan.md](../../docs/plan.md) 4장, `docs/parts/ios.md`): 그룹 캘린더 띠와 날 테이블, 날짜 잡기·투표, 그룹 설정, 초대(Universal Links, 카카오톡 공유), 푸시 등록, 그룹 캘린더 60fps. 디자인 시안과 코어 API가 나오는 순서대로 합니다.
+2. 결정 45(#161): 코어 변경 뒤 #159를 고쳐 디자인에 스크린숏 대조를 부탁합니다.
+3. M1에서 남은 것: 결정 38–40(m1.md 5장, 쓰기 실패 문구, 교대 실패 카드, 빠른 입력 아래 줄의 `ViewThatFits`), 25번 "열 수 없던 캘린더"(#67, 코어 `store_reset()`).
 
 ## 기다리는 결정
 
 | 결정 | 누가 | 어디에 적혀 있나 |
 | --- | --- | --- |
-| 각 PR의 "검토할 결정" | 디자인·코어 | #75 설명, `notes/ios/drafts/*-body.md` |
-| 알파 서버의 https 주소 | 인프라 | #61 "검토할 결정" 3 |
-| Apple 팀·서명·App Group 등록 | 사용자 | `notes/ios/drafts/pr7-body.md` "확인하지 못한 것" |
+| 세션이 끝난 뒤 복구 코드 보기, 게스트가 기기의 코드로 바로 되찾기 | 디자인·코어(서버 수정과 기기 인증 뒤) | m1.md 결정 43, #136 "검토할 결정" 1 |
+| Apple 계정 삭제가 403으로 끝나는 원인 | 백엔드(#149 로그), 사용자(Sign in with Apple 키) | 앱·코어 경로는 확인 끝. 로그에 `invalid_grant`가 나오면 앱 흐름을 다시 봄 |
 
 ## 알아 둘 것
 
-- 클라우드 세션은 Swift를 빌드하지 못합니다. macOS CI가 유일한 검증이고, 모델 시험은 리눅스 하네스로 먼저 돌립니다(`notes/ios/README.md`).
-- 수동 실행(`workflow_dispatch`)은 끝나도 알림이 오지 않습니다. 실행 상태나 `ios-screenshots` 아티팩트로 봅니다. 사용자 지시는 "UI 시험 결과가 나오면 PR을 연다"입니다.
-- iOS 18·26 API는 `#available`로 감쌉니다(`Calendar.Identifier.dangi`는 iOS 26부터).
-- `strings.py sync` 뒤에는 문자열 보간의 `%lld`를 `%@`로 손봅니다.
-- 시험 번들은 카카오 SDK를 링크하지 않습니다. SDK를 보는 검사는 FeatureAccount의 DEBUG 함수로 합니다.
-- 코어 `birthday_in_year`의 연도는 음력 해입니다.
-- 키체인 기본 그룹은 `keychain-access-groups`의 첫 항목이라, App Group을 더해도 키 항목은 그대로입니다.
-- 스크린숏이 있는 PR은 디자인 세션에, 앱 PR은 QA 세션에 직접 대조·리뷰를 요청합니다. 둘 다 구독하지 않습니다.
-- 안드로이드와 맞춘 것: 반복 칩은 편집을 연 때의 규칙을 남깁니다(#73, 5b에 있음).
+- 클라우드 세션은 SwiftUI를 빌드하지 못합니다. macOS CI가 유일한 검증이고, 모델 시험은 리눅스 하네스로 먼저 돌립니다(notes 브랜치). `os`처럼 애플 전용 모듈을 쓰면 하네스에 대역을 둡니다.
+- `strings.py sync` 뒤에는 문자열 보간의 `%lld`를 `%@`로 손봅니다(정수는 `%lld` 그대로).
+- 새 푸시가 앞선 CI 실행을 취소하면 옛 커밋의 `ci-ok`가 빨갛게 옵니다. 현재 커밋을 보고 판단합니다.
+- 시뮬레이터가 앱을 띄우지 못하고 멈추는 일이 있습니다(`Timed out while launching application`). 실패한 작업을 한 번 다시 돌립니다.
+- 조건을 갖췄는데 검사가 이미 녹색이면 자동 머지가 돌지 않습니다. 같은 조건을 확인하고 squash로 바로 머지합니다.
+- 오래된 main에서 만든 PR은 최신 main을 합쳐 CI를 한 번 더 돌린 뒤 머지합니다.
+- 시트 높이는 내용을 재어 맞추고 화면 90%에서 멈춥니다(`QuickEntrySheet`, #132).
+- 앱 PR은 QA 세션에, 스크린숏이 있는 PR은 디자인 세션에 직접 리뷰·대조를 요청합니다. 둘 다 구독하지 않습니다.
+- 공개 저장소라 보안 점검의 세부는 커밋·PR 설명에 쓰지 않고, 바뀐 동작만 적습니다.
