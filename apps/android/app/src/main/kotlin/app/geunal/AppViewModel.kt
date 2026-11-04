@@ -11,6 +11,7 @@ import app.geunal.designsystem.components.ToastCenter
 import app.geunal.feature.account.delete.isAccountDeleted
 import app.geunal.feature.account.onboarding.PendingGuest
 import app.geunal.feature.account.support.OnboardingState
+import app.geunal.feature.account.support.StepTiming
 import app.geunal.feature.calendar.nextup.NextUpModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -64,6 +65,7 @@ class AppViewModel(
     /** TalkBack and the like: a proposal card then stays until it is answered (m1.md decision 28). */
     screenReaderRunning: () -> Boolean = { false },
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val timing: StepTiming = StepTiming.OFF,
 ) : ViewModel() {
     val toasts = ToastCenter(viewModelScope, screenReaderRunning = screenReaderRunning)
 
@@ -178,7 +180,7 @@ class AppViewModel(
             // Offline it could only fail; the next time in front with a connection tries again, as on iOS.
             if (isOnline.value) {
                 try {
-                    core.sync()
+                    timing.measure("foreground", "sync") { core.sync() }
                 } catch (e: CoreException) {
                     // Deleted while this device had no answer, or before the app last closed: the core has finished as
                     // after a 204, and the app ends the same way (m1.md decision 36). Anything else, refused or cut

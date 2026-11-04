@@ -60,6 +60,7 @@ fun RootScreen(
                 changes = container.changes.changes,
                 isOnline = container.connectivity.isOnline,
                 screenReaderRunning = container.screenReaderRunning,
+                timing = container.timing,
             )
         }
     val phase by model.phase.collectAsStateWithLifecycle()
@@ -91,6 +92,7 @@ fun RootScreen(
                             state = container.onboarding,
                             channel = container.channel,
                             legal = container.legal,
+                            timing = container.timing,
                         ),
                     onFinish = model::finishOnboarding,
                     modifier = modifier,
