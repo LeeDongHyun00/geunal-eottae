@@ -8,7 +8,7 @@ publish.workspace = true
 
 [dependencies]
 geunal-domain.workspace = true
-geunal-ffi.workspace = true
+geunal-ffi = { workspace = true, features = ["chat"] }
 serde_json.workspace = true
 
 [dev-dependencies]
