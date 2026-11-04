@@ -687,7 +687,7 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [id, kind, epoch, last_seq, role, status, joined_at]
+                      required: [id, kind, epoch, last_seq, role, status, joined_at, muted_until, notify_chat, notify_plan]
                       properties:
                         id: { $ref: "#/components/schemas/Uuid" }
                         kind: { type: string, enum: [circle, dm] }
@@ -696,6 +696,9 @@ paths:
                         role: { type: string, enum: [owner, member] }
                         status: { type: string, enum: [pending, active] }
                         joined_at: { type: string, format: date-time }
+                        muted_until: { type: [string, "null"], format: date-time, description: no pushes from this group until then }
+                        notify_chat: { type: boolean }
+                        notify_plan: { type: boolean }
 
   /groups:
     post:
@@ -737,6 +740,34 @@ paths:
                         role: { type: string, enum: [owner, member] }
                         status: { type: string, enum: [pending, active, removed] }
                         joined_at: { type: string, format: date-time }
+        "403": { description: not_member }
+
+  /groups/{id}/members/me:
+    patch:
+      summary: The caller's push settings for the group (protocol §8). A field left out stays as it is.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                muted_until: { type: [string, "null"], format: date-time, description: null unmutes }
+                notify_chat: { type: boolean }
+                notify_plan: { type: boolean }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [muted_until, notify_chat, notify_plan]
+                properties:
+                  muted_until: { type: [string, "null"], format: date-time }
+                  notify_chat: { type: boolean }
+                  notify_plan: { type: boolean }
+        "400": { description: invalid_request (another field, or a value of the wrong type) }
         "403": { description: not_member }
 
   /groups/{id}/members/{userId}:

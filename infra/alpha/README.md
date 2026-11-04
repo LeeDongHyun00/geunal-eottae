@@ -50,6 +50,8 @@ GEUNAL_ALPHA_SSH=root@<서버 주소> GEUNAL_ALPHA_SSH_KEY=~/.ssh/<키> GEUNAL_A
 | --- | --- |
 | `GEUNAL_AUTH_KAKAO_APP_KEY`, `GEUNAL_AUTH_KAKAO_ADMIN_KEY` | 카카오 로그인이 404 |
 | `GEUNAL_AUTH_APPLE_KEY_ID`, `GEUNAL_AUTH_APPLE_PRIVATE_KEY`(.p8 PEM) | Apple 로그인이 404. .p8을 읽지 못하면 서버가 시작하지 않음 |
+| `GEUNAL_PUSH_APNS_KEY_ID`, `GEUNAL_PUSH_APNS_PRIVATE_KEY`(APNs .p8 PEM) | iOS 푸시를 보내지 않음. .p8을 읽지 못하면 서버가 시작하지 않음 |
+| `GEUNAL_PUSH_FCM_SERVICE_ACCOUNT`(서비스 계정 JSON 파일 내용) | 안드로이드 푸시를 보내지 않음. 읽지 못하면 서버가 시작하지 않음 |
 | `GEUNAL_S3_ACCESS_KEY`, `GEUNAL_S3_SECRET_KEY` | 백업 요청이 실패(부트스트랩이 경고) |
 | `GEUNAL_DUMP_AGE_RECIPIENT`, `GEUNAL_DUMP_S3_ACCESS_KEY`, `GEUNAL_DUMP_S3_SECRET_KEY` | 덤프가 서버에만 남음(아래 "서버 밖 DB 덤프") |
 | `GEUNAL_HOLIDAYS_SERVICE_KEY`(공공데이터포털 "한국천문연구원_특일 정보"의 일반 인증키 Decoding 값) | 공휴일 매일 동기화가 아무것도 하지 않음. `GET /holidays`가 빈 `years`를 주고, 기기는 앱에 든 표를 씀 |

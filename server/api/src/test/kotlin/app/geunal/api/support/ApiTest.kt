@@ -38,6 +38,7 @@ abstract class ApiTest {
             TestStack.register(registry)
             FakeProviders.register(registry)
             FakeKasi.register(registry)
+            FakePush.register(registry)
         }
     }
 

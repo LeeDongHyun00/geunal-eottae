@@ -109,6 +109,11 @@ class Client(
         body: Any?,
     ) = api.send(HttpMethod.PUT, path, token, body)
 
+    fun patch(
+        path: String,
+        body: Any?,
+    ) = api.send(HttpMethod.PATCH, path, token, body)
+
     fun delete(path: String) = api.send(HttpMethod.DELETE, path, token)
 
     /**

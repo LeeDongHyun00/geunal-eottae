@@ -6,6 +6,8 @@ import org.springframework.stereotype.Repository
 import java.sql.ResultSet
 import java.time.Instant
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.util.Optional
 import java.util.UUID
 
 data class GroupRow(
@@ -13,6 +15,12 @@ data class GroupRow(
     val kind: String,
     val epoch: Long,
     val lastSeq: Long,
+)
+
+data class MemberSettings(
+    val mutedUntil: Instant?,
+    val notifyChat: Boolean,
+    val notifyPlan: Boolean,
 )
 
 data class MemberRow(
@@ -93,14 +101,22 @@ class GroupRepository(
         jdbc
             .sql(
                 """
-                SELECT g.id, g.kind::text AS kind, g.epoch, g.next_seq - 1 AS last_seq, m.role::text AS role, m.status::text AS status, m.joined_at
+                SELECT g.id, g.kind::text AS kind, g.epoch, g.next_seq - 1 AS last_seq, m.role::text AS role, m.status::text AS status, m.joined_at,
+                  m.muted_until, m.notify_chat, m.notify_plan
                 FROM group_members m JOIN groups g ON g.id = m.group_id
                 WHERE m.user_id = :user AND m.status <> 'removed'
                 ORDER BY m.joined_at, g.id
                 """,
             ).param("user", userId)
-            .query { rs, i -> Membership(groupRow(rs, i), rs.getString("role"), rs.getString("status"), rs.instant("joined_at")) }
-            .list()
+            .query { rs, i ->
+                val settings =
+                    MemberSettings(
+                        rs.getObject("muted_until", OffsetDateTime::class.java)?.toInstant(),
+                        rs.getBoolean("notify_chat"),
+                        rs.getBoolean("notify_plan"),
+                    )
+                Membership(groupRow(rs, i), rs.getString("role"), rs.getString("status"), rs.instant("joined_at"), settings)
+            }.list()
 
     fun activeGroupIdsOf(userId: UUID): List<UUID> =
         jdbc
@@ -211,6 +227,41 @@ class GroupRepository(
             .param("user", userId)
             .update() == 1
 
+    /** The member's own push settings (api-server.md §5); fields left null stay as they are. */
+    fun updateSettings(
+        groupId: UUID,
+        userId: UUID,
+        mutedUntil: Optional<Instant>?,
+        notifyChat: Boolean?,
+        notifyPlan: Boolean?,
+    ): MemberSettings =
+        jdbc
+            .sql(
+                """
+                UPDATE group_members SET
+                  muted_until = CASE WHEN :set_muted THEN :muted_until::timestamptz ELSE muted_until END,
+                  notify_chat = coalesce(:notify_chat, notify_chat),
+                  notify_plan = coalesce(:notify_plan, notify_plan)
+                WHERE group_id = :group AND user_id = :user
+                RETURNING muted_until, notify_chat, notify_plan
+                """,
+            ).param("set_muted", mutedUntil != null)
+            .param("muted_until", mutedUntil?.orElse(null)?.let { OffsetDateTime.ofInstant(it, ZoneOffset.UTC) })
+            .param("notify_chat", notifyChat)
+            .param("notify_plan", notifyPlan)
+            .param("group", groupId)
+            .param("user", userId)
+            .query {
+                rs,
+                _,
+                ->
+                MemberSettings(
+                    rs.getObject("muted_until", OffsetDateTime::class.java)?.toInstant(),
+                    rs.getBoolean("notify_chat"),
+                    rs.getBoolean("notify_plan"),
+                )
+            }.single()
+
     /** When no active owner is left, the longest-standing active member takes over (api-server.md §8). */
     fun succeedOwner(groupId: UUID) {
         jdbc
@@ -232,6 +283,7 @@ class GroupRepository(
         val role: String,
         val status: String,
         val joinedAt: Instant,
+        val settings: MemberSettings,
     )
 
     private fun groupRow(

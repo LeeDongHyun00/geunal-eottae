@@ -102,6 +102,17 @@ geunal:
   # 공공데이터포털 key in its "Decoding" form; without it the sync does nothing and the endpoint answers from the table.
   holidays:
     service-key: ""
+  # APNs and FCM (protocol §8). GEUNAL_PUSH_APNS_KEY_ID and GEUNAL_PUSH_APNS_PRIVATE_KEY (.p8 PEM) and
+  # GEUNAL_PUSH_FCM_SERVICE_ACCOUNT (the key file's JSON) come from the secret manager; GEUNAL_PUSH_APNS_TEAM_ID is
+  # public. A platform without its keys sends nothing. APNs is production only: TestFlight builds hold production tokens.
+  push:
+    apns:
+      key-id: ""
+      private-key: ""
+      team-id: ""
+      topic: app.geunal.ios
+    fcm:
+      service-account: ""
   # How often sign-ins and refreshes move from access_log_outbox to the access-logs bucket.
   access-log:
     ship-every: PT5M

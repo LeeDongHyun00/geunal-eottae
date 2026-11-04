@@ -7,6 +7,8 @@ import app.geunal.api.common.RateLimitProperties
 import app.geunal.api.devices.DeviceRepository
 import app.geunal.api.groups.GroupRepository
 import app.geunal.api.mls.MlsHeader
+import app.geunal.api.push.Push
+import app.geunal.api.push.PushPayload
 import app.geunal.api.realtime.EntryEvent
 import app.geunal.api.realtime.Signals
 import app.geunal.api.realtime.StateEvent
@@ -25,6 +27,7 @@ class DeliveryService(
     private val signals: Signals,
     private val limits: HourlyLimit,
     private val rates: RateLimitProperties,
+    private val push: Push,
 ) {
     @Transactional
     fun commit(
@@ -93,6 +96,12 @@ class DeliveryService(
                 ?: throw ApiException(HttpStatus.CONFLICT, "stale_epoch", "the group is no longer in epoch ${request.epoch}")
         val event = EntryEvent.of(groupId, appended.seq, "app", appended.receivedAt, request.message)
         signals.send(groups.activeDeviceIds(groupId, except = caller.deviceId), event)
+        // alert is "all" (null: every member), a list of users, or "none" (no push); validateAlert checked the shape.
+        if (!(request.alert.isString && request.alert.stringValue() == "none")) {
+            val users = if (request.alert.isArray) request.alert.values().map { UUID.fromString(it.stringValue()) } else null
+            val payload = PushPayload(groupId, appended.seq, appended.receivedAt, request.message)
+            push.message(groupId, caller.userId, checkNotNull(request.cat), users, payload)
+        }
         return appended
     }
 
