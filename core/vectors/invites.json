@@ -1,0 +1,169 @@
+{
+  "alphabet": "0123456789ABCDEFGHJKMNPQRSTVWXYZ",
+  "code_length": 10,
+  "codes": [
+    {
+      "code": "GN7KQ4XZM2",
+      "input": "GN7KQ4XZM2"
+    },
+    {
+      "code": "GN7KQ4XZM2",
+      "input": "gn7kq-4xzm2"
+    },
+    {
+      "code": "GN7KQ4XZM2",
+      "input": " GN7KQ 4XZM2\n"
+    },
+    {
+      "code": "GN7KQ4XZM0",
+      "input": "GN7KQ-4XZMO"
+    },
+    {
+      "code": "1100000000",
+      "input": "IL000-00000"
+    },
+    {
+      "code": null,
+      "input": "GN7KQ-4XZM"
+    },
+    {
+      "code": null,
+      "input": "GN7KQ-4XZM22"
+    },
+    {
+      "code": null,
+      "input": "GN7KQ-4XZMU"
+    },
+    {
+      "code": null,
+      "input": "GN7KQ_4XZM2"
+    },
+    {
+      "code": null,
+      "input": ""
+    }
+  ],
+  "display": "GN7KQ-4XZM2",
+  "generated_by": "cd core && GEUNAL_WRITE_VECTORS=1 cargo test -p geunal-domain --locked --test vectors",
+  "group_colors": [
+    "tomato",
+    "tangerine",
+    "mustard",
+    "olive",
+    "forest",
+    "mint",
+    "sky",
+    "sea",
+    "grape",
+    "plum",
+    "blossom",
+    "cocoa"
+  ],
+  "links": [
+    {
+      "code": "GN7KQ4XZM2",
+      "color": null,
+      "host": "geunal.app",
+      "inviter": null,
+      "link": "https://geunal.app/i/GN7KQ4XZM2",
+      "name": null
+    },
+    {
+      "code": "GN7KQ4XZM2",
+      "color": "mint",
+      "host": "geunal.app",
+      "inviter": "하린",
+      "link": "https://geunal.app/i/GN7KQ4XZM2#n=%EC%A3%BC%EB%A7%90%EB%AA%A8%EC%9E%84&c=mint&i=%ED%95%98%EB%A6%B0",
+      "name": "주말모임"
+    },
+    {
+      "code": "GN7KQ4XZM2",
+      "color": null,
+      "host": "geunal.app",
+      "inviter": null,
+      "link": "https://geunal.app/i/GN7KQ4XZM2#n=A%26B%3DC%20%231",
+      "name": "A&B=C #1"
+    },
+    {
+      "code": "GN7KQ4XZM2",
+      "color": "neon",
+      "host": "geunal.app",
+      "inviter": "<b>하린</b>",
+      "link": "https://geunal.app/i/GN7KQ4XZM2#i=%3Cb%3E%ED%95%98%EB%A6%B0%3C%2Fb%3E",
+      "name": null
+    },
+    {
+      "code": "GN7KQ4XZM2",
+      "color": "cocoa",
+      "host": "geunal.app",
+      "inviter": null,
+      "link": "https://geunal.app/i/GN7KQ4XZM2#n=%EA%B0%80%EB%82%98%EB%8B%A4%EB%9D%BC%EB%A7%88%EB%B0%94%EC%82%AC%EC%95%84%EC%9E%90%EC%B0%A8%EC%B9%B4%ED%83%80%ED%8C%8C%ED%95%98%EA%B0%80%EB%82%98%EB%8B%A4%EB%9D%BC%EB%A7%88%EB%B0%94&c=cocoa",
+      "name": "가나다라마바사아자차카타파하가나다라마바사"
+    }
+  ],
+  "pastes": [
+    {
+      "invite": {
+        "code": "GN7KQ4XZM2",
+        "color": null,
+        "inviter": null,
+        "name": null
+      },
+      "text": "GN7KQ-4XZM2"
+    },
+    {
+      "invite": {
+        "code": "GN7KQ4XZM2",
+        "color": null,
+        "inviter": null,
+        "name": null
+      },
+      "text": "https://geunal.app/i/GN7KQ4XZM2"
+    },
+    {
+      "invite": {
+        "code": "GN7KQ4XZM2",
+        "color": "sky",
+        "inviter": null,
+        "name": "주말"
+      },
+      "text": "https://geunal.app/i/gn7kq4xzm2?utm=kakao#n=%EC%A3%BC%EB%A7%90&c=sky"
+    },
+    {
+      "invite": {
+        "code": "GN7KQ4XZM2",
+        "color": null,
+        "inviter": null,
+        "name": "주말"
+      },
+      "text": "하린님이 초대했어요\nhttps://geunal.app/i/GN7KQ4XZM2#n=%EC%A3%BC%EB%A7%90 참여하기"
+    },
+    {
+      "invite": {
+        "code": "GN7KQ4XZM2",
+        "color": null,
+        "inviter": null,
+        "name": null
+      },
+      "text": "https://geunal.app/i/GN7KQ4XZM2#n=%FF%&c=neon"
+    },
+    {
+      "invite": {
+        "code": "GN7KQ4XZM2",
+        "color": "mint",
+        "inviter": "하린",
+        "name": "주말"
+      },
+      "text": "https://geunal.app/i/GN7KQ4XZM2#n=%EC%A3%BC%EB%A7%90&c=mint&i=%ED%95%98%EB%A6%B0"
+    },
+    {
+      "invite": null,
+      "text": "https://geunal.app/i/GN7KQ4XZM"
+    },
+    {
+      "invite": null,
+      "text": "주말모임 들어와"
+    }
+  ],
+  "version": 1
+}
