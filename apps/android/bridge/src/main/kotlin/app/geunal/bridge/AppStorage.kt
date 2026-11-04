@@ -24,4 +24,7 @@ class AppStorage(
      * onboarding there with nothing to open (docs/security/app-review.md §1 "기기 이전").
      */
     val onboardingDir: File = File(root, "onboarding").apply { mkdirs() }
+
+    /** The invite waiting for the group screens ([PendingInvite]). */
+    val inviteDir: File = File(root, "invite").apply { mkdirs() }
 }

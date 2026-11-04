@@ -32,6 +32,8 @@ coroutines = "1.11.0"
 # UniFFI's generated Kotlin loads the core through JNA (docs/parts/android.md §1).
 jna = "5.19.1"
 junit = "4.13.2"
+# Play Install Referrer: an invite tapped before install arrives with the first launch (docs/parts/android.md §4).
+installreferrer = "2.2"
 # Kakao Login (docs/parts/android.md §1). Published only to Kakao's repository (settings.gradle.kts).
 kakao-sdk = "2.26.0"
 kotlinx-serialization = "1.12.0"
@@ -53,6 +55,7 @@ androidx-navigation3-ui = { module = "androidx.navigation3:navigation3-ui", vers
 androidx-browser = { module = "androidx.browser:browser", version.ref = "androidx-browser" }
 androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "androidx-biometric" }
 androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "androidx-fragment" }
+installreferrer = { module = "com.android.installreferrer:installreferrer", version.ref = "installreferrer" }
 kakao-user = { module = "com.kakao.sdk:v2-user", version.ref = "kakao-sdk" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }

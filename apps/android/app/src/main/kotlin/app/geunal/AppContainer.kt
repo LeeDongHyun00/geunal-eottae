@@ -7,6 +7,7 @@ import app.geunal.bridge.AppStorage
 import app.geunal.bridge.ChangeListener
 import app.geunal.bridge.ConnectivityMonitor
 import app.geunal.bridge.KeystoreSecretStore
+import app.geunal.bridge.PendingInvite
 import app.geunal.core.Core
 import app.geunal.core.CoreInterface
 import app.geunal.feature.account.onboarding.DevicePermissions
@@ -45,6 +46,9 @@ class AppContainer(
     /** Whether TalkBack or another screen reader is on right now. */
     val screenReaderRunning: () -> Boolean = { accessibility?.isTouchExplorationEnabled == true }
     val onboarding = OnboardingState(storage.onboardingDir)
+
+    /** The invite an App Link or the Play Install Referrer brought in, until the group screens act on it. */
+    val invites = PendingInvite(storage.inviteDir)
     val permissions: SystemPermissions = DevicePermissions(context)
     val deviceAuth: DeviceAuth = SystemDeviceAuth(context)
 

@@ -48,6 +48,8 @@ export ORG_GRADLE_PROJECT_geunalApiBase="$GEUNAL_API_BASE"
 export ORG_GRADLE_PROJECT_geunalKakaoAppKey="$GEUNAL_KAKAO_APP_KEY"
 export ORG_GRADLE_PROJECT_geunalAppleServiceId="$GEUNAL_APPLE_SERVICE_ID"
 export ORG_GRADLE_PROJECT_geunalAppLinkHost="$GEUNAL_APP_LINK_HOST"
+# Optional until the invite domain serves assetlinks.json (app/build.gradle.kts).
+export ORG_GRADLE_PROJECT_geunalInviteHost="${GEUNAL_INVITE_HOST:-}"
 
 ANDROID_HOME="$(../../scripts/tool.sh android-sdk)"
 export ANDROID_HOME
