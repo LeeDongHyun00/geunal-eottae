@@ -30,6 +30,21 @@ logging:
   structured:
     format:
       console: ecs
+  # Below INFO these libraries write raw requests, bodies, handler arguments, SQL parameters or Redis payloads, which
+  # hold tokens and ciphertext. Their levels are pinned so that turning the root level down to debug a problem never
+  # does; LogHygieneTests runs the API at TRACE to keep it so.
+  level:
+    org.apache.coyote: info
+    org.apache.tomcat: info
+    org.springframework.web: info
+    org.springframework.http: info
+    org.springframework.jdbc: info
+    org.springframework.data.redis: info
+    org.springframework.security: info
+    org.postgresql: info
+    io.lettuce: info
+    io.netty: info
+    software.amazon.awssdk: info
 
 management:
   endpoints:
