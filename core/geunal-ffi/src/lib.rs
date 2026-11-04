@@ -904,6 +904,18 @@ fn view_of(state: &GroupState) -> GroupStateView {
     GroupStateView { appointments, digest: format!("{state:?}") }
 }
 
+/// Whether the engines fetch Welcomes and join the groups they name. Off in the apps: until members accept invitations
+/// (M2), a Welcome is no one's consent, and the Welcomes stay on the server for then. The end-to-end tests of the
+/// group flow turn it on.
+static JOIN_WELCOMES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Lets the engines built after this join groups from Welcomes, for the end-to-end tests of the group flow. Rust only:
+/// not part of the FFI.
+#[doc(hidden)]
+pub fn join_welcomes_for_tests() {
+    JOIN_WELCOMES.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn build_engine(
     store_dir: &Path,
     store: &Store,
@@ -917,7 +929,8 @@ fn build_engine(
     let secret = signing_secret(secrets)?;
     let identity = Identity::new(session.user_id.clone(), session.device_id.clone());
     let mls = MlsClient::open(&db, db_key, identity, &secret)?;
-    Ok(Engine::new(store.clone(), mls, api, Arc::new(Forward(listener))))
+    let join = JOIN_WELCOMES.load(std::sync::atomic::Ordering::Relaxed);
+    Ok(Engine::new(store.clone(), mls, api, Arc::new(Forward(listener))).with_welcomes(join))
 }
 
 /// The session the secret store keeps. Bytes that do not read as a session count as none, and the next sign-in writes
