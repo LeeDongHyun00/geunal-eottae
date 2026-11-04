@@ -60,12 +60,11 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 </a>
 </sc-for>
 <sc-for list="{{groups}}" as="g" hint-placeholder-count="1">
-<button type="button" onClick="{{openSheet}}" aria-label="{{g.label}}" style="position: absolute; left: {{g.x}}px; top: {{g.y}}px; width: {{g.w}}px; height: {{g.h}}px; box-sizing: border-box; padding: 4px 4px 4px 13px; border: none; border-radius: 6px; background: #ffffff; box-shadow: inset 0 0 0 1.5px #1b1b1f; color: #1b1b1f; overflow: hidden; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; cursor: pointer; text-align: left">
-<span aria-hidden="true" style="position: absolute; left: 4px; top: 4px; bottom: 4px; width: 7px; display: flex; gap: 1px">
-<sc-for list="{{g.stripes}}" as="c" hint-placeholder-count="3"><span style="flex: 1 1 0; border-radius: 1px; background: {{c}}"></span></sc-for>
+<button type="button" onClick="{{g.open}}" aria-label="{{g.label}}" style="position: absolute; left: {{g.x}}px; top: {{g.y}}px; width: {{g.w}}px; height: {{g.h}}px; box-sizing: border-box; padding: 4px 4px 4px {{g.pad}}px; border: none; border-radius: 6px; background: #ffffff; box-shadow: inset 0 0 0 1.5px #1b1b1f; color: #1b1b1f; overflow: hidden; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; cursor: pointer; text-align: left">
+<span aria-hidden="true" style="position: absolute; left: 4px; top: 4px; bottom: 4px; display: flex; gap: 1px">
+<sc-for list="{{g.stripes}}" as="c" hint-placeholder-count="3"><span style="position: relative; width: 3px"><span style="position: absolute; left: 0; right: 0; top: {{c.top}}%; height: {{c.h}}%; border-radius: 1.5px; background: {{c.c}}"></span></span></sc-for>
 </span>
 <span style="font-size: 13px; font-weight: 700; line-height: 15px; font-variant-numeric: tabular-nums">{{g.n}}</span>
-<span style="font-size: 11px; line-height: 13px; color: #5c5c66">겹침</span>
 </button>
 </sc-for>
 </div>
@@ -110,18 +109,18 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 
 <sc-if value="{{open}}" hint-placeholder-val="{{false}}">
 <div aria-hidden="true" onClick="{{closeSheet}}" style="position: absolute; inset: 0; background: rgba(10,10,14,0.32)"></div>
-<section role="dialog" aria-modal="true" aria-label="10월 29일 16:00부터 18:00까지 겹치는 일정 3개" style="position: absolute; left: 0; bottom: 0; width: 390px; box-sizing: border-box; padding: 8px 20px 34px; background: #ffffff; border-radius: 20px 20px 0 0; box-shadow: 0 -8px 32px rgba(0,0,0,0.12); display: flex; flex-direction: column; gap: 16px">
+<section role="dialog" aria-modal="true" aria-label="{{sel.label}}" style="position: absolute; left: 0; bottom: 0; width: 390px; box-sizing: border-box; padding: 8px 20px 34px; background: #ffffff; border-radius: 20px 20px 0 0; box-shadow: 0 -8px 32px rgba(0,0,0,0.12); display: flex; flex-direction: column; gap: 16px">
 <div aria-hidden="true" style="align-self: center; width: 36px; height: 5px; border-radius: 3px; background: #d1d1d6"></div>
 <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-top: -4px">
 <div style="display: flex; flex-direction: column; gap: 4px">
-<h2 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em">10월 29일 목요일</h2>
-<span style="font-size: 14px; color: #5c5c66; font-variant-numeric: tabular-nums">16:00–18:00 · 겹치는 일정 3개</span>
+<h2 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em">{{sel.day}}</h2>
+<span style="font-size: 14px; color: #5c5c66; font-variant-numeric: tabular-nums">{{sel.sub}}</span>
 </div>
 <button type="button" onClick="{{closeSheet}}" aria-label="닫기" style="width: 44px; height: 44px; margin: -6px -12px 0 0; border: none; background: none; display: flex; align-items: center; justify-content: center; color: #5c5c66; cursor: pointer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg></button>
 </div>
-<div aria-hidden="true" style="display: flex; justify-content: space-between; margin: 0 14px -10px 32px; font-size: 11px; color: #696973; font-variant-numeric: tabular-nums"><span>16:00</span><span>17:00</span><span>18:00</span></div>
+<div aria-hidden="true" style="display: flex; justify-content: space-between; margin: 0 14px -10px 32px; font-size: 11px; color: #696973; font-variant-numeric: tabular-nums"><span>{{sel.a}}</span><span>{{sel.b}}</span><span>{{sel.c}}</span></div>
 <ul style="margin: 0; padding: 0; list-style: none; border-radius: 12px; background: #f4f4f6; overflow: hidden">
-<sc-for list="{{rows}}" as="r" hint-placeholder-count="3">
+<sc-for list="{{sel.rows}}" as="r" hint-placeholder-count="3">
 <li style="border-top: {{r.line}}">
 <a href="Editor.dc.html" aria-label="{{r.label}}" style="min-height: 56px; box-sizing: border-box; padding: 8px 14px; display: flex; flex-direction: column; justify-content: center; gap: 6px">
 <span style="display: flex; align-items: center; gap: 10px">
@@ -146,7 +145,7 @@ button{font:inherit;letter-spacing:inherit;color:inherit}
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { ni: 1, open: false };
+    this.state = { ni: 1, open: -1 };
   }
   renderVals() {
     const W = ['일', '월', '화', '수', '목', '금', '토'];
@@ -166,7 +165,6 @@ class Component extends DCLogic {
     const E = [
       [0, 10, 11, '헬스', soft, '#1b1b1f'],
       [0, 18, 20, '가족 · 저녁', '#c04c7b', '#ffffff'],
-      [1, 10, 12, '전공 수업', '#a0c0fa', '#1b1b1f'],
       [1, 19, 20, '헬스', soft, '#1b1b1f'],
       [2, 13, 15, '교양 수업', '#a0c0fa', '#1b1b1f'],
       [3, 10, 12, '전공 수업', '#a0c0fa', '#1b1b1f'],
@@ -202,36 +200,62 @@ class Component extends DCLogic {
       isGroup: cur.kind === 'group', isEvent: cur.kind === 'event', isBday: cur.kind === 'bday',
       ring: cur.kind === 'bday' ? 'inset 0 0 0 1px #e1e1e6' : 'none',
     });
-    // Thursday 16:00-18:00: three timed events overlap, so the column draws one group instead of narrow lanes
-    // (m1.md decision 44). Its stripes are the events' calendar colors, in the core's order.
-    const G = [
-      { t: '팀플 회의', s: 16, e: 17, c: '#966b54' },
-      { t: '동아리 회의', s: 16, e: 18, c: '#ba5a00' },
-      { t: '과제', s: 17, e: 18, c: '#4172d1' },
+    // A day column draws events that overlap one another as one group instead of narrow lanes (m1.md decision 44).
+    // Each stripe spans its own event inside the group, so a long event with a short one at its start reads as
+    // one full stripe and one short one. Events are in the core's order: by start, then the longer first.
+    const GROUPS = [
+      { d: 1, day: '10월 26일 월요일', ev: [
+        { t: '전공 수업', s: 10, e: 14, c: '#4172d1' },
+        { t: '교수 면담', s: 10, e: 11, c: '#ba5a00' },
+      ] },
+      { d: 4, day: '10월 29일 목요일', ev: [
+        { t: '동아리 회의', s: 16, e: 18, c: '#ba5a00' },
+        { t: '팀플 회의', s: 16, e: 17, c: '#966b54' },
+        { t: '과제', s: 17, e: 18, c: '#4172d1' },
+      ] },
     ];
-    const gs = 16, ge = 18;
-    const groups = [{
-      n: G.length + '개',
-      stripes: G.map((g) => g.c),
-      x: (40 + 4 * colW + 1.5).toFixed(1),
-      w: (colW - 3).toFixed(1),
-      y: (gs - H0) * PX + 1,
-      h: (ge - gs) * PX - 2,
-      label: '10월 29일 16:00부터 18:00까지 겹치는 일정 ' + G.length + '개: ' + G.map((g) => g.t).join(', '),
-    }];
-    const rows = G.map((g, i) => ({
-      t: g.t, c: g.c,
-      time: pad(g.s) + ':00–' + pad(g.e) + ':00',
-      line: i === 0 ? 'none' : '1px solid #e1e1e6',
-      l: ((g.s - gs) / (ge - gs) * 100).toFixed(1),
-      w: ((g.e - g.s) / (ge - gs) * 100).toFixed(1),
-      label: g.t + ', ' + pad(g.s) + ':00부터 ' + pad(g.e) + ':00까지',
-    }));
+    const hm = (h) => pad(Math.floor(h)) + ':' + (h % 1 ? '30' : '00');
+    const built = GROUPS.map((G, gi) => {
+      const gs = Math.min(...G.ev.map((e) => e.s));
+      const ge = Math.max(...G.ev.map((e) => e.e));
+      const span = ge - gs;
+      const shown = G.ev.slice(0, 3);
+      const label = G.day.replace(/ [^ ]+요일$/, '') + ' ' + hm(gs) + '부터 ' + hm(ge) + '까지 겹치는 일정 ' + G.ev.length + '개: ' + G.ev.map((e) => e.t).join(', ');
+      return {
+        block: {
+          n: G.ev.length + '개',
+          stripes: shown.map((e) => ({ c: e.c, top: ((e.s - gs) / span * 100).toFixed(1), h: ((e.e - e.s) / span * 100).toFixed(1) })),
+          pad: 4 + shown.length * 4 + 4,
+          x: (40 + G.d * colW + 1.5).toFixed(1),
+          w: (colW - 3).toFixed(1),
+          y: (gs - H0) * PX + 1,
+          h: span * PX - 2,
+          label,
+          open: () => this.setState({ open: gi }),
+        },
+        sheet: {
+          day: G.day,
+          sub: hm(gs) + '–' + hm(ge) + ' · 겹치는 일정 ' + G.ev.length + '개',
+          a: hm(gs), b: hm((gs + ge) / 2), c: hm(ge),
+          label,
+          rows: G.ev.map((e, i) => ({
+            t: e.t, c: e.c,
+            time: hm(e.s) + '–' + hm(e.e),
+            line: i === 0 ? 'none' : '1px solid #e1e1e6',
+            l: ((e.s - gs) / span * 100).toFixed(1),
+            w: ((e.e - e.s) / span * 100).toFixed(1),
+            label: e.t + ', ' + hm(e.s) + '부터 ' + hm(e.e) + '까지',
+          })),
+        },
+      };
+    });
+    const groups = built.map((g) => g.block);
+    const openIdx = this.state.open;
     return {
-      days, hours, events, nx, groups, rows,
-      open: this.state.open,
-      openSheet: () => this.setState({ open: true }),
-      closeSheet: () => this.setState({ open: false }),
+      days, hours, events, nx, groups,
+      open: openIdx >= 0,
+      sel: built[Math.max(0, openIdx)].sheet,
+      closeSheet: () => this.setState({ open: -1 }),
       atStart: ni === 0, atEnd: ni === NEXT.length - 1,
       prevOp: ni === 0 ? 0.3 : 1, nextOp: ni === NEXT.length - 1 ? 0.3 : 1,
       prevNext: () => this.setState({ ni: Math.max(0, ni - 1) }),
