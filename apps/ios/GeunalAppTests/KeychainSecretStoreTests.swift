@@ -11,6 +11,13 @@ final class KeychainSecretStoreTests: XCTestCase {
         super.tearDown()
     }
 
+    // The app's keys stay in the group the entitlement names first, whatever is added to the entitlements later.
+    func testUsesTheAppsKeychainGroupByDefault() throws {
+        let group = try XCTUnwrap(KeychainSecretStore.appAccessGroup())
+        XCTAssertTrue(group.hasSuffix("app.geunal.shared"))
+        XCTAssertEqual(store.accessGroup, group)
+    }
+
     func testReturnsNothingForAnUnknownName() throws {
         XCTAssertNil(try store.get(name: "db_key"))
     }
