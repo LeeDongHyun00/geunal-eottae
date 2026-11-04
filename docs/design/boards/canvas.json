@@ -489,6 +489,15 @@
    "w": 390,
    "x": 940,
    "y": 3732
+  },
+  "InviteWeb.dc.html": {
+   "h": 844,
+   "is_interactive": true,
+   "page": "m2",
+   "title": "21 초대 웹 페이지 (앱이 없을 때)",
+   "w": 390,
+   "x": 1880,
+   "y": 0
   }
  },
  "createdOnFiles": {
@@ -652,6 +661,7 @@
   "Invite.dc.html",
   "Join.dc.html",
   "CreateGroup.dc.html",
+  "InviteWeb.dc.html",
   "GroupSettings.dc.html",
   "GroupCalDark.dc.html",
   "GroupProfile.dc.html",
