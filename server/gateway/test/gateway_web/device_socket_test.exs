@@ -70,6 +70,25 @@ defmodule GatewayWeb.DeviceSocketTest do
     assert {:ok, _} = connect(DeviceSocket, %{"token" => Keys.token(Keys.main())}, connect_info: other)
   end
 
+  test "behind a trusted proxy, counts each forwarded client on its own and ignores the header from anyone else" do
+    wait_out_window_end()
+    # Trusted in config/test.exs.
+    proxy = %{address: {192, 0, 2, 10}, port: 50_000, ssl_cert: nil}
+    first = fresh_address() |> :inet.ntoa() |> to_string()
+    second = fresh_address() |> :inet.ntoa() |> to_string()
+    via = fn client -> %{peer_data: proxy, x_headers: [{"x-forwarded-for", client}]} end
+
+    for _ <- 1..30, do: assert(connect(DeviceSocket, %{"token" => "bad"}, connect_info: via.(first)) == :error)
+    assert connect(DeviceSocket, %{"token" => "bad"}, connect_info: via.(first)) == {:error, :rate_limited}
+    assert {:ok, _} = connect(DeviceSocket, %{"token" => Keys.token(Keys.main())}, connect_info: via.(second))
+
+    # A peer outside the trusted proxies is counted as itself, whatever header it sends.
+    untrusted = fresh_address()
+    spoofed = fn client -> %{peer_data: %{proxy | address: untrusted}, x_headers: [{"x-forwarded-for", client}]} end
+    for n <- 1..30, do: connect(DeviceSocket, %{"token" => "bad"}, connect_info: spoofed.("198.51.100.#{n}"))
+    assert connect(DeviceSocket, %{"token" => "bad"}, connect_info: spoofed.(second)) == {:error, :rate_limited}
+  end
+
   # The limiter counts in fixed one-minute windows of the wall clock (gateway.md §7). Attempts that straddle the end of
   # one would be counted in two, so start with the end of the current window well away.
   defp wait_out_window_end do

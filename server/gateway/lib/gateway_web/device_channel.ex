@@ -4,7 +4,9 @@ defmodule GatewayWeb.DeviceChannel do
   publishes on Redis `d:{device_id}` is pushed as the event its `t` field names (protocol.md §7); `revoke` also closes
   the connection. The device sends nothing here but heartbeats, which the socket answers.
   """
-  use Phoenix.Channel
+  # A join names the device in its topic, and an event a device sends could carry anything (gateway.md §7: no payloads
+  # in the logs), so neither is logged.
+  use Phoenix.Channel, log_join: false, log_handle_in: false
 
   require Logger
 
