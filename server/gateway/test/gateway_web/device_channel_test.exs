@@ -83,6 +83,61 @@ defmodule GatewayWeb.DeviceChannelTest do
     assert_push "membership", %{"g" => "g1"}
   end
 
+  test "keeps a device's events in the order the API published them", %{socket: socket, device_id: device_id} do
+    {:ok, _reply, _socket} = subscribe_and_join(socket, "device:" <> device_id)
+
+    # What a member removal looks like to a remaining device (protocol.md §7): the commit, the rewritten group meta and
+    # the new member list. The device acts on them in this order, so they must arrive in it.
+    {:ok, _} =
+      Redix.pipeline(Gateway.Redis, [
+        ["PUBLISH", "d:" <> device_id, ~s({"t":"entry","g":"g1","s":7,"kind":"commit","at":"2026-11-04T00:00:00Z"})],
+        ["PUBLISH", "d:" <> device_id, ~s({"t":"state","g":"g1","kind":"group_meta","owner":"u1","epoch":3})],
+        ["PUBLISH", "d:" <> device_id, ~s({"t":"membership","g":"g1"})]
+      ])
+
+    # Taken in mailbox order: assert_push would pick each event out wherever it sits and miss a reordering.
+    received =
+      for _ <- 1..3 do
+        assert_receive %Phoenix.Socket.Message{event: event, payload: payload}
+        {event, payload}
+      end
+
+    assert [{"entry", %{"s" => 7}}, {"state", %{"epoch" => 3}}, {"membership", %{"g" => "g1"}}] = received
+  end
+
+  test "reaches every member device the API signals, and no other", %{socket: socket, device_id: device_id} do
+    other_id = Keys.uuid()
+    {:ok, other} = connect(DeviceSocket, %{"token" => Keys.token(Keys.main(), %{"did" => other_id})})
+    bystander_id = Keys.uuid()
+    {:ok, bystander} = connect(DeviceSocket, %{"token" => Keys.token(Keys.main(), %{"did" => bystander_id})})
+
+    {:ok, _reply, _socket} = subscribe_and_join(socket, "device:" <> device_id)
+    {:ok, _reply, _other} = subscribe_and_join(other, "device:" <> other_id)
+    {:ok, _reply, _bystander} = subscribe_and_join(bystander, "device:" <> bystander_id)
+
+    # The API decides who is in the group and publishes once per device (gateway.md §1).
+    for id <- [device_id, other_id], do: publish(id, ~s({"t":"membership","g":"g1"}))
+
+    assert_receive %Phoenix.Socket.Message{topic: "device:" <> ^device_id, event: "membership"}
+    assert_receive %Phoenix.Socket.Message{topic: "device:" <> ^other_id, event: "membership"}
+    refute_receive %Phoenix.Socket.Message{topic: "device:" <> ^bystander_id}, 100
+  end
+
+  test "passes fields it does not know through untouched", %{socket: socket, device_id: device_id} do
+    {:ok, _reply, _socket} = subscribe_and_join(socket, "device:" <> device_id)
+
+    # Only `t` is the gateway's; a field the API adds later must reach devices without a gateway release.
+    publish(device_id, ~s({"t":"state","g":"g1","kind":"availability","owner":"u1","epoch":1,"later":{"x":[1]}}))
+
+    assert_push "state", %{
+      "g" => "g1",
+      "kind" => "availability",
+      "owner" => "u1",
+      "epoch" => 1,
+      "later" => %{"x" => [1]}
+    }
+  end
+
   test "stops listening on Redis once the device's last channel is gone", %{socket: socket, device_id: device_id} do
     {:ok, _reply, first} = subscribe_and_join(socket, "device:" <> device_id)
     {:ok, _reply, second} = subscribe_and_join(socket, "device:" <> device_id)
