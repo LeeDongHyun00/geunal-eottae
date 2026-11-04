@@ -928,8 +928,17 @@ impl<T: Transport> Engine<T> {
                     if roster.iter().any(|m| m.identity.user_id == *user_id) {
                         continue;
                     }
-                    // Protocol §2: the key package must belong to a device the server lists for this user.
-                    let devices = self.api.devices(user_id).await?;
+                    // Protocol §2: the key package must belong to a device the server lists for this user. The server
+                    // lists only someone this member may add (invited, or a member's new device); anyone else is
+                    // left out of the intent, which a rebuild would not change.
+                    let devices = match self.api.devices(user_id).await {
+                        Ok(devices) => devices,
+                        Err(e) if e.is(404, "not_found") => {
+                            self.notify(Change::Group { group_id: group_id.to_owned() });
+                            continue;
+                        }
+                        Err(e) => return Err(e.into()),
+                    };
                     for device in devices {
                         let package = self.api.claim_key_package(&device.id).await?;
                         let info = MlsClient::inspect_key_package(&package)?;

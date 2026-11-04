@@ -436,3 +436,19 @@ async fn drops_an_outbox_row_the_server_refuses_for_good_and_keeps_sending_the_r
     b.engine.sync().await.unwrap();
     assert_eq!(texts(&b, &group), vec!["뒤에 쓴 말", "다음 말"]);
 }
+
+#[tokio::test]
+async fn leaves_out_of_an_add_someone_the_server_will_not_list_and_keeps_sending() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    a.changes();
+    // Nobody the server would list for this member: the intent ends without a commit instead of holding the queue.
+    a.engine.add_members(&group, &["no-such-user".to_owned()]).await.unwrap();
+    assert!(a.engine.store().outbox(&group).unwrap().is_empty());
+    assert!(a.changes().contains(&Change::Group { group_id: group.clone() }));
+    assert_eq!(a.engine.epoch(&group).unwrap(), Some(1));
+
+    a.engine.send(&group, &text("t1", "그 뒤의 말"), Alert::All, Some("chat")).await.unwrap();
+    b.engine.sync().await.unwrap();
+    assert_eq!(texts(&b, &group), vec!["그 뒤의 말"]);
+}
