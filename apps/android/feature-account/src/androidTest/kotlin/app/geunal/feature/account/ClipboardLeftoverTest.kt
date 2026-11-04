@@ -26,6 +26,15 @@ class ClipboardLeftoverTest {
         compose.waitForIdle()
         compose.runOnUiThread {
             SensitiveClipboard(compose.activity).copy("바람 연필")
+            // The window must be able to read the clipboard, or the clearing below would pass without doing anything.
+            assertEquals(
+                "바람 연필",
+                clipboard()
+                    .primaryClip
+                    ?.getItemAt(0)
+                    ?.text
+                    ?.toString(),
+            )
             SensitiveClipboard(compose.activity).clearLeftover()
             assertNull(
                 clipboard()
