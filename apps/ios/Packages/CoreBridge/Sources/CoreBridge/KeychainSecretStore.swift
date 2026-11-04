@@ -14,10 +14,24 @@ public final class KeychainSecretStore: SecretStore {
     /// Shared between the app and the notification extension once both are signed with the entitlement (M1).
     public let accessGroup: String?
 
+    /// The app's keychain group, named in code rather than left to the first entry of `keychain-access-groups`, so
+    /// adding an extension or another group to the entitlements cannot move where the keys are read and written. It
+    /// comes from the Info.plist key `GeunalKeychainGroup`, which the build fills from the same setting as the
+    /// entitlement; `nil` (the default group) when the bundle names none.
+    public static func appAccessGroup(bundle: Bundle = .main) -> String? {
+        guard let group = bundle.object(forInfoDictionaryKey: "GeunalKeychainGroup") as? String, !group.isEmpty,
+            !group.contains("$(")
+        else { return nil }
+        return group
+    }
+
     // Status codes only: an item's name says which key failed, and the value never belongs in a log.
     private var log: Logger { Logger(subsystem: "app.geunal.ios", category: "keychain") }
 
-    public init(service: String = KeychainSecretStore.defaultService, accessGroup: String? = nil) {
+    public init(
+        service: String = KeychainSecretStore.defaultService,
+        accessGroup: String? = KeychainSecretStore.appAccessGroup()
+    ) {
         self.service = service
         self.accessGroup = accessGroup
     }
