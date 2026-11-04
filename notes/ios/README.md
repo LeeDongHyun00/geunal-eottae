@@ -11,7 +11,7 @@
 1. Swift 6.3.1 리눅스 툴체인(ubuntu24.04)을 받아 `PATH`에 둡니다.
 2. 코어를 빌드합니다: `cd core && cargo build --locked -p geunal-ffi`.
 3. 바인딩을 만듭니다: `cargo run --locked -q -p uniffi-bindgen -- generate --no-format --language swift --library target/debug/libgeunal_ffi.so --out-dir <bindings>`.
-4. 하네스 디렉터리에 `Package.swift`를 두고, `files.txt`의 줄마다 `<대상 디렉터리> <저장소 경로>`로 심볼릭 링크를 만듭니다. `<bindings>/GeunalCore.swift`는 3번의 결과이고, 헤더 `GeunalCoreFFI.h`는 복사합니다. `shims/`의 파일은 이름 앞부분의 대상 디렉터리에 복사합니다(`String(localized:bundle:)`, 팔레트, 토스트 타이머의 리눅스 대역).
+4. 하네스 디렉터리에 `Package.swift`를 두고, `files.txt`의 줄마다 `<대상 디렉터리> <저장소 경로>`로 심볼릭 링크를 만듭니다. `<bindings>/GeunalCore.swift`는 3번의 결과이고, 헤더 `GeunalCoreFFI.h`는 복사합니다. `shims/`의 파일은 이름 앞부분의 대상 디렉터리에 복사합니다(`String(localized:bundle:)`, 팔레트, 토스트 타이머, `AccountTrace`(signpost)의 리눅스 대역).
 5. 돌립니다: `LD_LIBRARY_PATH=core/target/debug swift build --build-tests -Xlinker -Lcore/target/debug`, 이어서 `swift test --skip-build`.
 
 함정: 모든 시험이 동기인 `@MainActor` XCTest 클래스는 리눅스에서 시험을 찾다가 크래시합니다. `@MainActor`를 빼거나 비동기 시험을 둡니다.
