@@ -538,6 +538,23 @@ class RestoreModelTest {
         }
 
     @Test
+    fun aConfirmationThatClosedOnAnErrorAsksTheOsAgain() =
+        runTest(dispatcher) {
+            core.startFreshResult = Result.failure(CoreException.Network("down"))
+            val model = model(RestoreMode.OFFER, lastSignIn = ProviderSignInRecord(Provider.KAKAO, NOW.minusSeconds(60)))
+            confirming(model)
+            model.confirmWipe()
+            advanceUntilIdle()
+            assertNull("the offline error closes the confirmation", model.state.value.noCode)
+
+            confirming(model)
+            model.confirmWipe()
+            advanceUntilIdle()
+
+            assertEquals(2, deviceAuth.asked.size)
+        }
+
+    @Test
     fun theDeviceChangeNeverNeedsTheProof() =
         runTest(dispatcher) {
             val model = model(RestoreMode.DEVICE_CHANGE)

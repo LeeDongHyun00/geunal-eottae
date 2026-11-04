@@ -321,6 +321,8 @@ class RestoreModel(
         if (_state.value.isWorking) return
         when (mode) {
             RestoreMode.DEVICE_CHANGE, RestoreMode.OFFER -> {
+                // Every confirmation asks the OS afresh, however the last one closed (an error included).
+                ownerConfirmed = false
                 _state.update { it.copy(isWorking = true) }
                 scope.launch {
                     val backups: List<BackupView>? = withContext(io) { runCatching { core.backups() }.getOrNull() }
