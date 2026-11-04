@@ -524,15 +524,27 @@ async fn refuses_an_entry_over_64kb_before_queueing_it() {
 }
 
 #[tokio::test]
+async fn sends_an_entry_at_the_limit_within_the_message_size_the_server_takes() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    let mut body = "a".repeat(MAX_ENTRY_BYTES);
+    while entry::encode(&text("t-max", &body)).len() > MAX_ENTRY_BYTES {
+        body.pop();
+    }
+    a.engine.send(&group, &text("t-max", &body), Alert::All, Some("chat")).await.unwrap();
+    b.engine.sync().await.unwrap();
+    assert_eq!(texts(&b, &group), vec![body]);
+}
+
+#[tokio::test]
 async fn drops_an_outbox_row_the_server_refuses_for_good_and_keeps_sending_the_rest() {
     let server = server();
     let (mut a, mut b, group) = pair(&server).await;
-    // Within the entry limit, but its ciphertext is over what the server takes.
-    let big = text("t-big", &"a".repeat(MAX_ENTRY_BYTES - 64));
-    assert!(entry::encode(&big).len() <= MAX_ENTRY_BYTES);
+    let big = text("t-big", "서버가 받지 않을 말");
     a.changes();
 
     // Queued while offline, then flushed: the refused row leaves the queue and the one behind it goes out.
+    server.refuse_next("post_message", 413, "too_large");
     a.engine.enqueue_entry(&group, &big, Alert::All, Some("chat")).unwrap();
     a.engine.enqueue_entry(&group, &text("t1", "뒤에 쓴 말"), Alert::All, Some("chat")).unwrap();
     a.engine.flush_outbox().await.unwrap();
@@ -540,6 +552,7 @@ async fn drops_an_outbox_row_the_server_refuses_for_good_and_keeps_sending_the_r
     assert!(a.changes().contains(&Change::Group { group_id: group.clone() }));
 
     // Sent directly: the caller hears the refusal, and the next send is not held back.
+    server.refuse_next("post_message", 413, "too_large");
     let sent = a.engine.send(&group, &big, Alert::All, Some("chat")).await;
     assert!(matches!(&sent, Err(SyncError::Api(e)) if e.is(413, "too_large")), "{sent:?}");
     a.engine.send(&group, &text("t2", "다음 말"), Alert::All, Some("chat")).await.unwrap();
