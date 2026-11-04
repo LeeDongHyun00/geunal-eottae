@@ -219,7 +219,7 @@ class Component extends DCLogic {
               mf: wide && e.e - e.s <= 1 ? 10 : 11, mlh: wide && e.e - e.s <= 1 ? 12 : 13, gap: wide ? 0 : 1,
               wm: narrow ? 'vertical-rl' : 'horizontal-tb', dir: 'column',
               pad: narrow ? '4px 2px' : wide ? '3px 7px' : '3px 4px',
-              edge: wide ? 'inset 3px 0 0 ' + e.c : 'none',
+              edge: 'none',
               label: dayName(d) + ' ' + spoken(e),
               ribbons: [], hasMore: false,
             });
