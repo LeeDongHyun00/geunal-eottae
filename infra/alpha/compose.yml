@@ -115,7 +115,7 @@ services:
   # this with --profile https only then. Certificates stay in the caddy-data volume, so a restart does not ask Let's
   # Encrypt again.
   caddy:
-    image: caddy:2.11.7
+    image: caddy:2.11.8
     profiles: [https]
     # The Caddyfile's hash, which deploy.sh writes: a new Caddyfile changes the label, so `up` recreates the container
     # and Caddy reads the file again.
