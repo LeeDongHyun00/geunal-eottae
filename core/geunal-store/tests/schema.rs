@@ -290,3 +290,51 @@ fn absorbs_a_newcomer_bundle_whole_or_not_at_all() {
     assert!(store.expected_bundle("g1").unwrap().is_none());
     assert_eq!(store.search_text("저녁 어").unwrap().len(), 2);
 }
+
+#[test]
+fn stores_a_received_entry_and_its_cursor_together_and_marks_what_could_not_be_opened() {
+    let (_dir, store) = open();
+    store.upsert_group("g", GroupKind::Circle, None).unwrap();
+    assert!(store.store_received(&entry("g", 1, "2026-11-01T09:00:00Z"), Some("토요일 어때"), false).unwrap());
+    assert_eq!(store.cursor("g").unwrap(), 1);
+    // The same seq again changes nothing but still answers for the cursor; with `replace` the log's copy wins.
+    let mut other = entry("g", 1, "2026-11-01T09:00:01Z");
+    assert!(!store.store_received(&other, None, false).unwrap());
+    assert_eq!(store.entries("g").unwrap()[0].received_at, "2026-11-01T09:00:00Z");
+    other.author_id = "u2".into();
+    assert!(store.store_received(&other, None, true).unwrap());
+    assert_eq!(store.entries("g").unwrap()[0].author_id, "u2");
+
+    store.skip_unreadable("g", 2, "u2", "2026-11-01T09:00:02Z").unwrap();
+    assert_eq!(store.cursor("g").unwrap(), 2);
+    assert_eq!(store.unreadable("g").unwrap(), vec![2]);
+    let marker = store.entries("g").unwrap().pop().unwrap();
+    assert_eq!((marker.kind.as_str(), marker.body.len()), (geunal_store::UNREADABLE, 0));
+}
+
+#[test]
+fn entering_an_epoch_keeps_its_key_moves_the_cursor_and_settles_the_commits_row() {
+    let (_dir, store) = open();
+    store.upsert_group("g", GroupKind::Circle, None).unwrap();
+    let row = store.enqueue("g", OutboxKind::Commit, b"intent", "2026-11-01T09:00:00Z").unwrap();
+    store.set_outbox_payload(row, b"posted").unwrap();
+    assert_eq!(store.outbox_head("g").unwrap().unwrap().payload, b"posted");
+    store.enter_epoch("g", 7, 3, &[9; 32], "2026-11-01T09:00:00Z", Some(row)).unwrap();
+    assert_eq!(store.cursor("g").unwrap(), 7);
+    assert_eq!(store.state_key("g", 3).unwrap(), Some([9; 32]));
+    assert!(store.outbox("g").unwrap().is_empty());
+}
+
+#[test]
+fn remembers_that_a_group_is_owed_a_rejoin() {
+    let (_dir, store) = open();
+    assert!(!store.rejoin_owed("g").unwrap(), "an unknown group owes nothing");
+    store.upsert_group("g", GroupKind::Circle, None).unwrap();
+    assert!(!store.rejoin_owed("g").unwrap());
+    store.set_rejoin_owed("g", true).unwrap();
+    assert!(store.rejoin_owed("g").unwrap());
+    store.upsert_group("g", GroupKind::Circle, Some("이름")).unwrap();
+    assert!(store.rejoin_owed("g").unwrap(), "an upsert keeps the flag, like the cursor");
+    store.set_rejoin_owed("g", false).unwrap();
+    assert!(!store.rejoin_owed("g").unwrap());
+}

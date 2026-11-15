@@ -591,3 +591,207 @@ async fn files_a_newcomer_bundle_in_its_own_order_and_owes_nothing_after() {
     assert_eq!(texts(&b, &group), vec!["첫째", "둘째", "셋째"]);
     assert!(b.engine.store().expected_bundle(&group).unwrap().is_none());
 }
+
+fn queue_self_update(dev: &Device, group: &str) {
+    dev.engine
+        .store()
+        .enqueue(group, geunal_store::OutboxKind::Commit, &commit_payload(), "2026-11-01T09:00:00Z")
+        .unwrap();
+}
+
+/// Both devices read what the other sends: they are in the same epoch with the same keys.
+async fn assert_talking(a: &mut Device, b: &mut Device, group: &str, tag: &str) {
+    let (from_a, from_b) = (format!("{tag} a"), format!("{tag} b"));
+    a.engine.send(group, &text(&from_a, &from_a), Alert::All, Some("chat")).await.unwrap();
+    b.engine.sync().await.unwrap();
+    assert!(texts(b, group).contains(&from_a), "b reads a after {tag}");
+    b.engine.send(group, &text(&from_b, &from_b), Alert::All, Some("chat")).await.unwrap();
+    a.engine.sync().await.unwrap();
+    assert!(texts(a, group).contains(&from_b), "a reads b after {tag}");
+    assert_eq!(a.engine.epoch(group).unwrap(), b.engine.epoch(group).unwrap());
+}
+
+#[tokio::test]
+async fn applies_its_own_commit_from_the_log_when_the_servers_answer_was_lost() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    queue_self_update(&a, &group);
+    server.lose_next("post_commit");
+    a.engine.flush_outbox().await.unwrap();
+    assert_eq!(server.group_epoch(&group), Some(2), "the server took the commit");
+    assert_eq!(a.engine.epoch(&group).unwrap(), Some(1), "the device does not know yet");
+    assert_eq!(a.engine.store().outbox(&group).unwrap().len(), 1, "the row waits for an answer");
+
+    // The next try sends the same commit, hears epoch_conflict, and finds its own commit in the log.
+    a.engine.flush_outbox().await.unwrap();
+    assert_eq!(server.epoch_conflicts(), 1);
+    assert_eq!(server.group_epoch(&group), Some(2), "no second commit was made");
+    assert_eq!(a.engine.epoch(&group).unwrap(), Some(2));
+    assert!(a.engine.store().outbox(&group).unwrap().is_empty());
+    assert!(a.engine.store().state_key(&group, 2).unwrap().is_some());
+    assert!(a.engine.unreadable(&group).unwrap().is_empty());
+    assert_talking(&mut a, &mut b, &group, "lost answer").await;
+}
+
+#[tokio::test]
+async fn a_restarted_device_still_applies_the_commit_whose_answer_it_never_got() {
+    let server = server();
+    let (a, mut b, group) = pair(&server).await;
+    let mut a = a;
+    queue_self_update(&a, &group);
+    server.lose_next("post_commit");
+    a.engine.flush_outbox().await.unwrap();
+    // A new process over the same files: the pending commit and its request came from storage, not memory.
+    let mut restarted = a.extension().await;
+    restarted.sync().await.unwrap();
+    assert_eq!(restarted.epoch(&group).unwrap(), Some(2));
+    assert!(restarted.store().outbox(&group).unwrap().is_empty());
+    a.engine = restarted;
+    assert_talking(&mut a, &mut b, &group, "restart").await;
+}
+
+#[tokio::test]
+async fn sends_the_same_add_again_without_claiming_new_key_packages() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    let mut c = device(&server, "c", 3).await;
+    server.fail_next("post_commit");
+    a.engine.add_members(&group, &[c.user().to_owned()]).await.unwrap();
+    assert_eq!(server.key_packages_of(c.user()), 3, "one package claimed for the commit");
+    assert_eq!(server.group_epoch(&group), Some(1), "the commit never arrived");
+    a.engine.flush_outbox().await.unwrap();
+    assert_eq!(server.group_epoch(&group), Some(2));
+    assert_eq!(server.key_packages_of(c.user()), 3, "the second try sent the commit already built");
+    c.engine.sync().await.unwrap();
+    b.engine.sync().await.unwrap();
+    assert_eq!(c.engine.roster(&group).unwrap().len(), 3);
+    assert_talking(&mut a, &mut c, &group, "added").await;
+}
+
+#[tokio::test]
+async fn an_add_whose_answer_was_lost_still_hands_the_newcomer_its_bundle() {
+    let server = server();
+    let (mut a, _b, group) = pair(&server).await;
+    let request = Entry::Request {
+        appt: "appt-1".into(),
+        day: "2026-11-20".into(),
+        mode: Mode::Vote,
+        start: None,
+        end: None,
+        activity: None,
+        note: None,
+        leader_options: false,
+    };
+    a.engine.send(&group, &request, Alert::All, Some("plan")).await.unwrap();
+    let mut c = device(&server, "c", 3).await;
+    server.lose_next("post_commit");
+    a.engine.add_members(&group, &[c.user().to_owned()]).await.unwrap();
+    a.engine.flush_outbox().await.unwrap();
+    assert_eq!(a.engine.roster(&group).unwrap().len(), 3);
+    c.engine.sync().await.unwrap();
+    assert!(c.engine.group_state(&group).unwrap().appointments.contains_key("appt-1"));
+}
+
+#[tokio::test]
+async fn rejoins_when_the_log_holds_its_own_commit_and_the_pending_copy_is_gone() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    queue_self_update(&a, &group);
+    server.lose_next("post_commit");
+    a.engine.flush_outbox().await.unwrap();
+    // The request is lost with the answer (a store restored from a backup made before the commit, say): the row is
+    // a bare intent again, and the commit built for it now is not the one the server holds.
+    let row = a.engine.store().outbox_head(&group).unwrap().unwrap();
+    a.engine.store().set_outbox_payload(row.id, &commit_payload()).unwrap();
+    a.engine.flush_outbox().await.unwrap();
+    // Unable to open its own commit from the log, the device came back by external commit and then sent the update.
+    assert!(a.engine.store().outbox(&group).unwrap().is_empty());
+    assert_eq!(a.engine.epoch(&group).unwrap(), server.group_epoch(&group));
+    assert!(a.engine.unreadable(&group).unwrap().is_empty(), "its own commit leaves no marker");
+    b.engine.sync().await.unwrap();
+    assert_eq!(b.engine.roster(&group).unwrap().len(), 2, "the old leaf went with the external commit");
+    assert_talking(&mut a, &mut b, &group, "rejoined").await;
+}
+
+#[tokio::test]
+async fn rejoins_when_the_log_is_in_an_epoch_ahead_of_its_own() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    // B applies A's commit in MLS only, then loses that state: its group is one epoch behind what its cursor says.
+    queue_self_update(&a, &group);
+    a.engine.flush_outbox().await.unwrap();
+    let commit_seq = server.log_len(&group) as i64;
+    b.engine.store().set_cursor(&group, commit_seq).unwrap();
+    a.engine.send(&group, &text("t1", "다음 epoch의 메시지"), Alert::All, Some("chat")).await.unwrap();
+    b.engine.sync().await.unwrap();
+    assert_eq!(b.engine.epoch(&group).unwrap(), server.group_epoch(&group), "back by external commit");
+    assert_talking(&mut a, &mut b, &group, "caught up").await;
+}
+
+#[tokio::test]
+async fn marks_another_members_item_it_cannot_open_and_reads_on() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    a.engine.send(&group, &text("t1", "깨진 메시지"), Alert::All, Some("chat")).await.unwrap();
+    let broken = server.log_len(&group) as i64;
+    server.corrupt_log(&group, broken);
+    a.engine.send(&group, &text("t2", "멀쩡한 메시지"), Alert::All, Some("chat")).await.unwrap();
+    b.changes();
+    b.engine.sync().await.unwrap();
+    assert_eq!(b.engine.unreadable(&group).unwrap(), vec![broken]);
+    assert_eq!(texts(&b, &group), vec!["멀쩡한 메시지"], "the item after it is read");
+    assert_eq!(b.engine.store().cursor(&group).unwrap(), broken + 1);
+    assert!(b.changes().contains(&Change::Group { group_id: group.clone() }));
+    // A pushed item that does not open in place is read from the log and marked the same way.
+    a.engine.send(&group, &text("t3", "또 깨진 메시지"), Alert::All, Some("chat")).await.unwrap();
+    server.corrupt_log(&group, broken + 2);
+    let event = b.events(&server).into_iter().rev().find(|e| matches!(e, Event::Entry { .. })).unwrap();
+    let Event::Entry { g, s, kind, at, .. } = event else { unreachable!() };
+    let damaged = a.engine.api().log(&group, broken + 1, 1).await.unwrap().entries.remove(0).ciphertext;
+    b.engine.handle_event(Event::Entry { g, s, kind, at, c: Some(damaged) }).await.unwrap();
+    assert_eq!(b.engine.unreadable(&group).unwrap(), vec![broken, broken + 2]);
+    assert_talking(&mut a, &mut b, &group, "after the gaps").await;
+}
+
+#[tokio::test]
+async fn a_rejoin_that_fails_keeps_the_group_and_its_queued_writes() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    a.engine.send(&group, &text("t1", "놓친 메시지"), Alert::All, Some("chat")).await.unwrap();
+    server.expire_log(&group, server.log_len(&group) as i64);
+    b.engine.enqueue_entry(&group, &text("t2", "기다리던 메시지"), Alert::All, Some("chat")).unwrap();
+    server.fail_next("group_info");
+    assert!(b.engine.sync().await.is_err());
+    assert_eq!(b.engine.epoch(&group).unwrap(), None, "the old state went before the external commit");
+    // The outbox is flushed while the group has no MLS state, as after a notification: the write waits.
+    b.engine.flush_outbox().await.unwrap();
+    assert_eq!(b.engine.store().outbox(&group).unwrap().len(), 1, "nothing queued was dropped");
+    b.engine.sync().await.unwrap();
+    assert!(b.engine.store().outbox(&group).unwrap().is_empty());
+    a.engine.sync().await.unwrap();
+    assert_eq!(a.engine.roster(&group).unwrap().len(), 2);
+    assert_eq!(texts(&a, &group), vec!["놓친 메시지", "기다리던 메시지"]);
+}
+
+#[tokio::test]
+async fn finishes_a_commits_bookkeeping_when_the_process_stopped_after_saving_the_mls_state() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    queue_self_update(&a, &group);
+    a.engine.flush_outbox().await.unwrap();
+    // B's MLS state takes the commit and the process stops there: no state key, no cursor.
+    let commit = a.engine.api().log(&group, 0, 100).await.unwrap().entries.pop().unwrap();
+    {
+        let db = b._dir.path().join("geunal.db");
+        let identity = Identity::new(b.session.user_id.clone(), b.session.device_id.clone());
+        let mls = MlsClient::open(&db, &b.key, identity, &b.secret).unwrap();
+        let mut mls_group = mls.load_group(&geunal_sync::engine::mls_group_id(&group).unwrap()).unwrap().unwrap();
+        mls_group.process(&commit.ciphertext).unwrap();
+    }
+    assert!(b.engine.store().state_key(&group, 2).unwrap().is_none());
+    b.engine.sync().await.unwrap();
+    assert!(b.engine.store().state_key(&group, 2).unwrap().is_some());
+    assert_eq!(b.engine.store().cursor(&group).unwrap(), commit.seq);
+    assert!(b.engine.unreadable(&group).unwrap().is_empty());
+    assert_talking(&mut a, &mut b, &group, "after the crash").await;
+}
