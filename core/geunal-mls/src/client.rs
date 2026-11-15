@@ -102,6 +102,8 @@ pub enum Received {
     Commit {
         epoch: u64,
         removed_me: bool,
+        /// This device's own pending commit, applied because the log brought it back.
+        mine: bool,
     },
     /// A proposal or other control message that changes nothing by itself.
     Other,
@@ -263,19 +265,25 @@ impl MlsClient {
         Ok((group, adder))
     }
 
-    /// Rejoins by external commit from the server's GroupInfo, removing this device's previous leaf when it still has
-    /// one (protocol §2). The commit must still be accepted by the server before the new group is used.
-    pub fn external_join(&self, group_info: &[u8], previous_leaf: Option<u32>) -> Result<(MlsGroup, Vec<u8>), Error> {
+    /// Rejoins by external commit from the server's GroupInfo, removing the leaf this device still has in the group
+    /// (protocol §2). The leaf is found in the GroupInfo's own tree, by this device's signature key, not taken from
+    /// what the device remembers: its stored state may be gone or from an epoch before the leaf moved. The stored
+    /// state of the group has to be dropped first, since mls-rs keeps a group's stored epochs contiguous, and the
+    /// commit must still be accepted by the server before the new group is used.
+    pub fn external_join(&self, group_info: &[u8]) -> Result<(MlsGroup, Vec<u8>), Error> {
         let message = MlsMessage::from_bytes(group_info)?;
         let info = message.as_group_info().ok_or(Error::WrongMessageType("group info"))?;
         if info.group_context().cipher_suite != SUITE {
             return Err(Error::WrongCipherSuite(info.group_context().cipher_suite));
         }
-        let mut builder = self.client.external_commit_builder()?;
-        if let Some(index) = previous_leaf {
-            builder = builder.with_removal(index);
-        }
-        let (group, commit) = builder.build(message)?;
+        let (group, commit) = match self.client.external_commit_builder()?.build(message.clone()) {
+            // A leaf with this device's key is in the tree, at the index the error names. mls-rs lets an external
+            // commit remove only a leaf of the joiner's own identity, so the index cannot take out anyone else.
+            Err(MlsError::DuplicateLeafData(index)) => {
+                self.client.external_commit_builder()?.with_removal(index).build(message)?
+            }
+            other => other?,
+        };
         Ok((MlsGroup { inner: group }, commit.to_bytes()?))
     }
 
@@ -363,7 +371,8 @@ impl MlsGroup {
         Ok(self.inner.current_epoch())
     }
 
-    /// The server refused the pending commit (409 epoch_conflict): forget it and process what won instead.
+    /// Forgets the pending commit: the server refused it, or it is rebuilt. A pending commit that was saved stays
+    /// in the stored state until the caller saves again.
     pub fn clear_pending_commit(&mut self) {
         self.inner.clear_pending_commit();
     }
@@ -375,10 +384,20 @@ impl MlsGroup {
         Ok(message.to_bytes()?)
     }
 
-    /// Processes one log item in order. Decrypting consumes the message key, so the same bytes cannot be processed
-    /// twice (rust-core §4).
+    /// Processes one log item in order and saves the new state. Decrypting consumes the message key, so the same
+    /// bytes cannot be processed twice (rust-core §4).
     pub fn process(&mut self, bytes: &[u8]) -> Result<Received, Error> {
+        let out = self.process_unsaved(bytes)?;
+        self.inner.write_to_storage()?;
+        Ok(out)
+    }
+
+    /// [`MlsGroup::process`] without saving: the caller stores what came out first and calls [`MlsGroup::save`]
+    /// after. A crash between the two then leaves a message key MLS still holds for an entry already stored, which
+    /// costs nothing; saving first would have spent the key on an entry that never reached the store.
+    pub fn process_unsaved(&mut self, bytes: &[u8]) -> Result<Received, Error> {
         let message = MlsMessage::from_bytes(bytes)?;
+        let me = self.inner.current_member_index();
         let received = self.inner.process_incoming_message(message)?;
         let out = match received {
             ReceivedMessage::ApplicationMessage(app) => {
@@ -390,15 +409,17 @@ impl MlsGroup {
             }
             // A removed member's own state stays in the old epoch, so the epoch comes from the commit itself.
             ReceivedMessage::Commit(commit) => match commit.effect {
-                CommitEffect::NewEpoch(e) => Received::Commit { epoch: e.epoch, removed_me: false },
+                // mls-rs opens a commit of this device only as its pending commit, by the message's hash.
+                CommitEffect::NewEpoch(e) => {
+                    Received::Commit { epoch: e.epoch, removed_me: false, mine: commit.committer == me }
+                }
                 CommitEffect::Removed { new_epoch, .. } => {
-                    Received::Commit { epoch: new_epoch.epoch, removed_me: true }
+                    Received::Commit { epoch: new_epoch.epoch, removed_me: true, mine: false }
                 }
                 CommitEffect::ReInit(_) => Received::Other,
             },
             _ => Received::Other,
         };
-        self.inner.write_to_storage()?;
         Ok(out)
     }
 

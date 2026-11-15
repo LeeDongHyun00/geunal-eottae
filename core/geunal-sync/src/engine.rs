@@ -11,7 +11,7 @@ use geunal_domain::availability::Availability;
 use geunal_domain::entry::{self, Entry};
 use geunal_mls::state::{open as open_blob, seal as seal_blob, state_aad};
 use geunal_mls::{Identity, MlsClient, MlsGroup, Received};
-use geunal_store::{AvailabilityRow, EntryRow, GroupKind, OutboxKind, Store};
+use geunal_store::{AvailabilityRow, EntryRow, GroupKind, OutboxKind, OutboxRow, Store};
 use serde::{Deserialize, Serialize};
 
 use crate::SyncError;
@@ -70,9 +70,24 @@ pub enum CommitIntent {
 /// An outbox payload. Application entries stay plaintext here so a `stale_epoch` refusal can re-encrypt them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum Outgoing {
-    App { entry: Vec<u8>, alert: AlertTarget, cat: Option<String> },
+    App {
+        entry: Vec<u8>,
+        alert: AlertTarget,
+        cat: Option<String>,
+    },
     Commit(CommitIntent),
-    State { kind: String, plaintext: Vec<u8> },
+    State {
+        kind: String,
+        plaintext: Vec<u8>,
+    },
+    /// A commit row once its commit is built and saved as the group's pending commit: the request as it goes to the
+    /// server. Until the server's answer is known the same commit goes out again, never a second one, because the
+    /// server may have taken the first while its answer was lost; only this device's pending commit opens the copy
+    /// the log then brings back.
+    Posted {
+        intent: CommitIntent,
+        request: CommitRequest,
+    },
 }
 
 impl Outgoing {
@@ -85,6 +100,24 @@ impl Outgoing {
     fn decode(bytes: &[u8]) -> Result<Self, SyncError> {
         ciborium::from_reader(bytes).map_err(|e| SyncError::Malformed(format!("outbox payload: {e}")))
     }
+
+    /// What a commit row is for, whether or not its commit was built yet.
+    fn intent(self) -> Option<CommitIntent> {
+        match self {
+            Outgoing::Commit(intent) | Outgoing::Posted { intent, .. } => Some(intent),
+            _ => None,
+        }
+    }
+}
+
+/// How one log item went (`Engine::apply_item`). Only `Done` moved the cursor.
+enum Applied {
+    Done,
+    /// An application message MLS would not open and nothing stored stands in for.
+    Unreadable,
+    /// The group moved to an epoch this device cannot follow: a commit it cannot process, or an item from an epoch
+    /// ahead of its own. Nothing later is readable until it rejoins.
+    Forked,
 }
 
 /// Days the availability window covers by default (kickoff §5.3).
@@ -370,9 +403,14 @@ impl<T: Transport> Engine<T> {
                         (Some(at), Some(c)) if s == cursor + 1 => self.pushed_item(&g, s, &kind, c, at),
                         _ => None,
                     };
-                    match inline {
-                        Some(item) => self.apply_item(&g, &item).await?,
-                        None => self.catch_up(&g).await?,
+                    // An item that does not apply in place is read from the log, which names its author and decides
+                    // whether the group has to be rejoined.
+                    let applied = match inline {
+                        Some(item) => matches!(self.apply_item(&g, &item).await?, Applied::Done),
+                        None => false,
+                    };
+                    if !applied {
+                        self.catch_up(&g).await?;
                     }
                 }
                 self.flush_group(&g).await
@@ -424,6 +462,7 @@ impl<T: Transport> Engine<T> {
     /// readable from outside, so the MLS state is dropped here; local plaintext history stays, and a later Welcome
     /// starts the group again (protocol §2).
     fn left_group(&self, group_id: &str) -> Result<(), SyncError> {
+        self.store.set_rejoin_owed(group_id, false)?;
         if self.load_group(group_id)?.is_some() {
             self.mls.forget_group(&mls_group_id(group_id)?)?;
             self.store.drop_outbox_commits(group_id)?;
@@ -454,6 +493,7 @@ impl<T: Transport> Engine<T> {
             // by design. A server that names no seq restarts the read at 0, and those items are skipped by epoch
             // without decryption: a read of the mailbox, not of keys.
             self.store.upsert_group(&welcome.group_id, GroupKind::Circle, None)?;
+            self.store.set_rejoin_owed(&welcome.group_id, false)?;
             let through = welcome.seq.unwrap_or(0);
             self.store.set_cursor(&welcome.group_id, through)?;
             // The member whose commit added this device owes it one bundle of what came before (protocol §5).
@@ -467,9 +507,24 @@ impl<T: Transport> Engine<T> {
     }
 
     /// Fetches and applies the log after the cursor, page by page. 410 means the mailbox has moved past the cursor:
-    /// drop the MLS state and come back by external commit (protocol §6).
+    /// come back by external commit (protocol §6). The same way back is taken, once, when the log shows the group in
+    /// an epoch this device cannot reach; an item that stays unreadable is skipped with a marker, so one bad item
+    /// never blocks a group.
     pub async fn catch_up(&mut self, group_id: &str) -> Result<(), SyncError> {
         let mut rejoined = false;
+        // An earlier rejoin dropped the MLS state and did not get through. The log is not read before it does: the
+        // rejoin moves the cursor to its own commit.
+        if self.store.rejoin_owed(group_id)? {
+            if self.load_group(group_id)?.is_some() {
+                // The new state was saved and the process stopped before the flag was cleared.
+                self.store.set_rejoin_owed(group_id, false)?;
+            } else {
+                rejoined = true;
+                if !self.try_rejoin(group_id).await? {
+                    return Ok(());
+                }
+            }
+        }
         loop {
             let cursor = self.store.cursor(group_id)?;
             let page = match self.api.log(group_id, cursor, LOG_PAGE).await {
@@ -484,8 +539,27 @@ impl<T: Transport> Engine<T> {
             };
             let caught_up = page.entries.len() < LOG_PAGE as usize
                 || page.entries.last().is_some_and(|last| last.seq >= page.last_seq);
+            let mut reread = false;
             for item in &page.entries {
-                self.apply_item(group_id, item).await?;
+                match self.apply_item(group_id, item).await? {
+                    Applied::Done => {}
+                    Applied::Unreadable => self.skip_item(group_id, item)?,
+                    // Once: an item that still cannot be followed right after rejoining is skipped like any other
+                    // this device cannot read.
+                    Applied::Forked if rejoined => self.skip_item(group_id, item)?,
+                    Applied::Forked => {
+                        rejoined = true;
+                        if !self.try_rejoin(group_id).await? {
+                            return Ok(());
+                        }
+                        // The cursor now stands at the external commit: read on from there.
+                        reread = true;
+                        break;
+                    }
+                }
+            }
+            if reread {
+                continue;
             }
             if caught_up {
                 return Ok(());
@@ -493,16 +567,40 @@ impl<T: Transport> Engine<T> {
         }
     }
 
-    /// One log item in order: MLS first, then the entry, then the store (protocol §6). The cursor moves past an item
-    /// this device cannot read (its own echo, a message from before it joined) so one bad item never blocks a group.
-    async fn apply_item(&mut self, group_id: &str, item: &LogItem) -> Result<(), SyncError> {
+    /// Moves the cursor past an item this device cannot read. Another member's item leaves a marker the app can
+    /// show (`Engine::unreadable`); this device's own does not, since its content is in the outbox or was never the
+    /// log's to give back.
+    fn skip_item(&self, group_id: &str, item: &LogItem) -> Result<(), SyncError> {
+        if item.author_id == self.me.user_id {
+            return Ok(self.store.set_cursor(group_id, item.seq)?);
+        }
+        self.store.skip_unreadable(group_id, item.seq, &item.author_id, &item.received_at)?;
+        self.notify(Change::Group { group_id: group_id.to_owned() });
+        Ok(())
+    }
+
+    /// The seqs of the log items of other members this device could not open: the group's state may differ from
+    /// theirs by what those items said.
+    pub fn unreadable(&self, group_id: &str) -> Result<Vec<i64>, SyncError> {
+        Ok(self.store.unreadable(group_id)?)
+    }
+
+    /// One log item in order: MLS first, then the entry, then the store (protocol §6). An item from before this
+    /// device joined, or its own echo, is passed over; one it should have been able to read is reported to the
+    /// caller, which decides between rejoining and skipping.
+    async fn apply_item(&mut self, group_id: &str, item: &LogItem) -> Result<Applied, SyncError> {
         let cursor = self.store.cursor(group_id)?;
         if item.seq <= cursor {
-            return Ok(());
+            return Ok(Applied::Done);
         }
         let Some(mut group) = self.load_group(group_id)? else {
+            // On its way back in: the rejoin decides where the cursor goes.
+            if self.store.rejoin_owed(group_id)? {
+                return Ok(Applied::Forked);
+            }
             // Removed from the group: nothing here is readable until a Welcome restarts the cursor.
-            return Ok(self.store.set_cursor(group_id, item.seq)?);
+            self.store.set_cursor(group_id, item.seq)?;
+            return Ok(Applied::Done);
         };
         // An item from an epoch behind ours is either this device's own commit, already applied, or older than the
         // epoch it joined in and so unreadable by design; neither touches MLS.
@@ -511,24 +609,54 @@ impl<T: Transport> Engine<T> {
                 self.store.set_entry_received_at(group_id, item.seq, &item.received_at)?;
             }
             self.store.set_cursor(group_id, item.seq)?;
-            return Ok(());
+            // The commit that made the current epoch, with the epoch's state key missing: the process stopped
+            // between saving the MLS state and the bookkeeping that follows a commit. It is done now.
+            if item.kind == "commit"
+                && item.epoch + 1 == group.epoch()
+                && self.store.state_key(group_id, group.epoch() as i64)?.is_none()
+            {
+                self.after_epoch_change(group_id, &mut group).await?;
+            }
+            return Ok(Applied::Done);
+        }
+        // A commit between this device's epoch and the item's never reached it.
+        if item.epoch > group.epoch() {
+            return Ok(Applied::Forked);
         }
         match item.kind.as_str() {
+            // The MLS state is saved before the store hears of the commit: the lines above finish the bookkeeping
+            // after a crash in between, where the other order would leave the cursor past a commit MLS never took.
             "commit" => match group.process(&item.ciphertext) {
-                Ok(Received::Commit { epoch, removed_me: true }) => {
-                    let _ = epoch;
+                Ok(Received::Commit { removed_me: true, .. }) => {
                     self.mls.forget_group(group.group_id())?;
                     self.store.set_cursor(group_id, item.seq)?;
                     self.notify(Change::Group { group_id: group_id.to_owned() });
-                    return Ok(());
                 }
-                Ok(Received::Commit { .. }) => {
-                    self.store.set_cursor(group_id, item.seq)?;
+                Ok(Received::Commit { mine, .. }) => {
+                    // This device's own commit, back through the log because the server's answer to it was lost:
+                    // the row that posted it is done.
+                    let sent = match self.store.outbox_head(group_id)? {
+                        Some(row) if mine && row.kind == OutboxKind::Commit => Some(row),
+                        _ => None,
+                    };
+                    self.store.enter_epoch(
+                        group_id,
+                        item.seq,
+                        group.epoch() as i64,
+                        &group.state_key()?,
+                        &self.now_text(),
+                        sent.as_ref().map(|row| row.id),
+                    )?;
                     self.after_epoch_change(group_id, &mut group).await?;
+                    let intent = sent.and_then(|row| Outgoing::decode(&row.payload).ok()).and_then(Outgoing::intent);
+                    if matches!(intent, Some(CommitIntent::Add { .. })) {
+                        self.publish_newcomer_bundle(group_id, &group).await?;
+                    }
                 }
-                Ok(_) | Err(_) => {
-                    self.store.set_cursor(group_id, item.seq)?;
-                }
+                Ok(_) => self.store.set_cursor(group_id, item.seq)?,
+                // The group's next epoch starts with a commit this device cannot take: its own, whose pending copy
+                // is gone, or one that does not verify.
+                Err(_) => return Ok(Applied::Forked),
             },
             _ => {
                 let stored = self.store.entry_author(group_id, item.seq)?;
@@ -538,18 +666,56 @@ impl<T: Transport> Engine<T> {
                         self.store.set_entry_received_at(group_id, item.seq, &item.received_at)?;
                     }
                     self.store.set_cursor(group_id, item.seq)?;
-                    return Ok(());
+                    return Ok(Applied::Done);
                 }
-                // Another member's entry already here was decrypted by the extension, and MLS will not open it again;
-                // if it does open, the log's item is the one that belongs at this seq.
-                if let Ok(Received::Application { sender, data }) = group.process(&item.ciphertext) {
-                    if stored.is_some() {
-                        self.store.remove_entry(group_id, item.seq)?;
+                match group.process_unsaved(&item.ciphertext) {
+                    // The entry and the cursor are stored before the ratchet's step is saved
+                    // (`MlsGroup::process_unsaved`). An entry already at this seq was decrypted by the extension;
+                    // the log's item is the one that belongs there.
+                    Ok(Received::Application { sender, data }) => {
+                        self.store_received(
+                            group_id,
+                            item.seq,
+                            &sender.user_id,
+                            &data,
+                            &item.received_at,
+                            stored.is_some(),
+                        )?;
+                        group.save()?;
                     }
-                    self.store_entry(group_id, item.seq, &sender.user_id, &data, &item.received_at)?;
+                    Ok(_) => {
+                        group.save()?;
+                        self.store.set_cursor(group_id, item.seq)?;
+                    }
+                    // The extension decrypted it first, and MLS will not open a message twice.
+                    Err(_) if stored.is_some() => self.store.set_cursor(group_id, item.seq)?,
+                    Err(_) => return Ok(Applied::Unreadable),
                 }
-                self.store.set_cursor(group_id, item.seq)?;
             }
+        }
+        Ok(Applied::Done)
+    }
+
+    /// Stores an entry the log delivered together with the cursor past it.
+    fn store_received(
+        &self,
+        group_id: &str,
+        seq: i64,
+        author_id: &str,
+        body: &[u8],
+        received_at: &str,
+        replace: bool,
+    ) -> Result<(), SyncError> {
+        let row = EntryRow {
+            group_id: group_id.to_owned(),
+            seq,
+            author_id: author_id.to_owned(),
+            kind: entry::peek_kind(body).unwrap_or_else(|| "unknown".to_owned()),
+            body: body.to_vec(),
+            received_at: received_at.to_owned(),
+        };
+        if self.store.store_received(&row, chat_text(body).as_deref(), replace)? {
+            self.announce_entry(group_id, body);
         }
         Ok(())
     }
@@ -788,10 +954,7 @@ impl<T: Transport> Engine<T> {
             .outbox(group_id)?
             .iter()
             .filter(|row| row.kind == OutboxKind::Commit)
-            .filter_map(|row| match Outgoing::decode(&row.payload) {
-                Ok(Outgoing::Commit(intent)) => Some(intent),
-                _ => None,
-            })
+            .filter_map(|row| Outgoing::decode(&row.payload).ok().and_then(Outgoing::intent))
             .collect();
         if !pending.is_empty() {
             let intent = CommitIntent::Add { user_ids: pending };
@@ -818,16 +981,18 @@ impl<T: Transport> Engine<T> {
         Ok(())
     }
 
-    /// Comes back after `cursor_expired` with an external commit, removing this device's old leaf. Local plaintext
-    /// history stays (protocol §6).
+    /// Comes back with an external commit, removing this device's old leaf: after `cursor_expired`, or when the
+    /// group went on to an epoch this device cannot reach. Local plaintext history stays (protocol §6).
     async fn rejoin(&mut self, group_id: &str) -> Result<(), SyncError> {
-        let previous = self.load_group(group_id)?.map(|g| g.my_index());
         // The old state is dropped first (protocol §6): mls-rs keeps prior epochs contiguous per group, and a state
-        // that fell behind cannot be continued by an external commit several epochs later.
+        // that fell behind cannot be continued by an external commit several epochs later. Until the server takes
+        // the commit the group has no MLS state, as one this device left; the flag tells the two apart, so the
+        // queued writes wait and the next sync tries again.
+        self.store.set_rejoin_owed(group_id, true)?;
         self.mls.forget_group(&mls_group_id(group_id)?)?;
         for _ in 0..FLUSH_RETRIES {
             let info = self.api.group_info(group_id).await?;
-            let (mut group, commit) = self.mls.external_join(&info.group_info, previous)?;
+            let (mut group, commit) = self.mls.external_join(&info.group_info)?;
             let req = CommitRequest {
                 epoch: group.epoch() - 1,
                 commit,
@@ -840,6 +1005,7 @@ impl<T: Transport> Engine<T> {
                     group.save()?;
                     self.store.upsert_group(group_id, GroupKind::Circle, None)?;
                     self.store.set_cursor(group_id, accepted.seq)?;
+                    self.store.set_rejoin_owed(group_id, false)?;
                     self.after_epoch_change(group_id, &mut group).await?;
                     return Ok(());
                 }
@@ -848,6 +1014,17 @@ impl<T: Transport> Engine<T> {
             }
         }
         Err(SyncError::Api(ApiError::Api { status: 409, code: "epoch_conflict".into(), message: "rejoin".into() }))
+    }
+
+    /// `rejoin` for a caller that reads on afterwards: whether the device is back in the group. A failure the next
+    /// sync may not meet again is the caller's error; any other (a GroupInfo that does not open, a refusal) leaves
+    /// the group waiting for a later GroupInfo without failing the sync of the groups after it.
+    async fn try_rejoin(&mut self, group_id: &str) -> Result<bool, SyncError> {
+        match self.rejoin(group_id).await {
+            Ok(()) => Ok(true),
+            Err(e) if comes_back(&e) => Err(e),
+            Err(_) => Ok(false),
+        }
     }
 
     // ----- outbox -----
@@ -878,43 +1055,47 @@ impl<T: Transport> Engine<T> {
     /// `flush_group`, answering which rows the server refused for good and why.
     async fn flush_rows(&mut self, group_id: &str) -> Result<Vec<(i64, ApiError)>, SyncError> {
         let mut refused = Vec::new();
+        let mut retries = 0;
+        // The head is read again after every try: a retry may have settled the row another way (its own commit came
+        // back through the log), and then the next row is the one to send.
         while let Some(row) = self.store.outbox_head(group_id)? {
-            let mut done = false;
-            for _ in 0..FLUSH_RETRIES {
-                match self.send_row(group_id, &row.payload).await? {
-                    SendOutcome::Sent | SendOutcome::Dropped => {
-                        self.store.dequeue(row.id)?;
-                        done = true;
-                        break;
-                    }
-                    SendOutcome::Refused(e) => {
-                        self.store.dequeue(row.id)?;
-                        self.notify(Change::Group { group_id: group_id.to_owned() });
-                        refused.push((row.id, e));
-                        done = true;
-                        break;
-                    }
-                    SendOutcome::Retry => continue,
-                    SendOutcome::Later => {
+            match self.send_row(group_id, &row).await? {
+                SendOutcome::Sent | SendOutcome::Dropped => {
+                    self.store.dequeue(row.id)?;
+                    retries = 0;
+                }
+                SendOutcome::Refused(e) => {
+                    self.store.dequeue(row.id)?;
+                    self.notify(Change::Group { group_id: group_id.to_owned() });
+                    refused.push((row.id, e));
+                    retries = 0;
+                }
+                SendOutcome::Retry => {
+                    retries += 1;
+                    if retries >= FLUSH_RETRIES {
                         self.store.bump_attempts(row.id)?;
                         return Ok(refused);
                     }
                 }
-            }
-            if !done {
-                self.store.bump_attempts(row.id)?;
-                return Ok(refused);
+                SendOutcome::Later => {
+                    self.store.bump_attempts(row.id)?;
+                    return Ok(refused);
+                }
             }
         }
         Ok(refused)
     }
 
-    async fn send_row(&mut self, group_id: &str, payload: &[u8]) -> Result<SendOutcome, SyncError> {
+    async fn send_row(&mut self, group_id: &str, row: &OutboxRow) -> Result<SendOutcome, SyncError> {
         let Some(mut group) = self.load_group(group_id)? else {
+            // On its way back in by external commit: the writes wait for it.
+            if self.store.rejoin_owed(group_id)? {
+                return Ok(SendOutcome::Later);
+            }
             // No longer a member: nothing queued for this group can be sent.
             return Ok(SendOutcome::Dropped);
         };
-        match Outgoing::decode(payload)? {
+        match Outgoing::decode(&row.payload)? {
             Outgoing::App { entry: bytes, alert, cat } => {
                 let message = group.encrypt(&bytes)?;
                 let req = MessageRequest { epoch: group.epoch(), message, alert, cat };
@@ -957,18 +1138,23 @@ impl<T: Transport> Engine<T> {
                     Err(e) => Err(e),
                 }
             }
-            Outgoing::Commit(intent) => self.send_commit(group_id, &mut group, intent).await,
+            Outgoing::Commit(intent) => self.send_commit(group_id, row.id, &mut group, intent, None).await,
+            Outgoing::Posted { intent, request } => {
+                self.send_commit(group_id, row.id, &mut group, intent, Some(request)).await
+            }
         }
     }
 
-    async fn send_commit(
+    /// Builds the commit an intent asks for in the group's current epoch, or `None` when the group already is as the
+    /// intent wants it.
+    async fn build_commit(
         &mut self,
         group_id: &str,
         group: &mut MlsGroup,
-        intent: CommitIntent,
-    ) -> Result<SendOutcome, SyncError> {
+        intent: &CommitIntent,
+    ) -> Result<Option<CommitRequest>, SyncError> {
         let roster = group.roster()?;
-        let (bundle, added) = match &intent {
+        let (bundle, added) = match intent {
             CommitIntent::Add { user_ids } => {
                 let mut packages = Vec::new();
                 let mut added = Vec::new();
@@ -1003,7 +1189,7 @@ impl<T: Transport> Engine<T> {
                     }
                 }
                 if packages.is_empty() {
-                    return Ok(SendOutcome::Dropped);
+                    return Ok(None);
                 }
                 (group.add_members(&packages)?, added)
             }
@@ -1011,53 +1197,103 @@ impl<T: Transport> Engine<T> {
                 let indexes: Vec<u32> =
                     roster.iter().filter(|m| user_ids.contains(&m.identity.user_id)).map(|m| m.index).collect();
                 if indexes.is_empty() {
-                    return Ok(SendOutcome::Dropped);
+                    return Ok(None);
                 }
                 (group.remove_members(&indexes)?, Vec::new())
             }
             CommitIntent::SelfUpdate => (group.self_update()?, Vec::new()),
         };
-        let req = CommitRequest {
+        Ok(Some(CommitRequest {
             epoch: group.epoch(),
             commit: bundle.commit,
             group_info: bundle.group_info,
             welcome: bundle.welcome,
-            added: added.clone(),
+            added,
+        }))
+    }
+
+    /// Sends a commit row. `posted` is the commit an earlier try built and may have delivered.
+    async fn send_commit(
+        &mut self,
+        group_id: &str,
+        row_id: i64,
+        group: &mut MlsGroup,
+        intent: CommitIntent,
+        posted: Option<CommitRequest>,
+    ) -> Result<SendOutcome, SyncError> {
+        let request = match posted {
+            // The answer to the earlier try never came. The same commit goes out again: taken now, or refused as
+            // `epoch_conflict` because it was taken then, and the log brings it back.
+            Some(request) if group.has_pending_commit() && request.epoch == group.epoch() => request,
+            _ => {
+                // A pending commit without its request was saved by a try that stopped before posting, and one
+                // from another epoch lost to a commit the log brought: neither reached the server.
+                if group.has_pending_commit() {
+                    group.clear_pending_commit();
+                    group.save()?;
+                }
+                let Some(request) = self.build_commit(group_id, group, &intent).await? else {
+                    return Ok(SendOutcome::Dropped);
+                };
+                // Saved before it is posted, the pending commit first: whatever stops this process from here on,
+                // the next try finds the commit the server may have and the means to apply it.
+                group.save()?;
+                let posted = Outgoing::Posted { intent: intent.clone(), request: request.clone() };
+                self.store.set_outbox_payload(row_id, &posted.encode())?;
+                request
+            }
         };
-        match self.api.post_commit(group_id, req).await {
+        let added = !request.added.is_empty();
+        match self.api.post_commit(group_id, request).await {
             Ok(accepted) => {
                 group.apply_pending_commit()?;
                 if self.store.cursor(group_id)? + 1 == accepted.seq {
                     self.store.set_cursor(group_id, accepted.seq)?;
                 }
                 self.after_epoch_change(group_id, group).await?;
-                if !added.is_empty() {
+                if added {
                     self.publish_newcomer_bundle(group_id, group).await?;
                 }
                 Ok(SendOutcome::Sent)
             }
             Err(e) if e.is(409, "epoch_conflict") => {
-                // Someone else's commit won this epoch: forget ours, take theirs, rebuild on the next round.
-                group.clear_pending_commit();
+                // A commit won this epoch, and the log says whose. Another member's clears the pending commit as it
+                // is processed, and the intent is rebuilt on the next round; this device's own earlier try is
+                // applied from the pending commit, which settles the row.
                 self.catch_up(group_id).await?;
+                if let Some(mut current) = self.load_group(group_id)?
+                    && current.has_pending_commit()
+                {
+                    current.clear_pending_commit();
+                    current.save()?;
+                }
                 Ok(SendOutcome::Retry)
             }
             Err(e) if e.is(403, "not_member") => {
-                group.clear_pending_commit();
+                self.discard_commit(row_id, group, &intent)?;
                 Ok(SendOutcome::Dropped)
             }
-            Err(e) if is_transient(&e) => {
-                group.clear_pending_commit();
-                Ok(SendOutcome::Later)
-            }
-            // No refusal is final here: the intent is rebuilt from the roster and the devices listed at the next
-            // try, so an answer about the commit as built (a device replaced since its key package was claimed) is
-            // not one about the intent.
-            Err(e) => {
-                group.clear_pending_commit();
+            // The server may or may not have taken it: the pending commit and the request stay for the next try.
+            Err(e) if is_transient(&e) => Ok(SendOutcome::Later),
+            // The server answered and did not take this commit. No refusal is final for the row: the intent is
+            // rebuilt from the roster and the devices listed at the next try, so an answer about the commit as
+            // built (a device replaced since its key package was claimed) is not one about the intent.
+            Err(e @ ApiError::Api { status: 400..=499, .. }) if !ends_flush_api(&e) => {
+                self.discard_commit(row_id, group, &intent)?;
                 Err(e.into())
             }
+            // The session's trouble, not the commit's: nothing says the server did not take it.
+            Err(e) => Err(e.into()),
         }
+    }
+
+    /// Forgets a commit the server answered it will not take: the pending commit goes from the stored state and the
+    /// row is an intent again.
+    fn discard_commit(&self, row_id: i64, group: &mut MlsGroup, intent: &CommitIntent) -> Result<(), SyncError> {
+        group.clear_pending_commit();
+        group.save()?;
+        self.store.set_outbox_payload(row_id, &Outgoing::Commit(intent.clone()).encode())?;
+        Ok(())
     }
 }
 
@@ -1085,14 +1321,23 @@ fn is_refusal(e: &ApiError) -> bool {
 /// Errors every group's flush would hit again: no point trying the next group.
 fn ends_flush(e: &SyncError) -> bool {
     match e {
-        SyncError::Api(e) => {
-            matches!(e, ApiError::Revoked { .. } | ApiError::Api { status: 401, .. })
-                || e.is(403, "device_revoked")
-                || e.is(403, "replace_required")
-        }
+        SyncError::Api(e) => ends_flush_api(e),
         SyncError::NotSignedIn | SyncError::Store(_) => true,
         _ => false,
     }
+}
+
+/// Answers about the session or the device, which say nothing about the request they came back for.
+fn ends_flush_api(e: &ApiError) -> bool {
+    matches!(e, ApiError::Revoked { .. } | ApiError::Api { status: 401, .. })
+        || e.is(403, "device_revoked")
+        || e.is(403, "replace_required")
+}
+
+/// Failures of a rejoin that the next sync may not meet again: the network, a rate limit, the session. Anything
+/// else is about the group itself and will not change by waiting.
+fn comes_back(e: &SyncError) -> bool {
+    ends_flush(e) || matches!(e, SyncError::Api(e) if is_transient(e))
 }
 
 /// Rate limits and network failures: keep the row and try later with backoff (protocol §11).
