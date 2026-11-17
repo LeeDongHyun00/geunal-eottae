@@ -155,8 +155,9 @@ struct QuickEntrySheet: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(GeunalColor.secondaryText)
                 FlowLayout(spacing: Space.xs, rowSpacing: Space.xs) {
-                    ForEach(model.suggestions.indices, id: \.self) { index in
-                        let suggestion = model.suggestions[index]
+                    // Each chip is handed its suggestion, not an index into the model: the list can get shorter
+                    // between two passes over this body, and an index kept from the longer one would trap.
+                    ForEach(Array(model.suggestions.enumerated()), id: \.offset) { index, suggestion in
                         SuggestionChip(suggestion: suggestion, color: model.color(of: suggestion)) {
                             dismiss()
                             Task { await actions.add(suggestion.event, fromSuggestion: true) }
