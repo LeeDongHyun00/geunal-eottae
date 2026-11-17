@@ -74,7 +74,11 @@ fi
 # had its two minutes; three quick tries cover a dropped packet. Anything that is not the three expected values
 # counts as missing: the file is the only thing that says the dump ran.
 dump_url="https://$host/_alpha/db-dump.json"
-if body=$(curl -fsS --max-time 10 --retry 2 --retry-delay 5 --retry-all-errors "$dump_url" 2>&1); then
+# curl's messages go to a file of their own: a try that failed before one that succeeded leaves its message behind,
+# and mixed into the body it would make a good status unreadable.
+dump_err=$(mktemp)
+trap 'rm -f "$dump_err"' EXIT
+if body=$(curl -fsS --max-time 10 --retry 2 --retry-delay 5 --retry-all-errors "$dump_url" 2>"$dump_err"); then
   # The timestamp must have the exact shape db-dump.sh writes: `date -d` would also take words such as "tomorrow".
   if last=$(printf '%s' "$body" | jq -er '.last_success | strings' 2>/dev/null) &&
     [[ $last =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] &&
@@ -91,7 +95,7 @@ if body=$(curl -fsS --max-time 10 --retry 2 --retry-delay 5 --retry-all-errors "
     problems+=("DB 덤프 상태(\`$dump_url\`)를 읽을 수 없습니다: \`$(quote "$body")\`")
   fi
 else
-  problems+=("DB 덤프 상태(\`$dump_url\`)가 없거나 오류로 답합니다: \`$(quote "$(printf '%s' "$body" | tail -n 1)")\`")
+  problems+=("DB 덤프 상태(\`$dump_url\`)가 없거나 오류로 답합니다: \`$(quote "$(tail -n 1 "$dump_err")")\`")
 fi
 
 open=$(gh issue list --label "$label" --state open --json number --jq '.[0].number // empty')
