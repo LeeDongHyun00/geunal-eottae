@@ -178,7 +178,8 @@ class AuthService(
         val hash = sha256(refreshToken)
         val expired = ApiException(HttpStatus.UNAUTHORIZED, "token_expired", "refresh token is unknown or expired")
         // An expired session is looked up too: a replaced device that stayed off past its refresh token's life still
-        // learns it was replaced. The daily cleanup keeps a replaced device's two newest sessions while the account lives.
+        // learns it was replaced. The daily cleanup keeps the tokens a replaced device can still hold while the account
+        // lives.
         val session =
             jdbc
                 .sql("SELECT id, device_id, expires_at > now() AS live FROM sessions WHERE refresh_hash = :hash")
@@ -194,11 +195,13 @@ class AuthService(
         // retried refresh answers the same.
         devices.current(deviceId) ?: throw devices.revokedError(deviceId)
         if (!session.live) throw expired
+        // spent_at is the wall clock, not now(): now() is when this transaction began, before it waited for the device
+        // row, and the grace is measured from the moment the token was really spent (see retriesLostAnswer).
         val rotated =
             jdbc
                 .sql(
                     """
-                    UPDATE sessions SET spent_at = now()
+                    UPDATE sessions SET spent_at = clock_timestamp()
                     WHERE refresh_hash = :hash AND spent_at IS NULL AND expires_at > now()
                     RETURNING device_id
                     """,
@@ -222,21 +225,29 @@ class AuthService(
      *
      * The price is that a thief who replays a token within the grace of the device's own refresh is not detected by
      * that replay. The grace is kept short for that reason; zero turns it off.
+     *
+     * Both ends of the grace are read from the wall clock (`clock_timestamp()`), here and where the token is spent.
+     * `now()` is the time the transaction began: a request that began before the rotation and then waited for the
+     * device row would see a token spent "in its future" and pass any grace, even zero, and the wait would stretch the
+     * grace for every other one. Zero is also answered without asking, so "off" does not rest on clock arithmetic.
      */
-    private fun retriesLostAnswer(sessionId: UUID): Boolean =
-        jdbc
+    private fun retriesLostAnswer(sessionId: UUID): Boolean {
+        val grace = properties.refreshReuseGrace
+        if (grace.isZero || grace.isNegative) return false
+        return jdbc
             .sql(
                 """
                 SELECT EXISTS (
                   SELECT 1 FROM sessions s
-                  WHERE s.id = :id AND s.spent_at > now() - make_interval(secs => :grace)
+                  WHERE s.id = :id AND s.spent_at > clock_timestamp() - make_interval(secs => :grace)
                     AND NOT EXISTS (SELECT 1 FROM sessions next WHERE next.rotated_from = s.id AND next.spent_at IS NOT NULL)
                 )
                 """,
             ).param("id", sessionId)
-            .param("grace", properties.refreshReuseGrace.toMillis() / MILLIS_PER_SECOND)
+            .param("grace", grace.toMillis() / MILLIS_PER_SECOND)
             .query(Boolean::class.java)
             .single()
+    }
 
     /**
      * The account for a provider sign-in, created on first sight, and then this device: registered when the account has
