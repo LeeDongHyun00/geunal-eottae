@@ -1,75 +1,64 @@
 # 인프라·조정 인수인계
 
-갱신: 2026-11-04, 이전 세션 https://claude.ai/code/session_0132zdS5vn6SS8q9nPbAMcQo
+갱신: 2026-11-17, 이전 세션 https://claude.ai/code/session_0132zdS6HdxaQLVf2TtDg67g
 
 ## 지금 상태
 
-- **최종 목표(사용자, 2026-11-04):** 그룹(M2)과 채팅(M3) 완성. 닿으면 보류를 걸고 정리해 보고합니다.
-  - TestFlight 빌드에서 여러 사람이 그룹을 만들고 초대 링크로 들어옵니다.
-  - 그룹 캘린더, 날짜 잡기, 투표를 쓰고, 그룹 채팅(첨부 포함)을 실시간과 푸시로 주고받습니다.
-  - 알파 서버에는 API와 실시간 게이트웨이가 함께 떠 있습니다.
-  - 안드로이드는 사용자 환경 때문에 실기기 확인 없이 코드와 CI까지 합니다.
-- **M1 개발은 끝났습니다.** 게이트 지표는 테스터 운영 뒤에 봅니다.
-- **알파 서버(`api.geunaleottae.com`):** main `ac1d125`(API `175c90065a3c`)로 배포됐습니다.
-  - Caddy는 HTTP/1.1만 받고, 요청 본문을 512KB로 막습니다. API에는 경로별 한도가 따로 있습니다.
-  - 그룹·멤버·Welcome은 0건입니다. 매일 DB 덤프가 버킷에 올라갑니다.
-- **배포:** 운영자 맥에서 `make deploy-alpha`로 합니다([infra/alpha](../../infra/alpha/README.md)).
-  - ACG가 SSH를 운영자 IP에만 엽니다. IP가 바뀌면 SSH가 시간 초과로 멈추니 콘솔에서 고칩니다.
-- **릴리스:**
-  - release-ios run 3(main `52df814`)은 사용자 승인을 기다립니다. 위젯용 App Group과 App ID는 사용자가 등록했습니다.
-  - 안드로이드는 `android-release-442214`를 만들었습니다. 첫 번들은 손으로 플레이에 올리고, 다음부터 `upload=true`입니다.
-- **보안 점검(2026-11-03~04, 독립 세션):** 서버·코어 수정은 머지되고 배포됐습니다. 남은 항목은 QA가 비공개로 추적하고, 공개 문서에는 재현 방법을 쓰지 않습니다([qa.md](../../docs/qa.md) 4장).
+- **조정:** 사용자 결정(2026-11-17)으로 조정은 `session_0132zdS4MTLxXdVNDS9A2fcB`("현대 코드 평가 및 인프라 설계")가 맡습니다. 이 세션과 11-04에 연 직군 세션 7개는 인수인계 뒤 멈춥니다(아래 "세션").
+- **목표(사용자, 2026-11-04):** M2 그룹 캘린더를 먼저 마칩니다. 채팅(M3)은 보류이고, 알파 서버는 키우지 않고 Micro에 게이트웨이를 더합니다(#198).
+- **알파 서버:** API는 11-17에 바깥에서 `UP`입니다. 게이트웨이는 아직 배포 전입니다(#197 머지, `rt.geunaleottae.com` A 레코드 있음, 응답 없음).
+  - 배포는 운영자 맥에서 [infra/alpha](../../infra/alpha/README.md)의 명령으로 합니다. 변수는 `export`로 넘기고, `GEUNAL_API_HOST`와 `GEUNAL_RT_HOST`를 함께 줍니다.
+  - 게이트웨이를 처음 띄우는 배포는 compose 네트워크를 다시 만들어 API가 1~2분 끊깁니다.
+  - #215가 바깥 경보에 게이트웨이 검사를 더해서, 배포 전까지는 `alpha-alert` 이슈가 열릴 수 있습니다.
+- **푸시 키:** 사용자가 Secret Manager에 `GEUNAL_PUSH_APNS_KEY_ID`, `GEUNAL_PUSH_APNS_PRIVATE_KEY`, `GEUNAL_PUSH_FCM_SERVICE_ACCOUNT`를 넣었다고 했습니다(11-04). 서버가 쓰는 것은 백엔드의 발송 PR 뒤입니다. APNs는 production만 씁니다.
+- **11-17 머지:** #194, #199(코어 채팅을 기능 플래그 뒤로), #215(덤프·게이트웨이 감시, 복구 연습), #218, #219(Caddy 2.11.9, HTTP/2 복구).
 
 ## 열린 PR과 브랜치
 
-| PR | 상태 | 남은 일 |
+| PR·브랜치 | 상태 | 남은 일 |
 | --- | --- | --- |
-| #175 코어 엔트리 크기 기준(계약 4장) | `user-approved` 필요 | 사용자가 확인하면 라벨 |
-| #176 QA 문서(위협 모델 3.4, m1.md 2.6) | `user-approved` 필요 | 사용자가 확인하면 라벨 |
-| #170 코어 그룹 번들 처리 | 자동 머지 | 없음 |
+| #198 M2는 Micro, 채팅 보류 기록 | Codex 지적 해결, `user-approved` 대기(`6957973`) | 사용자 확인 뒤 라벨·머지 |
+| #187 초대 계약(코어) | `user-approved` 대기(`56cb876`) | 머지 뒤 #191·#192 |
+| #191 초대 서버(백엔드) | 머리 `b07e969`, 라벨이 이 머리에 없음 | main 합치기, QA 지적 수정, 다시 확인 |
+| #192, #196, #200(코어), #202(안드로이드) | 리뷰·머지 대기 | 각 직군 인수인계 참고 |
+| #212~#217 | 새 조정 세션이 진행 | 그 세션 |
+| #220 QA 문서 | `user-approved` 대기 | #216·#217 뒤 |
+| Dependabot #168, #204~#211 | 쌓여 있음 | 조정 세션 담당 |
+| `claude/api-push`, `claude/core-group-meta-2` | PR 없음 | 백엔드 푸시 발송, 코어 그룹 메타 |
 
 ## 다음 할 일
 
-1. 새 세션이 모두 시작했는지 봅니다. 실시간(게이트웨이) 세션은 이번에 처음 엽니다(M2: `state`·`membership` 즉시 전달, 알파 배포).
-2. M2 인프라([plan](../../docs/plan.md) 4장, [infra.md](../../docs/parts/infra.md) 2장):
-   - 알파 서버를 2 vCPU·4GB로 옮기고 Micro는 스테이징으로 둡니다. 사용자가 비용을 보고 정합니다.
-   - WAL-G 시점 복구, 모니터링과 경보
-   - 게이트웨이 배포(compose, Caddy)
-3. **푸시 키:** 사용자 결정대로 기존 환경을 최대한 씁니다.
-   - iOS는 같은 Apple Developer 계정의 APNs 키를 씁니다.
-   - 안드로이드는 플레이 서비스 계정이 있는 GCP 프로젝트 `geunal-eottae`에 Firebase를 붙여 FCM HTTP v1을 씁니다.
-   - 서버 자격 증명은 NCP Secret Manager에 둡니다.
-4. **초대 링크 도메인:** Cloudflare Pages의 `geunaleottae.com`에 apple-app-site-association과 assetlinks를 둡니다. 공개 사이트(처리방침, 약관, 삭제 안내, 문의)와 함께 만듭니다.
-5. **Caddy 이미지:** 2026-12-04 전에 고친 Caddy 이미지로 올립니다. 그때 `infra/alpha/.trivyignore`의 Caddy 줄을 지우고 HTTP/2를 되돌립니다.
-6. **서버 밖 덤프 보호와 API 저장소 키 범위:** 추천안은 운영자 맥이 덤프를 당겨오는 것입니다. 사용자 결정을 기다립니다.
-7. 게이트웨이를 배포하기 전에 점검할 항목(비공개 목록, 새 세션 프롬프트로 넘김)을 처리하고, 자체 CA 계획 문서를 씁니다.
+1. 게이트웨이 배포(사용자 맥). 배포 출력의 `fetch-secrets: wrote …`에 푸시 키 이름 셋이 있는지 봅니다.
+2. 직군 세션 인수인계 PR을 머지한 뒤, 새 직군 세션을 열지 정합니다([CLAUDE.md](../../CLAUDE.md) "세션 교체").
+3. 이전 세션 보관: 아래 표 8개와 11-04 이전 8개(이 파일의 이전 판, `f29aa99`). 사용자 확인 뒤.
+4. QA 요청: JWT 키 교체 절차에 "이전 비밀 키를 리프레시 유예보다 오래 남김", "침해 때 모든 세션 끝내기"를 더합니다(#216 뒤).
+5. 초대 도메인 `geunaleottae.com`(Cloudflare Pages): AASA, assetlinks, `/i/<code>` 페이지(디자인 M2 21번), 공개 사이트. 페이지는 링크의 `#` 값을 `textContent`로만 그립니다(계약 15장).
 
 ## 기다리는 결정
 
-| 결정 | 누가 | 상태 |
+| 결정 | 누가 | 어디에 |
 | --- | --- | --- |
-| 알파 서버 증설 시점(월 약 8.8만 원, 부가세 별도) | 사용자 | 보고함 |
-| 활동 카테고리 20개 값 | 사용자(디자인 초안) | M2 시작 전 |
-| 덤프 보호 방식, API 저장소 키 범위 | 사용자 | 추천안 있음 |
-| #175, #176, release-ios run 3 | 사용자 | 승인 대기 |
+| 디스크 증설: 10GB 중 85%, 게이트웨이 이미지로 약 88%. 블록 스토리지 10GB(월 약 1,200원) 권함 | 사용자 | 이 파일 |
+| 계약 7장: WebSocket 토큰을 쿼리에서 헤더로(실시간·코어 동의) | 사용자 | 실시간·코어 인수인계 |
+| Firebase 앱 변수 `GEUNAL_FIREBASE_*` 4개를 넣었는지 | 사용자 | #202 본문 |
+| release-ios run 3 승인, 안드로이드 첫 번들 업로드 | 사용자 | 11-04 판 |
 
 ## 알아 둘 것
 
-- **`gate`:** 기본 브랜치의 `gate.sh`로 판정합니다(#153). `pull_request_target`은 쓰지 않습니다. 세션은 사용자 계정으로 움직여 라벨과 상태를 직접 쓸 수 있으니, gate는 실수를 막는 장치입니다.
-- **비밀값:** 사용자에게 키나 비밀번호를 대화에 붙이게 하지 않습니다. 값은 콘솔, 터미널, 서버 파일에만 둡니다.
-- **SSH:** 클라우드 세션은 HTTPS 프록시만 지나므로 서버에 SSH로 닿지 못합니다. 서버 작업은 사용자 맥에서 합니다.
-- **Caddy 재시작:** Caddyfile이 바뀐 배포에서만 해시 라벨로 Caddy를 다시 만듭니다(#154).
-- **Apple 키:** 로그인은 ID 토큰만 검증합니다. 계정 삭제와 안드로이드 Apple 로그인은 `.p8`로 코드를 교환하므로, 키가 틀리면 `invalid_client`가 납니다.
+- **보류:** 세션들이 같은 GitHub 계정을 써서 보류 이슈를 누가 닫았는지 기록으로 구별되지 않습니다. 보류를 연 직후에도 몇 세션이 확인 없이 푸시했습니다(#201, #203). 바깥 작업 바로 앞에서 다시 확인하게 합니다.
+- **비밀값 파일:** `fetch-secrets.py`는 값의 줄바꿈을 두 글자 `\n`으로 바꿔 씁니다. 여러 줄 JSON(FCM 서비스 계정)은 API가 되돌려 읽어야 합니다(백엔드에 전달함). 작은따옴표가 든 값은 배포를 멈춥니다.
+- **SSH 시간 초과:** ACG `geunal-alpha-app-acg`의 22번 허용 IP가 운영자 IP와 다를 때입니다. 콘솔에서 고치고 tfvars의 `admin_cidr`도 맞춥니다. 새 환경은 첫 접속에서 호스트 키를 받아야 배포 스크립트가 돕니다.
+- **비공개 항목:** 보안 점검의 남은 항목은 QA 세션과 새 조정 세션에 직접 전했고, 저장소에는 쓰지 않습니다.
 
-## 이전 세션
+## 세션(11-04에 엶, 인수인계 뒤 보관 대상)
 
 | 직군 | 세션 |
 | --- | --- |
-| 조정·인프라 | `session_0132zdS5vn6SS8q9nPbAMcQo` |
-| 코어 | `session_0132zdS4uHGbzCbfbEzPa2Wd` |
-| iOS | `session_0132zdS4Pe4XmKMtDFPdWSST` |
-| 안드로이드 | `session_0132zdS54G1z5EBNcf5qoDge` |
-| 백엔드 | `session_0132zdS5vEr5VQDpmakFFJR9` |
-| 디자인 | `session_0132zdS6N6MJFEgcRXTttwBV` |
-| QA | `session_0132zdS53MCuju8pdcCTjN6T` |
-| 보안 점검(독립) | `session_0132zdS6QZvXWGQbW2f2MckC` |
+| 조정·인프라 | `session_0132zdS6HdxaQLVf2TtDg67g` |
+| 코어 | `session_0132zdS7mwpftUmPh7999RdK` |
+| iOS | `session_0132zdS6HBvBLe8C9VXg25Z8` |
+| 안드로이드 | `session_0132zdS8SDxNVFKTywyX4wkG` |
+| 백엔드 | `session_0132zdS6HneNc5uxU6uDCxQM` |
+| 실시간 | `session_0132zdS72drDTVz5N8nhS98C` |
+| 디자인 | `session_0132zdS6ZvVTjdo7UHj8sPRp` |
+| QA | `session_0132zdS8UWcdDZETX36CM8KY` |
