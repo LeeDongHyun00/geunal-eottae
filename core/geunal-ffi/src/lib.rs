@@ -12,6 +12,7 @@ pub mod calendar;
 pub mod chat;
 mod local;
 pub mod people;
+mod push;
 mod transport;
 
 pub use account::*;
@@ -480,6 +481,7 @@ impl Core {
             // After the groups, so what the server keeps refusing does not hold up the calendar.
             this.refresh_account().await?;
             this.publish_due_key_packages().await?;
+            this.send_due_push_token().await?;
             this.upload_pending_recovery().await
         })
         .await

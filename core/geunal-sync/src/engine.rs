@@ -221,6 +221,11 @@ impl<T: Transport> Engine<T> {
         Ok(self.api.upload_key_packages(packages).await?)
     }
 
+    /// Registers this device's push token with the server, or clears it with `None`.
+    pub async fn set_push_token(&self, token: Option<String>) -> Result<(), SyncError> {
+        Ok(self.api.set_push_token(token).await?)
+    }
+
     // ----- groups -----
 
     /// Creates a group: the API mints the UUID, the device creates the MLS group under its 16 bytes and publishes the

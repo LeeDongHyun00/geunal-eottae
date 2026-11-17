@@ -605,6 +605,8 @@ pub trait Transport: Send + Sync {
         req: PutState,
     ) -> impl Future<Output = Result<i64, ApiError>> + Send;
     fn state(&self, group_id: &str) -> impl Future<Output = Result<Vec<StateBlob>, ApiError>> + Send;
+    /// `PUT /me/push-token`: this device's APNs or FCM token, or `None` to stop pushes to it.
+    fn set_push_token(&self, token: Option<String>) -> impl Future<Output = Result<(), ApiError>> + Send;
 }
 
 /// A shared transport: the app signs in through the same client the engine then uses.
@@ -719,6 +721,9 @@ impl<T: Transport> Transport for std::sync::Arc<T> {
     }
     async fn state(&self, group_id: &str) -> Result<Vec<StateBlob>, ApiError> {
         (**self).state(group_id).await
+    }
+    async fn set_push_token(&self, token: Option<String>) -> Result<(), ApiError> {
+        (**self).set_push_token(token).await
     }
 }
 

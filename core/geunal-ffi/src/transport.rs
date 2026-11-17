@@ -133,4 +133,7 @@ impl Transport for Api {
     async fn state(&self, group_id: &str) -> Result<Vec<StateBlob>, ApiError> {
         each!(self, t => t.state(group_id).await)
     }
+    async fn set_push_token(&self, token: Option<String>) -> Result<(), ApiError> {
+        each!(self, t => t.set_push_token(token).await)
+    }
 }

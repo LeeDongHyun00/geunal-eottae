@@ -434,6 +434,11 @@ impl Transport for HttpTransport {
         let path = format!("/groups/{group_id}/state");
         Ok(self.send::<States>(|t| t.request(Method::GET, &path)).await?.states)
     }
+
+    async fn set_push_token(&self, token: Option<String>) -> Result<(), ApiError> {
+        let body = serde_json::json!({ "token": token });
+        self.send_empty(|t| t.request(Method::PUT, "/me/push-token").json(&body)).await
+    }
 }
 
 #[cfg(test)]

@@ -1106,8 +1106,17 @@ impl Core {
         *self.ticket.lock().unwrap_or_else(|p| p.into_inner()) = None;
         // A new session asks the server again what a stopped sign-in left undone (`upload_pending_recovery`).
         self.recovery_checked.store(false, Ordering::Relaxed);
-        self.store.write(|db| Ok::<_, CoreError>(db.set_setting(KEY_PACKAGES_DUE, "1")?))?;
+        self.store.write(|db| {
+            db.set_setting(KEY_PACKAGES_DUE, "1")?;
+            // The server's row for this device starts without a push token, whichever device had one before.
+            Ok::<_, CoreError>(db.set_setting(crate::push::PUSH_TOKEN_DUE, "1")?)
+        })?;
         if let Err(e) = self.publish_due_key_packages().await
+            && ends_session(&e)
+        {
+            return Err(e);
+        }
+        if let Err(e) = self.send_due_push_token().await
             && ends_session(&e)
         {
             return Err(e);
