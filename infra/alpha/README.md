@@ -7,9 +7,10 @@
 | 파일 | 하는 일 |
 | --- | --- |
 | `compose.yml` | API·PostgreSQL·Valkey. 호스트 이름이 있으면 Caddy(TLS)와 실시간 게이트웨이도 띄움 |
-| `Caddyfile` | `GEUNAL_API_HOST`와 `GEUNAL_RT_HOST`의 Let's Encrypt 인증서를 받아 API와 게이트웨이로 넘김. 접속 로그는 남기지 않고, 오류 로그의 요청 주소에서 `token` 쿼리를 지움 |
+| `Caddyfile` | `GEUNAL_API_HOST`와 `GEUNAL_RT_HOST`의 Let's Encrypt 인증서를 받아 API와 게이트웨이로 넘김. 접속 로그는 남기지 않고, 오류 로그의 요청 주소에서 `token` 쿼리를 지움. API 호스트에서 `/actuator/health` 말고는 actuator 경로를 404로 막고, 덤프 상태 파일을 내줌 |
 | `bootstrap.sh` | 서버 준비: 스왑 2GB, 쓰지 않는 서비스 끄기, Docker와 로그 회전, 비밀값 파일, 매일 DB 덤프 타이머. 배포할 때마다 다시 돌아도 안전 |
-| `db-dump.sh`, `geunal-db-dump.*` | 매일 04:00(서울) `pg_dump`, 서버에 7일 보관. 암호화한 사본을 `geunal-alpha-backups` 버킷에 7일 |
+| `db-dump.sh`, `geunal-db-dump.*` | 매일 04:00(서울) `pg_dump`, 서버에 7일 보관. 암호화한 사본을 `geunal-alpha-backups` 버킷에 7일. 끝까지 성공하면 상태 파일을 씀 |
+| `restore-drill.sh` | 운영자 PC에서 하는 복원 연습: 덤프 하나를 쓰고 버릴 PostgreSQL에 복원해 확인(아래 "복원 연습") |
 | `deploy.sh` | 운영자 PC에서 하는 배포(`make deploy-alpha`) |
 | `fetch-secrets.py` | 배포할 때 Secret Manager에서 서버 밖에서 발급받은 키를 받아 root 전용 파일로 씀(아래 "비밀값") |
 | `watch.sh` | 바깥에서 하는 기본 경보. `.github/workflows/alpha-watch.yml`이 15분마다 돌림(아래 "경보") |
@@ -46,6 +47,7 @@ GEUNAL_ALPHA_SSH=root@<서버 주소> GEUNAL_ALPHA_SSH_KEY=~/.ssh/<키> \
 - `/etc/geunal`(root 전용): 비밀값 파일들. 무엇이 어디서 오는지는 아래 "비밀값"에 있습니다.
   - PostgreSQL 볼륨을 둔 채 이 디렉터리를 지우면 새 비밀번호가 기존 DB와 맞지 않습니다.
 - `/var/backups/geunal`: DB 덤프(7일).
+- `/var/lib/geunal/status`: 덤프 상태 파일 `db-dump.json`. Caddy가 읽기 전용으로 붙여 바깥에 내주므로 누구나 읽을 수 있고, 다른 파일은 두지 않습니다.
 
 ## 비밀값
 
@@ -110,8 +112,57 @@ GEUNAL_SECRET_ID=...
   - `GEUNAL_DUMP_AGE_RECIPIENT`: 운영자 PC에서 `age-keygen`으로 만든 키의 공개 키(`age1...`)
   - `GEUNAL_DUMP_S3_ACCESS_KEY`, `GEUNAL_DUMP_S3_SECRET_KEY`: 서버 전용 Object Storage 키
 
-- 복원: 덤프를 내려받아 운영자 PC에서 `age -d -i <개인 키> geunal-N.dump.age > geunal.dump`로 풀고 `pg_restore`로 넣습니다.
-- 확인: `journalctl -u geunal-db-dump`에 `Uploaded db/...`가 남습니다.
+- 복원: 덤프를 내려받아 운영자 PC에서 `age -d -i <개인 키> geunal-N.dump.age > geunal.dump`로 풀고 `pg_restore`로 넣습니다. 덤프가 실제로 복원되는지는 아래 "복원 연습"으로 확인합니다.
+
+**상태 파일:** 덤프가 끝까지 성공하면(버킷 키가 있으면 올리기까지) `db-dump.sh`가 `/var/lib/geunal/status/db-dump.json`을 씁니다. Caddy가 이 파일 하나만 `https://api.geunaleottae.com/_alpha/db-dump.json`으로 내주고(`Cache-Control: no-store`), 바깥 경보가 읽습니다(아래 "경보").
+
+```json
+{"last_success":"2026-11-17T19:03:11Z","bytes":1482907,"uploaded":true}
+```
+
+- 마지막으로 성공한 시각(UTC), 덤프 크기(암호화 전, 바이트), 서버 밖으로 올렸는지만 담습니다. 누구나 읽을 수 있는 주소이므로 다른 값은 넣지 않습니다.
+- 실패한 실행은 파일을 건드리지 않습니다. 그래서 `last_success`가 오래된 채로 남아 경보가 울립니다.
+- `dump.env`가 없어 덤프가 서버에만 남으면 `uploaded`가 `false`이고, 이것도 경보가 울립니다.
+- **이 구성을 처음 배포한 날:** 상태 파일은 다음 04:00 덤프 때 처음 생기고, 그때까지 경보가 "상태가 없음"으로 울립니다. 배포 직후 서버에서 `systemctl start geunal-db-dump`를 한 번 돌려 파일을 만듭니다.
+
+**서버에서 확인:**
+
+- `journalctl -u geunal-db-dump`: 성공하면 `Uploaded db/...`가 남습니다.
+- `journalctl -p err -u geunal-db-dump`: 실패한 실행만 봅니다. 실패하면 `geunal-db-dump FAILED (exit N)` 줄이 오류 등급으로 남고, 그 위에 원인(`pg_dump`, `age`, `curl`의 오류)이 있습니다.
+- `systemctl --failed`: 마지막 실행이 실패했으면 `geunal-db-dump.service`가 보입니다.
+
+## 복원 연습
+
+복원해 본 적 없는 덤프는 백업이라고 할 수 없습니다. `restore-drill.sh`는 덤프 하나를 `compose.yml`과 같은 버전의 쓰고 버릴 PostgreSQL 컨테이너에 복원하고 결과를 확인합니다. 운영자 PC에서 돌리며(Docker와 `age` 필요), 알파 서버와 그 DB는 건드리지 않습니다.
+
+1. **덤프 받기:** 버킷의 `db/geunal-<요일 번호>.dump.age`를 받습니다(요일 번호는 월요일 1 ~ 일요일 7, 서버 시각 기준).
+   - 콘솔 › Object Storage › `geunal-alpha-backups` › `db/`에서 내려받거나, 운영자 키로 S3 API를 씁니다. 서버 전용 키는 쓰기만 되므로 쓰지 못합니다.
+   - 예: `aws --endpoint-url https://kr.object.ncloudstorage.com s3 cp s3://geunal-alpha-backups/db/geunal-2.dump.age .`
+2. **연습:** age 개인 키 파일과 함께 돌립니다. 서버의 `/var/backups/geunal`에서 가져온 암호화하지 않은 `.dump`는 키 없이 넣습니다.
+
+```bash
+infra/alpha/restore-drill.sh geunal-2.dump.age <age 개인 키 파일>
+```
+
+3. **통과:** 마지막 줄이 `PASS: ...`이고 종료 코드가 0입니다.
+
+```text
+Flyway: 6 migrations, all successful; the latest is 6
+This checkout has 6 versioned migrations
+Rows per table:
+  public.accounts                                  25
+  ...
+PASS: geunal-2.dump.age restores into postgres:16.15
+```
+
+- `pg_restore`가 오류를 하나라도 내거나, `flyway_schema_history`가 없거나, 실패한 마이그레이션이 있으면 `FAIL: ...`과 함께 0이 아닌 코드로 끝납니다.
+- 표마다 행 수만 출력합니다. 행의 내용은 터미널에도 로그에도 나오지 않습니다. 행 수가 그럴듯한지(계정 수가 테스터 수와 맞는지, 0인 표가 이상하지 않은지)는 사람이 봅니다.
+- 마이그레이션 수는 받은 체크아웃의 수와 나란히 나옵니다. 마지막 배포보다 오래된 덤프는 더 적을 수 있습니다.
+- 어떻게 끝나든 컨테이너와 그 볼륨, 풀어 놓은 덤프를 지웁니다. 내려받은 `.age` 파일은 직접 지웁니다.
+
+**언제:** 한 달에 한 번, 그리고 PostgreSQL 버전을 올리기 전후, 덤프 방식(`db-dump.sh`)이나 age 키를 바꾼 뒤에 합니다. 공개 베타 전에는 반드시 한 번 통과해야 합니다. 한 날짜와 결과를 운영 기록에 남깁니다.
+
+**이 연습이 보지 않는 것:** 복원한 DB에 API를 붙여 띄워 보지는 않습니다. 서버를 잃었을 때 새 서버에 올리는 절차 전체(비밀값, JWT 서명 키 포함)는 M4의 장애 대응 절차에서 다룹니다([인프라](../../docs/parts/infra.md) 11장).
 
 ## 접속 로그 버킷의 만료
 
@@ -128,15 +179,18 @@ GEUNAL_LIFECYCLE_S3_ACCESS_KEY=... GEUNAL_LIFECYCLE_S3_SECRET_KEY=... infra/alph
 
 ## 경보
 
-`.github/workflows/alpha-watch.yml`이 15분마다 GitHub의 러너에서 `watch.sh`를 돌립니다. NCP 밖에서 보므로 테스터의 휴대폰이 보는 것과 같습니다. M2의 모니터링([인프라](../../docs/parts/infra.md) 8장, 11장) 전까지 쓰는 최소한의 경보입니다.
+`.github/workflows/alpha-watch.yml`이 15분마다 GitHub의 러너에서 `watch.sh`를 돌립니다(GitHub의 예약 실행이 가진 한계는 아래 "이 경보의 한계"). NCP 밖에서 보므로 테스터의 휴대폰이 보는 것과 같습니다. M2의 모니터링([인프라](../../docs/parts/infra.md) 8장, 11장) 전까지 쓰는 최소한의 경보입니다.
 
 | 검사 | 실패로 보는 것 |
 | --- | --- |
 | `https://api.geunaleottae.com/actuator/health` | 약 2분 동안 네 번 시도해 모두 200 `UP`이 아님. 배포 중 재시작으로는 울리지 않음 |
 | 디스크 | 남은 공간이 1GB보다 적으면 상태 검사가 `DOWN`(503)이 되어 위 검사로 드러남(`compose.yml`) |
-| TLS 인증서 | 남은 기간이 14일보다 짧음. Caddy가 수명의 3분의 1이 남았을 때 갱신하므로, 갱신이 며칠째 실패한다는 뜻 |
+| `https://rt.geunaleottae.com/healthz` | 같은 방법으로 네 번 시도해 모두 200이 아님. 게이트웨이는 Redis 연결이 살아 있을 때만 200을 줌. `GEUNAL_WATCH_RT_HOST`가 없으면 건너뜀 |
+| TLS 인증서(API, 게이트웨이 각각) | 남은 기간이 14일보다 짧음. Caddy가 수명의 3분의 1이 남았을 때 갱신하므로, 갱신이 며칠째 실패한다는 뜻 |
+| `https://api.geunaleottae.com/_alpha/db-dump.json` | 상태 파일이 없거나 읽을 수 없음, `last_success`가 26시간보다 오래됨(매일 덤프가 한 번 빠짐), `uploaded`가 `true`가 아님(위 "서버 밖 DB 덤프") |
 
 - 실패하면 `alpha-alert` 라벨이 붙은 이슈를 하나 열고, 이슈 첫 줄에서 저장소 주인을 불러 GitHub 알림이 가게 합니다. 문제가 이어지는 동안에는 더 쓰지 않고, 모든 검사가 통과하면 한 줄 남기고 닫습니다.
+- 바깥에서 닿는 actuator 경로는 `/actuator/health` 하나입니다. 나머지(`/actuator/prometheus` 등)는 인증이 없는 내부망용이라 Caddy가 404로 답합니다(`Caddyfile`).
 - 워크플로 실행은 문제를 알리는 동안에도 녹색입니다. 예약 실행이 실패하면 15분마다 메일이 가기 때문입니다. 실행이 빨갛다면 경보 자체가 고장 난 것입니다.
 - 비밀값을 쓰지 않습니다. 토큰은 이 저장소의 이슈만 다룹니다.
 
@@ -144,10 +198,24 @@ GEUNAL_LIFECYCLE_S3_ACCESS_KEY=... GEUNAL_LIFECYCLE_S3_SECRET_KEY=... infra/alph
 
 - `cd /opt/geunal && docker compose ps`: 어느 컨테이너가 멈췄거나 unhealthy인지 봅니다.
 - `docker compose logs --tail 200 api`(또는 `caddy`): 시작 실패나 인증서 갱신 오류를 봅니다.
+- 게이트웨이만 실패하면: `docker compose logs --tail 200 gateway`. 메모리 상한에 걸려 되풀이해 죽는지는 `docker inspect --format '{{.RestartCount}} {{.State.OOMKilled}}' geunal-gateway-1`로 봅니다(위 "실시간 게이트웨이").
+- 덤프 경보면: `journalctl -p err -u geunal-db-dump`로 원인을 보고, 고친 뒤 `systemctl start geunal-db-dump`로 다시 돌립니다. 성공하면 상태 파일이 바뀌어 다음 검사에서 이슈가 닫힙니다. `uploaded`가 `false`면 `/etc/geunal/dump.env`가 있는지 봅니다.
 - 503이면 디스크부터 봅니다: `df -h /`, `docker system df`. 쓰지 않는 이미지는 `docker image prune`으로 지웁니다. 덤프는 7일치만 남습니다.
 - 다시 띄우기: `docker compose up -d`.
 
-**아직 보지 않는 것:** 매일 덤프가 버킷에 올라갔는지는 이 경보가 보지 못합니다. 서버 안의 일이라 바깥에서 볼 방법이 없기 때문입니다. 지금은 `journalctl -u geunal-db-dump`로 확인하고, M2의 모니터링에서 다룹니다.
+**이 경보의 한계**
+
+- **GitHub의 예약 실행에 기댑니다.** GitHub은 부하가 많을 때 예약 실행을 늦추거나 건너뛰므로(특히 매시 정각 무렵), 15분은 보장된 간격이 아닙니다. 수십 분 늦게 알 수 있습니다.
+- **저장소에 60일 동안 활동이 없으면 GitHub이 예약 워크플로를 끕니다.** 꺼지기 전에 메일이 오고, Actions 탭에서 다시 켭니다. 꺼진 동안에는 아무 경보도 오지 않습니다.
+- **경보를 지켜보는 것은 없습니다.** GitHub Actions가 멈추거나 워크플로가 꺼져도 알려 주는 것이 없으므로, Actions 탭의 `alpha-watch`에 최근 실행이 있는지 가끔 봅니다. 대신할 것은 만들지 않았고, M2의 모니터링([인프라](../../docs/parts/infra.md) 8장)에서 다룹니다.
+- 알림은 GitHub 알림(메일·앱) 하나뿐입니다. 전화나 문자로 깨우지 않습니다.
+
+**아직 보지 않는 것**
+
+- 덤프 상태 파일은 서버가 스스로 쓴 것입니다. 버킷에 실제로 그 객체가 있는지, 복원이 되는지는 바깥에서 보지 않으므로 "복원 연습"으로 확인합니다.
+- 덤프가 실패해도 바로 울리지 않습니다. 마지막 성공에서 26시간이 지나야 울립니다.
+- 게이트웨이는 `/healthz`만 봅니다. WebSocket으로 실제로 붙어 알림을 받는지는 보지 않습니다.
+- PostgreSQL·Valkey의 메모리, 스왑 사용, 컨테이너 재시작 횟수 같은 서버 안의 수치. API가 내부망용 지표(`/actuator/prometheus`)를 내지만 아직 모으는 곳이 없고, 바깥에서는 Caddy가 404로 막습니다.
 
 ## 도메인과 DNS
 
@@ -166,4 +234,4 @@ GEUNAL_LIFECYCLE_S3_ACCESS_KEY=... GEUNAL_LIFECYCLE_S3_SECRET_KEY=... infra/alph
 
 - 디스크 여유: 10GB 가운데 85%를 씁니다(스왑 2GB, containerd 이미지 저장소 1.2GB). API 이미지를 더 키우기 전에 블록 스토리지를 더하거나 Docker를 이전 저장 방식(overlay2)으로 돌려야 할 수 있습니다.
 - 이미지 레지스트리와 `main` 머지 뒤 자동 배포.
-- 게이트웨이의 바깥 경보: `watch.sh`는 아직 API만 봅니다. 게이트웨이를 처음 배포한 뒤 `https://rt.geunaleottae.com/healthz` 검사를 더합니다(배포 전에 더하면 DNS가 없어 바로 울림).
+- 지표 수집과 서버 안의 경보(M2). API의 `/actuator/prometheus`는 compose 네트워크 안에서만 닿습니다(`curl http://127.0.0.1:8080/actuator/prometheus`는 서버의 루프백으로도 됨).

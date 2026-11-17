@@ -6,20 +6,50 @@
 # The copy that leaves the server is encrypted with age to the operator's public key, so neither the bucket nor the
 # server's own Object Storage key can read it; only the operator's private key, kept off the server, can. The upload
 # needs /etc/geunal/dump.env (README.md "서버 밖 DB 덤프"); without it the dump stays local and the run says so.
+#
+# Nothing on the server pages anyone, so a run that ends well leaves a small status file that Caddy serves
+# (Caddyfile) and the outside watch reads (watch.sh): when the last good run was, how large the dump is and whether a
+# copy left the server. A failed run leaves the file as it was, so the watch sees it go stale. The file is public, so
+# it holds those three values and nothing else.
 set -euo pipefail
 umask 077
 
 dir=/var/backups/geunal
+status_dir=${GEUNAL_DUMP_STATUS_DIR:-/var/lib/geunal/status}
 mkdir -p "$dir"
 out="$dir/geunal-$(date +%Y%m%d-%H%M).dump"
-trap 'rm -f "$out.part" "$out.age"' EXIT
+
+# systemd reads a leading "<3>" as the error priority, so a failed run stands out in `journalctl -u geunal-db-dump`
+# and is all that `journalctl -p err -u geunal-db-dump` shows.
+finish() {
+  local code=$?
+  rm -f "$out.part" "$out.age" "$status_dir/db-dump.json.part"
+  if [ "$code" -ne 0 ]; then
+    echo "<3>geunal-db-dump FAILED (exit $code): the status file keeps the last good run, and the outside watch" \
+      "reports it once that is older than a day" >&2
+  fi
+}
+trap finish EXIT
+
+# Written to a second name and moved, so Caddy never serves half a file. The directory and the file are
+# world-readable on purpose, unlike everything else this script writes.
+write_status() {
+  install -d -m 755 "$status_dir"
+  printf '{"last_success":"%s","bytes":%s,"uploaded":%s}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(stat -c %s "$out")" "$1" \
+    >"$status_dir/db-dump.json.part"
+  chmod 644 "$status_dir/db-dump.json.part"
+  mv "$status_dir/db-dump.json.part" "$status_dir/db-dump.json"
+}
+
 docker compose --file /opt/geunal/compose.yml exec -T postgres \
   pg_dump --username geunal --format custom geunal >"$out.part"
 mv "$out.part" "$out"
 find "$dir" -name 'geunal-*.dump' -mtime +6 -delete
 
 if [ ! -f /etc/geunal/dump.env ]; then
-  echo "warning: /etc/geunal/dump.env is missing, so the dump stays on this server only" >&2
+  echo "<4>warning: /etc/geunal/dump.env is missing, so the dump stays on this server only" >&2
+  # The watch reports "uploaded": false, so a server that lost its dump.env does not pass for backed up.
+  write_status false
   exit 0
 fi
 # shellcheck source=/dev/null
@@ -44,3 +74,4 @@ printf 'user = "%s:%s"\n' "$GEUNAL_DUMP_S3_ACCESS_KEY" "$GEUNAL_DUMP_S3_SECRET_K
     --header "x-amz-content-sha256: $sha" \
     --upload-file "$out.age" "$endpoint/$bucket/$key"
 echo "Uploaded $key ($(stat -c %s "$out.age") bytes)" >&2
+write_status true
