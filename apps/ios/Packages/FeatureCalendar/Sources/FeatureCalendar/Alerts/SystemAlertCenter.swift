@@ -1,8 +1,8 @@
 import Foundation
 @preconcurrency import UserNotifications
 
-/// The system's notification center (docs/parts/ios.md §5 "로컬 알림"). Each alert fires on a calendar trigger and
-/// carries only its route.
+/// The system's notification center (docs/parts/ios.md §5 "로컬 알림"). Each alert fires on a calendar trigger that
+/// names one instant, and carries only its route.
 @MainActor
 public final class SystemAlertCenter: AlertCenter {
     public init() {}
@@ -41,17 +41,37 @@ public final class SystemAlertCenter: AlertCenter {
         center.removeAllDeliveredNotifications()
     }
 
-    /// The instant as the phone's own calendar and time zone name it, down to the second, which is what a calendar
-    /// trigger matches. A phone that moves to another time zone reads its triggers back as other instants, and the
-    /// next refresh schedules them again.
-    nonisolated static func components(of date: Date) -> DateComponents {
-        Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+    /// The instant as Gregorian components in GMT that carry their calendar and time zone, down to the second. A
+    /// calendar trigger matches components, and components without a zone are a wall-clock time: after a flight or a
+    /// daylight-saving change they would fire at another instant until the app next ran. With the zone the trigger
+    /// means one instant wherever the phone is, and GMT has no hour that is skipped or repeated.
+    public nonisolated static func components(of date: Date) -> DateComponents {
+        var components = gmt.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+        components.calendar = gmt
+        components.timeZone = .gmt
+        return components
+    }
+
+    /// The instant a trigger's components name. Components without a time zone come from a build that scheduled
+    /// wall-clock times; they read as the distant past, which no planned alert equals, so the next refresh replaces
+    /// them with instants.
+    public nonisolated static func instant(of components: DateComponents) -> Date? {
+        guard let timeZone = components.timeZone else { return Date.distantPast }
+        var calendar = components.calendar ?? Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar.date(from: components)
+    }
+
+    private nonisolated static var gmt: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .gmt
+        return calendar
     }
 
     private nonisolated static func planned(_ request: UNNotificationRequest) -> PlannedAlert? {
         guard request.identifier.hasPrefix(PlannedAlert.prefix),
             let trigger = request.trigger as? UNCalendarNotificationTrigger,
-            let fireAt = Calendar.current.date(from: trigger.dateComponents),
+            let fireAt = instant(of: trigger.dateComponents),
             let route = AlertRoute(userInfo: request.content.userInfo)
         else { return nil }
         return PlannedAlert(

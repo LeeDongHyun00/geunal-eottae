@@ -1,3 +1,4 @@
+import CoreBridge
 import Foundation
 import GeunalCore
 import XCTest
@@ -12,5 +13,11 @@ final class StartFailureTests: XCTestCase {
         XCTAssertEqual(StartFailure(CoreError.Store(reason: "file is not a database")), .store)
         XCTAssertEqual(StartFailure(CoreError.Network(reason: "offline")), .unknown)
         XCTAssertEqual(StartFailure(CocoaError(.fileWriteNoPermission)), .unknown)
+    }
+
+    /// A missing App Group container is a store that did not open: the screen says nothing was deleted, and the keys
+    /// stay (`StoreDirectory`).
+    func testAMissingAppGroupIsAStoreThatDidNotOpen() {
+        XCTAssertEqual(StartFailure(StoreDirectoryError.noGroupContainer), .store)
     }
 }
