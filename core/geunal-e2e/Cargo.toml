@@ -12,6 +12,7 @@ geunal-ffi = { workspace = true, features = ["chat"] }
 serde_json.workspace = true
 
 [dev-dependencies]
+chrono.workspace = true
 pollster.workspace = true
 tempfile.workspace = true
 
