@@ -6,6 +6,7 @@ import app.geunal.api.support.Client
 import com.nimbusds.jose.crypto.ECDSAVerifier
 import com.nimbusds.jose.jwk.JWKSet
 import com.nimbusds.jwt.SignedJWT
+import io.micrometer.core.instrument.MeterRegistry
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -19,6 +20,9 @@ class AuthTests : ApiTest() {
 
     @Autowired
     lateinit var cleanup: Cleanup
+
+    @Autowired
+    lateinit var metrics: MeterRegistry
 
     @Test
     fun `signs in with a nonce proof and reaches me`() {
@@ -136,6 +140,7 @@ class AuthTests : ApiTest() {
         val stolen = client.refreshToken
         client.adopt(api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to stolen)).expect(200))
         val other = client.stubSignIn().expect(201).string("refresh_token")
+        pastTheGrace(stolen)
 
         api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to stolen)).expectError(401, "token_expired")
 
@@ -143,6 +148,110 @@ class AuthTests : ApiTest() {
         api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to other)).expectError(401, "token_expired")
         // The access token lives out its 15 minutes; only the refresh tokens end.
         client.get("/me").expect(200)
+    }
+
+    @Test
+    fun `a refresh whose answer was lost is retried with the same token and gets the same new one`() {
+        val client = signIn()
+        val kept = client.refreshToken
+        val other = client.stubSignIn().expect(201).string("refresh_token")
+        val refresh = { token: String -> api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to token)) }
+        val retries = metrics.counter(AuthService.REFRESH_GRACE).count()
+
+        // The answers to the first two never reach the device, which still holds the token it sent.
+        val lost = List(2) { refresh(kept).expect(200) }
+        val answer = refresh(kept).expect(200)
+        client.adopt(answer)
+
+        // One token came of it, however often it was asked for, and one session row; only the access tokens are new.
+        assertThat(lost.map { it.string("refresh_token") }.toSet()).containsExactly(client.refreshToken)
+        assertThat(client.refreshToken).isNotEqualTo(kept)
+        assertThat(
+            jdbc
+                .sql("SELECT count(*) FROM sessions WHERE rotated_from = (SELECT id FROM sessions WHERE refresh_hash = :hash)")
+                .param("hash", AuthService.sha256(kept))
+                .query(Long::class.java)
+                .single(),
+        ).isEqualTo(1)
+        assertThat(metrics.counter(AuthService.REFRESH_GRACE).count() - retries).isEqualTo(2.0)
+        client.get("/me").expect(200)
+        refresh(other).expect(200)
+        client.adopt(refresh(client.refreshToken).expect(200))
+        client.get("/me").expect(200)
+    }
+
+    @Test
+    fun `a thief and the device within the grace share one token, and the second to rotate it is caught`() {
+        val client = signIn()
+        val stolen = client.refreshToken
+        val refresh = { token: String -> api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to token)) }
+
+        val thief = refresh(stolen).expect(200).string("refresh_token")
+        client.adopt(refresh(stolen).expect(200))
+        // Not two lines of tokens that would each rotate on unseen: both hold the one token the stolen one became.
+        assertThat(client.refreshToken).isEqualTo(thief)
+
+        client.adopt(refresh(client.refreshToken).expect(200))
+        pastTheGrace(thief)
+        refresh(thief).expectError(401, "token_expired")
+
+        refresh(client.refreshToken).expectError(401, "token_expired")
+        assertThat(
+            jdbc
+                .sql("SELECT count(*) FROM sessions WHERE device_id = :id")
+                .param("id", client.deviceId)
+                .query(Long::class.java)
+                .single(),
+        ).isZero()
+    }
+
+    @Test
+    fun `a retry whose token cannot be computed again is answered as reuse`() {
+        val client = signIn()
+        val kept = client.refreshToken
+        val refresh = { token: String -> api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to token)) }
+        val lost = refresh(kept).expect(200).string("refresh_token")
+        // As if the answer was minted under a signing key that has left the server since: the row is some other token's.
+        jdbc
+            .sql("UPDATE sessions SET refresh_hash = :other WHERE refresh_hash = :hash")
+            .param("other", AuthService.sha256("minted under a key that is gone"))
+            .param("hash", AuthService.sha256(lost))
+            .update()
+
+        // No second token is minted in its place, which would be a second line; the device signs in again.
+        refresh(kept).expectError(401, "token_expired")
+
+        refresh(lost).expectError(401, "token_expired")
+    }
+
+    @Test
+    fun `a reused refresh token signs the device out`() {
+        val client = signIn()
+        val stolen = client.refreshToken
+        val refresh = { token: String -> api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to token)) }
+        client.adopt(refresh(stolen).expect(200))
+        client.adopt(refresh(client.refreshToken).expect(200))
+
+        // Seconds after its rotation, but the device has used the token that came from it: this is no retry.
+        refresh(stolen).expectError(401, "token_expired")
+
+        refresh(client.refreshToken).expectError(401, "token_expired")
+    }
+
+    @Test
+    fun `two refreshes racing with one token both get the same token`() {
+        repeat(8) {
+            val client = signIn()
+            val shared = client.refreshToken
+            val refresh = { token: String -> api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to token)) }
+
+            val replies = listOf(shared, shared).parallelStream().map { refresh(it) }.toList()
+
+            val minted = replies.map { it.expect(200).string("refresh_token") }
+            assertThat(minted.toSet()).hasSize(1)
+            // Whichever answer the device keeps, its next refresh works.
+            refresh(minted[0]).expect(200)
+        }
     }
 
     @Test
@@ -173,6 +282,7 @@ class AuthTests : ApiTest() {
                         body = mapOf("refresh_token" to spent),
                     ).expect(200)
                     .string("refresh_token")
+            pastTheGrace(spent)
 
             val replies =
                 listOf(current, spent)
@@ -260,5 +370,13 @@ class AuthTests : ApiTest() {
         client.get("/nothing-here").expectError(404, "not_found")
         client.get("/groups/not-a-uuid/members").expectError(400, "invalid_request")
         client.get("/groups/${UUID.randomUUID()}/members").expectError(404, "not_found")
+    }
+
+    /** Moves the moment [token] was spent to before the grace in which it would count as a retry of a lost answer. */
+    private fun pastTheGrace(token: String) {
+        jdbc
+            .sql("UPDATE sessions SET spent_at = now() - interval '61 seconds' WHERE refresh_hash = :hash AND spent_at IS NOT NULL")
+            .param("hash", AuthService.sha256(token))
+            .update()
     }
 }

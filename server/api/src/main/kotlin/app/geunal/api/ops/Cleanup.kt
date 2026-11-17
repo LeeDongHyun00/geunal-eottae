@@ -11,8 +11,8 @@ import java.time.Duration
 
 /**
  * The periodic deletions of api-server.md §8 that M1 needs: queued objects every ten minutes, and once a day the backup
- * uploads nobody completed, the sessions past their expiry (a replaced device keeps its two newest), spent or not (a spent refresh token is kept only that long
- * for reuse detection), replacement tickets, a deleted account's refresh hashes, and access log rows that never reached
+ * uploads nobody completed, the sessions past their expiry, spent or not (a spent refresh token is kept only that long for reuse
+ * detection; a replaced device keeps the tokens it can still hold), replacement tickets, a deleted account's refresh hashes, and access log rows that never reached
  * their bucket within the three months they are kept.
  */
 @Component
@@ -66,15 +66,18 @@ class Cleanup(
                 .sql(
                     "DELETE FROM sessions s USING devices d WHERE d.id = s.device_id AND d.revoked_at IS NULL AND s.expires_at < now()",
                 ).update()
-        // A replaced device keeps its two newest refresh tokens for as long as the account lives, so a phone kept off any
-        // length of time still hears device_revoked; two, since a refresh whose answer was lost leaves the older one.
+        // A replaced device keeps, for as long as the account lives, every refresh token it can still hold, so a phone
+        // kept off any length of time still hears device_revoked. That is a token never spent, or the token an unspent
+        // one was rotated from: a device whose refresh answer was lost holds the spent parent while the token minted
+        // from it was never used. A spent token whose successor was spent too is one the device moved on from. The
+        // rule follows rotated_from rather than counting the newest rows, which would drop a token the device holds
+        // whenever it has more than one line of tokens (it signed in again with the same key).
         jdbc
             .sql(
                 """
                 DELETE FROM sessions s USING devices d WHERE d.id = s.device_id AND d.revoked_at IS NOT NULL
-                  AND s.refresh_hash NOT IN (
-                    SELECT k.refresh_hash FROM sessions k WHERE k.device_id = s.device_id ORDER BY k.expires_at DESC LIMIT 2
-                  )
+                  AND s.spent_at IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM sessions next WHERE next.rotated_from = s.id AND next.spent_at IS NULL)
                 """,
             ).update()
         val tickets = jdbc.sql("DELETE FROM replace_tickets WHERE expires_at < now()").update()

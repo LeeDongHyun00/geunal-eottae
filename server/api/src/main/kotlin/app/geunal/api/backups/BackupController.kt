@@ -9,9 +9,8 @@ import app.geunal.api.auth.Nonces
 import app.geunal.api.auth.ProviderProofs
 import app.geunal.api.auth.Reader
 import app.geunal.api.common.ApiException
+import app.geunal.api.common.HourlyLimit
 import app.geunal.api.devices.DeviceRepository
-import org.springframework.data.redis.core.StringRedisTemplate
-import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.transaction.annotation.Transactional
@@ -25,8 +24,6 @@ import org.springframework.web.bind.annotation.RestController
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -91,7 +88,7 @@ class BackupController(
     private val devices: DeviceRepository,
     private val nonces: Nonces,
     private val proofs: ProviderProofs,
-    private val redis: StringRedisTemplate,
+    private val limits: HourlyLimit,
     private val auth: AuthProperties,
     private val clock: Clock,
 ) {
@@ -235,21 +232,7 @@ class BackupController(
     private fun bucket(): String = store.buckets.getValue(ObjectStore.BACKUPS)
 
     /** Ten backups a day per account (api-server.md §9), counted per UTC day. */
-    private fun limit(userId: UUID) {
-        val today = LocalDate.now(clock.withZone(ZoneOffset.UTC))
-        val key = "backups:$userId:$today"
-        val count = redis.opsForValue().increment(key) ?: 0
-        if (count == 1L) redis.expire(key, Duration.ofDays(2))
-        if (count > BACKUPS_PER_DAY) {
-            val retryAfter = Duration.between(clock.instant(), today.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC))
-            throw ApiException(
-                HttpStatus.TOO_MANY_REQUESTS,
-                "rate_limited",
-                "at most $BACKUPS_PER_DAY backups a day",
-                headers = mapOf(HttpHeaders.RETRY_AFTER to retryAfter.toSeconds().coerceAtLeast(1).toString()),
-            )
-        }
-    }
+    private fun limit(userId: UUID) = limits.check("backup", userId.toString(), BACKUPS_PER_DAY, HourlyLimit.DAY)
 
     private companion object {
         const val WRAPPED_AMK_LENGTH = 72

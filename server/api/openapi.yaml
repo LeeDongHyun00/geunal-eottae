@@ -317,7 +317,10 @@ paths:
   /auth/refresh:
     post:
       summary: Trade a refresh token for new tokens; the old refresh token is spent
-      description: "A refresh token that was already spent ends every session of its device (reuse detection)."
+      description: >-
+        A refresh token that was already spent ends every session of its device (reuse detection). The exception is a
+        retry after a lost answer: the token that was just rotated, presented again within 60 seconds and before the
+        refresh token issued from it was used, gets that same refresh token again with a new access token.
       security: []
       requestBody:
         content:
@@ -701,6 +704,7 @@ paths:
     post:
       summary: Create a group; the caller is its owner. The 16 bytes of `id` are the MLS group ID. No body.
       responses:
+        "409": { description: "group_limit (the account is already in 20 groups, counting ones it is invited to)" }
         "201":
           content:
             application/json:

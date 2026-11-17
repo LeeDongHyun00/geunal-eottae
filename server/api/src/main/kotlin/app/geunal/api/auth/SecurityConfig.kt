@@ -14,7 +14,7 @@ import org.springframework.security.web.authentication.AnonymousAuthenticationFi
 import tools.jackson.databind.json.JsonMapper
 
 /**
- * Health, the JWKS, the App Links file and the sign-in endpoints are public; everything else needs a signed-in device,
+ * Health, the metrics scrape, the JWKS, the App Links file and the sign-in endpoints are public; everything else needs a signed-in device,
  * carried as an access JWT that [DeviceAuthFilter] checks (or, for three reads, a replacement ticket). A missing or
  * stale token gets 401 in the protocol §11 body that tells a device to refresh. `POST /auth/link` is the one `/auth`
  * call that needs the session.
@@ -35,6 +35,11 @@ class SecurityConfig {
             authorizeHttpRequests {
                 authorize("/actuator/health", permitAll)
                 authorize("/actuator/health/**", permitAll)
+                // The Prometheus scrape carries no token: the scraper reaches the API on the private network only.
+                // The endpoint is not for the public, and it is the reverse proxy, the one way in from outside
+                // (infra/alpha/Caddyfile), that must refuse /actuator/prometheus. A deployment without that rule
+                // publishes route names, counts and timings (no IDs, bodies or tokens), so keep the two together.
+                authorize("/actuator/prometheus", permitAll)
                 authorize("/.well-known/jwks.json", permitAll)
                 authorize("/.well-known/assetlinks.json", permitAll)
                 authorize("/holidays", permitAll)

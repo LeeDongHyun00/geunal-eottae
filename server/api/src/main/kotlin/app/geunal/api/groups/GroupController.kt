@@ -1,5 +1,6 @@
 package app.geunal.api.groups
 
+import app.geunal.api.auth.AccountRepository
 import app.geunal.api.auth.Caller
 import app.geunal.api.common.ApiException
 import app.geunal.api.realtime.MembershipEvent
@@ -54,15 +55,27 @@ data class MembersResponse(
 @RestController
 class GroupController(
     private val groups: GroupRepository,
+    private val accounts: AccountRepository,
     private val signals: Signals,
 ) {
-    /** The API mints the group ID; the creator's device then creates the MLS group with these 16 bytes (protocol §2). */
+    /**
+     * The API mints the group ID; the creator's device then creates the MLS group with these 16 bytes (protocol §2).
+     * An account is in 20 groups at most (kickoff §2); groups it was invited to and has not joined yet count, so
+     * the cap also bounds what one account can create and abandon.
+     */
     @PostMapping("/groups")
     @ResponseStatus(HttpStatus.CREATED)
     @Transactional
     fun create(
         @AuthenticationPrincipal caller: Caller,
-    ): GroupResponse = groups.create(caller.userId).let { GroupResponse(it.id, it.kind, it.epoch, it.lastSeq) }
+    ): GroupResponse {
+        // The account row is locked first so that two creations at once count each other.
+        accounts.lock(caller.userId)
+        if (groups.countOf(caller.userId) >= MAX_GROUPS) {
+            throw ApiException(HttpStatus.CONFLICT, "group_limit", "an account is in at most $MAX_GROUPS groups")
+        }
+        return groups.create(caller.userId).let { GroupResponse(it.id, it.kind, it.epoch, it.lastSeq) }
+    }
 
     @GetMapping("/me/groups")
     fun mine(
@@ -106,5 +119,9 @@ class GroupController(
         groups.succeedOwner(id)
         val recipients = groups.activeDeviceIds(id) + listOfNotNull(groups.deviceOf(userId))
         signals.send(recipients.distinct(), MembershipEvent(id))
+    }
+
+    private companion object {
+        const val MAX_GROUPS = 20
     }
 }

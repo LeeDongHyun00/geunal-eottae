@@ -1,5 +1,6 @@
 package app.geunal.api.common
 
+import io.micrometer.core.instrument.MeterRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.beans.TypeMismatchException
 import org.springframework.http.HttpStatus
@@ -43,15 +44,23 @@ class ApiException(
 }
 
 @RestControllerAdvice
-class ErrorHandler {
+class ErrorHandler(
+    private val metrics: MeterRegistry,
+) {
     private val log = LoggerFactory.getLogger(ErrorHandler::class.java)
 
     @ExceptionHandler(ApiException::class)
-    fun handle(e: ApiException): ResponseEntity<Any> =
-        ResponseEntity
+    fun handle(e: ApiException): ResponseEntity<Any> {
+        // The share of 409 and 410 answers is what the alert of infra.md §8 watches, and which code it is tells a
+        // commit race from an expired cursor. The codes are the fixed set of protocol §11, so the tag stays small.
+        if (e.status == HttpStatus.CONFLICT || e.status == HttpStatus.GONE) {
+            metrics.counter(CONFLICTS, "status", e.status.value().toString(), "code", e.code).increment()
+        }
+        return ResponseEntity
             .status(e.status)
             .apply { e.headers.forEach { (name, value) -> header(name, value) } }
             .body(body(e))
+    }
 
     /** A body Jackson could not bind: wrong type, missing field, bad base64. The message may quote the body, so it stays out of the log. */
     @ExceptionHandler(HttpMessageNotReadableException::class)
@@ -81,6 +90,9 @@ class ErrorHandler {
     }
 
     companion object {
+        /** Counter of 409 and 410 answers, by `status` and the protocol §11 `code`. */
+        const val CONFLICTS = "geunal.api.conflicts"
+
         /** The body for [e]: an [ErrorBody], or the same two fields followed by the code's details. */
         fun body(e: ApiException): Any =
             if (e.details.isEmpty()) {

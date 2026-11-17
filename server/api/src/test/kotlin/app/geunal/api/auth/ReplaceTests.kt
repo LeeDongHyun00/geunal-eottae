@@ -128,4 +128,30 @@ class ReplaceTests : ApiTest() {
         refresh(tokens[1]).expectError(403, "device_revoked")
         refresh(tokens[0]).expectError(401, "token_expired")
     }
+
+    @Test
+    fun `a replaced device that lost its refresh answers still learns it was replaced`() {
+        val first = signIn("revoked-lost-answers")
+        val refresh = { token: String -> api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to token)) }
+        val earlier = first.refreshToken
+        first.adopt(refresh(earlier).expect(200))
+        val held = first.refreshToken
+        // Neither answer reaches the device: it still holds the spent token, and the one token minted from it is unused.
+        val lost = List(2) { refresh(held).expect(200).string("refresh_token") }.distinct()
+        assertThat(lost).hasSize(1)
+        // A later sign-in of the same device is a newer line; the line the device may still be on must not go for it.
+        first.stubSignIn().expect(201)
+        replaceDevice("revoked-lost-answers")
+        jdbc
+            .sql("UPDATE sessions SET expires_at = expires_at - interval '400 days' WHERE device_id = :id")
+            .param("id", first.deviceId)
+            .update()
+
+        cleanup.daily()
+
+        refresh(held).expectError(403, "device_revoked")
+        for (token in lost) refresh(token).expectError(403, "device_revoked")
+        // The token before it was spent and so was its successor: the device moved on from that one.
+        refresh(earlier).expectError(401, "token_expired")
+    }
 }

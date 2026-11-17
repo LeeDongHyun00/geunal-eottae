@@ -13,6 +13,12 @@ spring:
       filter:
         # It reads a form PUT, PATCH or DELETE whole before BodyLimit could cap it, and no endpoint takes one.
         enabled: false
+  data:
+    redis:
+      # Lettuce waits 60 seconds by default. A Redis that stops answering must not hold a request that long: the
+      # rate limits then pass uncounted (HourlyLimit) and a signal is dropped (Signals) after this.
+      timeout: 2s
+      connect-timeout: 2s
   jackson:
     # Every JSON field the protocol names is snake_case (user_id, group_id, base_version).
     property-naming-strategy: SNAKE_CASE
@@ -46,11 +52,18 @@ logging:
     io.netty: info
     software.amazon.awssdk: info
 
+# /actuator/prometheus is for the scraper on the private network and takes no token (SecurityConfig); the reverse
+# proxy refuses it from outside. HTTP timings are tagged with the matched route pattern, never the path, which holds IDs.
 management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
+  metrics:
+    distribution:
+      percentiles-histogram:
+        # Buckets, so the p95 alert of infra.md §8 can be computed across instances.
+        http.server.requests: true
 
 geunal:
   auth:
@@ -59,6 +72,9 @@ geunal:
     stub: false
     access-ttl: 15m
     refresh-ttl: 30d
+    # A refresh token presented again this soon after it was rotated is a retry of a lost answer, not a replay, and
+    # gets the same next token again. 0 turns that off.
+    refresh-reuse-grace: 60s
     nonce-ttl: 5m
     # How long a replace_required ticket stays good for POST /auth/replace and the restore reads (protocol §13).
     ticket-ttl: 30m
@@ -102,6 +118,11 @@ geunal:
   # 공공데이터포털 key in its "Decoding" form; without it the sync does nothing and the endpoint answers from the table.
   holidays:
     service-key: ""
+  # group_log's day partitions (ops/LogPartitions): how many days beyond today are kept ready, and how long the DDL
+  # waits for its lock before leaving it to the next hourly run.
+  log-partitions:
+    days-ahead: 7
+    lock-timeout: 2s
   # How often sign-ins and refreshes move from access_log_outbox to the access-logs bucket.
   access-log:
     ship-every: PT5M
