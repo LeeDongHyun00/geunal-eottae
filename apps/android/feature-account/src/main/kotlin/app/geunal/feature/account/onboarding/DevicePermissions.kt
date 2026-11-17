@@ -6,7 +6,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.provider.CalendarContract
 import android.provider.Settings
 import androidx.annotation.ChecksSdkIntAtLeast
 import androidx.core.app.NotificationManagerCompat
@@ -18,18 +17,6 @@ class DevicePermissions(
 ) : SystemPermissions {
     override fun calendarGranted(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
-
-    /** The device's calendars, for "가져왔어요 · 캘린더 3개". Which ones to mirror is chosen under 캘린더 관리. */
-    override fun deviceCalendarCount(): Int {
-        if (!calendarGranted()) return 0
-        return try {
-            context.contentResolver
-                .query(CalendarContract.Calendars.CONTENT_URI, arrayOf(CalendarContract.Calendars._ID), null, null, null)
-                ?.use { it.count } ?: 0
-        } catch (e: SecurityException) {
-            0
-        }
-    }
 
     @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.TIRAMISU)
     override fun notificationsNeedAsking(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU

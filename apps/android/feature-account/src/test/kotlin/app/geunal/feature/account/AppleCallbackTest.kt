@@ -63,6 +63,26 @@ class AppleCallbackTest {
         }
 
     @Test
+    fun saysOnceThatAResultCameForASignInThisProcessNeverStarted() {
+        // The system ended the app behind the Custom Tab; the callback then reaches a process with nothing in flight.
+        AppleCallbacks.deliver("code=c1&id_token=t1&state=s1")
+
+        assertTrue(AppleCallbacks.takeInterrupted())
+        assertFalse(AppleCallbacks.takeInterrupted())
+    }
+
+    @Test
+    fun aResultForTheSignInInFlightIsNotAnInterruption() =
+        runTest {
+            val pending = AppleCallbacks.expect("s1")
+
+            AppleCallbacks.deliver("code=c1&id_token=t1&state=s1")
+
+            assertTrue(pending.isCompleted)
+            assertFalse(AppleCallbacks.takeInterrupted())
+        }
+
+    @Test
     fun putsAKoreanNameFamilyNameFirst() {
         assertEquals("이하린", AppleCallbacks.displayName("""{"name":{"firstName":"하린","lastName":"이"}}"""))
         assertEquals("Harin Lee", AppleCallbacks.displayName("""{"name":{"firstName":"Harin","lastName":"Lee"}}"""))

@@ -108,7 +108,12 @@ fun PermissionsScreen(
                 button =
                     when (state.calendar) {
                         PermissionState.NOT_ASKED -> stringResource(R.string.permissions_calendar_ask)
-                        PermissionState.GRANTED -> stringResource(R.string.permissions_calendar_done, state.calendarCount)
+                        PermissionState.GRANTED ->
+                            when (val import = state.calendarImport) {
+                                is CalendarImport.Done -> stringResource(R.string.permissions_calendar_done, import.calendars)
+                                CalendarImport.Failed -> stringResource(R.string.permissions_calendar_retry)
+                                CalendarImport.Idle, CalendarImport.Working -> stringResource(R.string.permissions_calendar_working)
+                            }
                         PermissionState.DENIED -> stringResource(R.string.permissions_settings)
                     },
                 pending = state.calendar == PermissionState.NOT_ASKED,

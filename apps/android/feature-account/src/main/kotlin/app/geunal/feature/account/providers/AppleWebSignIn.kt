@@ -112,6 +112,9 @@ internal object AppleCallbacks {
 
     private var pending: Pending? = null
 
+    /** A result came for a sign-in this process did not start: the system killed the app behind the Custom Tab. */
+    private var interrupted = false
+
     private val resumed: (Activity) -> Unit = { onHostResumed() }
 
     @Synchronized
@@ -139,7 +142,13 @@ internal object AppleCallbacks {
     /** From [AppleSignInCallbackActivity], before it brings the app back to the front. */
     @Synchronized
     fun deliver(fragment: String?) {
-        val current = pending ?: return
+        val current = pending
+        if (current == null) {
+            // The attempt's state and its waiting sign-in died with the old process, so the result cannot be trusted or
+            // used. Dropping it silently would leave the person on a screen that says nothing: the app says so instead.
+            interrupted = true
+            return
+        }
         val callback = AppleCallback.parse(fragment)
         if (callback.state != current.state) return
         val idToken = callback.idToken
@@ -154,6 +163,10 @@ internal object AppleCallbacks {
             )
         }
     }
+
+    /** Whether a sign-in was cut off by the app's process ending, once: the app then asks the person to try again. */
+    @Synchronized
+    fun takeInterrupted(): Boolean = interrupted.also { interrupted = false }
 
     /**
      * The app came back to the front. With a launched attempt still open, the person closed the Custom Tab without

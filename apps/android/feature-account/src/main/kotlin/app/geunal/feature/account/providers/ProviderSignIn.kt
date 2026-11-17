@@ -42,4 +42,10 @@ interface ProviderSignIn {
     suspend fun kakao(providerNonce: String): ProviderCredential
 
     suspend fun apple(providerNonce: String): ProviderCredential
+
+    /**
+     * Whether a provider's result came back to a process that had not asked for it, once. Android may end the app
+     * behind the provider's browser tab; the sign-in in flight is gone then, and the app says so rather than nothing.
+     */
+    fun takeInterrupted(): Boolean = false
 }

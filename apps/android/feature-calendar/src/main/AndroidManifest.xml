@@ -4,4 +4,29 @@
     <!-- Screen 11: the optional import of contacts' birthdays, asked for only when it is tapped (docs/parts/android.md §4). -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
 
+    <!-- Local reminders (docs/parts/android.md §4 "로컬 알림"). A calendar's reminders must ring on the minute, which is
+         what USE_EXACT_ALARM is for from Android 13; Android 12 has only SCHEDULE_EXACT_ALARM, which the person can
+         take back. Without either the alarms are set inexactly (alerts/SystemAlertCenter.kt). -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <!-- The system forgets alarms on a reboot; the receiver sets them again from the stored plan. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application>
+        <!-- Not exported: the alarm's own broadcast is explicit, and the others are sent by the system only. -->
+        <receiver
+            android:name=".alerts.AlertReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+    </application>
+
 </manifest>

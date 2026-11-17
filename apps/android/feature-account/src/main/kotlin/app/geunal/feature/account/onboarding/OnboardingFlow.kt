@@ -63,6 +63,11 @@ class OnboardingDependencies(
     val legal: LegalLinks,
     /** Debug builds time the sign-in steps into logcat; release builds measure nothing. */
     val timing: StepTiming = StepTiming.OFF,
+    /**
+     * The permissions screen's "가져오기" once access is given: mirrors every calendar of the phone and says how many,
+     * `null` when it could not (m1.md screen 3).
+     */
+    val importDeviceCalendars: suspend () -> Int? = { null },
 )
 
 /** A screen of the first run (m1.md §2.1). */
@@ -128,7 +133,15 @@ class OnboardingViewModel(
     /** Set when an account came through over the tabs and the calendar comes back. */
     val finished: StateFlow<Boolean> = _finished.asStateFlow()
     val signIn = SignInModel(dependencies.core, dependencies.providers, dependencies.state, notify, timing = dependencies.timing)
-    val permissions = PermissionsModel(dependencies.core, dependencies.permissions, dependencies.channel, notify)
+    val permissions =
+        PermissionsModel(
+            dependencies.core,
+            dependencies.permissions,
+            dependencies.channel,
+            notify,
+            viewModelScope,
+            dependencies.importDeviceCalendars,
+        )
     val localData = LocalDataQuestion(dependencies.core, notify, io)
 
     init {
