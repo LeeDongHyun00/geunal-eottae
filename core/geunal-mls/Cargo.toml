@@ -12,6 +12,7 @@ geunal-store.workspace = true
 mls-rs.workspace = true
 mls-rs-crypto-rustcrypto.workspace = true
 mls-rs-provider-sqlite.workspace = true
+rusqlite.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

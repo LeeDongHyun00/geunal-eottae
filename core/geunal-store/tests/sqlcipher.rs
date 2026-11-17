@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use geunal_store::Store;
+use geunal_store::{GroupKind, Journal, Store};
 
 const KEY: [u8; 32] = [7; 32];
 
@@ -80,4 +80,33 @@ fn finds_a_korean_word_inside_a_longer_word_with_the_trigram_tokenizer() {
     let hits: i64 =
         conn.query_row("SELECT count(*) FROM chat_fts WHERE chat_fts MATCH '토요일'", [], |row| row.get(0)).unwrap();
     assert_eq!(hits, 1);
+}
+
+/// What an iPhone does (`Journal::for_this_platform`): a store made with a write-ahead log by an earlier build is
+/// opened with a rollback journal, keeps its rows, and leaves no log or shared-memory file behind, since the lock
+/// on that file is what iOS ended the suspended app for.
+#[test]
+fn moves_a_store_from_the_write_ahead_log_to_a_rollback_journal_and_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("geunal.db");
+    let mode = |store: &Store| -> String {
+        store.connection().query_row("PRAGMA journal_mode", [], |row| row.get(0)).unwrap()
+    };
+    {
+        let store = Store::open_with(&db, &KEY, Journal::Wal).unwrap();
+        assert_eq!(mode(&store), "wal");
+        store.upsert_group("g", GroupKind::Circle, Some("동네 친구")).unwrap();
+        assert!(db.with_extension("db-shm").exists());
+    }
+    {
+        let store = Store::open_with(&db, &KEY, Journal::Rollback).unwrap();
+        assert_eq!(mode(&store), "truncate");
+        assert_eq!(store.group("g").unwrap().unwrap().name.as_deref(), Some("동네 친구"));
+        store.upsert_group("h", GroupKind::Circle, None).unwrap();
+        assert!(!db.with_extension("db-shm").exists(), "no shared-memory file to hold a lock on");
+        assert!(!db.with_extension("db-wal").exists());
+    }
+    let store = Store::open_with(&db, &KEY, Journal::Wal).unwrap();
+    assert_eq!(mode(&store), "wal");
+    assert_eq!(store.groups().unwrap().len(), 2);
 }

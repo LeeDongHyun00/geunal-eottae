@@ -14,8 +14,9 @@ use mls_rs::mls_rules::{CommitOptions, DefaultMlsRules};
 use mls_rs::{CipherSuite, CipherSuiteProvider, Client, CryptoProvider, ExtensionList, Group, MlsMessage};
 use mls_rs_crypto_rustcrypto::RustCryptoProvider;
 use mls_rs_provider_sqlite::SqLiteDataStorageEngine;
+use mls_rs_provider_sqlite::SqLiteDataStorageError;
 use mls_rs_provider_sqlite::connection_strategy::{
-    CipheredConnectionStrategy, FileConnectionStrategy, SqlCipherConfig, SqlCipherKey,
+    CipheredConnectionStrategy, ConnectionStrategy, SqlCipherConfig, SqlCipherKey,
 };
 use mls_rs_provider_sqlite::storage::{SqLiteGroupStateStorage, SqLiteKeyPackageStorage};
 
@@ -107,6 +108,24 @@ pub enum Received {
     Other,
 }
 
+/// A connection to the store's file that waits for a lock instead of failing at once. mls-rs opens its connections
+/// beside the store's own, and SQLite's default is to answer "database is locked" the moment another connection is
+/// in its way: a screen reading the store while the engine saves a group would fail that save. With the rollback
+/// journal iOS uses (`geunal_store::Journal`) even a reader is in a commit's way, so the wait matters more there.
+struct PatientFile(std::path::PathBuf);
+
+impl ConnectionStrategy for PatientFile {
+    fn make_connection(&self) -> Result<rusqlite::Connection, SqLiteDataStorageError> {
+        let connection =
+            rusqlite::Connection::open(&self.0).map_err(|e| SqLiteDataStorageError::SqlEngineError(e.into()))?;
+        // The store's own wait (geunal-store `Store::open_with`).
+        connection
+            .busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| SqLiteDataStorageError::SqlEngineError(e.into()))?;
+        Ok(connection)
+    }
+}
+
 pub struct MlsClient {
     client: Client<Config>,
     identity: Identity,
@@ -153,7 +172,7 @@ impl MlsClient {
     /// secret from the SecretStore.
     pub fn open(db_path: &Path, db_key: &[u8; 32], identity: Identity, signing_secret: &[u8]) -> Result<Self, Error> {
         let engine = SqLiteDataStorageEngine::new(CipheredConnectionStrategy::new(
-            FileConnectionStrategy::new(db_path),
+            PatientFile(db_path.to_owned()),
             SqlCipherConfig::new(SqlCipherKey::RawKey(*db_key)),
         ))?;
         let crypto = crypto_provider();
