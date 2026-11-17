@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Added to the build only when it has the invite domain (app/build.gradle.kts), which must serve assetlinks.json first. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Invite links (docs/parts/android.md §4). Verified against the domain's assetlinks.json, so the app opens them
+             without a chooser; MainActivity keeps the code until the group screens use it. -->
+        <activity android:name="app.geunal.MainActivity">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="${geunalInviteHost}"
+                    android:pathPrefix="/i/"
+                    android:scheme="https" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
