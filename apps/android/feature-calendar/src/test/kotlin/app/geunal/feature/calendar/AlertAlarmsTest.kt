@@ -156,6 +156,30 @@ class AlertAlarmsTest {
     }
 
     @Test
+    fun removesAPlanLeftHalfWrittenAfterASignOut() {
+        alarms().schedule(alert("e1", "2026-11-07T08:00:00Z"))
+        // The process died after writing the next plan and before moving it over the file.
+        val leftover = File(file.path + ".next")
+        leftover.writeBytes(file.readBytes())
+
+        alarms().clear()
+
+        assertFalse(leftover.exists())
+        assertFalse(file.exists())
+    }
+
+    @Test
+    fun removesAPlanLeftHalfWrittenWhenTheLastAlertIsCancelled() {
+        alarms().schedule(alert("e1", "2026-11-07T08:00:00Z"))
+        val leftover = File(file.path + ".next")
+        leftover.writeBytes(file.readBytes())
+
+        alarms().cancel(listOf("e1"))
+
+        assertFalse(leftover.exists())
+    }
+
+    @Test
     fun readsADamagedPlanAsEmpty() {
         alarms().schedule(alert("e1", "2026-11-07T08:00:00Z"))
         file.writeBytes(file.readBytes().copyOf(20))

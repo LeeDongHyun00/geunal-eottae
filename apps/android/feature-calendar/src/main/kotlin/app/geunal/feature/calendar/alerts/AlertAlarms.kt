@@ -19,6 +19,9 @@ import java.time.Instant
 class AlertPlanStore(
     private val file: File,
 ) {
+    /** Where [save] writes a plan before moving it over [file]. */
+    private val next = File(file.path + ".next")
+
     /** Nothing when the file is missing or unreadable: the next refresh schedules everything again. */
     fun load(): List<PlannedAlert> {
         if (!file.exists()) return emptyList()
@@ -48,13 +51,15 @@ class AlertPlanStore(
         }
         file.parentFile?.mkdirs()
         // Written beside the file and moved over it, so a process killed mid-write leaves the previous plan whole.
-        val next = File(file.path + ".next")
         next.writeBytes(bytes.toByteArray())
         Files.move(next.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
     }
 
     fun clear() {
         file.delete()
+        // A process killed between the write and the move leaves this copy behind, and it holds event titles too:
+        // nothing else removes it, so a sign-out would otherwise leave them on disk.
+        next.delete()
     }
 
     private fun write(
