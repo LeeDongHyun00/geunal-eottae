@@ -234,6 +234,13 @@ final class AppModel {
         }
     }
 
+    /// The phone moved to another time zone or its clock was set while the app was in front. The alerts are scheduled
+    /// as instants and do not move, but their words name a time of day and the core's list of what is next may differ,
+    /// so they are planned again; an unchanged plan touches nothing.
+    func clockChanged() {
+        Task { await alerts?.refresh() }
+    }
+
     /// A background refresh (docs/parts/ios.md §5): the phone's calendars, a sync and the nearest alerts. It counts
     /// no session, since nobody opened the app.
     func refreshInBackground() async {
@@ -476,6 +483,8 @@ enum StartFailure: Equatable {
         switch error {
         case CoreError.SecretStore(_): self = .key
         case CoreError.Store(_): self = .store
+        // The App Group container did not resolve, so there is no store to open; nothing was wiped.
+        case is StoreDirectoryError: self = .store
         default: self = .unknown
         }
     }

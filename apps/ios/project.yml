@@ -46,6 +46,34 @@ targets:
     type: application
     platform: iOS
     sources:
+      # GeunalApp/PrivacyInfo.xcprivacy, the privacy manifest, goes into the bundle's resources with the rest of the
+      # directory. A property list takes no comments, so what it declares is explained here.
+      #
+      # Required-reason APIs:
+      # - UserDefaults, CA92.1 (the app's own defaults): OnboardingState, CalendarScreen's @AppStorage, KakaoSignIn.
+      #   Nothing is kept in the App Group's defaults; the widget snapshot is a file.
+      # - File timestamps, C617.1 (files in the app's and the App Group's containers): the statically linked Rust core
+      #   and its SQLCipher call stat/fstat on the store.
+      # - Disk space, E174.1: SQLCipher's Apple build (SQLITE_ENABLE_LOCKING_STYLE) links statfs/fstatfs to pick a
+      #   locking style for the store's volume. No reason names that use; this is the nearest one for a symbol the
+      #   App Store scan sees, and the app reads no free space.
+      # The Kakao SDK brings its own manifest.
+      #
+      # Collected data follows docs/kickoff.md §6 "서버가 보는 것", the table the privacy policy lists, for what an M1
+      # build sends. All of it is linked to the account, none is used for tracking, and there are no tracking domains.
+      # - User ID: the Kakao or Apple account identifier and the server's account id. App functionality.
+      # - Name: the display name a new account is made with (the table's "닉네임"), which the server keeps and, from
+      #   M2, shows to the people one invites. App functionality.
+      # - Device ID: the device's public signing key that registers it. App functionality. The push token joins it
+      #   in M2 under the same type.
+      # - Other data: the time the person confirmed being 14 or older. App functionality.
+      # - Product interaction and crash data: the alpha statistics (protocol §14: sessions, events made, how many
+      #   from a suggestion, crash count), sent only by an `alpha` build whose tester agreed. Analytics. A `public`
+      #   build sends neither; remove both entries when GEUNAL_BUILD_CHANNEL becomes `public`.
+      # Left out on purpose: events, people, birthdays and backups leave the device only as ciphertext the server
+      # cannot read, which is not collection in Apple's sense; the IP address and request logs have no data type of
+      # their own. Add membership, purchases and the rest of the table when the milestone that sends them
+      # lands.
       - path: GeunalApp
     dependencies:
       - package: GeunalCore
@@ -95,6 +123,9 @@ targets:
     type: app-extension
     platform: iOS
     sources:
+      # GeunalWidget/PrivacyInfo.xcprivacy is the widget's own privacy manifest: an extension is a separate bundle. It
+      # only reads the snapshot file's contents and does not link the core, so it declares no required-reason API, no
+      # collected data and no tracking.
       - path: GeunalWidget
     dependencies:
       - package: HomeWidget

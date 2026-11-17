@@ -4,7 +4,7 @@ import FeatureCalendar
 import Foundation
 import GeunalCore
 
-/// How the app opens the Rust core: the store under Application Support, the keychain as the secret store, and a
+/// How the app opens the Rust core: the store in the App Group container, the keychain as the secret store, and a
 /// listener that turns changes into a stream (docs/parts/ios.md §3).
 enum AppCore {
     /// The API server. A device or TestFlight build starts without Xcode's environment, so the address it needs comes
@@ -76,8 +76,19 @@ enum AppCore {
                 return
             }
         #endif
-        let store = try StoreDirectory.url()
-        forgetPreviousInstallation(storeDirectory: store, keychain: KeychainSecretStore(), onboarding: onboarding)
+        try forgetPreviousInstallation(
+            groupContainer: AppGroup.container(), applicationSupport: nil, keychain: KeychainSecretStore(),
+            onboarding: onboarding)
+    }
+
+    /// The wipe is irreversible, so it runs only once the App Group container resolved and the store's directory is
+    /// known. Without the container `StoreDirectory` throws first: a build that lost its entitlement shows the start
+    /// failure screen with every key in place, instead of taking the store it cannot see for one that is gone.
+    static func forgetPreviousInstallation(
+        groupContainer: URL?, applicationSupport: URL?, keychain: KeychainSecretStore, onboarding: OnboardingState
+    ) throws {
+        let store = try StoreDirectory.url(groupContainer: groupContainer, applicationSupport: applicationSupport)
+        forgetPreviousInstallation(storeDirectory: store, keychain: keychain, onboarding: onboarding)
     }
 
     static func forgetPreviousInstallation(

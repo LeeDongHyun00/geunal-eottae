@@ -25,10 +25,28 @@ final class StoreDirectoryTests: XCTestCase {
         XCTAssertEqual(values.isExcludedFromBackup, true)
     }
 
-    func testUsesApplicationSupportWithoutAGroup() throws {
-        let directory = try StoreDirectory.url(groupContainer: nil)
+    /// A build that lost its App Group must not open an empty store in the app's own directory: that launch would read
+    /// as a new installation and wipe the keys of the store still in the group.
+    func testThrowsWithoutAGroupAndLeavesTheOldStoreAlone() throws {
+        let support = try temporaryDirectory()
+        let old = support.appendingPathComponent("core", isDirectory: true)
+        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+        try Data("db".utf8).write(to: old.appendingPathComponent(FreshInstall.databaseFile))
 
-        XCTAssertTrue(directory.path(percentEncoded: false).contains("/Application Support/"))
+        XCTAssertThrowsError(try StoreDirectory.url(groupContainer: nil, applicationSupport: support)) { error in
+            XCTAssertEqual(error as? StoreDirectoryError, .noGroupContainer)
+        }
+        XCTAssertTrue(FreshInstall.hasStore(in: old))
+    }
+
+    func testMakesNoDirectoryWithoutAGroup() throws {
+        let support = try temporaryDirectory()
+
+        XCTAssertThrowsError(try StoreDirectory.url(groupContainer: nil, applicationSupport: support))
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: support.appendingPathComponent("core", isDirectory: true).path(percentEncoded: false)))
     }
 
     func testReturnsTheSameDirectoryEveryTime() throws {
