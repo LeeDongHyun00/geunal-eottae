@@ -317,15 +317,37 @@ CREATE INDEX media_expiry ON media_objects (expires_at) WHERE expires_at IS NOT 
 
 -- Paid plan, mirrored from the stores. Entitlement comes only from verified store data, never from the app.
 CREATE TYPE store_kind AS ENUM ('app_store', 'play');
+CREATE TYPE store_environment AS ENUM ('production', 'sandbox');
+-- active and grace grant the plan; the others do not (section 7, "구독과 스토어 알림").
+CREATE TYPE subscription_state AS ENUM ('active', 'grace', 'on_hold', 'paused', 'expired', 'revoked');
 CREATE TABLE subscriptions (
-  user_id          uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  store            store_kind NOT NULL,
-  product_id       text NOT NULL,
-  original_txn_id  text NOT NULL UNIQUE,      -- App Store originalTransactionId or Play purchase token
-  expires_at       timestamptz NOT NULL,
-  auto_renew       boolean NOT NULL,
-  updated_at       timestamptz NOT NULL DEFAULT now()
+  user_id           uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  store             store_kind NOT NULL,
+  environment       store_environment NOT NULL,   -- App Review and license testers buy in the sandbox against this server
+  product_id        text NOT NULL,
+  original_txn_id   text NOT NULL UNIQUE,         -- App Store originalTransactionId, or the first Play purchase token of the chain
+  purchase_token    text UNIQUE,                  -- Play only: the current token, which changes on an upgrade or a resubscription
+  state             subscription_state NOT NULL,
+  expires_at        timestamptz NOT NULL,         -- in grace: the end of the grace period
+  auto_renew        boolean NOT NULL,
+  store_updated_at  timestamptz NOT NULL,         -- when the store produced this state; an older one never overwrites it
+  updated_at        timestamptz NOT NULL DEFAULT now()
 );
+
+-- Every store notification that verified, once. The key is the store's own id for it, so a redelivery is a no-op;
+-- processed_at stays NULL while its subscription has no account yet. No payload is kept. Rows go after 90 days.
+CREATE TABLE store_events (
+  store            store_kind NOT NULL,
+  event_id         text NOT NULL,                 -- App Store notificationUUID, Pub/Sub messageId
+  kind             text NOT NULL,                 -- the store's type and subtype, e.g. DID_RENEW, EXPIRED/VOLUNTARY, 13
+  original_txn_id  text,
+  purchase_token   text,
+  store_at         timestamptz NOT NULL,          -- signedDate, eventTimeMillis
+  received_at      timestamptz NOT NULL DEFAULT now(),
+  processed_at     timestamptz,
+  PRIMARY KEY (store, event_id)
+);
+CREATE INDEX store_events_unprocessed ON store_events (received_at) WHERE processed_at IS NULL;
 
 -- Blobs to delete from object storage, queued in the same transaction that deletes their rows (account deletion, pruning).
 CREATE TABLE object_deletions (
@@ -441,13 +463,61 @@ CREATE TABLE holidays (
 | POST | `/me/alpha-stats` | 알파 빌드 전용. 동의한 테스터 기기가 하루 한 번 숫자(전체 일정 수, 추천으로 만든 일정 수)만 보냄. 공개 빌드에서는 404 |
 | GET | `/holidays?from_year&to_year` | 공휴일(해 단위, 한 번에 두 해까지, 로그인 없이) |
 
+### 구독과 스토어 알림 (M4)
+
+혜택은 서버가 스토어에서 직접 확인한 상태로만 켭니다. 앱이 보낸 값과 알림 본문에 적힌 값은 "다시 확인하라"는 신호로만 씁니다.
+
+**계정과 구독 묶기**
+- 구매 전에 앱은 `GET /me/entitlements`가 주는 계정별 무작위 UUID를 App Store에는 `appAccountToken`으로, Play에는 `obfuscatedExternalAccountId`로 넣습니다. 사용자 ID 자체는 스토어에 주지 않습니다.
+- `POST /me/purchases`는 거래를 스토어 API로 확인하고, 거래에 적힌 UUID가 요청한 계정의 것일 때만 구독을 그 계정에 묶습니다. 다르면 403 `purchase_not_yours`, 이미 다른 계정에 묶인 구독이면 409 `purchase_in_use`입니다. 스토어 구독 하나는 계정 하나에만 묶입니다.
+- Play 구매는 3일 안에 승인(acknowledge)하지 않으면 자동 환불됩니다. 서버가 계정에 묶은 직후 승인합니다.
+- Play에서 업그레이드·다운그레이드하거나 만료 전에 다시 구독하면 구매 토큰이 바뀝니다. 새 토큰의 `linkedPurchaseToken`이 가리키는 행을 찾아 `purchase_token`만 바꾸고 `original_txn_id`는 그대로 둡니다.
+- 만료된 뒤 Play 스토어에서 다시 구독하면 새 구매에 `linkedPurchaseToken`이 없습니다. 이때는 새 구매의 `outOfAppPurchaseContext`에 있는 `expiredPurchaseToken`(이전 행을 찾음)이나 `expiredExternalAccountIdentifiers`의 계정 UUID로 계정을 찾아 묶습니다.
+- 앱 밖 구매는 사용자가 앱을 열지 않을 수 있으므로 `POST /me/purchases`를 기다리지 않습니다. 알림을 처리하면서 위 방법으로 계정을 찾으면 서버가 바로 묶고 승인합니다. 계정을 찾지 못한 구매만 승인하지 않은 채 두고, 그 뒤 앱이 `POST /me/purchases`로 등록하면 그때 묶고 승인합니다.
+
+**알림 확인(웹훅)**
+
+| | App Store 서버 알림 v2 | Play 실시간 개발자 알림 |
+| --- | --- | --- |
+| 보낸 쪽 확인 | `signedPayload`(JWS)의 `x5c` 인증서 사슬을 이미지에 넣어 둔 Apple Root CA G3까지 검증. 안에 든 거래·갱신 정보의 서명도 같은 방법으로 검증 | Pub/Sub 푸시의 `Authorization` OIDC 토큰을 Google 키로 검증. `aud`는 우리가 구독에 정한 값, `email`은 푸시 전용 서비스 계정, `email_verified`는 참 |
+| 우리 앱인지 | `bundleId`가 `app.geunal.ios` | `packageName`이 `app.geunal` |
+| 중복 키 | `notificationUUID` | Pub/Sub `messageId` |
+| 상태를 어디서 읽나 | 서명된 본문의 거래·갱신 정보. 의심스러우면 App Store Server API로 다시 조회 | 본문에는 상태가 없음. 항상 `purchases.subscriptionsv2.get`으로 조회 |
+| 스토어의 재시도 | 2xx가 아니면 1·12·24·48·72시간 뒤 다시 보냄 | 2xx가 아니면 간격을 늘려 가며 최대 7일 |
+
+- 확인에 실패한 요청은 401로 답하고 아무것도 바꾸지 않습니다. 본문은 64KB로 자르고, 로그에는 종류와 결과만 남깁니다.
+- 알림 하나는 한 트랜잭션으로 처리합니다: `store_events`에 넣고(이미 있으면 200으로 끝), 구독 행을 고치고, `processed_at`을 채웁니다. 커밋한 뒤에만 200으로 답하고, 실패하면 5xx로 답해 스토어가 다시 보내게 합니다.
+- **순서가 바뀌어 올 때:** 스토어가 그 상태를 만든 시각(`store_at`)이 구독 행의 `store_updated_at`보다 이르면 이벤트만 기록하고 행은 그대로 둡니다.
+- **구매 등록보다 알림이 먼저 올 때:** 묶인 계정이 없으면 `processed_at`을 비운 채 200으로 답합니다. `POST /me/purchases`가 스토어에서 현재 상태를 읽어 오므로 밀린 알림을 다시 적용하지 않고 처리된 것으로 표시합니다.
+- **샌드박스:** 운영 서버도 샌드박스 거래를 받습니다(App Store 심사와 Play 라이선스 테스터가 운영 서버에 구매함). `environment`에 적어 두고 매출 집계에서는 뺍니다.
+
+**상태와 혜택**
+
+혜택은 `state`가 `active`나 `grace`이고 `expires_at`이 지나지 않았을 때만 켜집니다.
+
+| 스토어에서 일어난 일 | `state` | 혜택 |
+| --- | --- | --- |
+| 구매, 갱신, 해지 예약(기간이 남음), 결제 복구 | `active` | 켜짐 |
+| 결제 실패 뒤 유예 기간 | `grace` | 켜짐(유예가 끝날 때까지) |
+| 결제 재시도 중(유예 없음·끝남), Play 계정 보류 | `on_hold` | 꺼짐 |
+| Play 일시중지 | `paused` | 꺼짐 |
+| 기간 만료 | `expired` | 꺼짐 |
+| 취소(REVOKE), 가족 공유 해제, 지불 거절, 지금 기간의 환불로 스토어가 권한을 거둠 | `revoked` | 바로 꺼짐 |
+
+- **환불은 종류로 판단하지 않습니다.** 지난 기간의 거래를 환불해도 지금 기간은 결제된 채 살아 있을 수 있습니다. 환불 알림을 받으면 스토어에서 구독의 현재 상태를 읽어 그대로 적고, 스토어가 현재 권한을 거뒀을 때만 `revoked`로 둡니다. 위 표의 다른 줄도 알림 이름이 아니라 스토어가 답한 현재 상태를 옮긴 것입니다.
+- 혜택이 꺼져도 올려 둔 것은 지우지 않습니다. 무료 한도를 넘는 새 업로드와 새 그룹만 거절합니다.
+- 기기는 앱을 열 때와 구매 직후 `GET /me/entitlements`로 읽습니다. 바뀐 것을 실시간으로 알릴지는 M4에서 [공통 계약](protocol.md) 7장에 이벤트를 더할지와 함께 정합니다.
+- 계정을 지우면 구독 행도 지워집니다. 스토어 구독은 사용자가 해지할 때까지 이어지므로(앱이 안내), 그 뒤에 오는 알림은 묶인 계정이 없는 이벤트로만 남았다가 90일 뒤 지워집니다.
+
+**알림을 놓쳤을 때:** 매일 대조 작업(8장)이 만료가 3일 안인 구독, `grace`·`on_hold`인 구독, 한 시간 넘게 처리되지 않은 이벤트의 구독을 스토어 API로 다시 읽습니다. 알림 검증 실패와 처리 실패는 지표로 세고 경보를 겁니다([인프라](infra.md) 8장).
+
 ## 8. 정기 작업
 
 | 작업 | 주기 | 하는 일 |
 | --- | --- | --- |
 | 로그 파티션 | 매일 | 내일 파티션 만들기, 30일 지난 파티션 삭제 |
 | 미디어 정리 | 매일 | `expires_at`이 지난 `media_objects`(채팅 30일, 약속·개인 1년, 바뀐 커버·사진 7일)를 지우고 `object_deletions`에 넣기 |
-| 구독 대조 | 매일 | 만료가 가까운 구독을 스토어 API로 다시 확인(알림을 놓친 경우 대비) |
+| 구독 대조 | 매일 | 만료가 3일 안이거나 `grace`·`on_hold`인 구독, 처리되지 않은 알림의 구독을 스토어 API로 다시 확인(알림을 놓친 경우 대비). 90일 지난 `store_events` 삭제 |
 | 오브젝트 삭제 | 10분 | `object_deletions`에 넣은 지 1시간 지난 것을 스토리지에서 삭제하고 비움. 15분짜리 업로드 URL로 늦게 올린 객체가 남지 않게 기다림 |
 | 백업 정리 | 업로드 완료 때 | 사람마다 최근 3개만 남기기 |
 | Welcome 정리 | 매일 | 30일 지난 Welcome 삭제 |
@@ -489,7 +559,13 @@ CREATE TABLE holidays (
 - **MLS 헤더:** Rust 코어 벡터로 파서를 검증합니다.
 - **계정 삭제:** 계정 종류마다 증명이 없거나 틀리면 403 `reauth_required`로 아무것도 지우지 않는지, 맞으면 기기·세션·멤버십·상태·미디어·백업·복구 자료가 지워지고 로그 항목과 자리표시자 계정 행은 남는지, 오브젝트 키가 `object_deletions`에 들어가는지, 그 뒤 지운 계정의 액세스·리프레시 토큰이 401 `account_deleted`를 받는지 확인합니다.
 - **그룹 메타:** 두 멤버가 같은 버전에서 동시에 쓰면 하나만 저장되고 다른 하나는 409를 받는지, 오래된 epoch로는 덮어쓰지 못하는지 확인합니다.
-- **구독:** 서명이 틀린 App Store 알림과 검증되지 않은 Play 토큰을 거절하는지, 환불·만료 알림에 혜택이 꺼지는지 확인합니다.
+- **구독:**
+  - 서명이 틀린 App Store 알림, 다른 `bundleId`·`packageName`, `aud`나 서비스 계정이 다른 Play 토큰을 401로 거절하고 아무것도 바꾸지 않는지 확인합니다.
+  - 같은 알림이 두 번 오거나 동시에 와도 한 번만 반영되는지, 더 이른 `store_at`의 알림이 나중에 와도 상태가 되돌아가지 않는지 확인합니다.
+  - 구매 등록보다 먼저 온 알림이 200을 받고, 등록 뒤 상태가 스토어와 같은지 확인합니다.
+  - 만료·보류와 권한을 거둔 환불에 혜택이 꺼지고, 지난 기간만 환불된 구독과 유예 기간의 구독은 켜져 있는지, 다른 계정의 UUID가 적힌 거래와 이미 묶인 구독을 거절하는지 확인합니다.
+  - 만료 뒤 Play 스토어에서 다시 구독한 구매가 앱을 열지 않아도 계정에 묶이고 승인되는지 확인합니다.
+  - 처리 중 DB가 실패하면 5xx로 답하고, 다시 온 알림이 반영되는지 확인합니다.
 - **차단과 1:1:** 같은 그룹이 아니면 1:1을 만들 수 없고, 차단하면 메시지가 거절되는지 확인합니다.
 - **파티션 작업:** 31일 전 파티션이 지워지고 내일 파티션이 생기는지 확인합니다.
 
