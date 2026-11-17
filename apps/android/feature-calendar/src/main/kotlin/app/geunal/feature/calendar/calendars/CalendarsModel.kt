@@ -18,7 +18,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * 캘린더 관리 (m1.md screen 15): this app's calendars with their show switch, and the calendar sheet (screen 16). The
- * device calendars' group comes with the device mirror. The sheet's model lives here, so a rotation keeps what was typed.
+ * device calendars' group is [DeviceCalendarMirror]'s. The sheet's model lives here, so a rotation keeps what was typed.
  */
 class CalendarsModel(
     private val core: CoreInterface,

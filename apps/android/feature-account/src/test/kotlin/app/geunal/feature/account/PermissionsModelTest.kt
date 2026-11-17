@@ -1,6 +1,7 @@
 package app.geunal.feature.account
 
 import app.geunal.core.CoreException
+import app.geunal.feature.account.onboarding.CalendarImport
 import app.geunal.feature.account.onboarding.PermissionAction
 import app.geunal.feature.account.onboarding.PermissionState
 import app.geunal.feature.account.onboarding.PermissionsModel
@@ -8,6 +9,8 @@ import app.geunal.feature.account.support.AccountNotice
 import app.geunal.feature.account.support.BuildChannel
 import app.geunal.feature.account.testing.AccountFakeCore
 import app.geunal.feature.account.testing.FakePermissions
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -18,18 +21,64 @@ class PermissionsModelTest {
     private val permissions = FakePermissions()
     private val notices = mutableListOf<AccountNotice>()
 
+    /** What the mirror answers to an import, and how often it was asked. */
+    private var imported: Int? = 3
+    private var imports = 0
+
+    // Unconfined: the import here answers at once, so each call has landed when it returns.
     private fun model(channel: BuildChannel = BuildChannel.ALPHA) =
-        PermissionsModel(core, permissions, channel, notify = { notices += it }).apply { refresh() }
+        PermissionsModel(
+            core,
+            permissions,
+            channel,
+            notify = { notices += it },
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            importCalendars = {
+                imports++
+                imported
+            },
+        ).apply { refresh() }
 
     @Test
-    fun countsTheDeviceCalendarsOnceAllowed() {
+    fun importsTheDeviceCalendarsOnceAllowedAndSaysHowMany() {
         val model = model()
         assertEquals(PermissionAction.Ask(PermissionsModel.CALENDAR), model.calendarTapped())
+        assertEquals(0, imports)
 
         model.calendarAnswered(granted = true)
 
         assertEquals(PermissionState.GRANTED, model.state.value.calendar)
-        assertEquals(3, model.state.value.calendarCount)
+        assertEquals(CalendarImport.Done(3), model.state.value.calendarImport)
+        // Coming back to the screen reads the permission again and imports nothing twice.
+        permissions.calendar = true
+        model.refresh()
+        assertEquals(1, imports)
+    }
+
+    @Test
+    fun doesNotClaimAnImportThatDidNotHappen() {
+        imported = null
+        val model = model()
+
+        model.calendarAnswered(granted = true)
+        assertEquals(CalendarImport.Failed, model.state.value.calendarImport)
+
+        // The button then tries again.
+        imported = 2
+        assertEquals(PermissionAction.None, model.calendarTapped())
+        assertEquals(CalendarImport.Done(2), model.state.value.calendarImport)
+    }
+
+    @Test
+    fun importsWhenAccessWasGivenInTheSettings() {
+        val model = model()
+        model.calendarAnswered(granted = false)
+        assertEquals(CalendarImport.Idle, model.state.value.calendarImport)
+
+        permissions.calendar = true
+        model.refresh()
+
+        assertEquals(CalendarImport.Done(3), model.state.value.calendarImport)
     }
 
     @Test

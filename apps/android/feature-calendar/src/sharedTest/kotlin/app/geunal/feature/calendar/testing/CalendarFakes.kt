@@ -15,6 +15,8 @@ import app.geunal.core.Core
 import app.geunal.core.CoreException
 import app.geunal.core.DayCell
 import app.geunal.core.DayTime
+import app.geunal.core.DeviceCalendarInput
+import app.geunal.core.DeviceMirror
 import app.geunal.core.EditScope
 import app.geunal.core.EventDetail
 import app.geunal.core.EventInput
@@ -28,6 +30,7 @@ import app.geunal.core.Person
 import app.geunal.core.PersonInput
 import app.geunal.core.PersonSource
 import app.geunal.core.Recurrence
+import app.geunal.core.ScheduledAlert
 import app.geunal.core.ShiftDay
 import app.geunal.core.ShiftTemplate
 import app.geunal.core.ShiftTemplateInput
@@ -429,6 +432,25 @@ open class CalendarFakeCore : Core(NoHandle) {
     }
 
     override fun nextUp(count: UShort): List<UpNext> = emptyList()
+
+    /** What `scheduledAlerts` answers, soonest first. */
+    @Volatile var alertList: List<ScheduledAlert> = emptyList()
+
+    override fun scheduledAlerts(limit: UInt): List<ScheduledAlert> {
+        readError?.let { throw it }
+        return alertList.take(limit.toInt())
+    }
+
+    /** Every mirror the app wrote, newest last; the calendar list then holds those calendars as the core names them. */
+    val mirrors: MutableList<List<DeviceCalendarInput>> = Collections.synchronizedList(mutableListOf())
+
+    override fun mirrorDeviceCalendars(calendars: List<DeviceCalendarInput>): DeviceMirror {
+        writeError?.let { throw it }
+        mirrors += calendars
+        calendarList = calendarList.filterNot { it.id.startsWith("device:") } +
+            calendars.map { Samples.calendar("device:${it.sourceId}", it.name, null, kind = CalendarKind.DEVICE) }
+        return DeviceMirror(calendars.size.toUInt(), calendars.sumOf { it.events.size }.toUInt())
+    }
 
     override fun notificationSettings(): NotificationSettings = settings
 

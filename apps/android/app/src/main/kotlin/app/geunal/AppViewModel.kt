@@ -2,7 +2,10 @@ package app.geunal
 
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import app.geunal.core.Change
 import app.geunal.core.CoreException
 import app.geunal.core.CoreInterface
@@ -17,6 +20,12 @@ import app.geunal.feature.account.onboarding.PendingGuest
 import app.geunal.feature.account.support.AccountKind
 import app.geunal.feature.account.support.OnboardingState
 import app.geunal.feature.account.support.StepTiming
+import app.geunal.feature.calendar.alerts.AlertCenter
+import app.geunal.feature.calendar.alerts.AlertRoute
+import app.geunal.feature.calendar.alerts.AlertScheduler
+import app.geunal.feature.calendar.alerts.AlertTexts
+import app.geunal.feature.calendar.calendars.DeviceCalendarMirror
+import app.geunal.feature.calendar.calendars.DeviceCalendarSource
 import app.geunal.feature.calendar.nextup.NextUpModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +64,7 @@ enum class AppNotice(
     ACCOUNT_DELETED(R.string.account_deleted),
     SESSION_ENDED(R.string.session_ended),
     SIGNED_IN_AGAIN(R.string.signed_in_again),
+    SIGN_IN_INTERRUPTED(R.string.sign_in_interrupted),
     SOMETHING_FAILED(R.string.something_failed),
 }
 
@@ -85,6 +95,13 @@ class AppViewModel(
     screenReaderRunning: () -> Boolean = { false },
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val timing: StepTiming = StepTiming.OFF,
+    /** The system's alarms and notifications with the words an alert says; without them nothing is scheduled. */
+    private val alertCenter: AlertCenter? = null,
+    private val alertTexts: AlertTexts? = null,
+    /** The phone's calendars; without them nothing is mirrored. */
+    private val deviceCalendars: DeviceCalendarSource? = null,
+    /** Whether a provider's sign-in was cut off by the app's process ending behind its browser tab, once. */
+    private val signInInterrupted: () -> Boolean = { false },
 ) : ViewModel() {
     val toasts = ToastCenter(viewModelScope, screenReaderRunning = screenReaderRunning)
 
@@ -134,6 +151,16 @@ class AppViewModel(
      */
     var localData: LocalDataQuestion? = null
         private set
+
+    /** The phone's calendars mirrored into the core (m1.md screen 15's second group). */
+    var mirror: DeviceCalendarMirror? = null
+        private set
+    private var alerts: AlertScheduler? = null
+
+    private val _route = MutableStateFlow<AlertRoute?>(null)
+
+    /** A tapped alert waiting for the tabs (m1.md §2.6). */
+    val route: StateFlow<AlertRoute?> = _route.asStateFlow()
     private var foregroundWaiting = false
 
     /** Between [start] and the core's answer: a second tap of "다시 시도" must not open the store twice at once. */
@@ -168,16 +195,28 @@ class AppViewModel(
             core = opened
             nextUp = upNext
             localData = LocalDataQuestion(opened, notify = { noticeChannel.trySend(AppNotice.SOMETHING_FAILED) }, io = io)
+            if (alertCenter != null && alertTexts != null) alerts = AlertScheduler(opened, alertCenter, alertTexts, io = io)
+            if (deviceCalendars != null) {
+                val mirrored = DeviceCalendarMirror(opened, deviceCalendars, io)
+                mirror = mirrored
+                deviceCalendars.observeChanges { viewModelScope.launch { mirrored.refresh() } }
+            }
             launch {
                 changes.collect {
                     when (it) {
-                        Change.Calendar -> upNext.refresh()
+                        Change.Calendar -> {
+                            upNext.refresh()
+                            // Events, people's birthdays and the 알림 settings all decide what fires when.
+                            alerts?.refresh()
+                        }
                         Change.Account -> refreshAccount()
                         else -> Unit
                     }
                 }
             }
             _phase.value = if (onboarding.isFinished) AppPhase.Main else AppPhase.Onboarding
+            // The result of that sign-in is gone with the old process; the person hears it and can start again.
+            if (signInInterrupted()) noticeChannel.trySend(AppNotice.SIGN_IN_INTERRUPTED)
             refreshAccount()
             if (foregroundWaiting) appBecameActive()
         }
@@ -202,6 +241,25 @@ class AppViewModel(
         _phase.value = AppPhase.Onboarding
         _accountEnded.tryEmit(Unit)
         noticeChannel.trySend(AppNotice.ACCOUNT_DELETED)
+        removeAlerts()
+    }
+
+    /**
+     * A deleted account or a sign-out from another device (docs/security/app-review.md §2 "로컬 알림"): the alarms and
+     * the notifications already shown carry titles, so all of them go. The calendar stays on the device, and the next
+     * refresh schedules what it still holds.
+     */
+    private fun removeAlerts() {
+        viewModelScope.launch { alerts?.removeAll() }
+    }
+
+    /** A tapped notification; the tabs take it when they are there. */
+    fun open(route: AlertRoute) {
+        _route.value = route
+    }
+
+    fun routeTaken() {
+        _route.value = null
     }
 
     fun finishOnboarding() {
@@ -209,6 +267,8 @@ class AppViewModel(
         viewModelScope.launch {
             refreshAccount()
             nextUp?.refresh()
+            // The permissions screen may just have allowed notifications.
+            alerts?.refresh()
         }
     }
 
@@ -253,7 +313,7 @@ class AppViewModel(
         val (revoked, session, account) =
             withContext(io) {
                 // A store that cannot answer reads as nothing to show; the next change or foreground asks again.
-                Triple(orNull { core.revocation() }, core.session(), orNull { core.account() })
+                Triple(orNull { core.revocation() }, orNull { core.session() }, orNull { core.account() })
             }
         // Without a session the core takes no answer about another account's events; the next sign-in asks again.
         if (session == null) localData?.drop()
@@ -272,6 +332,7 @@ class AppViewModel(
                     _revocation.value = revoked
                     // The recovery code and the backup key are gone: no screen of them may stay open over the tabs.
                     _accountEnded.tryEmit(Unit)
+                    removeAlerts()
                 }
             }
             else -> {
@@ -330,6 +391,9 @@ class AppViewModel(
             if (_phase.value == AppPhase.Main && _signingIn.value == null) localData?.ask {}
             nextUp?.refresh()
             refreshAccount()
+            // The phone's calendars may have changed while the app was away, and the alerts move on with the clock.
+            mirror?.refresh()
+            alerts?.refresh()
         }
     }
 
@@ -342,11 +406,35 @@ class AppViewModel(
             read()
         } catch (e: CoreException) {
             null
+        } catch (e: InternalException) {
+            // A panic in the core, as the sibling calls take it: nothing to show rather than a crash.
+            null
         }
 
     override fun onCleared() {
         // The generated Core frees its Rust object on close; a fake in tests has nothing to free.
         (core as? AutoCloseable)?.close()
         core = null
+    }
+
+    companion object {
+        /** One recipe for the root and the activity, which hands a tapped reminder to the same view model. */
+        fun factory(container: AppContainer): ViewModelProvider.Factory =
+            viewModelFactory {
+                initializer {
+                    AppViewModel(
+                        openCore = container::openCore,
+                        onboarding = container.onboarding,
+                        changes = container.changes.changes,
+                        isOnline = container.connectivity.isOnline,
+                        screenReaderRunning = container.screenReaderRunning,
+                        timing = container.timing,
+                        alertCenter = container.alertCenter,
+                        alertTexts = container.alertTexts,
+                        deviceCalendars = container.deviceCalendars,
+                        signInInterrupted = container.providers::takeInterrupted,
+                    )
+                }
+            }
     }
 }

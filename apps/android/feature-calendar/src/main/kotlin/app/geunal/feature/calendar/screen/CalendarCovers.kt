@@ -11,6 +11,7 @@ import app.geunal.feature.calendar.alerts.AlertSettingsScreen
 import app.geunal.feature.calendar.alerts.NotificationAccess
 import app.geunal.feature.calendar.calendars.CalendarsModel
 import app.geunal.feature.calendar.calendars.CalendarsScreen
+import app.geunal.feature.calendar.calendars.DeviceCalendarMirror
 import app.geunal.feature.calendar.editor.EditorModel
 import app.geunal.feature.calendar.editor.EditorScreen
 import app.geunal.feature.calendar.editor.EditorTarget
@@ -64,6 +65,8 @@ class CalendarCovers(
     /** Whether the system lets the app notify, for 알림 설정. */
     private val notifications: NotificationAccess,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** The app's device calendar mirror, for 캘린더 관리's second group; without one the group is left out. */
+    val mirror: DeviceCalendarMirror? = null,
 ) {
     val stack: SnapshotStateList<CalendarCover> = mutableStateListOf()
 
@@ -113,7 +116,8 @@ fun CalendarCoverContent(
         is CalendarCover.Shifts -> ShiftStampScreen(model = cover.model, onClose = { covers.close(cover) }, modifier = modifier)
         is CalendarCover.People ->
             PeopleScreen(model = cover.model, toasts = toasts, onClose = { covers.close(cover) }, modifier = modifier)
-        is CalendarCover.Calendars -> CalendarsScreen(model = cover.model, onClose = { covers.close(cover) }, modifier = modifier)
+        is CalendarCover.Calendars ->
+            CalendarsScreen(model = cover.model, onClose = { covers.close(cover) }, modifier = modifier, mirror = covers.mirror)
         is CalendarCover.Alerts -> AlertSettingsScreen(model = cover.model, onClose = { covers.close(cover) }, modifier = modifier)
     }
 }

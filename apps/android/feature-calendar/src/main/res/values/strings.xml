@@ -277,6 +277,14 @@
     <string name="calendars_soft">소프트 캘린더</string>
     <string name="calendars_show">%1$s 표시</string>
     <string name="calendars_change_failed">바꾸지 못했어요. 다시 시도해 주세요</string>
+    <string name="calendars_device">기기 캘린더</string>
+    <string name="calendars_device_import">기기 캘린더 가져오기</string>
+    <string name="calendars_device_import_note">읽기만 해요. 제목은 이 기기 밖으로 나가지 않아요.</string>
+    <string name="calendars_device_settings">설정에서 켜기</string>
+    <string name="calendars_device_none">기기에 캘린더가 없어요</string>
+    <string name="calendars_device_failed">기기 캘린더를 가져오지 못했어요. 다시 시도해 주세요</string>
+    <string name="calendars_device_note">가져온 일정은 내 캘린더에 ‘기기 캘린더’ 색으로 보이고, 그룹에는 비어 있는지만 보여요. 이 앱에서 고치거나 지울 수 없어요.</string>
+    <string name="calendars_device_name">%1$s · %2$s</string>
     <string name="calendar_edit_close">닫기</string>
     <string name="calendar_edit_name">이름</string>
     <string name="calendar_edit_soft">소프트 캘린더</string>
@@ -320,6 +328,20 @@
     <string name="alerts_system_note">소리, 잠금 화면 표시, 요약은 설정 앱에서</string>
     <string name="alerts_system_on">켜짐</string>
     <string name="alerts_system_off">꺼짐</string>
+
+    <!-- Local notifications (docs/design/tone.md "알림 문구"). The three public titles also name the channels. -->
+    <string name="alert_public_event">일정 알림</string>
+    <string name="alert_public_birthday">생일 알림</string>
+    <string name="alert_public_leave">연휴 제안</string>
+    <string name="alert_short_day">%1$d/%2$d(%3$s)</string>
+    <string name="alert_timed">%1$s · %2$s</string>
+    <string name="alert_now">지금</string>
+    <string name="alert_all_day_through">%1$s부터 %2$s까지</string>
+    <string name="alert_birthday_today">오늘이에요</string>
+    <string name="alert_birthday_near">%1$s · %2$s</string>
+    <string name="alert_birthday_ahead">D-%1$d · %2$s</string>
+    <string name="alert_lunar">%1$s · %2$s</string>
+    <string name="alert_leave">%1$s 하루 쉬면 %2$s–%3$s 쉬어요</string>
 
     <!-- The next-up bar (docs/design/README.md §5). -->
     <string name="next_up_all_day">%1$s · 종일</string>

@@ -49,6 +49,8 @@
     <string name="permissions_calendar_body">읽기만 해요. 가져온 일정의 제목은 이 기기 밖으로 나가지 않고, 그룹에는 비어 있는지만 보여요.</string>
     <string name="permissions_calendar_ask">가져오기</string>
     <string name="permissions_calendar_done">가져왔어요 · 캘린더 %1$d개</string>
+    <string name="permissions_calendar_working">가져오는 중</string>
+    <string name="permissions_calendar_retry">다시 가져오기</string>
     <string name="permissions_notifications_title">알림 받기</string>
     <string name="permissions_notifications_body">일정 알림과 친구의 날짜 잡기·투표를 알려 드려요. 그룹마다 따로 끌 수 있어요.</string>
     <string name="permissions_notifications_ask">허용</string>

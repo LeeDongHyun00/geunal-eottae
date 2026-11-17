@@ -1,10 +1,18 @@
 package app.geunal
 
 import app.geunal.core.AccountView
+import app.geunal.core.AlertRule
+import app.geunal.core.AlertTarget
+import app.geunal.core.CalendarKind
+import app.geunal.core.CalendarView
 import app.geunal.core.Change
 import app.geunal.core.Core
 import app.geunal.core.CoreException
 import app.geunal.core.CoreInterface
+import app.geunal.core.DayTime
+import app.geunal.core.DeviceCalendarInput
+import app.geunal.core.DeviceEventInput
+import app.geunal.core.DeviceMirror
 import app.geunal.core.InternalException
 import app.geunal.core.LocalData
 import app.geunal.core.NewAccount
@@ -12,11 +20,18 @@ import app.geunal.core.NoHandle
 import app.geunal.core.Provider
 import app.geunal.core.Revocation
 import app.geunal.core.RevokedVia
+import app.geunal.core.ScheduledAlert
 import app.geunal.core.Session
 import app.geunal.core.UpNext
 import app.geunal.feature.account.onboarding.OnboardingStart
 import app.geunal.feature.account.support.AccountKind
 import app.geunal.feature.account.support.OnboardingState
+import app.geunal.feature.calendar.alerts.AlertCenter
+import app.geunal.feature.calendar.alerts.AlertRoute
+import app.geunal.feature.calendar.alerts.AlertWords
+import app.geunal.feature.calendar.alerts.PlannedAlert
+import app.geunal.feature.calendar.calendars.DeviceCalendarSource
+import app.geunal.feature.calendar.calendars.DeviceCalendarSummary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -365,7 +380,237 @@ class AppViewModelTest {
             assertEquals(AppPhase.Onboarding, viewModel.phase.value)
         }
 
+    // The reminders and the device calendar mirror (docs/parts/android.md §4).
+
+    private fun withDevice(
+        open: () -> CoreInterface,
+        center: FakeAlertCenter = FakeAlertCenter(),
+        calendars: FakeDeviceCalendars = FakeDeviceCalendars(),
+        signInInterrupted: () -> Boolean = { false },
+    ) = AppViewModel(
+        open,
+        onboarding,
+        changes,
+        online,
+        io = dispatcher,
+        alertCenter = center,
+        alertTexts = { alert, _ -> AlertWords(alert.title, "body") },
+        deviceCalendars = calendars,
+        signInInterrupted = signInInterrupted,
+    )
+
+    @Test
+    fun schedulesTheRemindersOnStartAndAgainWhenTheCalendarChanges() =
+        runTest(dispatcher) {
+            onboarding.isFinished = true
+            val core = FakeCore().apply { alerts = listOf(alert("a1")) }
+            val center = FakeAlertCenter()
+            val viewModel = withDevice({ core }, center)
+            viewModel.appBecameActive()
+            advanceUntilIdle()
+            assertEquals(listOf("a1"), center.pending.map { it.id })
+
+            core.alerts = listOf(alert("a1"), alert("a2"))
+            changes.emit(Change.Calendar)
+            advanceUntilIdle()
+
+            assertEquals(listOf("a1", "a2"), center.pending.map { it.id })
+        }
+
+    @Test
+    fun schedulesTheRemindersOnceOnboardingAllowedThem() =
+        runTest(dispatcher) {
+            val core = FakeCore().apply { alerts = listOf(alert("a1")) }
+            val center = FakeAlertCenter().apply { allowed = false }
+            val viewModel = withDevice({ core }, center)
+            viewModel.appBecameActive()
+            advanceUntilIdle()
+            assertTrue(center.pending.isEmpty())
+
+            center.allowed = true
+            viewModel.finishOnboarding()
+            advanceUntilIdle()
+
+            assertEquals(listOf("a1"), center.pending.map { it.id })
+        }
+
+    @Test
+    fun takesEveryReminderAwayWhenTheAccountIsDeleted() =
+        runTest(dispatcher) {
+            onboarding.isFinished = true
+            val core = FakeCore().apply { alerts = listOf(alert("a1")) }
+            val center = FakeAlertCenter()
+            val viewModel = withDevice({ core }, center)
+            viewModel.appBecameActive()
+            advanceUntilIdle()
+
+            viewModel.accountDeleted()
+            advanceUntilIdle()
+
+            assertEquals(1, center.removals)
+            assertTrue(center.pending.isEmpty())
+        }
+
+    @Test
+    fun takesEveryReminderAwayWhenAnotherDeviceSignedThisOneOut() =
+        runTest(dispatcher) {
+            onboarding.isFinished = true
+            val core = FakeCore().apply { alerts = listOf(alert("a1")) }
+            val center = FakeAlertCenter()
+            withDevice({ core }, center)
+            advanceUntilIdle()
+
+            core.revoked = Revocation(Instant.parse("2026-11-04T09:00:00Z"), "ios", RevokedVia.PROVIDER)
+            changes.emit(Change.Account)
+            advanceUntilIdle()
+            // The same revocation read again takes nothing more away.
+            changes.emit(Change.Account)
+            advanceUntilIdle()
+
+            assertEquals(1, center.removals)
+        }
+
+    @Test
+    fun mirrorsThePhonesCalendarsAgainOnComingToTheFrontAndOnTheirChange() =
+        runTest(dispatcher) {
+            onboarding.isFinished = true
+            val core = FakeCore()
+            val calendars = FakeDeviceCalendars()
+            val viewModel = withDevice({ core }, calendars = calendars)
+            advanceUntilIdle()
+            assertEquals(1, viewModel.mirror?.importAll())
+            assertEquals(1, core.mirrors.size)
+
+            calendars.events = 2
+            viewModel.appBecameActive()
+            advanceUntilIdle()
+            assertEquals(2, core.mirrors.size)
+
+            calendars.events = 3
+            calendars.changed()
+            advanceUntilIdle()
+            assertEquals(3, core.mirrors.size)
+        }
+
+    @Test
+    fun keepsATappedReminderUntilTheTabsTakeIt() =
+        runTest(dispatcher) {
+            val viewModel = viewModel { FakeCore() }
+
+            viewModel.open(AlertRoute.Person("p1"))
+            assertEquals(AlertRoute.Person("p1"), viewModel.route.value)
+
+            viewModel.routeTaken()
+            assertNull(viewModel.route.value)
+        }
+
+    @Test
+    fun saysWhenASignInWasCutOffByTheProcessEnding() =
+        runTest(dispatcher) {
+            val viewModel = withDevice({ FakeCore() }, signInInterrupted = { true })
+            advanceUntilIdle()
+
+            assertEquals(AppNotice.SIGN_IN_INTERRUPTED, viewModel.notices.first())
+        }
+
+    @Test
+    fun aPanicWhileReadingTheAccountShowsNothingRatherThanCrashing() =
+        runTest(dispatcher) {
+            onboarding.isFinished = true
+            val core = FakeCore().apply { accountPanics = true }
+            val viewModel = viewModel { core }
+            advanceUntilIdle()
+
+            viewModel.refreshAccount()
+            advanceUntilIdle()
+
+            assertEquals(AppPhase.Main, viewModel.phase.value)
+            assertNull(viewModel.revocation.value)
+        }
+
+    private fun alert(id: String) =
+        ScheduledAlert(
+            id = id,
+            fireAt = Instant.parse("2099-01-01T00:00:00Z"),
+            target = AlertTarget.Event(id, null),
+            title = "저녁",
+            start = DayTime("2099-01-01", 600u),
+            allDay = false,
+            end = DayTime("2099-01-01", 660u),
+        )
+
+    private class FakeAlertCenter : AlertCenter {
+        var allowed = true
+        var removals = 0
+        val pending = mutableListOf<PlannedAlert>()
+
+        override fun allowsAlerts(): Boolean = allowed
+
+        override fun scheduled(): List<PlannedAlert> = pending.toList()
+
+        override fun schedule(alert: PlannedAlert) {
+            pending += alert
+        }
+
+        override fun cancel(ids: List<String>) {
+            pending.removeAll { it.id in ids }
+        }
+
+        override fun rearm() = Unit
+
+        override fun removeAll() {
+            removals++
+            pending.clear()
+        }
+    }
+
+    /** A phone with one calendar of [events] events. */
+    private class FakeDeviceCalendars : DeviceCalendarSource {
+        var events = 1
+        var changed: () -> Unit = {}
+
+        override fun granted(): Boolean = true
+
+        override fun calendars(): List<DeviceCalendarSummary> = listOf(DeviceCalendarSummary("1", "개인", events))
+
+        override fun read(ids: List<String>): List<DeviceCalendarInput> =
+            listOf(
+                DeviceCalendarInput(
+                    "1",
+                    "개인",
+                    List(events) { DeviceEventInput("$it@1", "회의", false, DayTime("2026-11-07", 600u), DayTime("2026-11-07", 660u)) },
+                ),
+            )
+
+        override fun openSettings() = Unit
+
+        override fun observeChanges(action: () -> Unit) {
+            changed = action
+        }
+    }
+
     private class FakeCore : Core(NoHandle) {
+        var alerts: List<ScheduledAlert> = emptyList()
+
+        override fun scheduledAlerts(limit: UInt): List<ScheduledAlert> = alerts
+
+        val mirrors = mutableListOf<List<DeviceCalendarInput>>()
+        var calendarList: List<CalendarView> = emptyList()
+
+        override fun calendars(): List<CalendarView> = calendarList
+
+        override fun mirrorDeviceCalendars(calendars: List<DeviceCalendarInput>): DeviceMirror {
+            mirrors += calendars
+            calendarList =
+                calendars.map {
+                    CalendarView("device:${it.sourceId}", it.name, null, CalendarKind.DEVICE, false, true, AlertRule.Inherit, 0u, 0u)
+                }
+            return DeviceMirror(calendars.size.toUInt(), 0u)
+        }
+
+        /** A panic in the core while the account is read, which UniFFI hands over as [InternalException]. */
+        var accountPanics = false
+
         var foregrounds = 0
         var guests = 0
         var nextUpReads = 0
@@ -387,7 +632,10 @@ class AppViewModelTest {
 
         override fun session(): Session? = currentSession
 
-        override fun account(): AccountView? = currentAccount
+        override fun account(): AccountView? {
+            if (accountPanics) throw InternalException("boom")
+            return currentAccount
+        }
 
         override fun revocation(): Revocation? = revoked
 

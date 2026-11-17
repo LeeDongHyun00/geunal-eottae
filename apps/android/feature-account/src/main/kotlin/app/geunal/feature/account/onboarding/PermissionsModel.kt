@@ -4,10 +4,12 @@ import app.geunal.core.CoreException
 import app.geunal.core.CoreInterface
 import app.geunal.feature.account.support.AccountNotice
 import app.geunal.feature.account.support.BuildChannel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 enum class PermissionState { NOT_ASKED, GRANTED, DENIED }
 
@@ -18,8 +20,6 @@ enum class PermissionState { NOT_ASKED, GRANTED, DENIED }
 interface SystemPermissions {
     fun calendarGranted(): Boolean
 
-    fun deviceCalendarCount(): Int
-
     /** Notifications need asking from Android 13; before that they are on unless the person turned them off. */
     fun notificationsNeedAsking(): Boolean
 
@@ -28,6 +28,21 @@ interface SystemPermissions {
     fun openAppSettings()
 
     fun openNotificationSettings()
+}
+
+/** Where the import of the device's calendars stands once access is given. */
+sealed interface CalendarImport {
+    data object Idle : CalendarImport
+
+    data object Working : CalendarImport
+
+    /** "가져왔어요 · 캘린더 3개": the calendars the mirror took. */
+    data class Done(
+        val calendars: Int,
+    ) : CalendarImport
+
+    /** The mirror did not take them; the button offers to try again. */
+    data object Failed : CalendarImport
 }
 
 /** What the screen does after a card's button. */
@@ -52,10 +67,14 @@ class PermissionsModel(
     private val permissions: SystemPermissions,
     channel: BuildChannel,
     private val notify: (AccountNotice) -> Unit,
+    /** Where the import runs; it outlives the screen, so leaving for the calendar does not cut it short. */
+    private val scope: CoroutineScope,
+    /** Mirrors every calendar of the phone and says how many; `null` when it could not. */
+    private val importCalendars: suspend () -> Int?,
 ) {
     data class State(
         val calendar: PermissionState = PermissionState.NOT_ASKED,
-        val calendarCount: Int = 0,
+        val calendarImport: CalendarImport = CalendarImport.Idle,
         val notifications: PermissionState = PermissionState.NOT_ASKED,
         val alphaStats: Boolean = false,
         val showsAlphaStats: Boolean = false,
@@ -70,6 +89,7 @@ class PermissionsModel(
 
     /** Reads what the OS says now: on the first show and whenever the person comes back from the settings. */
     fun refresh() {
+        val before = _state.value.calendar
         _state.update { current ->
             val calendar =
                 when {
@@ -79,28 +99,46 @@ class PermissionsModel(
                 }
             current.copy(
                 calendar = calendar,
-                calendarCount = if (calendar == PermissionState.GRANTED) permissions.deviceCalendarCount() else 0,
+                calendarImport = if (calendar == PermissionState.GRANTED) current.calendarImport else CalendarImport.Idle,
                 notifications = notificationState(current.notifications),
                 alphaStats =
                     current.showsAlphaStats &&
                         runCatching { core.alphaStatsEnabled() }.getOrDefault(false),
             )
         }
+        // Also after the settings app: access given there imports the calendars, as a yes to the system's question does.
+        if (before != PermissionState.GRANTED && _state.value.calendar == PermissionState.GRANTED) import()
     }
 
     fun calendarTapped(): PermissionAction =
         when (_state.value.calendar) {
             PermissionState.NOT_ASKED -> PermissionAction.Ask(CALENDAR)
             PermissionState.DENIED -> PermissionAction.OpenAppSettings
-            PermissionState.GRANTED -> PermissionAction.None
+            PermissionState.GRANTED -> {
+                // "다시 가져오기" after an import that did not go through.
+                if (_state.value.calendarImport == CalendarImport.Failed) import()
+                PermissionAction.None
+            }
         }
 
     fun calendarAnswered(granted: Boolean) {
+        val before = _state.value.calendar
         _state.update {
             it.copy(
                 calendar = if (granted) PermissionState.GRANTED else PermissionState.DENIED,
-                calendarCount = if (granted) permissions.deviceCalendarCount() else 0,
+                calendarImport = if (granted) it.calendarImport else CalendarImport.Idle,
             )
+        }
+        if (granted && before != PermissionState.GRANTED) import()
+    }
+
+    /** The card says "가져왔어요" only once the calendars are in the app's calendar (m1.md screen 3). */
+    private fun import() {
+        if (_state.value.calendarImport == CalendarImport.Working) return
+        _state.update { it.copy(calendarImport = CalendarImport.Working) }
+        scope.launch {
+            val count = importCalendars()
+            _state.update { it.copy(calendarImport = count?.let(CalendarImport::Done) ?: CalendarImport.Failed) }
         }
     }
 
