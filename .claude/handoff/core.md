@@ -1,52 +1,57 @@
 # 코어 인수인계
 
-갱신: 2026-11-04, 이전 세션 https://claude.ai/code/session_0132zdS4uHGbzCbfbEzPa2Wd
+갱신: 2026-11-17, 이전 세션 https://claude.ai/code/session_0132zdS7mwpftUmPh7999RdK
 
 ## 지금 상태
 
-- 이번 세션에 머지된 코어 PR: #164(Welcome 자동 가입 끔), #165(로그인 뒤 복구 업로드를 백그라운드로), #167(outbox 영구 거절 처리), #170(새 멤버 번들을 한 번, 나를 추가한 멤버에게서만). 그 앞의 M1 작업(기기 키 서명, 계정·복구·백업 e2e 등)도 모두 main에 있습니다.
-- main에서 되는 것: M1 API 전부. `make e2e`가 게스트 계정 흐름(로그인·복구 업로드·백업·복귀·삭제)과 M0 그룹 게이트를 실제 스택으로 돕니다.
-- main에서 안 되는 것: 앱 코어는 Welcome으로 가입하지 않습니다(`geunal_ffi` `build_engine`의 `with_welcomes(false)`). M2 초대 흐름이 생길 때까지의 의도된 동작입니다. e2e만 `join_welcomes_for_tests()`로 켭니다.
+- 이번 세션에 머지된 코어 PR: #175(엔트리 한도 = 패딩 포함 MLS 메시지), #177(번들 흡수를 한 트랜잭션으로), #194(푸시 토큰 `set_push_token`), #199(채팅을 `chat` 기능 뒤로).
+- main에서 되는 것: M1 전부, 푸시 토큰 등록. 앱 빌드에는 채팅 FFI가 없습니다(`chat` 기능은 시험·e2e만 켬).
+- main에서 안 되는 것: 초대·가입, 가용 시간 자동 올리기, 그룹 메타 쓰기, 키 패키지 보충. 모두 아래 PR·브랜치에 있습니다. 앱 코어는 아직 Welcome으로 가입하지 않습니다.
+- 다른 세션의 코어 PR: #212(동기화 복구, 마이그레이션 `0005_rejoin`), #221(iOS 롤백 저널). #218은 머지됨(e2e 약속 날짜).
 
 ## 열린 PR과 브랜치
 
 | PR·브랜치 | 상태 | 남은 일 |
 | --- | --- | --- |
-| #175 `claude/core-entry-size` | Codex 완료(지적 없음), CI 녹색 | 계약 4장을 바꿔 현재 커밋에 `user-approved`가 필요. 붙으면 squash 머지 |
-| #177 `claude/core-bundle-order` | Codex·CI 진행 중 | 번들 흡수를 한 트랜잭션으로. 리뷰 끝나면 자동 머지 |
-| `claude/core-size-tools` | 보관, PR 없음 | 크기 분석 도구와 `size-notes.md`. 예산을 넘을 때 꺼내 씀 |
+| #187 `claude/core-invite-contract` | 계약 15장(초대)과 `invites.json`. 백엔드 합의(#191), Codex 지적 없음(첫 커밋), main과 충돌 없음 | 머리 56cb876에 `user-approved`. 붙으면 squash 머지 |
+| #192 `claude/core-invite-join` | #187 위. 초대 FFI, 참여를 요청한 그룹의 Welcome만 받기(`0005_accepted_invites`), 가짜 서버 초대 규칙. Codex 지적 1건 고침, 재리뷰 지적 없음 | #187 뒤 main 합치기(충돌: `geunal-ffi/src/lib.rs`, `geunal-sync/tests/engine.rs`). 마이그레이션 번호를 #212와 맞춤 |
+| #196 `claude/core-availability` | 기기 캘린더로 가용 시간을 만들어 `sync()`마다 바뀐 것만 올림, `group_sharing`. CI·gate·Codex 녹색, 자동 머지 켜짐 | #194와 `lib.rs`의 `sync()`에서 충돌. 풀면 자동 머지 |
+| #200 `claude/core-key-packages` | Add에서 키 패키지 404·MLS 거절 기기를 빼고 큐 계속, 한 시간마다 키 패키지 보충. CI 녹색, QA 재확인 끝 | 충돌(`lib.rs`, `fake.rs`). QA 권함: 마지막 `add_members`가 조합 때문에 실패해도 의도를 빼거나 한 명씩. 새 커밋에 `@codex review` 뒤 자동 머지 |
+| `claude/core-group-meta-2`(PR 없음) | #192 위. `group_meta` 쓰기, 409면 최신 블롭에 내 필드만 다시 얹기, 커밋한 기기의 재봉인(`changed_by` 유지), FFI `group_settings`·`change_group_settings`, `0006_group_meta`. 시험 통과 | #192 뒤 main 합쳐 PR. 커버는 미디어 업로드가 생긴 뒤 |
+| `claude/core-size-tools` | 보관, PR 없음 | 크기 예산을 넘을 때 꺼내 씀 |
 
 ## 다음 할 일
 
-M2 목표는 "그룹(M2)과 채팅(M3) 완성"입니다. 코어 순서는 [plan.md](../../docs/plan.md) 4장을 따릅니다.
+M2만 합니다(사용자 결정으로 채팅 M3 보류). 순서는 [plan.md](../../docs/plan.md) 4장.
 
-1. 그룹 생성·초대·가입: 초대 코드로 수락한 그룹의 Welcome만 받게 하고 `with_welcomes` 스위치를 그 흐름으로 바꿉니다(#164 "검토할 결정" 2). 외부 커밋 재가입 포함.
-2. 가용 시간 봉인과 합치기: `docs/parts/rust-core.md` 5장. 그룹 비트맵 시험 2개(`blocks_free = 0` 빼기, 시간 있는 약속은 바쁨)도 여기서.
-3. 날짜 잡기·투표·시간·활동 추천, 그룹 설정(그룹 메타 충돌 시 재시도), 그룹 프로필.
-4. 새 멤버 번들과 상태 재봉인 마무리, 성능 예산.
-5. M2 게이트 항목: 백그라운드에서 빠진 outbox 행을 메시지별로 앱에 알리기(지금은 `Change::Group`뿐, QA "메시지 미전달"). FFI에 새 `Change`나 조회 함수가 필요하므로 iOS·안드로이드와 정함(#167 "검토할 결정").
-6. 보안 잔여 항목: 비공개 추적 중(QA 목록). 새 세션 프롬프트로 받습니다.
+1. 위 PR 정리: #187 → #192 → #196·#200 → 그룹 메타 PR.
+2. 공유 일시중지: "공유 안 함" 블롭(예: `days = 0`)을 계약 5장에 정하고 구현(#196 "검토할 결정").
+3. 상태 요약값: QA #186 결정 1, `docs/qa/m2.md` S7.
+4. 주 보기 겹침(`docs/design/m1.md` 결정 45): 앱이 쓰도록 `calendar_week`가 3열 상한 없이 겹친 일정을 모두 줌. 앱 세션들과 (가)안으로 정함.
+5. 날짜 잡기 남은 규칙: 떠난 주도자 넘김(`docs/design/m2.md` 결정 6), 주도자 넘김 알림(결정 10), 수락한 약속을 내 캘린더에 넣기, 그룹 프로필.
+6. 실시간 B4: 루프백만 `ws://` 허용은 코어가 먼저. 토큰 헤더 전환은 실시간 세션이 계약 7장 PR을 올린 뒤.
+7. 백그라운드 미전달 메시지를 앱에 알리기(#167 "검토할 결정"), 성능 예산(rust-core.md 8장).
 
 ## 기다리는 결정
 
 | 결정 | 누가 | 어디에 적혀 있나 |
 | --- | --- | --- |
-| #175 계약 4장(엔트리 한도 = 패딩 포함 MLS 메시지 65,536) | 사용자 | #175 |
-| 백그라운드 미전달 메시지를 앱에 알리는 방식 | 코어·iOS·안드로이드 | #167 "검토할 결정" |
-| 초대 미리보기, 초대 코드 10자·7일, 떠난 주도자, 주도자 넘김 알림 | 코어·백엔드 | `docs/design/m2.md` 5장 |
-| 앱이 API 주소에 우리 CA만 믿게 할지 | 인프라 초안 → 코어 검토 → 사용자 | `docs/security/threat-model.md` 3.7 |
+| 계약 15장(초대) | 사용자 | #187 |
+| 없는 코드·끝난 코드 문구를 하나로(계약상 같은 404) | 디자인·사용자 | #187 "검토할 결정" |
+| 내 종일 일정을 바쁨으로 셈 | 기획 | #196 "검토할 결정" |
+| 앱이 API 주소에 우리 CA만 믿게 할지 | 인프라 → 코어 → 사용자 | `docs/security/threat-model.md` 3.7 |
 
 ## 알아 둘 것
 
-- **하지 않기로 한 것:** 7일마다 키 자동 갱신(B3)과 키 패키지 업로드 미루기(B안)는 사용자가 "지금은 하지 마"라고 했습니다.
-- **공개 저장소 규칙:** 커밋·PR·주석에 보안 재현 방법이나 빈틈 세부를 쓰지 않고, 바뀐 동작만 적습니다(qa.md 4장).
-- **엔트리 크기:** mls-rs 기본 패딩 때문에 인코딩 57,273바이트까지 메시지 57,424, 그 위는 65,616으로 서버가 413. #175가 `MAX_ENTRY_BYTES`를 57,216으로 낮춥니다.
-- **outbox:** 엔트리·상태 블롭은 400·404·413·422·403(`not_member`·`not_owner`·`blocked`)이면 큐에서 뺍니다. 커밋 의도는 빼지 않고 다시 만듭니다. Add에서 기기 조회가 404인 사람은 빠집니다(#155 뒤 서버는 추가할 수 없는 계정에 404).
-- **번들:** `groups.bundle_from/epoch/through`(마이그레이션 0004)가 "받을 번들"입니다. MLS가 확인한 Welcome 서명자의 것만, seq는 Add 커밋 seq 이하만 받습니다.
-- **복구 업로드:** 모든 업로드가 `recovery_upload` 비동기 잠금을 지납니다. 시험은 `recovery_upload_settled()`(fake-server 기능)로 기다립니다. 코어 런타임은 `CoreRuntime`이 작업 스레드에서 놓이면 `shutdown_background`로 내립니다.
-- **가짜 서버:** `fail_next`, `lose_next`, `refuse_next`(#175), `corrupt_state`, `set_now`. 모르는 계정의 기기 조회는 404입니다.
-- **e2e:** 로그인 한도가 IP당 시간 30회라 로컬에서 되풀이하면 `docker exec geunal-redis-1 redis-cli FLUSHALL`. 디스크가 차면 S3가 500을 내므로 `core/target/debug/incremental`부터 지웁니다.
-- **작업 트리:** 다른 경로의 작업 트리에서 같은 `CARGO_TARGET_DIR`로 빌드하면, 그 경로가 박힌 시험 바이너리가 남아 벡터 시험이 "파일 없음"으로 실패합니다. `cargo clean -p geunal-crypto`로 풉니다.
-- **충돌:** 같은 시험 파일(`geunal-sync/tests/engine.rs`)에 시험을 더하는 PR끼리 끝부분이 충돌합니다. 양쪽 시험과 import를 모두 살립니다.
-- **UniFFI:** `CoreError`·`Change`에 종류를 더하면 앱의 빠짐없는 `switch`/`when`이 깨집니다. `Core`에 함수를 더하는 것은 괜찮습니다.
-- **CI:** 이전 실행이 취소돼 생긴 `ci-ok` 실패는 할 일이 없습니다. Codex는 PR을 열 때만 리뷰하고, 다시 받으려면 `@codex review`.
+- **하지 않기로 한 것:** 7일 자기 갱신(B3), 키 패키지 업로드 미루기(B안), 채팅(M3) 새 작업.
+- **공개 저장소:** 커밋·PR·주석에 보안 재현이나 빈틈 세부를 쓰지 않습니다(qa.md 4장). 세부는 조정 세션에 send_message.
+- **보류:** 푸시·PR·댓글·자동 머지 켜기 각각 바로 앞에서 `hold` 이슈를 봅니다. 한 번 본 결과를 이어 쓰다 보류 중에 푸시한 적이 있습니다.
+- **마이그레이션 번호:** 저장소는 기록된 가장 큰 번호보다 큰 것만 적용합니다. 번호가 겹치거나 뒤늦게 작은 번호가 들어오면 안 되므로, 나중에 머지하는 PR이 번호를 올립니다(#212 `0005_rejoin`, #192 `0005_accepted_invites`, 그룹 메타 `0006`).
+- **가짜 서버(#192부터):** 대기·활성 계정만 Add·기기 조회·키 패키지 가져가기. `invite`(동의 없는 대기), `expire_invite`, `lose_next("join_invite")`, `group_meta` 공용 자리와 `base_version`. #200: `use_key_packages`, `spoil_key_packages`.
+- **outbox:** 엔트리·상태 블롭은 400·404·413·422·403(`not_member`·`not_owner`·`blocked`)이면 뺍니다. 커밋 의도는 다시 만듭니다. 그룹 메타 브랜치는 `Outgoing::Meta`(변경 자체)를 더합니다.
+- **충돌:** `geunal-sync/tests/engine.rs` 끝과 `geunal-ffi/src/lib.rs`의 `sync()`에 여러 PR이 줄을 더합니다. 양쪽을 모두 살립니다.
+- **UniFFI:** `CoreError`·`Change`에 종류를 더하면 앱의 `switch`/`when`이 깨집니다. 함수·레코드 추가는 괜찮습니다.
+- **Codex:** PR을 열 때만 리뷰합니다. 머지 조건을 위해 새 커밋을 다시 보게 하려면 `@codex review`.
+- **CI:** #192의 산출물 업로드 시간 초과와 #200의 에뮬레이터 화면 시험 시간 초과는 코드와 무관했고, #200은 다음 커밋에서 통과했습니다.
+- **e2e:** 로그인 한도가 IP당 시간 30회라 로컬에서 되풀이하면 `docker exec geunal-redis-1 redis-cli FLUSHALL`.
+- **작업 트리:** 다른 경로의 작업 트리와 `CARGO_TARGET_DIR`을 같이 쓰면 벡터 시험이 "파일 없음"으로 실패합니다. `cargo clean -p geunal-crypto`.
