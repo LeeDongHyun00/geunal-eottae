@@ -62,6 +62,36 @@ fn keeps_mls_group_state_in_the_store_file() {
     assert!(mls_tables > 0, "mls-rs wrote no tables into the store file");
 }
 
+/// The store as an iPhone opens it: mls-rs's connections follow the journal the file says, and a save waits for a
+/// reader on the store's connection instead of failing with "database is locked".
+#[test]
+fn saves_group_state_beside_a_store_on_a_rollback_journal() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("geunal.db");
+    let store = Store::open_with(&db, &KEY, geunal_store::Journal::Rollback).unwrap();
+    let (secret, _) = MlsClient::generate_signing_key().unwrap();
+    let client = MlsClient::open(&db, &KEY, Identity::new("a", "a-phone"), &secret).unwrap();
+    let (mut group, _) = client.create_group(&GROUP_ID).unwrap();
+    // A read held open on the store's connection for a moment, as a screen's query is while the engine works.
+    let reader = std::thread::spawn({
+        let store = store.clone();
+        move || {
+            let conn = store.connection();
+            let mut stmt = conn.prepare("SELECT name FROM sqlite_master").unwrap();
+            let mut rows = stmt.query([]).unwrap();
+            rows.next().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+    });
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    group.save().unwrap();
+    reader.join().unwrap();
+    assert_eq!(client.load_group(&GROUP_ID).unwrap().unwrap().epoch(), 0);
+    let mode: String = store.connection().query_row("PRAGMA journal_mode", [], |row| row.get(0)).unwrap();
+    assert_eq!(mode, "truncate");
+    assert!(!db.with_extension("db-shm").exists());
+}
+
 #[test]
 fn adds_devices_with_a_welcome_and_removes_one_so_it_reads_nothing_after() {
     let (_a, _b, _c, mut ga, mut gb, mut gc) = trio();

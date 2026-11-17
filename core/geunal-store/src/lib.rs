@@ -61,6 +61,34 @@ pub struct Store {
     inner: Arc<Inner>,
 }
 
+/// How SQLite journals the store's writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Journal {
+    /// A write-ahead log: readers and the writer do not wait for each other. Every open connection keeps a lock on
+    /// the log's shared-memory file for as long as it lives.
+    Wal,
+    /// A rollback journal: a connection holds file locks only while a statement or transaction runs.
+    Rollback,
+}
+
+impl Journal {
+    /// The rollback journal on iOS, the write-ahead log elsewhere. The iOS store is in the App Group container, and
+    /// iOS ends an app it suspends while the app holds a file lock there (0xdead10cc). It spares SQLite's write-ahead
+    /// lock only for files it recognises as SQLite by their header, which SQLCipher encrypts, so with a log the app
+    /// was ended every time it left the screen, idle or not. With a rollback journal an idle app holds no lock at all.
+    pub fn for_this_platform() -> Self {
+        if cfg!(target_os = "ios") { Journal::Rollback } else { Journal::Wal }
+    }
+
+    fn pragma(self) -> &'static str {
+        match self {
+            Journal::Wal => "wal",
+            // Truncating the journal ends a transaction with one file operation fewer than deleting it.
+            Journal::Rollback => "truncate",
+        }
+    }
+}
+
 struct Inner {
     conn: Mutex<Connection>,
     lock_path: PathBuf,
@@ -70,12 +98,20 @@ impl Store {
     /// Opens or creates the database at `path` under a 32-byte raw key and brings its schema up to date. A wrong key
     /// fails here, not on first use.
     pub fn open(path: &Path, key: &[u8; 32]) -> Result<Self, StoreError> {
+        Self::open_with(path, key, Journal::for_this_platform())
+    }
+
+    /// [`Store::open`] with the journal named, so a test on any machine can open a store the way an iPhone does.
+    pub fn open_with(path: &Path, key: &[u8; 32], journal: Journal) -> Result<Self, StoreError> {
         let conn = Connection::open(path)?;
         // A raw key in SQLCipher's x'..' form skips its passphrase derivation; the key is already random.
         conn.execute_batch(&format!("PRAGMA key = \"x'{}'\";", hex(key)))?;
         // SQLCipher checks the key only when it first reads a page.
         conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))?;
-        conn.pragma_update(None, "journal_mode", "wal")?;
+        // The mode is kept in the file, and the MLS client's own connections to it follow whatever it says. Changing
+        // it needs the file to itself for a moment; when something else has it open the old mode stays for this run
+        // and the next open tries again.
+        let _mode: String = conn.pragma_update_and_check(None, "journal_mode", journal.pragma(), |row| row.get(0))?;
         conn.pragma_update(None, "foreign_keys", true)?;
         // Another process (the notification extension) may hold a write transaction for a moment.
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
@@ -158,15 +194,18 @@ impl Store {
         WriteLock::acquire(&path.with_extension("lock"), timeout)
     }
 
-    /// Moves the database at `path` and its WAL files into `unreadable/<unix millis>/` beside it. For a store whose
+    /// Moves the database at `path` and its journal files into `unreadable/<unix millis>/` beside it. For a store whose
     /// key is gone: nothing can open it any more, but it is kept rather than deleted in case the key turns up. The WAL
     /// files go first, so a new database never starts next to an old one's log.
     ///
     /// A marker beside the database goes down before anything moves, for [`Store::reset_pending`]: the move is then
     /// reported by whichever open succeeds next, even when the one that moved the files fails after it.
     pub fn set_aside(path: &Path) -> Result<(), StoreError> {
-        let files: Vec<PathBuf> =
-            ["-wal", "-shm", ""].into_iter().map(|suffix| suffixed(path, suffix)).filter(|f| f.exists()).collect();
+        let files: Vec<PathBuf> = ["-wal", "-shm", "-journal", ""]
+            .into_iter()
+            .map(|suffix| suffixed(path, suffix))
+            .filter(|f| f.exists())
+            .collect();
         if files.is_empty() {
             return Ok(());
         }
@@ -195,7 +234,7 @@ impl Store {
     }
 }
 
-/// `geunal.db` with SQLite's suffix for its WAL (`-wal`) or shared memory (`-shm`).
+/// `geunal.db` with SQLite's suffix for its WAL (`-wal`), shared memory (`-shm`) or rollback journal (`-journal`).
 fn suffixed(path: &Path, suffix: &str) -> PathBuf {
     let mut name = path.as_os_str().to_owned();
     name.push(suffix);
