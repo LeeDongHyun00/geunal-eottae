@@ -9,6 +9,11 @@ data class AuthProperties(
     val stub: Boolean = false,
     val accessTtl: Duration = Duration.ofMinutes(15),
     val refreshTtl: Duration = Duration.ofDays(30),
+    /**
+     * How long after a refresh the token it spent still answers with new tokens instead of ending the device's
+     * sessions: a device whose refresh answer was lost retries with the old token (api-server.md §4). Zero turns it off.
+     */
+    val refreshReuseGrace: Duration = Duration.ofSeconds(60),
     val nonceTtl: Duration = Duration.ofMinutes(5),
     val ticketTtl: Duration = Duration.ofMinutes(30),
     /** "새로 시작" without the recovery code needs a provider sign-in this recent, or a fresh provider proof (protocol §10). */

@@ -317,6 +317,7 @@ API가 게이트웨이에 신호를 보낼 때는 Redis 채널 `d:{device_id}`�
 | 409 | `account_exists`, `already_linked` | 연결하려는 카카오·Apple 계정이 이미 다른 계정에 쓰이거나, 이미 연결한 계정. 화면에 알리고 중단 |
 | 409 | `recovery_missing` | 복구 자료를 먼저 올린 뒤 백업이나 계정 삭제를 다시 |
 | 409 | `recovery_conflict` | 복구 ID가 다른 계정의 것과 같음. 같은 `E`가 두 계정에 쓰였다는 뜻이라, 새 `E`를 만들고 다시 |
+| 409 | `group_limit` | 이미 그룹 20개에 들어 있어(초대받은 그룹 포함) 새 그룹을 만들 수 없음. 화면에 알리고 중단 |
 | 409 | `upload_incomplete` | 백업 객체가 없거나 크기가 다름. 다시 올리기 |
 | 410 | `cursor_expired` | 외부 가입으로 다시 들어오기 |
 | 413 | `too_large` | 미디어로 보내기 |

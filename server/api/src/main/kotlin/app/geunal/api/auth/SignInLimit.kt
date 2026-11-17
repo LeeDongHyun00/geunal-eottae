@@ -13,6 +13,10 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
  * 30 sign-ins and nonces an hour per client address (api-server.md §9): what someone guessing recovery codes or
  * spraying provider tokens can try. Refreshing, linking and Apple's callback are not counted; they need a session or
  * come from Apple. The address is the device's as Caddy forwards it.
+ *
+ * The counter passes requests uncounted while Redis is away (HourlyLimit). That opens nothing here: every counted
+ * sign-in spends a nonce or a replacement ticket first, the nonces live in the same Redis and fail closed, and a
+ * ticket is 128 random bits.
  */
 @Configuration
 class SignInLimit(

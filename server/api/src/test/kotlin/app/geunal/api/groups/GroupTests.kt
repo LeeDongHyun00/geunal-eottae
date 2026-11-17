@@ -136,4 +136,17 @@ class GroupTests : ApiTest() {
         assertThat(roles[second.userId.toString()]).isEqualTo("member")
         first.delete("/groups/$groupId/members/${second.userId}").expect(204)
     }
+
+    @Test
+    fun `an account creates no group past its twentieth`() {
+        val owner = signIn()
+        val groups = (1..20).map { owner.post("/groups").expect(201).uuid("id") }
+
+        owner.post("/groups").expectError(409, "group_limit")
+        assertThat(owner.get("/me/groups").expect(200)["groups"].size()).isEqualTo(20)
+
+        // A group the account left no longer counts.
+        owner.delete("/groups/${groups.first()}/members/${owner.userId}").expect(204)
+        owner.post("/groups").expect(201)
+    }
 }
