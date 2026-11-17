@@ -961,6 +961,7 @@ dependencies = [
 name = "geunal-e2e"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "geunal-domain",
  "geunal-ffi",
  "pollster",

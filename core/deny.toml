@@ -22,6 +22,12 @@ ignore = [
   # basic-toml enters only through uniffi-bindgen's template engine (askama_derive, a proc-macro) and never ships in
   # the app libraries. Revisit with the next uniffi upgrade.
   { id = "RUSTSEC-2026-0374", reason = "build-time only, under uniffi-bindgen" },
+  # SQLite returns stale process memory when a database is opened beside a `-wal` file of another page size. It takes
+  # someone who can write that file next to the store, which lives in the app's own container: whoever can do that
+  # already has the store file and the process. No release fixes it for this build: mls-rs-provider-sqlite 0.23 holds
+  # rusqlite at 0.37, and the libsqlite3-sys releases with the fix still bundle an affected SQLite under
+  # `bundled-sqlcipher`. Drop this when a SQLCipher build on SQLite 3.54 or later is reachable.
+  { id = "RUSTSEC-2026-0459", reason = "needs a crafted -wal beside the store in the app's container; no fixed SQLCipher bundle yet" },
 ]
 
 [licenses]
