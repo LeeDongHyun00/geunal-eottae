@@ -6,7 +6,10 @@ import org.junit.jupiter.api.Test
 import org.springframework.http.HttpMethod
 import org.springframework.test.context.TestPropertySource
 
-/** `refresh-reuse-grace: 0` turns the lost-answer exception off: a spent refresh token is a replay however soon. */
+/**
+ * `refresh-reuse-grace: 0` turns the lost-answer exception off: a spent refresh token is a replay however soon, and is
+ * not answered with the token it rotated to.
+ */
 @TestPropertySource(properties = ["geunal.auth.refresh-reuse-grace=0s"])
 class RefreshGraceOffTests : ApiTest() {
     private fun refresh(token: String) = api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to token))

@@ -319,8 +319,8 @@ paths:
       summary: Trade a refresh token for new tokens; the old refresh token is spent
       description: >-
         A refresh token that was already spent ends every session of its device (reuse detection). The exception is a
-        retry after a lost answer: the token that was just rotated, presented again within 60 seconds and before any
-        token issued from it was used, gets new tokens again.
+        retry after a lost answer: the token that was just rotated, presented again within 60 seconds and before the
+        refresh token issued from it was used, gets that same refresh token again with a new access token.
       security: []
       requestBody:
         content:

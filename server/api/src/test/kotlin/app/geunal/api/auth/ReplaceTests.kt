@@ -130,14 +130,17 @@ class ReplaceTests : ApiTest() {
     }
 
     @Test
-    fun `a replaced device that lost two refresh answers in a row still learns it was replaced`() {
+    fun `a replaced device that lost its refresh answers still learns it was replaced`() {
         val first = signIn("revoked-lost-answers")
         val refresh = { token: String -> api.send(HttpMethod.POST, "/auth/refresh", body = mapOf("refresh_token" to token)) }
         val earlier = first.refreshToken
         first.adopt(refresh(earlier).expect(200))
         val held = first.refreshToken
-        // Neither answer reaches the device: it still holds the spent token, older than both tokens minted from it.
-        val lost = List(2) { refresh(held).expect(200).string("refresh_token") }
+        // Neither answer reaches the device: it still holds the spent token, and the one token minted from it is unused.
+        val lost = List(2) { refresh(held).expect(200).string("refresh_token") }.distinct()
+        assertThat(lost).hasSize(1)
+        // A later sign-in of the same device is a newer line; the line the device may still be on must not go for it.
+        first.stubSignIn().expect(201)
         replaceDevice("revoked-lost-answers")
         jdbc
             .sql("UPDATE sessions SET expires_at = expires_at - interval '400 days' WHERE device_id = :id")

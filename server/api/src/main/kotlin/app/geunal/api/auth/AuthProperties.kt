@@ -10,8 +10,9 @@ data class AuthProperties(
     val accessTtl: Duration = Duration.ofMinutes(15),
     val refreshTtl: Duration = Duration.ofDays(30),
     /**
-     * How long after a refresh the token it spent still answers with new tokens instead of ending the device's
-     * sessions: a device whose refresh answer was lost retries with the old token (api-server.md §4). Zero turns it off.
+     * How long after a refresh the token it spent is still answered, with the same refresh token as the first time,
+     * instead of ending the device's sessions: a device whose refresh answer was lost retries with the old token
+     * (api-server.md §4). Zero turns it off.
      */
     val refreshReuseGrace: Duration = Duration.ofSeconds(60),
     val nonceTtl: Duration = Duration.ofMinutes(5),

@@ -68,9 +68,10 @@ class Cleanup(
                 ).update()
         // A replaced device keeps, for as long as the account lives, every refresh token it can still hold, so a phone
         // kept off any length of time still hears device_revoked. That is a token never spent, or the token an unspent
-        // one was rotated from: a device whose refresh answers were lost holds the spent parent while the tokens minted
-        // for it, however many, were never used. A spent token whose successors were all spent is one the device moved
-        // on from. Counting the newest rows instead would drop the parent after two lost answers.
+        // one was rotated from: a device whose refresh answer was lost holds the spent parent while the token minted
+        // from it was never used. A spent token whose successor was spent too is one the device moved on from. The
+        // rule follows rotated_from rather than counting the newest rows, which would drop a token the device holds
+        // whenever it has more than one line of tokens (it signed in again with the same key).
         jdbc
             .sql(
                 """

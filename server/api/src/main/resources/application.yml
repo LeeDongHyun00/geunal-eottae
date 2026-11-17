@@ -72,7 +72,8 @@ geunal:
     stub: false
     access-ttl: 15m
     refresh-ttl: 30d
-    # A refresh token presented again this soon after it was rotated is a retry of a lost answer, not a replay.
+    # A refresh token presented again this soon after it was rotated is a retry of a lost answer, not a replay, and
+    # gets the same next token again. 0 turns that off.
     refresh-reuse-grace: 60s
     nonce-ttl: 5m
     # How long a replace_required ticket stays good for POST /auth/replace and the restore reads (protocol §13).
