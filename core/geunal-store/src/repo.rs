@@ -51,6 +51,10 @@ pub struct ExpectedBundle {
     pub through: Option<i64>,
 }
 
+/// The `kind` of the marker left where a log item could not be opened ([`Store::skip_unreadable`]). No entry tag of
+/// protocol §4 has this name.
+pub const UNREADABLE: &str = "unreadable";
+
 /// A decrypted log entry as received; `body` is the CBOR envelope so unknown kinds survive an upgrade (protocol §4).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntryRow {
@@ -163,6 +167,20 @@ impl Store {
         Ok(())
     }
 
+    /// Whether the group's MLS state was dropped for an external commit the server has not taken yet.
+    pub fn rejoin_owed(&self, group_id: &str) -> Result<bool> {
+        Ok(self
+            .conn()
+            .query_row("SELECT rejoin FROM groups WHERE id = ?1", [group_id], |row| row.get::<_, i64>(0))
+            .optional()?
+            .is_some_and(|owed| owed != 0))
+    }
+
+    pub fn set_rejoin_owed(&self, group_id: &str, owed: bool) -> Result<()> {
+        self.conn().execute("UPDATE groups SET rejoin = ?2 WHERE id = ?1", params![group_id, owed])?;
+        Ok(())
+    }
+
     /// Records the newcomer bundle a Welcome promises: from `from_user`, sealed in `epoch`, items up to `through`.
     pub fn expect_bundle(&self, group_id: &str, from_user: &str, epoch: i64, through: Option<i64>) -> Result<()> {
         self.conn().execute(
@@ -225,6 +243,86 @@ impl Store {
         )?;
         tx.commit()?;
         Ok(inserted)
+    }
+
+    /// Stores an entry the log delivered and moves the cursor past it, in one transaction: a crash never leaves the
+    /// cursor behind a stored entry or past one that was not stored. `replace` first drops what sits at the seq (a
+    /// copy the notification extension wrote). Answers whether the entry was new.
+    pub fn store_received(&self, row: &EntryRow, text: Option<&str>, replace: bool) -> Result<bool> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        if replace {
+            tx.execute("DELETE FROM chat_fts WHERE group_id = ?1 AND seq = ?2", params![row.group_id, row.seq])?;
+            tx.execute("DELETE FROM entries WHERE group_id = ?1 AND seq = ?2", params![row.group_id, row.seq])?;
+        }
+        let new = tx.execute(
+            "INSERT OR IGNORE INTO entries (group_id, seq, author_id, kind, body, received_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![row.group_id, row.seq, row.author_id, row.kind, row.body, row.received_at],
+        )? == 1;
+        if let (true, Some(text)) = (new, text) {
+            tx.execute(
+                "INSERT INTO chat_fts (body, group_id, seq) VALUES (?1, ?2, ?3)",
+                params![text, row.group_id, row.seq],
+            )?;
+        }
+        tx.execute("UPDATE groups SET cursor = ?2 WHERE id = ?1", params![row.group_id, row.seq])?;
+        tx.commit()?;
+        Ok(new)
+    }
+
+    /// Moves the cursor past a log item this device could not open and leaves a marker at its seq, in one
+    /// transaction: an entry of kind [`UNREADABLE`] with an empty body, which no decoder reads, so the gap is on
+    /// record instead of silent.
+    pub fn skip_unreadable(&self, group_id: &str, seq: i64, author_id: &str, received_at: &str) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "INSERT OR IGNORE INTO entries (group_id, seq, author_id, kind, body, received_at) VALUES (?1, ?2, ?3, ?4, x'', ?5)",
+            params![group_id, seq, author_id, UNREADABLE, received_at],
+        )?;
+        tx.execute("UPDATE groups SET cursor = ?2 WHERE id = ?1", params![group_id, seq])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The seqs of the log items this device could not open, in order.
+    pub fn unreadable(&self, group_id: &str) -> Result<Vec<i64>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare("SELECT seq FROM entries WHERE group_id = ?1 AND kind = ?2 ORDER BY seq")?;
+        let rows = stmt.query_map(params![group_id, UNREADABLE], |row| row.get(0))?;
+        rows.map(|r| r.map_err(StoreError::from)).collect()
+    }
+
+    /// What a commit leaves behind once MLS has moved to its epoch, in one transaction: the new epoch's state key,
+    /// the cursor past the commit, and, for this device's own commit, its outbox row settled: gone, or rewritten to
+    /// what the commit still owes (`settled` names the row and its new payload, if it keeps one).
+    pub fn enter_epoch(
+        &self,
+        group_id: &str,
+        seq: i64,
+        epoch: i64,
+        key: &[u8; 32],
+        created_at: &str,
+        settled: Option<(i64, Option<&[u8]>)>,
+    ) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "INSERT OR REPLACE INTO state_keys (group_id, epoch, key, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![group_id, epoch, key.as_slice(), created_at],
+        )?;
+        tx.execute("UPDATE groups SET cursor = ?2 WHERE id = ?1", params![group_id, seq])?;
+        match settled {
+            Some((id, Some(payload))) => {
+                tx.execute("UPDATE outbox SET payload = ?2 WHERE id = ?1", params![id, payload])?;
+            }
+            Some((id, None)) => {
+                tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
+            }
+            None => {}
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     pub fn insert_entry(&self, row: &EntryRow) -> Result<bool> {
@@ -409,6 +507,12 @@ impl Store {
         let mut stmt = conn.prepare("SELECT group_id FROM outbox GROUP BY group_id ORDER BY min(id)")?;
         let rows = stmt.query_map([], |row| row.get(0))?;
         rows.map(|r| r.map_err(StoreError::from)).collect()
+    }
+
+    /// Rewrites a waiting row: a commit row keeps the commit it posted until the server's answer is known.
+    pub fn set_outbox_payload(&self, id: i64, payload: &[u8]) -> Result<()> {
+        self.conn().execute("UPDATE outbox SET payload = ?2 WHERE id = ?1", params![id, payload])?;
+        Ok(())
     }
 
     pub fn bump_attempts(&self, id: i64) -> Result<()> {

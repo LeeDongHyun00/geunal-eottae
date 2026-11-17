@@ -458,7 +458,8 @@ impl FakeServer {
     }
 
     /// The next call of `route` fails with a connection error before the server sees it. Routes: `me`, `replace`,
-    /// `put_recovery`, `upload_key_packages`, `delete_account`, `post_alpha_stats`.
+    /// `put_recovery`, `upload_key_packages`, `delete_account`, `post_alpha_stats`, `post_commit`, `group_info`,
+    /// `put_state`.
     pub fn fail_next(&self, route: &'static str) {
         self.state.lock().expect("fake server").faults.insert(route, Fault::Fail);
     }
@@ -470,7 +471,7 @@ impl FakeServer {
     }
 
     /// The server handles the next call of `route` and its answer is lost: the client sees a connection error.
-    /// Routes: `put_recovery`, `delete_account`.
+    /// Routes: `put_recovery`, `delete_account`, `post_commit`.
     pub fn lose_next(&self, route: &'static str) {
         self.state.lock().expect("fake server").faults.insert(route, Fault::Lose);
     }
@@ -481,6 +482,19 @@ impl FakeServer {
         if let Some(group) = state.groups.get_mut(group_id) {
             group.log.retain(|item| item.seq > through_seq);
             group.dropped_through = group.dropped_through.max(through_seq);
+        }
+    }
+
+    /// Damages the stored ciphertext of one log item, so that no member's key opens it.
+    pub fn corrupt_log(&self, group_id: &str, seq: i64) {
+        let mut state = self.state.lock().expect("fake server");
+        if let Some(byte) = state
+            .groups
+            .get_mut(group_id)
+            .and_then(|g| g.log.iter_mut().find(|item| item.seq == seq))
+            .and_then(|item| item.ciphertext.last_mut())
+        {
+            *byte ^= 0xff;
         }
     }
 
@@ -1232,6 +1246,7 @@ impl Transport for FakeClient {
     async fn post_commit(&self, group_id: &str, req: CommitRequest) -> Result<CommitAccepted, ApiError> {
         let (user, _) = self.who()?;
         let mut state = self.lock();
+        state.fault("post_commit", Fault::Fail)?;
         let received_at = state.now_text();
         Self::require_active(&mut state, group_id, &user)?;
         if req.added.is_empty() != req.welcome.is_none() {
@@ -1284,6 +1299,7 @@ impl Transport for FakeClient {
                 state.events.entry(device_id).or_default().push(json!({"t": "welcome"}));
             }
         }
+        state.fault("post_commit", Fault::Lose)?;
         Ok(CommitAccepted { seq, epoch: req.epoch, received_at: Some(received_at) })
     }
 
@@ -1337,6 +1353,7 @@ impl Transport for FakeClient {
     async fn group_info(&self, group_id: &str) -> Result<GroupInfo, ApiError> {
         let (user, _) = self.who()?;
         let mut state = self.lock();
+        state.fault("group_info", Fault::Fail)?;
         Self::require_active(&mut state, group_id, &user)?.group_info.clone().ok_or_else(|| err(404, "not_found"))
     }
 
@@ -1348,6 +1365,7 @@ impl Transport for FakeClient {
     async fn put_state(&self, group_id: &str, kind: &str, req: PutState) -> Result<i64, ApiError> {
         let (user, _) = self.who()?;
         let mut state = self.lock();
+        state.fault("put_state", Fault::Fail)?;
         let updated_at = state.now_text();
         let group = Self::require_active(&mut state, group_id, &user)?;
         if req.epoch > group.epoch {

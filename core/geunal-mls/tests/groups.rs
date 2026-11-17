@@ -78,8 +78,8 @@ fn adds_devices_with_a_welcome_and_removes_one_so_it_reads_nothing_after() {
     let removal = ga.remove_members(&[c_index]).unwrap();
     assert!(removal.welcome.is_none());
     ga.apply_pending_commit().unwrap();
-    assert_eq!(gb.process(&removal.commit).unwrap(), Received::Commit { epoch: 2, removed_me: false });
-    assert_eq!(gc.process(&removal.commit).unwrap(), Received::Commit { epoch: 2, removed_me: true });
+    assert_eq!(gb.process(&removal.commit).unwrap(), Received::Commit { epoch: 2, removed_me: false, mine: false });
+    assert_eq!(gc.process(&removal.commit).unwrap(), Received::Commit { epoch: 2, removed_me: true, mine: false });
 
     let after = ga.encrypt(b"c cannot read this").unwrap();
     assert!(gc.process(&after).is_err(), "a removed member reads nothing after the removal");
@@ -96,7 +96,7 @@ fn drops_the_losing_commit_when_two_members_commit_in_the_same_epoch() {
     ga.apply_pending_commit().unwrap();
     // B hears that its commit was refused (409 epoch_conflict), forgets it and processes the winner.
     gb.clear_pending_commit();
-    assert_eq!(gb.process(&winner.commit).unwrap(), Received::Commit { epoch: 2, removed_me: false });
+    assert_eq!(gb.process(&winner.commit).unwrap(), Received::Commit { epoch: 2, removed_me: false, mine: false });
     gc.process(&winner.commit).unwrap();
     assert_eq!((ga.epoch(), gb.epoch(), gc.epoch()), (2, 2, 2));
     let msg = gb.encrypt(b"still together").unwrap();
@@ -105,13 +105,13 @@ fn drops_the_losing_commit_when_two_members_commit_in_the_same_epoch() {
 
 #[test]
 fn rejoins_by_external_commit_with_its_previous_leaf_removed() {
-    let (_a, b, _c, mut ga, gb, mut gc) = trio();
+    let (_a, b, _c, mut ga, _gb, mut gc) = trio();
     // A refreshes; B misses that epoch for 30 days and comes back through the GroupInfo the server kept (protocol §2).
     let refresh = ga.self_update().unwrap();
     ga.apply_pending_commit().unwrap();
     gc.process(&refresh.commit).unwrap();
-    let (mut gb2, commit) = b.client.external_join(&refresh.group_info, Some(gb.my_index())).unwrap();
-    assert_eq!(ga.process(&commit).unwrap(), Received::Commit { epoch: 3, removed_me: false });
+    let (mut gb2, commit) = b.client.external_join(&refresh.group_info).unwrap();
+    assert_eq!(ga.process(&commit).unwrap(), Received::Commit { epoch: 3, removed_me: false, mine: false });
     gc.process(&commit).unwrap();
     assert_eq!(gb2.epoch(), 3);
     let mut users: Vec<String> = ga.roster().unwrap().into_iter().map(|m| m.identity.user_id).collect();
@@ -211,7 +211,7 @@ fn refuses_key_packages_and_group_info_on_any_cipher_suite_but_0x0003() {
     let a = device("a");
     let (mut ga, _) = a.client.create_group(&GROUP_ID).unwrap();
     assert!(ga.add_members(&[kp]).is_err());
-    assert!(matches!(a.client.external_join(&info, None), Err(Error::WrongCipherSuite(s)) if s == p256::OTHER));
+    assert!(matches!(a.client.external_join(&info), Err(Error::WrongCipherSuite(s)) if s == p256::OTHER));
     assert_eq!(SUITE, mls_rs::CipherSuite::CURVE25519_CHACHA);
 }
 
