@@ -29,7 +29,32 @@
 	request_body {
 		max_size 512KB
 	}
-	reverse_proxy api:8080
+
+	# The daily dump's status (db-dump.sh writes it, watch.sh reads it): when the last good dump was, its size and
+	# whether a copy left the server, and nothing else. No API route starts with an underscore, so the path cannot
+	# meet one. Only this one file is served, whatever else the directory comes to hold.
+	handle /_alpha/db-dump.json {
+		root * /srv/status
+		rewrite * /db-dump.json
+		header Cache-Control no-store
+		file_server
+	}
+
+	# The API's actuator has endpoints without authentication that are meant for the private network (Prometheus
+	# metrics); from the internet only the health check exists, which the watch and deploy.sh read. The match is any
+	# path that mentions the actuator, in any case, rather than the /actuator/ prefix: a prefix would let through a
+	# spelling that Caddy and the API read differently, such as a path parameter (/actuator;x/prometheus).
+	@actuator {
+		path_regexp (?i)actuator
+		not path /actuator/health
+	}
+	handle @actuator {
+		respond 404
+	}
+
+	handle {
+		reverse_proxy api:8080
+	}
 }
 
 {$GEUNAL_RT_HOST} {
