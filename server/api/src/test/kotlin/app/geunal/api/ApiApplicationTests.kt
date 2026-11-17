@@ -45,6 +45,18 @@ class ApiApplicationTests(
     }
 
     @Test
+    fun `indexes memberships by account and Welcomes by device`() {
+        val indexes =
+            jdbc
+                .sql("select indexdef from pg_indexes where tablename in ('group_members', 'welcomes')")
+                .query(String::class.java)
+                .list()
+
+        assertThat(indexes).anyMatch { it!!.contains("group_members") && it.contains("(user_id, status, group_id)") }
+        assertThat(indexes).anyMatch { it!!.contains("welcomes") && it.contains("(device_id)") }
+    }
+
+    @Test
     fun `reports UP once PostgreSQL and Redis answer`() {
         val response = api.send(HttpMethod.GET, "/actuator/health")
 

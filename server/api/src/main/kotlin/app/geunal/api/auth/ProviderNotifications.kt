@@ -66,6 +66,8 @@ class ProviderNotifications(
         val event = providers.appleEvent(body.payload) ?: throw unverified()
         val age = Duration.between(event.issuedAt, clock.instant())
         if (age > MAX_AGE || age < MAX_SKEW.negated()) throw unverified()
+        // The replay marker is a security decision, not a load limit: if Redis does not answer, this fails (Apple
+        // delivers again) rather than act on a notification that cannot be shown to be new.
         val seen = "apple-notification:${event.id}"
         if (redis.hasKey(seen)) return
         if (event.type in CUTTING && accounts.cut(Provider.APPLE, event.sub)) log.info("apple cut a link: {}", event.type)

@@ -69,6 +69,7 @@ server/api/src/main/kotlin/app/geunal/api/
   - 액세스 JWT(ES256)는 15분, 클레임은 `sub`(user_id), `did`(device_id)입니다.
   - 리프레시 토큰은 30일이고, 쓸 때마다 교체합니다. DB에는 SHA-256만 저장합니다.
   - 이미 교체된 리프레시 토큰이 다시 오면 그 기기의 세션을 모두 끊습니다(재사용 감지). 토큰이 샜을 때 피해를 줄이는 표준 방법입니다.
+  - 예외는 갱신 응답을 받지 못한 기기의 재시도입니다. 방금 교체된 토큰이 60초 안에, 그 토큰에서 나온 새 토큰이 한 번도 쓰이기 전에 다시 오면 세션을 끊지 않고 새 토큰을 다시 줍니다. 이 60초 동안은 훔친 토큰의 재사용도 감지하지 못합니다.
   - 해제된 기기의 최신 리프레시 해시 둘은 만료와 상관없이 계정이 있는 동안 남깁니다. 오래 꺼져 있던 기기도 갱신에서 403 `device_revoked`를 받게 하려는 것입니다([공통 계약](protocol.md) 13장).
   - 지운 계정의 토큰은 원래 끝날 때까지 401 `account_deleted`를 받습니다([공통 계약](protocol.md) 13장). 자리표시자 계정 행에 지운 시각을 적고, 지운 세션의 리프레시 해시는 만료 시각과 함께 따로 두었다가 만료되면 지웁니다.
   - JWKS는 `/.well-known/jwks.json`에 공개하고, 키를 바꿀 때 `kid`로 겹쳐 둡니다.
@@ -267,7 +268,7 @@ CREATE TABLE group_log (
   received_at  timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (group_id, seq, received_at)
 ) PARTITION BY RANGE (received_at);
--- A daily job creates tomorrow's partition and drops the one older than 30 days:
+-- An hourly job keeps the next 7 days' partitions ready and drops the ones older than 30 days:
 -- CREATE TABLE group_log_YYYYMMDD PARTITION OF group_log FOR VALUES FROM ('YYYY-MM-DD') TO ('YYYY-MM-DD'+1);
 
 -- Welcome messages are addressed to one new device and deleted once fetched.
@@ -379,6 +380,8 @@ CREATE TABLE holidays (
 | `V4__m1_recovery_backups_deletion.sql` | 백업의 `completed_at`(완료 전에는 목록에 없음)과 크기 제한(64MiB). `object_deletions.bucket`(버킷 짧은 이름). 계정 삭제의 자리표시자: `users.deleted_at`, 닉네임·만 14세 확인 시각을 비울 수 있게 함. `provider_revocations`: 카카오 연결 끊기와 Apple 토큰 철회의 재시도. `deleted_sessions`: 지운 계정 세션의 리프레시 해시와 만료 시각(401 `account_deleted`) |
 | `V5__m1_alpha_stats_access_log.sql` | 알파 통계에 `sessions`·`crashes`(크래시 없는 세션 비율)와 `updated_at`. `access_log_outbox`: 로그인·토큰 갱신의 시각, 사용자·기기 ID, 접속 IP를 토큰을 내주는 트랜잭션에서 적고, 몇 분 안에 `access-logs` 버킷으로 옮김. 계정을 지워도 남도록 외래 키가 없음 |
 | `V6__m1_holiday_years.sql` | `holiday_years`: 서버가 공휴일을 모두 아는 해. 매일 동기화가 한 해를 통째로 받았을 때만(신정과 기독탄신일이 있을 때) 그해 `holidays`를 바꾸고 여기에 적음. `GET /holidays`의 `years`는 이 표에서 옴 |
+| `V7__member_and_welcome_indexes.sql` | 계정에서 시작하는 조회용 인덱스 `group_members (user_id, status, group_id)`와 Welcome을 기기로 찾는 `welcomes (device_id)` |
+| `V8__refresh_reuse_grace.sql` | `sessions.rotated_from`: 이 세션을 만든 갱신이 쓴 세션. 갱신 응답을 잃은 기기의 재시도를 가려내는 데 씁니다(4장) |
 
 ## 7. 엔드포인트
 
@@ -445,7 +448,7 @@ CREATE TABLE holidays (
 
 | 작업 | 주기 | 하는 일 |
 | --- | --- | --- |
-| 로그 파티션 | 매일 | 내일 파티션 만들기, 30일 지난 파티션 삭제 |
+| 로그 파티션 | 시작할 때와 매시간 | 오늘부터 7일 뒤까지 없는 파티션 만들기, 30일 지난 파티션 삭제. 잠금을 2초 안에 얻지 못하면 다음 회차에 다시 |
 | 미디어 정리 | 매일 | `expires_at`이 지난 `media_objects`(채팅 30일, 약속·개인 1년, 바뀐 커버·사진 7일)를 지우고 `object_deletions`에 넣기 |
 | 구독 대조 | 매일 | 만료가 가까운 구독을 스토어 API로 다시 확인(알림을 놓친 경우 대비) |
 | 오브젝트 삭제 | 10분 | `object_deletions`에 넣은 지 1시간 지난 것을 스토리지에서 삭제하고 비움. 15분짜리 업로드 URL로 늦게 올린 객체가 남지 않게 기다림 |
@@ -468,7 +471,7 @@ CREATE TABLE holidays (
 | 백업 | 사용자당 하루 10회 |
 | 공휴일(로그인 없이) | IP당 시간당 60회 |
 
-초과하면 429와 `Retry-After`를 줍니다.
+초과하면 429와 `Retry-After`를 줍니다. 한도는 Redis에서 세고, Redis에 닿지 못하면 세지 않고 통과시킵니다(지표로 셉니다). 로그인 nonce처럼 보안 판단인 것은 통과시키지 않습니다.
 
 ## 10. 로그·관측 규칙
 
@@ -478,7 +481,7 @@ CREATE TABLE holidays (
   - 토큰을 내주는 트랜잭션에서 `access_log_outbox`에 적고, 5분마다 gzip JSON Lines(`at`, `event`, `user_id`, `device_id`, `ip`)로 `access-logs` 버킷의 `YYYY/MM/DD/<첫 id>-<끝 id>.jsonl.gz`에 옮깁니다. 버킷의 수명 규칙(92일)이 지웁니다.
   - 버킷에 닿지 못한 행은 92일 뒤 매일 정리가 지웁니다.
   - 접속 IP는 Caddy가 넣는 `X-Forwarded-For`입니다. Tomcat은 사설망에서 온 요청의 이 헤더만 믿습니다.
-- **지표:** 엔드포인트별 지연과 오류율, 409·410 비율, 푸시 성공률, 게이트웨이 신호 수, 파티션 크기
+- **지표:** 엔드포인트별 지연과 오류율, 409·410 비율, 푸시 성공률, 게이트웨이 신호 수, 파티션 크기. `/actuator/prometheus`가 내보내고, 인증 없이 사설망의 수집기만 읽습니다(밖에서는 리버스 프록시가 막습니다). 경로 태그는 ID가 든 실제 경로가 아니라 라우트 패턴입니다
 
 ## 11. 테스트
 

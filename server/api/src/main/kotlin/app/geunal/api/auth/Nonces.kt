@@ -9,6 +9,9 @@ import java.util.Base64
 /**
  * `GET /auth/nonce`: one-time values a device signs (sign-in, recovery and deletion proofs) or binds into a provider
  * token. Each lives five minutes and is spent by the first request that names it.
+ *
+ * A nonce is what makes a proof single-use, so unlike the rate limits (HourlyLimit) this fails closed: while Redis
+ * does not answer, no nonce is issued or accepted and the sign-in fails rather than go ahead unproven.
  */
 @Component
 class Nonces(

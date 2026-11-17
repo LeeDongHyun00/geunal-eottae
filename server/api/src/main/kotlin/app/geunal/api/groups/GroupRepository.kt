@@ -102,6 +102,14 @@ class GroupRepository(
             .query { rs, i -> Membership(groupRow(rs, i), rs.getString("role"), rs.getString("status"), rs.instant("joined_at")) }
             .list()
 
+    /** How many groups the user is in or invited to: what the per-account cap counts. */
+    fun countOf(userId: UUID): Int =
+        jdbc
+            .sql("SELECT count(*) FROM group_members WHERE user_id = :user AND status <> 'removed'")
+            .param("user", userId)
+            .query(Int::class.java)
+            .single()
+
     fun activeGroupIdsOf(userId: UUID): List<UUID> =
         jdbc
             .sql("SELECT group_id FROM group_members WHERE user_id = :user AND status = 'active'")

@@ -45,6 +45,8 @@ dependencies {
     }
     implementation("software.amazon.awssdk:url-connection-client")
     implementation("tools.jackson.module:jackson-module-kotlin")
+    // The registry behind /actuator/prometheus (api-server.md §10); Boot's BOM manages the version.
+    runtimeOnly("io.micrometer:micrometer-registry-prometheus")
     runtimeOnly("org.postgresql:postgresql")
 
     testImplementation(platform(SpringBootPlugin.BOM_COORDINATES))

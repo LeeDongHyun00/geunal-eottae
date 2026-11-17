@@ -167,8 +167,11 @@ class AuthService(
     /**
      * Trades a refresh token for new tokens. The token is kept as spent until it would have expired; presenting it a
      * second time within that time means two holders, so every session of the device ends (reuse detection,
-     * api-server.md §4). The refreshes and reuse checks of one device take turns on the device row, so a replay cannot
-     * miss a token that a concurrent refresh is minting.
+     * api-server.md §4). The one exception is a device that lost the answer to its refresh and still holds the old
+     * token: the token just rotated, presented again within [AuthProperties.refreshReuseGrace] and before any token
+     * minted from it was used, gets a fresh rotation instead (see [retriesLostAnswer]). The refreshes and reuse checks
+     * of one device take turns on the device row, so a replay cannot miss a token that a concurrent refresh is minting
+     * and two refreshes racing with one token both get tokens that stay good.
      */
     @Transactional(noRollbackFor = [ApiException::class])
     fun refresh(refreshToken: String): TokenResponse {
@@ -176,19 +179,21 @@ class AuthService(
         val expired = ApiException(HttpStatus.UNAUTHORIZED, "token_expired", "refresh token is unknown or expired")
         // An expired session is looked up too: a replaced device that stayed off past its refresh token's life still
         // learns it was replaced. The daily cleanup keeps a replaced device's two newest sessions while the account lives.
-        val (deviceId, live) =
+        val session =
             jdbc
-                .sql("SELECT device_id, expires_at > now() AS live FROM sessions WHERE refresh_hash = :hash")
+                .sql("SELECT id, device_id, expires_at > now() AS live FROM sessions WHERE refresh_hash = :hash")
                 .param("hash", hash)
-                .query { rs, _ -> rs.getObject("device_id", UUID::class.java) to rs.getBoolean("live") }
-                .optional()
+                .query { rs, _ ->
+                    SessionRow(rs.getObject("id", UUID::class.java), rs.getObject("device_id", UUID::class.java), rs.getBoolean("live"))
+                }.optional()
                 .orElse(null) ?: throw if (accounts.isDeletedSession(hash)) accountDeleted() else expired
+        val deviceId = session.deviceId
         devices.lock(deviceId)
         // A replaced device keeps its sessions so that its refresh, whenever it comes back online, learns why it was
         // signed out (403 device_revoked with how) instead of a bare token_expired. Checked before rotating, so a
         // retried refresh answers the same.
         devices.current(deviceId) ?: throw devices.revokedError(deviceId)
-        if (!live) throw expired
+        if (!session.live) throw expired
         val rotated =
             jdbc
                 .sql(
@@ -200,13 +205,38 @@ class AuthService(
                 ).param("hash", hash)
                 .query(UUID::class.java)
                 .optional()
-        if (rotated.isEmpty) {
+        if (rotated.isEmpty && !retriesLostAnswer(session.id)) {
             jdbc.sql("DELETE FROM sessions WHERE device_id = :device").param("device", deviceId).update()
             throw expired
         }
         val device = devices.current(deviceId) ?: throw devices.revokedError(deviceId)
-        return issue(Caller(device.userId, deviceId), AccessEvent.REFRESH)
+        return issue(Caller(device.userId, deviceId), AccessEvent.REFRESH, rotatedFrom = session.id)
     }
+
+    /**
+     * Whether a spent token coming back is the device retrying a refresh whose answer never arrived (the core keeps
+     * the old token when the request fails on the network): it was spent within the grace, and none of the tokens
+     * minted from it has been used. Once the device has used a successor, it has moved on and the old token in
+     * anyone's hands is a replay, however recent. The tokens of the lost answers stay valid until they expire; nobody
+     * received them, and ending them would sign out the loser of two racing refreshes at its next one.
+     *
+     * The price is that a thief who replays a token within the grace of the device's own refresh is not detected by
+     * that replay. The grace is kept short for that reason; zero turns it off.
+     */
+    private fun retriesLostAnswer(sessionId: UUID): Boolean =
+        jdbc
+            .sql(
+                """
+                SELECT EXISTS (
+                  SELECT 1 FROM sessions s
+                  WHERE s.id = :id AND s.spent_at > now() - make_interval(secs => :grace)
+                    AND NOT EXISTS (SELECT 1 FROM sessions next WHERE next.rotated_from = s.id AND next.spent_at IS NOT NULL)
+                )
+                """,
+            ).param("id", sessionId)
+            .param("grace", properties.refreshReuseGrace.toMillis() / MILLIS_PER_SECOND)
+            .query(Boolean::class.java)
+            .single()
 
     /**
      * The account for a provider sign-in, created on first sight, and then this device: registered when the account has
@@ -300,12 +330,15 @@ class AuthService(
     private fun issue(
         caller: Caller,
         event: AccessEvent,
+        rotatedFrom: UUID? = null,
     ): TokenResponse {
         accessLog.record(event, caller)
         val refreshToken = randomToken()
         jdbc
-            .sql("INSERT INTO sessions (device_id, refresh_hash, expires_at) VALUES (:device, :hash, :expires)")
-            .param("device", caller.deviceId)
+            .sql(
+                "INSERT INTO sessions (device_id, refresh_hash, expires_at, rotated_from) VALUES (:device, :hash, :expires, CAST(:rotated_from AS uuid))",
+            ).param("device", caller.deviceId)
+            .param("rotated_from", rotatedFrom)
             .param("hash", sha256(refreshToken))
             .param("expires", clock.instant().plus(properties.refreshTtl).atOffset(ZoneOffset.UTC))
             .update()
@@ -358,6 +391,12 @@ class AuthService(
         message: String,
     ) = ApiException(HttpStatus.CONFLICT, code, message)
 
+    private data class SessionRow(
+        val id: UUID,
+        val deviceId: UUID,
+        val live: Boolean,
+    )
+
     private fun randomToken(): String = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32).also(random::nextBytes))
 
     companion object {
@@ -366,6 +405,7 @@ class AuthService(
         const val RECOVERY_ID_LENGTH = 16
         private const val MAX_SUBJECT = 200
         private const val MAX_DISPLAY_NAME = 40
+        private const val MILLIS_PER_SECOND = 1000.0
         private val PLATFORMS = setOf("ios", "android")
         val RECOVER_LABEL = "geunal recover v1".toByteArray(Charsets.US_ASCII)
         val REPLACE_LABEL = "geunal replace v1".toByteArray(Charsets.US_ASCII)
