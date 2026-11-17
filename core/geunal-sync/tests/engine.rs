@@ -795,3 +795,60 @@ async fn finishes_a_commits_bookkeeping_when_the_process_stopped_after_saving_th
     assert!(b.engine.unreadable(&group).unwrap().is_empty());
     assert_talking(&mut a, &mut b, &group, "after the crash").await;
 }
+
+#[tokio::test]
+async fn keeps_the_newcomer_bundle_queued_until_its_upload_is_through() {
+    let server = server();
+    let (mut a, _b, group) = pair(&server).await;
+    let request = Entry::Request {
+        appt: "appt-1".into(),
+        day: "2026-11-20".into(),
+        mode: Mode::Vote,
+        start: None,
+        end: None,
+        activity: None,
+        note: None,
+        leader_options: false,
+    };
+    a.engine.send(&group, &request, Alert::All, Some("plan")).await.unwrap();
+    let mut c = device(&server, "c", 3).await;
+    // The Add's answer is lost, and when the log brings the commit back the bundle's upload fails too.
+    server.lose_next("post_commit");
+    a.engine.add_members(&group, &[c.user().to_owned()]).await.unwrap();
+    server.fail_next("put_state");
+    a.engine.flush_outbox().await.unwrap();
+    assert_eq!(a.engine.roster(&group).unwrap().len(), 3, "the commit is in");
+    assert_eq!(a.engine.store().outbox(&group).unwrap().len(), 1, "the bundle is still owed");
+    a.engine.flush_outbox().await.unwrap();
+    assert!(a.engine.store().outbox(&group).unwrap().is_empty());
+    c.engine.sync().await.unwrap();
+    assert!(c.engine.group_state(&group).unwrap().appointments.contains_key("appt-1"));
+
+    // The same when the answer arrives and only the upload fails.
+    let mut d = device(&server, "d", 4).await;
+    server.fail_next("put_state");
+    a.engine.add_members(&group, &[d.user().to_owned()]).await.unwrap();
+    assert_eq!(a.engine.store().outbox(&group).unwrap().len(), 1);
+    a.engine.flush_outbox().await.unwrap();
+    d.engine.sync().await.unwrap();
+    assert!(d.engine.group_state(&group).unwrap().appointments.contains_key("appt-1"));
+}
+
+#[tokio::test]
+async fn a_member_removed_while_a_rejoin_is_owed_lets_go_of_the_group() {
+    let server = server();
+    let (mut a, mut b, group) = pair(&server).await;
+    a.engine.send(&group, &text("t1", "놓친 메시지"), Alert::All, Some("chat")).await.unwrap();
+    server.expire_log(&group, server.log_len(&group) as i64);
+    b.engine.enqueue_entry(&group, &text("t2", "보내지 못할 메시지"), Alert::All, Some("chat")).unwrap();
+    server.fail_next("group_info");
+    assert!(b.engine.sync().await.is_err());
+    assert!(b.engine.store().rejoin_owed(&group).unwrap());
+    a.engine.remove_member(&group, b.user()).await.unwrap();
+    // The refusal ends the rejoin instead of being retried with every sync, and the queued write goes.
+    b.engine.sync().await.unwrap();
+    assert!(!b.engine.store().rejoin_owed(&group).unwrap());
+    assert!(b.engine.store().outbox(&group).unwrap().is_empty());
+    assert_eq!(b.engine.epoch(&group).unwrap(), None);
+    b.engine.sync().await.unwrap();
+}

@@ -458,7 +458,8 @@ impl FakeServer {
     }
 
     /// The next call of `route` fails with a connection error before the server sees it. Routes: `me`, `replace`,
-    /// `put_recovery`, `upload_key_packages`, `delete_account`, `post_alpha_stats`, `post_commit`, `group_info`.
+    /// `put_recovery`, `upload_key_packages`, `delete_account`, `post_alpha_stats`, `post_commit`, `group_info`,
+    /// `put_state`.
     pub fn fail_next(&self, route: &'static str) {
         self.state.lock().expect("fake server").faults.insert(route, Fault::Fail);
     }
@@ -1364,6 +1365,7 @@ impl Transport for FakeClient {
     async fn put_state(&self, group_id: &str, kind: &str, req: PutState) -> Result<i64, ApiError> {
         let (user, _) = self.who()?;
         let mut state = self.lock();
+        state.fault("put_state", Fault::Fail)?;
         let updated_at = state.now_text();
         let group = Self::require_active(&mut state, group_id, &user)?;
         if req.epoch > group.epoch {

@@ -319,9 +319,12 @@ fn entering_an_epoch_keeps_its_key_moves_the_cursor_and_settles_the_commits_row(
     let row = store.enqueue("g", OutboxKind::Commit, b"intent", "2026-11-01T09:00:00Z").unwrap();
     store.set_outbox_payload(row, b"posted").unwrap();
     assert_eq!(store.outbox_head("g").unwrap().unwrap().payload, b"posted");
-    store.enter_epoch("g", 7, 3, &[9; 32], "2026-11-01T09:00:00Z", Some(row)).unwrap();
+    // A commit that still owes something keeps its row under a new payload; one that owes nothing loses it.
+    store.enter_epoch("g", 7, 3, &[9; 32], "2026-11-01T09:00:00Z", Some((row, Some(b"owed")))).unwrap();
     assert_eq!(store.cursor("g").unwrap(), 7);
     assert_eq!(store.state_key("g", 3).unwrap(), Some([9; 32]));
+    assert_eq!(store.outbox_head("g").unwrap().unwrap().payload, b"owed");
+    store.enter_epoch("g", 8, 4, &[8; 32], "2026-11-01T09:00:00Z", Some((row, None))).unwrap();
     assert!(store.outbox("g").unwrap().is_empty());
 }
 

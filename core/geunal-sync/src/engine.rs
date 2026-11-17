@@ -88,6 +88,10 @@ enum Outgoing {
         intent: CommitIntent,
         request: CommitRequest,
     },
+    /// What is left of an Add row once its commit is in: the newcomer bundle (protocol §5). It stays queued until
+    /// the upload is through, so a failed upload or a stopped process does not leave the newcomer without the
+    /// entries from before it joined.
+    Bundle,
 }
 
 impl Outgoing {
@@ -644,19 +648,23 @@ impl<T: Transport> Engine<T> {
                         Some(row) if mine && row.kind == OutboxKind::Commit => Some(row),
                         _ => None,
                     };
+                    // An Add still owes the newcomer its bundle: the row stays, as that, for the outbox to send.
+                    let owes_bundle = sent.as_ref().is_some_and(|row| {
+                        matches!(
+                            Outgoing::decode(&row.payload).ok().and_then(Outgoing::intent),
+                            Some(CommitIntent::Add { .. })
+                        )
+                    });
+                    let bundle = Outgoing::Bundle.encode();
                     self.store.enter_epoch(
                         group_id,
                         item.seq,
                         group.epoch() as i64,
                         &group.state_key()?,
                         &self.now_text(),
-                        sent.as_ref().map(|row| row.id),
+                        sent.as_ref().map(|row| (row.id, owes_bundle.then_some(bundle.as_slice()))),
                     )?;
                     self.after_epoch_change(group_id, &mut group).await?;
-                    let intent = sent.and_then(|row| Outgoing::decode(&row.payload).ok()).and_then(Outgoing::intent);
-                    if matches!(intent, Some(CommitIntent::Add { .. })) {
-                        self.publish_newcomer_bundle(group_id, &group).await?;
-                    }
                 }
                 Ok(_) => self.store.set_cursor(group_id, item.seq)?,
                 // The group's next epoch starts with a commit this device cannot take: its own, whose pending copy
@@ -1028,6 +1036,9 @@ impl<T: Transport> Engine<T> {
         match self.rejoin(group_id).await {
             Ok(()) => Ok(true),
             Err(e) if comes_back(&e) => Err(e),
+            // Removed while it was on its way back: the caller's handling of a lost membership ends the rejoin and
+            // lets the queued writes go, which no later GroupInfo would.
+            Err(SyncError::Api(e)) if e.is(403, "not_member") => Err(e.into()),
             Err(_) => Ok(false),
         }
     }
@@ -1143,6 +1154,12 @@ impl<T: Transport> Engine<T> {
                     Err(e) => Err(e),
                 }
             }
+            Outgoing::Bundle => match self.publish_newcomer_bundle(group_id, &group).await {
+                Ok(()) => Ok(SendOutcome::Sent),
+                Err(SyncError::Api(e)) if is_transient(&e) => Ok(SendOutcome::Later),
+                Err(SyncError::Api(e)) if is_refusal(&e) => Ok(SendOutcome::Refused(e)),
+                Err(e) => Err(e),
+            },
             Outgoing::Commit(intent) => self.send_commit(group_id, row.id, &mut group, intent, None).await,
             Outgoing::Posted { intent, request } => {
                 self.send_commit(group_id, row.id, &mut group, intent, Some(request)).await
@@ -1255,11 +1272,13 @@ impl<T: Transport> Engine<T> {
                 if self.store.cursor(group_id)? + 1 == accepted.seq {
                     self.store.set_cursor(group_id, accepted.seq)?;
                 }
-                self.after_epoch_change(group_id, group).await?;
+                // The row of an Add becomes the bundle it owes before anything else can fail, and the flush sends it
+                // next.
                 if added {
-                    self.publish_newcomer_bundle(group_id, group).await?;
+                    self.store.set_outbox_payload(row_id, &Outgoing::Bundle.encode())?;
                 }
-                Ok(SendOutcome::Sent)
+                self.after_epoch_change(group_id, group).await?;
+                Ok(if added { SendOutcome::Retry } else { SendOutcome::Sent })
             }
             Err(e) if e.is(409, "epoch_conflict") => {
                 // A commit won this epoch, and the log says whose. Another member's clears the pending commit as it

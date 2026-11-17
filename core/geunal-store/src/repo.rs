@@ -294,7 +294,8 @@ impl Store {
     }
 
     /// What a commit leaves behind once MLS has moved to its epoch, in one transaction: the new epoch's state key,
-    /// the cursor past the commit, and, for this device's own commit, its outbox row gone.
+    /// the cursor past the commit, and, for this device's own commit, its outbox row settled: gone, or rewritten to
+    /// what the commit still owes (`settled` names the row and its new payload, if it keeps one).
     pub fn enter_epoch(
         &self,
         group_id: &str,
@@ -302,7 +303,7 @@ impl Store {
         epoch: i64,
         key: &[u8; 32],
         created_at: &str,
-        sent: Option<i64>,
+        settled: Option<(i64, Option<&[u8]>)>,
     ) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
@@ -311,8 +312,14 @@ impl Store {
             params![group_id, epoch, key.as_slice(), created_at],
         )?;
         tx.execute("UPDATE groups SET cursor = ?2 WHERE id = ?1", params![group_id, seq])?;
-        if let Some(id) = sent {
-            tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
+        match settled {
+            Some((id, Some(payload))) => {
+                tx.execute("UPDATE outbox SET payload = ?2 WHERE id = ?1", params![id, payload])?;
+            }
+            Some((id, None)) => {
+                tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
+            }
+            None => {}
         }
         tx.commit()?;
         Ok(())
