@@ -3,6 +3,7 @@ import DesignSystem
 import FeatureAccount
 import GeunalCore
 import SwiftUI
+import UIKit
 
 /// Onboarding until the person reaches the calendar once, the tabs afterwards. Over the tabs come the "기기
 /// 로그아웃됨" sheet and the sign-in that follows it.
@@ -13,6 +14,9 @@ struct RootView: View {
     /// The restore over the tabs sent a returning guest to the sign-in; it opens once the restore is gone.
     @State private var signInAfterRestore = false
     @Environment(\.scenePhase) private var scenePhase
+    /// The scene went to the background since it was last active. Face ID, a permission prompt and Control Center only
+    /// make it inactive, and coming back from those is not opening the app.
+    @State private var wasInBackground = false
 
     var body: some View {
         Group {
@@ -68,12 +72,31 @@ struct RootView: View {
             }
         }
         .task { await model.start() }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase) { previous, phase in
+            // Leaving the background counts too: a scene the system made for a background launch starts there
+            // without ever changing to it.
+            if previous == .background || phase == .background {
+                wasInBackground = true
+            }
             switch phase {
-            case .active: model.appBecameActive()
-            case .background: Task { await BackgroundWork.schedule() }
+            case .active:
+                // Only a return from the background syncs and counts a session for the alpha statistics (protocol
+                // §14). `start()` covers the launch, when the core is still opening and this call does nothing.
+                if wasInBackground {
+                    wasInBackground = false
+                    model.appBecameActive()
+                }
+            case .background:
+                Task { await BackgroundWork.schedule() }
             default: break
             }
+        }
+        // The alerts' words and order follow the clock; the calendar's own changes arrive through the core's listener.
+        .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+            model.clockChanged()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            model.clockChanged()
         }
     }
 

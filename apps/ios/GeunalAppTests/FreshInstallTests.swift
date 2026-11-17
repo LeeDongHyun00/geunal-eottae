@@ -47,6 +47,22 @@ final class FreshInstallTests: XCTestCase {
         XCTAssertEqual(try keychain.get(name: "db_key"), Data([1, 2, 3]))
     }
 
+    /// A build that lost its App Group finds no store. That is not a new installation: the check for one never
+    /// runs, so the keys of the store still in the group stay.
+    func testKeepsTheKeysWhenTheAppGroupIsMissing() throws {
+        let support = try makeStoreDirectory(withDatabase: false)
+        try keychain.put(name: "db_key", value: Data([1, 2, 3]))
+        let onboarding = OnboardingState(defaults: scratchDefaults())
+        onboarding.isFinished = true
+
+        XCTAssertThrowsError(
+            try AppCore.forgetPreviousInstallation(
+                groupContainer: nil, applicationSupport: support, keychain: keychain, onboarding: onboarding))
+
+        XCTAssertEqual(try keychain.get(name: "db_key"), Data([1, 2, 3]))
+        XCTAssertTrue(onboarding.isFinished)
+    }
+
     func testShowsOnboardingWhenTheDefaultsCameFromAnotherDevice() throws {
         // An iCloud restore or Quick Start brings the defaults, but neither the store nor the keychain items.
         let directory = try makeStoreDirectory(withDatabase: false)
