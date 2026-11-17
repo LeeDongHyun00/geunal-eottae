@@ -6,11 +6,9 @@
 # with it: no site has a `log` directive, so Caddy writes no access log, and the default logger below drops the
 # `token` query from the requests that its error entries carry (a 502 while the gateway restarts, for one).
 {
-	# The ACG opens TCP 80 and 443 only, so HTTP/3 over UDP would never arrive; do not advertise it. HTTP/2 stays off
-	# until a Caddy image built with the fix for CVE-2026-78669 (an HTTP/2 frame flood) is published: bring it back
-	# with that bump (infra/alpha/.trivyignore). The apps and browsers talk HTTP/1.1 just as well.
+	# The ACG opens TCP 80 and 443 only, so HTTP/3 over UDP would never arrive; do not advertise it.
 	servers {
-		protocols h1
+		protocols h1 h2
 	}
 	log default {
 		format filter {
@@ -31,7 +29,32 @@
 	request_body {
 		max_size 512KB
 	}
-	reverse_proxy api:8080
+
+	# The daily dump's status (db-dump.sh writes it, watch.sh reads it): when the last good dump was, its size and
+	# whether a copy left the server, and nothing else. No API route starts with an underscore, so the path cannot
+	# meet one. Only this one file is served, whatever else the directory comes to hold.
+	handle /_alpha/db-dump.json {
+		root * /srv/status
+		rewrite * /db-dump.json
+		header Cache-Control no-store
+		file_server
+	}
+
+	# The API's actuator has endpoints without authentication that are meant for the private network (Prometheus
+	# metrics); from the internet only the health check exists, which the watch and deploy.sh read. The match is any
+	# path that mentions the actuator, in any case, rather than the /actuator/ prefix: a prefix would let through a
+	# spelling that Caddy and the API read differently, such as a path parameter (/actuator;x/prometheus).
+	@actuator {
+		path_regexp (?i)actuator
+		not path /actuator/health
+	}
+	handle @actuator {
+		respond 404
+	}
+
+	handle {
+		reverse_proxy api:8080
+	}
 }
 
 {$GEUNAL_RT_HOST} {

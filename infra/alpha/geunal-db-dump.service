@@ -1,4 +1,6 @@
-# Runs infra/alpha/db-dump.sh, which bootstrap.sh installs with the timer of the same name.
+# Runs infra/alpha/db-dump.sh, which bootstrap.sh installs with the timer of the same name. A failed run is an
+# error-priority line in the journal (`journalctl -p err -u geunal-db-dump`) and leaves the unit failed
+# (`systemctl --failed`); the outside watch reports it once the status file is older than a day (watch.sh).
 [Unit]
 Description=Dump the geunal database
 Requires=docker.service

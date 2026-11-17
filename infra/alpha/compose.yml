@@ -115,7 +115,7 @@ services:
   # this with --profile https only then. Certificates stay in the caddy-data volume, so a restart does not ask Let's
   # Encrypt again.
   caddy:
-    image: caddy:2.11.7
+    image: caddy:2.11.9
     profiles: [https]
     # The Caddyfile's hash, which deploy.sh writes: a new Caddyfile changes the label, so `up` recreates the container
     # and Caddy reads the file again.
@@ -126,6 +126,9 @@ services:
       GEUNAL_RT_HOST: ${GEUNAL_RT_HOST:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The daily dump's status file (db-dump.sh), which Caddy serves to the outside watch. Read-only, and the
+      # directory holds nothing else.
+      - /var/lib/geunal/status:/srv/status:ro
       - caddy-data:/data
       - caddy-config:/config
     ports: ["80:80", "443:443"]

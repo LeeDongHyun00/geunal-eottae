@@ -122,9 +122,14 @@ fn three_clients_make_a_group_trade_entries_survive_a_kick_and_a_rejoin_and_agre
     assert_eq!(received_at(&a), received_at(&b), "sender and receiver agree on received_at");
 
     // Entries: a request, two accepts, a time poll, two votes, a chat line.
+    // The day is a week from now in Korea, not a fixed date: the server stamps entries with its own clock and an
+    // appointment ends when its day has passed (kickoff §5.4), so a date written here would one day be in the past
+    // and the poll below would be gone from the state.
+    let korea = chrono::FixedOffset::east_opt(9 * 3600).unwrap();
+    let day = (chrono::Utc::now().with_timezone(&korea) + chrono::Duration::days(7)).format("%Y-%m-%d").to_string();
     let appt = block_on(a.core.clone().request_date(
         group.clone(),
-        "2026-11-07".into(),
+        day.clone(),
         Mode::Vote,
         None,
         None,

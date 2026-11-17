@@ -3,23 +3,12 @@
 # the root .trivyignore's (docs/security/dependencies.md 3장): the reason above each ID and an expiry, after which the
 # scan fails again and the finding is looked at anew.
 #
-# caddy:2.11.7 is the newest Caddy image (built 2026-10-21 with Go 1.26.8 and golang.org/x/net 0.59.0). When a Caddy
-# image built with Go 1.26.10 or later and x/net 0.60.0 or later is out, bump it, delete these lines and turn HTTP/2
-# back on in the Caddyfile.
-
-# HTTP/2 frame flood (Go standard library and x/net). The alpha Caddy serves HTTP/1.1 only until then (Caddyfile).
-CVE-2026-78669 exp:2026-12-04
-# Range header handling of Go's file serving. The alpha Caddy only proxies to the API and serves no files.
-CVE-2026-78667 exp:2026-12-04
-# ECH outer extensions in a ClientHello. Go reads them only when ECH keys are configured, and the Caddyfile sets none.
-CVE-2026-97031 exp:2026-12-04
-# Certificate chains Caddy verifies as a TLS client. Its one such connection is ACME renewal with Let's Encrypt across
-# the internet, so someone on that path could at worst make a renewal fail or forge an ACME answer; the API behind
-# Caddy is plain HTTP on the compose network. This premise is the weakest of the seven: bump Caddy before the expiry.
-CVE-2026-111943 exp:2026-12-04
-# go-jose's JWK parsing. In Caddy it backs the ACME client, which signs with its own key; nothing a visitor sends
-# reaches it.
-CVE-2026-116587 exp:2026-12-04
-# Alpine's brotli-libs and curl in the image. Nothing in the container runs them: Caddy is a static Go binary.
-CVE-2026-111497 exp:2026-12-04
-CVE-2026-92392 exp:2026-12-04
+# golang.org/x/net/html: crafted HTML makes the parser spend unbounded time. caddy:2.11.9 (Go 1.27.3, x/net 0.60.0)
+# is the newest Caddy image and links the package, but the alpha Caddy never parses HTML: it proxies bytes to the API
+# and the gateway and serves one JSON file. Bump Caddy when an image built with x/net 0.62.0 or later is out.
+CVE-2026-78661 exp:2026-12-17
+# zlib's gz* file-writing API (gz_vacate) in the PostgreSQL image's Debian zlib1g. The server links zlib only for the
+# deflate stream API, and the one tool run in this container, pg_dump in the custom format (db-dump.sh), compresses
+# through that API too, not through gzopen/gzwrite. postgres:16.16 still ships the same package; bump when an image
+# with zlib1g 1.3.1-1+deb13u1 is out.
+CVE-2026-85091 exp:2026-12-17
