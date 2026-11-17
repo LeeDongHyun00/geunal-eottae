@@ -37,6 +37,7 @@ import app.geunal.feature.account.onboarding.OnboardingDependencies
 import app.geunal.feature.account.onboarding.OnboardingFlow
 import app.geunal.feature.account.restore.KeepLocalSheet
 import app.geunal.feature.account.signedout.RevokedSheet
+import app.geunal.feature.calendar.alerts.AlertRoute
 import app.geunal.feature.calendar.alerts.DeviceNotificationAccess
 import app.geunal.feature.calendar.editor.EditorTarget
 import app.geunal.feature.calendar.people.DeviceContactsReader
@@ -58,17 +59,7 @@ fun RootScreen(
     container: AppContainer,
     modifier: Modifier = Modifier,
 ) {
-    val model =
-        viewModel {
-            AppViewModel(
-                openCore = container::openCore,
-                onboarding = container.onboarding,
-                changes = container.changes.changes,
-                isOnline = container.connectivity.isOnline,
-                screenReaderRunning = container.screenReaderRunning,
-                timing = container.timing,
-            )
-        }
+    val model: AppViewModel = viewModel(factory = AppViewModel.factory(container))
     val phase by model.phase.collectAsStateWithLifecycle()
     val resources = LocalResources.current
     LaunchedEffect(model, resources) {
@@ -124,10 +115,22 @@ fun RootScreen(
                             container.providers,
                             model.accountEnded,
                             model::accountDeleted,
+                            model.mirror,
                         )
                     }
                 val covers = coverModel.covers
                 val me = coverModel.me
+                // A tapped reminder (m1.md §2.6): an event opens in the editor, a birthday on 사람·생일 with that person.
+                // A leave suggestion opens the calendar, which is where the app starts.
+                val route by model.route.collectAsStateWithLifecycle()
+                LaunchedEffect(route) {
+                    when (val tapped = route) {
+                        is AlertRoute.Event -> covers.edit(EditorTarget.Existing(tapped.eventId, tapped.occurrence))
+                        is AlertRoute.Person -> covers.people(focus = tapped.personId)
+                        is AlertRoute.Week, null -> Unit
+                    }
+                    if (route != null) model.routeTaken()
+                }
                 val online by container.connectivity.isOnline.collectAsStateWithLifecycle()
                 Box(modifier.fillMaxSize()) {
                     CoveredTabs(
@@ -210,6 +213,7 @@ private fun onboardingDependencies(
     channel = container.channel,
     legal = container.legal,
     timing = container.timing,
+    importDeviceCalendars = { model.mirror?.importAll() },
 )
 
 /** The tabs' place in the back stack, under the covers. */

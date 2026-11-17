@@ -232,15 +232,12 @@ class FakeProviders : ProviderSignIn {
 /** The OS permissions as fields; opening the settings is only counted. */
 class FakePermissions(
     var calendar: Boolean = false,
-    var calendars: Int = 3,
     var notificationsNeedAsking: Boolean = true,
     var notifications: Boolean = false,
 ) : SystemPermissions {
     var settingsOpened = 0
 
     override fun calendarGranted(): Boolean = calendar
-
-    override fun deviceCalendarCount(): Int = calendars
 
     override fun notificationsNeedAsking(): Boolean = notificationsNeedAsking
 

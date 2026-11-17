@@ -6,6 +6,7 @@ import app.geunal.core.CoreInterface
 import app.geunal.feature.account.providers.ProviderSignIn
 import app.geunal.feature.account.support.DeviceAuth
 import app.geunal.feature.calendar.alerts.NotificationAccess
+import app.geunal.feature.calendar.calendars.DeviceCalendarMirror
 import app.geunal.feature.calendar.people.ContactsReader
 import app.geunal.feature.calendar.screen.CalendarCovers
 import app.geunal.ui.me.MeCovers
@@ -24,8 +25,9 @@ class CalendarCoversViewModel(
     providers: ProviderSignIn,
     accountEnded: Flow<Unit>,
     onAccountDeleted: () -> Unit,
+    mirror: DeviceCalendarMirror? = null,
 ) : ViewModel() {
-    val covers = CalendarCovers(core, viewModelScope, contacts, notifications)
+    val covers = CalendarCovers(core, viewModelScope, contacts, notifications, mirror = mirror)
 
     val me = MeCovers(core, viewModelScope, deviceAuth, providers, onAccountDeleted)
 

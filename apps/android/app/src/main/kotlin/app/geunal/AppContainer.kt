@@ -21,6 +21,12 @@ import app.geunal.feature.account.support.DeviceAuth
 import app.geunal.feature.account.support.OnboardingState
 import app.geunal.feature.account.support.StepTiming
 import app.geunal.feature.account.support.SystemDeviceAuth
+import app.geunal.feature.calendar.alerts.AlertCenter
+import app.geunal.feature.calendar.alerts.AlertTexts
+import app.geunal.feature.calendar.alerts.ResourceAlertTexts
+import app.geunal.feature.calendar.alerts.SystemAlertCenter
+import app.geunal.feature.calendar.calendars.DeviceCalendarSource
+import app.geunal.feature.calendar.calendars.DeviceCalendars
 
 /**
  * The app-wide dependencies, wired by hand: with this few modules a DI framework has nothing to earn
@@ -47,6 +53,13 @@ class AppContainer(
     val onboarding = OnboardingState(storage.onboardingDir)
     val permissions: SystemPermissions = DevicePermissions(context)
     val deviceAuth: DeviceAuth = SystemDeviceAuth(context)
+
+    /** The local reminders: AlarmManager alarms that become notifications (docs/parts/android.md §4 "로컬 알림"). */
+    val alertCenter: AlertCenter = SystemAlertCenter(context)
+    val alertTexts: AlertTexts = ResourceAlertTexts(context.resources)
+
+    /** The phone's calendars, read only, for the device calendar mirror. */
+    val deviceCalendars: DeviceCalendarSource = DeviceCalendars(context)
 
     /**
      * Debug builds only: how long each sign-in step and the foreground sync take, in logcat under

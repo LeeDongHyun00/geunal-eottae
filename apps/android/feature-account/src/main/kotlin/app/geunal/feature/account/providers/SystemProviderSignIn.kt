@@ -8,4 +8,7 @@ class SystemProviderSignIn(
     override suspend fun kakao(providerNonce: String): ProviderCredential = kakaoSignIn.signIn(providerNonce)
 
     override suspend fun apple(providerNonce: String): ProviderCredential = appleSignIn.signIn(providerNonce)
+
+    /** Only Apple's web flow comes back through a new activity; Kakao's SDK answers the activity that asked. */
+    override fun takeInterrupted(): Boolean = AppleCallbacks.takeInterrupted()
 }
