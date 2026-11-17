@@ -126,6 +126,9 @@ services:
       GEUNAL_RT_HOST: ${GEUNAL_RT_HOST:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The daily dump's status file (db-dump.sh), which Caddy serves to the outside watch. Read-only, and the
+      # directory holds nothing else.
+      - /var/lib/geunal/status:/srv/status:ro
       - caddy-data:/data
       - caddy-config:/config
     ports: ["80:80", "443:443"]

@@ -93,7 +93,9 @@ for name in GEUNAL_S3_ACCESS_KEY GEUNAL_S3_SECRET_KEY; do
 done
 [ -f /etc/geunal/dump.env ] || echo "warning: /etc/geunal/dump.env is missing; the daily dump stays on this server" >&2
 
-# The daily database dump (db-dump.sh).
+# The daily database dump (db-dump.sh). Its status file's directory must exist before Caddy starts, because
+# compose.yml mounts it into Caddy; Docker would otherwise make it, but with nothing saying what it is for.
+install -d -m 755 /var/lib/geunal/status
 install -m 644 /opt/geunal/geunal-db-dump.service /opt/geunal/geunal-db-dump.timer /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now geunal-db-dump.timer >/dev/null 2>&1
