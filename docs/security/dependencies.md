@@ -6,7 +6,7 @@
 
 | 대상 | 도구 | 설정 | 명령 | 실패 기준 |
 | --- | --- | --- | --- | --- |
-| Rust 코어의 크레이트(`core/Cargo.lock`), 안드로이드·iOS 타깃 포함 | cargo-deny `advisories` (RustSec DB) | `core/deny.toml`: yanked 금지, `ignore`에 이유 적힌 예외 2개 | `make audit-core`(advisories만), `make lint-core`(라이선스·중복·출처까지) | 권고가 있고 `ignore`에 없으면 실패 |
+| Rust 코어의 크레이트(`core/Cargo.lock`), 안드로이드·iOS 타깃 포함 | cargo-deny `advisories` (RustSec DB) | `core/deny.toml`: yanked 금지, `ignore`에 이유 적힌 예외 | `make audit-core`(advisories만), `make lint-core`(라이선스·중복·출처까지) | 권고가 있고 `ignore`에 없으면 실패 |
 | 안드로이드의 OpenSSL(SQLCipher가 링크, cargo 밖에서 빌드) | 상류 릴리스 태그(`git ls-remote`) | `core/scripts/build-openssl.sh`에 버전과 SHA-256 고정. SQLCipher가 쓰는 알고리즘만 빌드 | `make audit-core` | 같은 계열(3.5 장기 지원)에 고정한 것보다 새 패치가 있거나, 스크립트에 적은 그 계열의 지원 종료일(`supported_until`)이 지났으면 실패. OpenSSL은 보안 수정을 패치 릴리스로 내므로, 그 패치의 권고를 보고 올립니다. 지원이 끝나면 지원되는 계열로 옮깁니다 |
 | API 이미지(`geunal/api:local`): OS 패키지, JDK, boot jar 안의 라이브러리 | Trivy `image` | 기본. 예외 파일 없음 | `make scan-api` | HIGH·CRITICAL 중 수정판이 있는 것 |
 | 게이트웨이 이미지(`geunal/gateway:local`): OS 패키지, ERTS | Trivy `image` | 같음 | `make scan-gateway` | 같음 |
@@ -55,7 +55,7 @@
    - 쓴다(또는 모른다) → **S1**. 수정판으로 올리는 PR을 바로 만듭니다. Dependabot PR이 이미 있으면 그것을 머지합니다. ignore 규칙 때문에 PR이 없으면(코어의 minor 올리기 등) 손으로 올리고, 올리는 이유에 권고 ID를 적습니다.
    - 쓰지 않는다 → **S2**. 그래도 수정판이 있으면 다음 Dependabot 묶음에서 올립니다.
 3. **수정판이 없을 때만 예외를 둡니다.** 예외는 "왜 우리에게 해당하지 않는지"와 "언제 다시 볼지"를 함께 적습니다.
-   - cargo-deny: `core/deny.toml` `[advisories].ignore`에 `{ id, reason }`. `reason`에 영향받지 않는 이유와 다시 볼 조건(예: "mls-rs-crypto-rustcrypto가 다음 elliptic-curve로 옮기면 제거")을 적습니다. 지금 있는 두 항목이 그 형식입니다.
+   - cargo-deny: `core/deny.toml` `[advisories].ignore`에 `{ id, reason }`. `reason`에 영향받지 않는 이유와 다시 볼 조건(예: "mls-rs-crypto-rustcrypto가 다음 elliptic-curve로 옮기면 제거")을 적습니다. 지금 있는 항목들이 그 형식입니다.
    - Trivy: 저장소 루트에 `.trivyignore`를 두고 한 줄에 ID 하나, 바로 윗줄 주석에 이유, `exp:` 날짜로 만료를 둡니다(`CVE-2026-0000 exp:2026-12-31`). 만료되면 검사가 다시 실패해 다시 보게 됩니다.
    - 예외를 더하는 PR은 보안 담당(이 직군)이 리뷰하고, 사용자가 머지합니다.
 4. **이미지의 OS 패키지 취약점**은 보통 베이스 이미지를 다시 받으면 풀립니다. Dockerfile의 태그가 digest가 아니라면 CI가 다시 빌드하는 것으로 충분하고, 그래도 남으면 베이스 이미지 태그를 올립니다.
