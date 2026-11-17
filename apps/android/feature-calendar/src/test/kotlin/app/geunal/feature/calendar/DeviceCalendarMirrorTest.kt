@@ -221,6 +221,39 @@ class DeviceCalendarMirrorTest {
         }
 
     @Test
+    fun ticksTheCalendarsOfNowWhenTheRememberedOnesAreGone() =
+        runTest(dispatcher) {
+            val mirror = mirror()
+            mirror.importAll()
+            mirror.setOn(false)
+
+            // Both calendars were replaced on the phone while the switch was off.
+            source.calendars = mapOf("3" to listOf(FakeDeviceCalendars.event("30@1")), "4" to emptyList())
+            mirror.load()
+            assertEquals(setOf("1", "2"), mirror.state.value.selected)
+            mirror.setOn(true)
+
+            assertEquals(listOf("3", "4"), mirroredIds())
+            assertTrue(mirror.state.value.isOn)
+            assertEquals(setOf("3", "4"), mirror.state.value.selected)
+        }
+
+    @Test
+    fun keepsTheRememberedTicksThatAreStillThere() =
+        runTest(dispatcher) {
+            val mirror = mirror()
+            mirror.importAll()
+            mirror.setOn(false)
+
+            // Calendar 2 was deleted and calendar 3 added: the surviving tick decides, the new one waits for its own.
+            source.calendars = mapOf("1" to listOf(FakeDeviceCalendars.event("10@1")), "3" to emptyList())
+            mirror.setOn(true)
+
+            assertEquals(listOf("1"), mirroredIds())
+            assertEquals(setOf("1"), mirror.state.value.selected)
+        }
+
+    @Test
     fun turnsOffWithTheLastTick() =
         runTest(dispatcher) {
             val mirror = mirror()

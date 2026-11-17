@@ -155,8 +155,12 @@ class DeviceCalendarMirror(
     private suspend fun turnOn() {
         val calendars = summaries()
         _state.update { it.copy(calendars = calendars) }
-        val selected = _state.value.selected
-        val ids = calendars.map { it.id }.filter { selected.isEmpty() || it in selected }
+        val present = calendars.map { it.id }
+        // The remembered ticks may name calendars deleted or replaced on the phone while the switch was off. With none
+        // of them left the switch would stay off, and the checkboxes are disabled while it is off, so every calendar
+        // is ticked as on the first turn.
+        val remembered = present.filter { it in _state.value.selected }
+        val ids = remembered.ifEmpty { present }
         if (ids.isEmpty()) return
         if (mirror(ids)) _state.update { it.copy(selected = ids.toSet(), isOn = true) }
     }
