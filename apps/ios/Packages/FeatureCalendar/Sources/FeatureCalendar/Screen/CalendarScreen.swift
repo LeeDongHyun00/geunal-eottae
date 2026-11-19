@@ -22,6 +22,10 @@ public struct CalendarScreen: View {
     @State private var editor: EditorRequest?
     /// "자세히" closes the quick entry first; the editor follows once the sheet is gone.
     @State private var pendingEditor: EditorRequest?
+    /// The week view's overlap group whose sheet is up (m1.md decision 44).
+    @State private var overlap: OverlapRequest?
+    /// "이날 일정 모두 보기" waits for the overlap sheet to go: SwiftUI drops a sheet asked for while one is closing.
+    @State private var pendingEntry: EntryRequest?
     @State private var stamping: StampRequest?
     /// The Korean day the views were read for. An app left open overnight, or opened again the next day, reads them
     /// again for the new today.
@@ -104,7 +108,8 @@ public struct CalendarScreen: View {
                             day: day.day, notes: Self.notes(day.birthdays, day.holidays), events: Self.events(day),
                             range: (hour * 2)..<(hour * 2 + 2))
                     },
-                    onEvent: edit)
+                    onEvent: edit,
+                    onGroup: { group, day in overlap = OverlapRequest(group: group, day: day) })
             case .list:
                 AgendaView(
                     model: agenda,
@@ -138,6 +143,32 @@ public struct CalendarScreen: View {
                 onEvent: { event in
                     pendingEditor = EditorRequest(.existing(eventId: event.eventId, occurrence: event.occurrence))
                     entry = nil
+                })
+        }
+        .sheet(
+            item: $overlap,
+            onDismiss: {
+                if let pending = pendingEditor {
+                    pendingEditor = nil
+                    editor = pending
+                } else if let pending = pendingEntry {
+                    pendingEntry = nil
+                    entry = pending
+                }
+            }
+        ) { request in
+            OverlapSheet(
+                group: request.group, today: week.today,
+                onEvent: { event in
+                    pendingEditor = EditorRequest(.existing(eventId: event.eventId, occurrence: event.occurrence))
+                    overlap = nil
+                },
+                onDay: {
+                    let day = request.day
+                    pendingEntry = EntryRequest(
+                        day: day.day, notes: Self.notes(day.birthdays, day.holidays), events: Self.events(day),
+                        range: nil)
+                    overlap = nil
                 })
         }
         .fullScreenCover(item: $editor) { request in
@@ -297,6 +328,13 @@ private struct EntryRequest: Identifiable {
     let notes: [String]
     let events: [EventItem]?
     let range: Range<Int>?
+}
+
+/// The overlap group the week view's sheet shows, with its day for "이날 일정 모두 보기".
+private struct OverlapRequest: Identifiable {
+    let id = UUID()
+    let group: OverlapGroup
+    let day: WeekDay
 }
 
 /// What the editor opens: a new event, maybe filled in, or an existing one.

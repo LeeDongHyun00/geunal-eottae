@@ -12,6 +12,8 @@ struct WeekView: View {
     let onSlot: (WeekDay, Int) -> Void
     /// A tap on a block or an all-day bar opens the editor.
     let onEvent: (EventItem) -> Void
+    /// A tap on an overlap group opens its sheet (m1.md decision 44).
+    let onGroup: (OverlapGroup, WeekDay) -> Void
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -19,7 +21,7 @@ struct WeekView: View {
                 ForEach(model.weeks, id: \.self) { week in
                     WeekPage(
                         days: model.pages[week], today: model.today, nowMinute: model.nowMinute(on: week),
-                        onDay: onDay, onSlot: onSlot, onEvent: onEvent
+                        onDay: onDay, onSlot: onSlot, onEvent: onEvent, onGroup: onGroup
                     )
                     .containerRelativeFrame(.horizontal)
                     .task { await model.load(week) }
@@ -43,6 +45,7 @@ private struct WeekPage: View {
     let onDay: (WeekDay) -> Void
     let onSlot: (WeekDay, Int) -> Void
     let onEvent: (EventItem) -> Void
+    let onGroup: (OverlapGroup, WeekDay) -> Void
     private let hourHeight = Metrics.Grid.weekHour
 
     var body: some View {
@@ -58,17 +61,35 @@ private struct WeekPage: View {
                                 let column = (geometry.size.width - gutter) / 7
                                 SlotTargets(days: days, column: column, hourHeight: hourHeight, onSlot: onSlot)
                                 ForEach(days.indices, id: \.self) { index in
-                                    ForEach(days[index].timed, id: \.self) { block in
-                                        let rect = Self.rect(
-                                            of: block, day: index, column: column, hourHeight: hourHeight)
-                                        Button {
-                                            onEvent(block.event)
-                                        } label: {
-                                            TimedBlockView(block: block, hourHeight: hourHeight)
+                                    let day = days[index]
+                                    ForEach(WeekOverlap.items(day: day.day, blocks: day.timed), id: \.self) { item in
+                                        switch item {
+                                        case .single(let block):
+                                            let rect = Self.rect(
+                                                start: block.startMinute, end: block.endMinute, day: index,
+                                                column: column, hourHeight: hourHeight)
+                                            Button {
+                                                onEvent(block.event)
+                                            } label: {
+                                                TimedBlockView(block: block, hourHeight: hourHeight)
+                                            }
+                                            .buttonStyle(.pressable)
+                                            .frame(width: rect.width, height: rect.height)
+                                            .offset(x: rect.minX, y: rect.minY)
+                                        case .group(let group):
+                                            let rect = Self.rect(
+                                                start: group.startMinute, end: group.endMinute, day: index,
+                                                column: column, hourHeight: hourHeight)
+                                            Button {
+                                                onGroup(group, day)
+                                            } label: {
+                                                OverlapGroupView(group: group)
+                                            }
+                                            .buttonStyle(.pressable)
+                                            .frame(width: rect.width, height: rect.height)
+                                            .offset(x: rect.minX, y: rect.minY)
+                                            .accessibilityIdentifier("week.overlap.\(day.day).\(group.startMinute)")
                                         }
-                                        .buttonStyle(.pressable)
-                                        .frame(width: rect.width, height: rect.height)
-                                        .offset(x: rect.minX, y: rect.minY)
                                     }
                                 }
                                 if let nowMinute, let index = days.firstIndex(where: { $0.day == today }) {
@@ -89,16 +110,14 @@ private struct WeekPage: View {
         }
     }
 
-    /// Where a block sits: its day's column split by the side-by-side columns the core gave it, from its start minute,
-    /// never shorter than one line of title.
-    static func rect(of block: TimedBlock, day: Int, column: CGFloat, hourHeight: CGFloat) -> CGRect {
-        let columns = CGFloat(max(Int(block.columns), 1))
-        let width = column / columns
-        let x = gutter + CGFloat(day) * column + CGFloat(Int(block.column)) * width + 1
-        let y = CGFloat(Int(block.startMinute)) / 60 * hourHeight + 1
-        let minutes = CGFloat(Int(block.endMinute) - Int(block.startMinute))
+    /// Where a block or an overlap group sits: its day's whole column, from its start minute, never shorter than one
+    /// line of title. Overlapping events are a group now, so nothing shares a column (m1.md decision 44).
+    static func rect(start: UInt16, end: UInt16, day: Int, column: CGFloat, hourHeight: CGFloat) -> CGRect {
+        let x = gutter + CGFloat(day) * column + 1
+        let y = CGFloat(Int(start)) / 60 * hourHeight + 1
+        let minutes = CGFloat(Int(end) - Int(start))
         let height = max(minutes / 60 * hourHeight - 2, 18)
-        return CGRect(x: x, y: y, width: width - 2, height: height)
+        return CGRect(x: x, y: y, width: column - 2, height: height)
     }
 }
 

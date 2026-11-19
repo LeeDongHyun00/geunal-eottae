@@ -92,6 +92,23 @@
             try add(core, personal, "동아리 회의", today, 1140, 1260)
         }
 
+        /// The overlaps of docs/design/screens/m1/07-week--overlap: today three events in a chain (16–18, 16–17,
+        /// 17–18) that the week view draws as one group, and tomorrow a short event at the start of a long one
+        /// (m1.md decision 44).
+        static func seedOverlaps(_ core: any CoreProtocol, now: Date = Date()) throws {
+            let today = KoreanCalendar.day(of: now)
+            let club = try calendar(core, "동아리", .tangerine)
+            let team = try calendar(core, "팀플", .cocoa)
+            let study = try calendar(core, "공부", .sea)
+            try add(core, club, "동아리 회의", today, 960, 1080)
+            try add(core, team, "팀플 회의", today, 960, 1020)
+            try add(core, study, "과제", today, 1020, 1080)
+            if let tomorrow = KoreanCalendar.adding(days: 1, to: today) {
+                try add(core, study, "전공 수업", tomorrow, 600, 840)
+                try add(core, club, "교수 면담", tomorrow, 600, 660)
+            }
+        }
+
         private static func calendar(
             _ core: any CoreProtocol, _ name: String, _ color: Palette, soft: Bool = false
         ) throws -> String {

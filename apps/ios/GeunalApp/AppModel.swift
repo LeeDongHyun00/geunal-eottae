@@ -110,6 +110,9 @@ final class AppModel {
                 if LaunchOptions.seedsBusyDay {
                     try await Task.detached { try DemoCalendar.seedBusyDay(core) }.value
                 }
+                if LaunchOptions.seedsOverlaps {
+                    try await Task.detached { try DemoCalendar.seedOverlaps(core) }.value
+                }
                 if LaunchOptions.seedsDemoPeople {
                     try await Task.detached { try DemoCalendar.seedPeople(core) }.value
                 }

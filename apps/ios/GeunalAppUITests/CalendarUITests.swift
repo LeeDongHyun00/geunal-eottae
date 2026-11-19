@@ -34,6 +34,41 @@ final class CalendarUITests: GeunalUITestCase {
         snapshot(app, "08-list")
     }
 
+    // docs/design/m1.md decision 44: overlapping events are one group with a count; it opens their sheet, whose row
+    // edits that event and whose "이날 일정 모두 보기" opens the day's quick entry.
+    func testTheWeekDrawsOverlapsAsOneGroupWithTheirSheet() {
+        let app = launch(realCore: true, ["-GeunalOnboardingFinished", "-GeunalDemoOverlaps"])
+        let week = labeled(app.buttons, "주")
+        waitFor(week)
+        week.tap()
+        let group = app.buttons["week.overlap.\(koreanToday).960"]
+        waitFor(group)
+        XCTAssertTrue(group.label.contains("겹치는 일정 3개: 동아리 회의, 팀플 회의, 과제"), "got '\(group.label)'")
+        snapshot(app, "07-week--overlap")
+
+        group.tap()
+        let first = app.buttons["overlap.event.0"]
+        waitFor(first)
+        XCTAssertTrue(labeled(app.staticTexts, "16:00–18:00 · 겹치는 일정 3개").exists)
+        XCTAssertTrue(app.buttons["overlap.event.2"].exists)
+        snapshot(app, "07-week--overlap-list")
+
+        app.buttons["overlap.event.1"].tap()
+        let title = app.textFields["editor.title"]
+        waitFor(title)
+        XCTAssertEqual(title.value as? String, "팀플 회의")
+        app.buttons["editor.cancel"].tap()
+
+        let again = app.buttons["week.overlap.\(koreanToday).960"]
+        waitFor(again)
+        again.tap()
+        let allOfDay = app.buttons["overlap.day"]
+        waitFor(allOfDay)
+        allOfDay.tap()
+        waitFor(app.textFields["quickEntry.title"])
+        XCTAssertTrue(labeled(app.staticTexts, "이날 일정 3개").exists)
+    }
+
     // docs/design/m1.md decision 42: a day of four events lists three, opens the fourth in place and edits a row.
     func testTheQuickEntryListsTheDaysEvents() {
         let app = launch(realCore: true, ["-GeunalOnboardingFinished", "-GeunalDemoBusyDay"])
