@@ -14,7 +14,7 @@ RUN mix deps.get --only prod --check-locked && mix deps.compile
 COPY lib lib
 RUN mix release
 
-FROM debian:trixie-20261027-slim
+FROM debian:trixie-20261104-slim
 # Debian security fixes released after the base image was built come in here, so the Trivy gate (make scan-gateway)
 # fails only on findings that have no fix yet. A cloud session's proxy carries only HTTPS: there
 # scripts/docker-build.sh passes the proxy's CA as the secret `ca`, readable by apt's unprivileged downloader, and the
