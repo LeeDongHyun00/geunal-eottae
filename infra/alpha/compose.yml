@@ -35,7 +35,7 @@ services:
   # Valkey rather than Redis, whose licence changed after 7.4. The API keeps only pub/sub signals and rate limits here
   # (infra.md §2), so nothing is persisted and the oldest keys give way when the cap is reached.
   valkey:
-    image: valkey/valkey:8.1.11-alpine
+    image: valkey/valkey:8.1.12-alpine
     command: ["valkey-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
