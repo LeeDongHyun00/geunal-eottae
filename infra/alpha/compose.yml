@@ -17,7 +17,7 @@ networks:
 
 services:
   postgres:
-    image: postgres:16.15
+    image: postgres:16.16
     # Memory is what a Micro runs out of first (infra.md §2): 128 MB of shared buffers, and few connections because one
     # API with a small pool is the only client.
     command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=30"]
