@@ -26,7 +26,7 @@ services:
 
   # MinIO stopped publishing community images in 2025; SeaweedFS serves the S3 API locally.
   s3:
-    image: chrislusf/seaweedfs:4.50
+    image: chrislusf/seaweedfs:4.54
     # Small volumes: by default a volume reserves 30 GB, and a laptop or CI disk with less free space than that leaves
     # no writable volume for the first backup.
     command: server -s3 -dir=/data -master.volumeSizeLimitMB=64
@@ -36,7 +36,7 @@ services:
   # access logs every five minutes) are made before the API starts. A bucket that exists from an earlier `up` is left
   # alone, so the stack comes up again over its own data.
   s3-buckets:
-    image: chrislusf/seaweedfs:4.50
+    image: chrislusf/seaweedfs:4.54
     entrypoint:
       - sh
       - -c
